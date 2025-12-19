@@ -1,7 +1,7 @@
 import { db } from "./db";
 import {
-  dnsServers, blocklists, accessLogs, appSettings,
-  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings
+  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters,
+  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater
 } from "@shared/schema";
 import { eq, desc, count } from "drizzle-orm";
 
@@ -26,6 +26,13 @@ export interface IStorage {
   // Settings
   getSettings(): Promise<AppSettings>;
   updateSettings(updates: Partial<InsertAppSettings>): Promise<AppSettings>;
+
+  // DDNS Updaters
+  getDdnsUpdaters(): Promise<DdnsUpdater[]>;
+  createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
+  updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater>;
+  deleteDdnsUpdater(id: number): Promise<void>;
+  updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -109,6 +116,35 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(appSettings)
       .set(updates)
       .where(eq(appSettings.id, current.id))
+      .returning();
+    return updated;
+  }
+
+  async getDdnsUpdaters(): Promise<DdnsUpdater[]> {
+    return await db.select().from(ddnsUpdaters);
+  }
+
+  async createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater> {
+    const [created] = await db.insert(ddnsUpdaters).values(updater).returning();
+    return created;
+  }
+
+  async updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater> {
+    const [updated] = await db.update(ddnsUpdaters)
+      .set(updates)
+      .where(eq(ddnsUpdaters.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDdnsUpdater(id: number): Promise<void> {
+    await db.delete(ddnsUpdaters).where(eq(ddnsUpdaters.id, id));
+  }
+
+  async updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater> {
+    const [updated] = await db.update(ddnsUpdaters)
+      .set({ lastIpAddress: ipAddress, lastUpdateTime: new Date() })
+      .where(eq(ddnsUpdaters.id, id))
       .returning();
     return updated;
   }

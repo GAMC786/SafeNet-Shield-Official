@@ -116,6 +116,68 @@ export async function registerRoutes(
     res.json({ valid });
   });
 
+  // === DDNS Updaters ===
+  app.get("/api/ddns", async (req, res) => {
+    const updaters = await storage.getDdnsUpdaters();
+    res.json(updaters);
+  });
+
+  app.post("/api/ddns", async (req, res) => {
+    try {
+      const { hostname, provider, apiKey, updateInterval, isEnabled } = req.body;
+      if (!hostname || !provider || !apiKey) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const updater = await storage.createDdnsUpdater({
+        hostname,
+        provider,
+        apiKey,
+        updateInterval: updateInterval || 3600,
+        isEnabled: isEnabled !== false,
+      });
+      res.status(201).json(updater);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create DDNS updater" });
+    }
+  });
+
+  app.patch("/api/ddns/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { hostname, provider, apiKey, updateInterval, isEnabled } = req.body;
+      const updater = await storage.updateDdnsUpdater(id, {
+        ...(hostname && { hostname }),
+        ...(provider && { provider }),
+        ...(apiKey && { apiKey }),
+        ...(updateInterval && { updateInterval }),
+        ...(typeof isEnabled === 'boolean' && { isEnabled }),
+      });
+      res.json(updater);
+    } catch (err) {
+      res.status(404).json({ message: "DDNS updater not found" });
+    }
+  });
+
+  app.delete("/api/ddns/:id", async (req, res) => {
+    try {
+      await storage.deleteDdnsUpdater(Number(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      res.status(404).json({ message: "DDNS updater not found" });
+    }
+  });
+
+  app.post("/api/ddns/:id/update", async (req, res) => {
+    try {
+      const { checkAndUpdateDdns } = await import("./ddns-service");
+      await checkAndUpdateDdns();
+      const updaters = await storage.getDdnsUpdaters();
+      res.json(updaters);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update DDNS" });
+    }
+  });
+
   // === SEED DATA ===
   await seedDatabase();
 

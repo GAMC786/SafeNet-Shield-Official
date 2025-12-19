@@ -10,6 +10,7 @@ import { useSettings } from "@/hooks/use-settings";
 // Pages
 import Dashboard from "@/pages/Dashboard";
 import DnsSettings from "@/pages/DnsSettings";
+import DdnsUpdater from "@/pages/DdnsUpdater";
 import Firewall from "@/pages/Firewall";
 import Logs from "@/pages/Logs";
 import Settings from "@/pages/Settings";
@@ -35,6 +36,7 @@ function MainLayout() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/dns" component={DnsSettings} />
+          <Route path="/ddns" component={DdnsUpdater} />
           <Route path="/firewall" component={Firewall} />
           <Route path="/logs" component={Logs} />
           <Route path="/settings" component={Settings} />

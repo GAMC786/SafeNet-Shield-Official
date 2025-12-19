@@ -42,11 +42,23 @@ export const appSettings = pgTable("app_settings", {
   theme: text("theme").default("red-gray-blue"),
 });
 
+export const ddnsUpdaters = pgTable("ddns_updaters", {
+  id: serial("id").primaryKey(),
+  hostname: text("hostname").notNull(),
+  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare"] }).notNull(),
+  apiKey: text("api_key").notNull(),
+  lastIpAddress: text("last_ip_address"),
+  lastUpdateTime: timestamp("last_update_time"),
+  isEnabled: boolean("is_enabled").default(true),
+  updateInterval: integer("update_interval").default(3600), // seconds
+});
+
 // === SCHEMAS ===
 
 export const insertDnsServerSchema = createInsertSchema(dnsServers).omit({ id: true });
 export const insertBlocklistSchema = createInsertSchema(blocklists).omit({ id: true });
 export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
+export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({ id: true, lastIpAddress: true, lastUpdateTime: true });
 
 // === TYPES ===
 
@@ -60,6 +72,9 @@ export type AccessLog = typeof accessLogs.$inferSelect;
 
 export type AppSettings = typeof appSettings.$inferSelect;
 export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
+
+export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
+export type InsertDdnsUpdater = z.infer<typeof insertDdnsUpdaterSchema>;
 
 // === API CONTRACT TYPES ===
 
