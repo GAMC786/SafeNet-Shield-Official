@@ -33,31 +33,6 @@ export default function Dashboard() {
         status="active" 
       />
 
-      {/* SafeNet Shield Logo Hero */}
-      <CyberCard glow className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20 flex flex-col items-center justify-center py-8 sm:py-12">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.6, type: "spring" }}
-          className="relative"
-        >
-          <img 
-            src="/safenet-shield-logo.png" 
-            alt="SafeNet Shield" 
-            className="w-24 h-24 sm:w-32 sm:h-32 object-contain drop-shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:drop-shadow-[0_0_30px_rgba(220,38,38,0.6)] transition-all duration-300"
-          />
-          <div className="absolute inset-0 animate-pulse rounded-full border border-destructive/20" />
-        </motion.div>
-        <div className="text-center mt-6">
-          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white text-shadow-danger mb-2">
-            SafeNet DNS
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground font-body">
-            Enterprise-Grade Network Protection
-          </p>
-        </div>
-      </CyberCard>
-
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <CyberCard glow className="bg-gradient-to-br from-primary/10 to-transparent border-primary/20">
