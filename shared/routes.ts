@@ -1,0 +1,144 @@
+import { z } from 'zod';
+import { insertDnsServerSchema, insertBlocklistSchema, insertAppSettingsSchema, dnsServers, blocklists, accessLogs, appSettings } from './schema';
+
+export const errorSchemas = {
+  validation: z.object({
+    message: z.string(),
+    field: z.string().optional(),
+  }),
+  notFound: z.object({
+    message: z.string(),
+  }),
+  internal: z.object({
+    message: z.string(),
+  }),
+};
+
+export const api = {
+  dns: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/dns',
+      responses: {
+        200: z.array(z.custom<typeof dnsServers.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/dns',
+      input: insertDnsServerSchema,
+      responses: {
+        201: z.custom<typeof dnsServers.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/dns/:id',
+      input: insertDnsServerSchema.partial(),
+      responses: {
+        200: z.custom<typeof dnsServers.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/dns/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    activate: {
+      method: 'POST' as const,
+      path: '/api/dns/:id/activate',
+      responses: {
+        200: z.custom<typeof dnsServers.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  blocklists: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/blocklists',
+      responses: {
+        200: z.array(z.custom<typeof blocklists.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/blocklists',
+      input: insertBlocklistSchema,
+      responses: {
+        201: z.custom<typeof blocklists.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/blocklists/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  logs: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/logs',
+      responses: {
+        200: z.array(z.custom<typeof accessLogs.$inferSelect>()),
+      },
+    },
+    stats: {
+      method: 'GET' as const,
+      path: '/api/stats',
+      responses: {
+        200: z.object({
+          totalQueries: z.number(),
+          blockedQueries: z.number(),
+          threatsBlocked: z.number(),
+        }),
+      },
+    },
+  },
+  settings: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/settings',
+      responses: {
+        200: z.custom<typeof appSettings.$inferSelect>(),
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/settings',
+      input: insertAppSettingsSchema.partial(),
+      responses: {
+        200: z.custom<typeof appSettings.$inferSelect>(),
+      },
+    },
+    verifyPin: {
+      method: 'POST' as const,
+      path: '/api/settings/verify-pin',
+      input: z.object({ pin: z.string() }),
+      responses: {
+        200: z.object({ valid: z.boolean() }),
+      },
+    },
+  },
+};
+
+export function buildUrl(path: string, params?: Record<string, string | number>): string {
+  let url = path;
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (url.includes(`:${key}`)) {
+        url = url.replace(`:${key}`, String(value));
+      }
+    });
+  }
+  return url;
+}

@@ -1,16 +1,184 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import type { Server } from "http";
 import { storage } from "./storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import { dnsServers, blocklists } from "@shared/schema";
+import { registerChatRoutes } from "./replit_integrations/chat";
+import { registerImageRoutes } from "./replit_integrations/image";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Register AI Integrations
+  registerChatRoutes(app);
+  registerImageRoutes(app);
+
+  // === DNS Servers ===
+  app.get(api.dns.list.path, async (req, res) => {
+    const servers = await storage.getDnsServers();
+    res.json(servers);
+  });
+
+  app.post(api.dns.create.path, async (req, res) => {
+    try {
+      const input = api.dns.create.input.parse(req.body);
+      const server = await storage.createDnsServer(input);
+      res.status(201).json(server);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.put(api.dns.update.path, async (req, res) => {
+    try {
+      const input = api.dns.update.input.parse(req.body);
+      const server = await storage.updateDnsServer(Number(req.params.id), input);
+      res.json(server);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(404).json({ message: "Server not found" });
+    }
+  });
+
+  app.delete(api.dns.delete.path, async (req, res) => {
+    await storage.deleteDnsServer(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post(api.dns.activate.path, async (req, res) => {
+    const server = await storage.activateDnsServer(Number(req.params.id));
+    res.json(server);
+  });
+
+  // === Blocklists ===
+  app.get(api.blocklists.list.path, async (req, res) => {
+    const lists = await storage.getBlocklists();
+    res.json(lists);
+  });
+
+  app.post(api.blocklists.create.path, async (req, res) => {
+    try {
+      const input = api.blocklists.create.input.parse(req.body);
+      const list = await storage.createBlocklist(input);
+      res.status(201).json(list);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.blocklists.delete.path, async (req, res) => {
+    await storage.deleteBlocklist(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // === Logs ===
+  app.get(api.logs.list.path, async (req, res) => {
+    const logs = await storage.getLogs(50);
+    res.json(logs);
+  });
+
+  app.get(api.logs.stats.path, async (req, res) => {
+    const stats = await storage.getStats();
+    res.json(stats);
+  });
+
+  // === Settings ===
+  app.get(api.settings.get.path, async (req, res) => {
+    const settings = await storage.getSettings();
+    res.json(settings);
+  });
+
+  app.put(api.settings.update.path, async (req, res) => {
+    try {
+      const input = api.settings.update.input.parse(req.body);
+      const settings = await storage.updateSettings(input);
+      res.json(settings);
+    } catch (err) {
+      throw err;
+    }
+  });
+
+  app.post(api.settings.verifyPin.path, async (req, res) => {
+    const { pin } = req.body;
+    const settings = await storage.getSettings();
+    const valid = !settings.isPinEnabled || settings.pinCode === pin;
+    res.json({ valid });
+  });
+
+  // === SEED DATA ===
+  await seedDatabase();
 
   return httpServer;
+}
+
+async function seedDatabase() {
+  const existingServers = await storage.getDnsServers();
+  if (existingServers.length === 0) {
+    await storage.createDnsServer({
+      name: "SafeNet Default (DoH)",
+      type: "doh",
+      primaryAddress: "https://dns.google/dns-query",
+      secondaryAddress: "https://cloudflare-dns.com/dns-query",
+      isActive: true,
+      isCustom: false
+    });
+    await storage.createDnsServer({
+      name: "AdGuard (Plain)",
+      type: "plain",
+      primaryAddress: "94.140.14.14",
+      secondaryAddress: "94.140.15.15",
+      isActive: false,
+      isCustom: false
+    });
+    await storage.createDnsServer({
+      name: "Cloudflare Family (DoT)",
+      type: "dot",
+      primaryAddress: "1.1.1.3",
+      secondaryAddress: "1.0.0.3",
+      isActive: false,
+      isCustom: false
+    });
+  }
+
+  const existingBlocklists = await storage.getBlocklists();
+  if (existingBlocklists.length === 0) {
+    await storage.createBlocklist({
+      type: "domain",
+      content: "ads.example.com",
+      category: "ads",
+      isActive: true
+    });
+    await storage.createBlocklist({
+      type: "keyword",
+      content: "gambling",
+      category: "adult",
+      isActive: true
+    });
+  }
+
+  // Generate some fake logs for visualization
+  const existingLogs = await storage.getLogs(1);
+  if (existingLogs.length === 0) {
+    const domains = ["google.com", "facebook.com", "ads.tracker.net", "malware-site.org", "news.com"];
+    for (let i = 0; i < 20; i++) {
+      const isBlocked = Math.random() > 0.7;
+      await storage.createLog({
+        domain: domains[Math.floor(Math.random() * domains.length)],
+        protocol: Math.random() > 0.5 ? "DoH" : "DoT",
+        status: isBlocked ? "blocked" : "allowed",
+        reason: isBlocked ? "security" : undefined,
+      });
+    }
+  }
 }
