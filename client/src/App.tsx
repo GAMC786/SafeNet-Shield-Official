@@ -17,7 +17,7 @@ import NotFound from "@/pages/not-found";
 
 function MainLayout() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row pb-20 md:pb-0">
+    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row pb-24 md:pb-0 safe-area-inset">
       <Navigation />
       
       {/* Scanline Effect */}
@@ -31,7 +31,7 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 p-4 md:p-8 md:ml-20 overflow-y-auto max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-3 sm:p-4 md:p-8 md:ml-20 overflow-y-auto max-w-7xl mx-auto w-full safe-area-inset-bottom">
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/dns" component={DnsSettings} />

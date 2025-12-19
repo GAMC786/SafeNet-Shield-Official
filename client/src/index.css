@@ -50,12 +50,19 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-touch-callout: none;
+  }
   body {
     @apply bg-background text-foreground antialiased font-body;
     background-image: 
       radial-gradient(circle at 50% 0%, hsl(224 76% 48% / 0.15), transparent 40%),
       radial-gradient(circle at 100% 100%, hsl(0 84% 60% / 0.05), transparent 30%);
     background-attachment: fixed;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-top: env(safe-area-inset-top);
   }
   
   /* Custom scrollbar for technical feel */
@@ -116,4 +123,25 @@
 @keyframes scanline {
   0% { top: -100px; }
   100% { top: 100%; }
+}
+
+@layer utilities {
+  .safe-area-inset {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Mobile-first responsive grid */
+  @screen sm {
+    .responsive-grid {
+      @apply grid-cols-2;
+    }
+  }
+  @screen md {
+    .responsive-grid {
+      @apply grid-cols-3;
+    }
+  }
 }
