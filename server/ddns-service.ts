@@ -27,6 +27,8 @@ async function updateDnsRecord(
         return await updateNoIp(hostname, apiKey, ipAddress);
       case "dynu":
         return await updateDynu(hostname, apiKey, ipAddress);
+      case "dnsomatic":
+        return await updateDnsOMatic(hostname, apiKey, ipAddress);
       default:
         console.warn(`Unsupported DDNS provider: ${provider}`);
         return false;
@@ -66,6 +68,18 @@ async function updateDynu(hostname: string, apiKey: string, ip: string): Promise
     body: JSON.stringify({ hostname, ipv4: ip }),
   });
   return response.ok;
+}
+
+async function updateDnsOMatic(hostname: string, credentials: string, ip: string): Promise<boolean> {
+  const response = await fetch("https://updates.dnsomatic.com/nic/update", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+    },
+    body: new URLSearchParams({ hostname, myip: ip }).toString(),
+  });
+  const text = await response.text();
+  return text.includes("good") || text.includes("nochg");
 }
 
 // Check and update all enabled DDNS updaters

@@ -91,6 +91,7 @@ export default function DdnsUpdater() {
                     <SelectItem value="duckdns">DuckDNS</SelectItem>
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
+                    <SelectItem value="dnsomatic">DNS-O-MATIC</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
