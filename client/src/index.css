@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Rajdhani:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,9 +6,9 @@
 
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
-  --font-display: 'Orbitron', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Rajdhani', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: 'Space Mono', monospace;
 
   /* Dark mode default base */
   --background: 222 47% 11%;
@@ -63,6 +63,8 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     padding-top: env(safe-area-inset-top);
+    font-weight: 400;
+    letter-spacing: 0.01em;
   }
   
   /* Custom scrollbar for technical feel */
@@ -79,7 +81,8 @@
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    @apply tracking-wide uppercase text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70;
+    @apply tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 font-semibold;
+    letter-spacing: 0.05em;
   }
 }
 
