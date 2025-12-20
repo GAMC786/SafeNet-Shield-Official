@@ -146,6 +146,28 @@ Place icons in `build/` directory:
 
 ---
 
+## Automated Builds with GitHub Actions
+
+This project includes a GitHub Actions workflow that automatically builds APK and MSI files.
+
+### Setup:
+1. Push this project to a GitHub repository
+2. The workflow runs automatically on every push to `main`
+
+### Download builds:
+1. Go to your repository on GitHub
+2. Click the **Actions** tab
+3. Click the latest workflow run
+4. Scroll down to **Artifacts**
+5. Download **SafeNet-DNS-Android** (APK) or **SafeNet-DNS-Windows** (MSI)
+
+### Create a Release with downloads:
+1. Create a git tag: `git tag v1.0.0`
+2. Push the tag: `git push origin v1.0.0`
+3. GitHub will automatically create a Release with APK and MSI attached
+
+---
+
 ## Version Information
 - App ID: com.safenet.dns
 - App Name: SafeNet DNS
