@@ -24,23 +24,17 @@ This document provides instructions for building native installers for Android (
 npm run build
 ```
 
-### Step 2: Initialize Capacitor (first time only)
-```bash
-npx cap init "SafeNet DNS" com.safenet.dns --web-dir dist/public
-npx cap add android
-```
-
-### Step 3: Sync web assets to Android
+### Step 2: Sync web assets to Android
 ```bash
 npx cap sync android
 ```
 
-### Step 4: Open in Android Studio
+### Step 3: Open in Android Studio
 ```bash
 npx cap open android
 ```
 
-### Step 5: Build APK in Android Studio
+### Step 4: Build APK in Android Studio
 1. In Android Studio, go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**
 2. The APK will be generated in `android/app/build/outputs/apk/debug/`
 
@@ -105,8 +99,8 @@ project/
 │   │   └── src/
 │   └── gradle/
 ├── electron/
-│   ├── main.js             # Electron main process
-│   └── preload.js          # Electron preload script
+│   ├── main.cjs            # Electron main process (CommonJS)
+│   └── preload.cjs         # Electron preload script (CommonJS)
 ├── build/
 │   ├── icon.ico            # Windows icon
 │   ├── icon.icns           # macOS icon

@@ -3,11 +3,12 @@ productName: SafeNet DNS
 directories:
   output: dist-electron
   buildResources: build
+extraMetadata:
+  main: electron/main.cjs
 files:
   - dist/public/**/*
-  - electron/**/*
+  - electron/**/*.cjs
   - "!node_modules/**/*"
-  - node_modules/**/*
 asar: true
 
 win:
