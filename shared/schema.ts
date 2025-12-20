@@ -45,12 +45,26 @@ export const appSettings = pgTable("app_settings", {
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
-  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare"] }).notNull(),
+  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsomatic"] }).notNull(),
   apiKey: text("api_key").notNull(),
   lastIpAddress: text("last_ip_address"),
   lastUpdateTime: timestamp("last_update_time"),
   isEnabled: boolean("is_enabled").default(true),
   updateInterval: integer("update_interval").default(3600), // seconds
+});
+
+export const firewallRules = pgTable("firewall_rules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sourceInterface: text("source_interface").notNull(), // lan, wan, any
+  sourceAddress: text("source_address").default("Any"), // IP or CIDR
+  destinationInterface: text("destination_interface").notNull(), // lan, wan, any
+  destinationAddress: text("destination_address").default("Any"), // IP or CIDR
+  service: text("service").notNull(), // dns, http, https, all
+  action: text("action", { enum: ["allow", "deny"] }).notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  priority: integer("priority").default(100),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // === SCHEMAS ===
@@ -59,6 +73,7 @@ export const insertDnsServerSchema = createInsertSchema(dnsServers).omit({ id: t
 export const insertBlocklistSchema = createInsertSchema(blocklists).omit({ id: true });
 export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
 export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({ id: true, lastIpAddress: true, lastUpdateTime: true });
+export const insertFirewallRuleSchema = createInsertSchema(firewallRules).omit({ id: true, createdAt: true });
 
 // === TYPES ===
 
@@ -75,6 +90,9 @@ export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type InsertDdnsUpdater = z.infer<typeof insertDdnsUpdaterSchema>;
+
+export type FirewallRule = typeof firewallRules.$inferSelect;
+export type InsertFirewallRule = z.infer<typeof insertFirewallRuleSchema>;
 
 // === API CONTRACT TYPES ===
 

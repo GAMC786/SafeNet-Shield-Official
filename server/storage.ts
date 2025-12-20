@@ -1,7 +1,7 @@
 import { db } from "./db";
 import {
-  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters,
-  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater
+  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
+  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule
 } from "@shared/schema";
 import { eq, desc, count } from "drizzle-orm";
 
@@ -33,6 +33,12 @@ export interface IStorage {
   updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater>;
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
+
+  // Firewall Rules
+  getFirewallRules(): Promise<FirewallRule[]>;
+  createFirewallRule(rule: InsertFirewallRule): Promise<FirewallRule>;
+  updateFirewallRule(id: number, updates: Partial<InsertFirewallRule>): Promise<FirewallRule>;
+  deleteFirewallRule(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -147,6 +153,27 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ddnsUpdaters.id, id))
       .returning();
     return updated;
+  }
+
+  async getFirewallRules(): Promise<FirewallRule[]> {
+    return await db.select().from(firewallRules).orderBy(desc(firewallRules.priority));
+  }
+
+  async createFirewallRule(rule: InsertFirewallRule): Promise<FirewallRule> {
+    const [created] = await db.insert(firewallRules).values(rule).returning();
+    return created;
+  }
+
+  async updateFirewallRule(id: number, updates: Partial<InsertFirewallRule>): Promise<FirewallRule> {
+    const [updated] = await db.update(firewallRules)
+      .set(updates)
+      .where(eq(firewallRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFirewallRule(id: number): Promise<void> {
+    await db.delete(firewallRules).where(eq(firewallRules.id, id));
   }
 }
 

@@ -178,6 +178,52 @@ export async function registerRoutes(
     }
   });
 
+  // === Firewall Rules ===
+  app.get("/api/firewall/rules", async (req, res) => {
+    const rules = await storage.getFirewallRules();
+    res.json(rules);
+  });
+
+  app.post("/api/firewall/rules", async (req, res) => {
+    try {
+      const { name, sourceInterface, sourceAddress, destinationInterface, destinationAddress, service, action } = req.body;
+      if (!name || !sourceInterface || !destinationInterface || !service || !action) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const rule = await storage.createFirewallRule({
+        name,
+        sourceInterface,
+        sourceAddress: sourceAddress || "Any",
+        destinationInterface,
+        destinationAddress: destinationAddress || "Any",
+        service,
+        action,
+      });
+      res.status(201).json(rule);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create firewall rule" });
+    }
+  });
+
+  app.patch("/api/firewall/rules/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const rule = await storage.updateFirewallRule(id, req.body);
+      res.json(rule);
+    } catch (err) {
+      res.status(404).json({ message: "Firewall rule not found" });
+    }
+  });
+
+  app.delete("/api/firewall/rules/:id", async (req, res) => {
+    try {
+      await storage.deleteFirewallRule(Number(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      res.status(404).json({ message: "Firewall rule not found" });
+    }
+  });
+
   // === SEED DATA ===
   await seedDatabase();
 
