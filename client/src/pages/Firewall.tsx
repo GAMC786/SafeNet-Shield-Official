@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
 import { useFirewallRules, useCreateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
+import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Shield, List, Search, Trash2, Plus, Ban, Zap } from "lucide-react";
@@ -13,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function Firewall() {
+  const { toast } = useToast();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
   const deleteBlock = useDeleteBlocklist();
@@ -57,17 +59,23 @@ export default function Firewall() {
   };
 
   const handleAddRule = () => {
-    if (!newRule.name) return;
-    createRule.mutate(newRule);
-    setIsRuleDialogOpen(false);
-    setNewRule({
-      name: "",
-      sourceInterface: "lan",
-      sourceAddress: "Any",
-      destinationInterface: "wan",
-      destinationAddress: "Any",
-      service: "dns",
-      action: "deny",
+    if (!newRule.name) {
+      toast({ title: "Error", description: "Rule name is required", variant: "destructive" });
+      return;
+    }
+    createRule.mutate(newRule, {
+      onSuccess: () => {
+        setIsRuleDialogOpen(false);
+        setNewRule({
+          name: "",
+          sourceInterface: "lan",
+          sourceAddress: "Any",
+          destinationInterface: "wan",
+          destinationAddress: "Any",
+          service: "dns",
+          action: "deny",
+        });
+      }
     });
   };
 
