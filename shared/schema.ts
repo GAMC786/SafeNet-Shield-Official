@@ -107,7 +107,7 @@ export const antivirusEvents = pgTable("antivirus_events", {
 
 // === SCHEMAS ===
 
-export const insertAntivirusSettingsSchema = createInsertSchema(antivirusSettings).omit({ id: true });
+export const insertAntivirusSettingsSchema = createInsertSchema(antivirusSettings).omit({ id: true, lastScanTime: true, lastUpdateTime: true });
 export const insertThreatFeedSchema = createInsertSchema(threatFeeds).omit({ id: true, lastSync: true, entriesCount: true });
 export const insertAntivirusEventSchema = createInsertSchema(antivirusEvents).omit({ id: true, timestamp: true });
 

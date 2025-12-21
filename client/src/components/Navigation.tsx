@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Shield, Activity, List, Settings, Globe, Wifi } from "lucide-react";
+import { Shield, Activity, List, Settings, Globe, Wifi, Bug } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -8,6 +8,7 @@ const navItems = [
   { path: "/dns", label: "DNS Servers", icon: Globe },
   { path: "/ddns", label: "Dynamic DNS", icon: Wifi },
   { path: "/firewall", label: "Firewall", icon: Shield },
+  { path: "/antivirus", label: "Antivirus", icon: Bug },
   { path: "/logs", label: "Activity", icon: List },
   { path: "/settings", label: "Settings", icon: Settings },
 ];

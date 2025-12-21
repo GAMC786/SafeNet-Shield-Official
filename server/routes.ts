@@ -3,7 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { dnsServers, blocklists } from "@shared/schema";
+import { dnsServers, blocklists, insertAntivirusSettingsSchema } from "@shared/schema";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 
@@ -232,9 +232,16 @@ export async function registerRoutes(
 
   app.put("/api/antivirus/settings", async (req, res) => {
     try {
-      const settings = await storage.updateAntivirusSettings(req.body);
+      const parsed = insertAntivirusSettingsSchema.partial().parse(req.body);
+      const input = Object.fromEntries(
+        Object.entries(parsed).filter(([_, v]) => v !== undefined)
+      );
+      const settings = await storage.updateAntivirusSettings(input);
       res.json(settings);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to update antivirus settings" });
     }
   });
@@ -368,5 +375,28 @@ async function seedDatabase() {
         reason: isBlocked ? "security" : undefined,
       });
     }
+  }
+
+  // Seed threat feeds if none exist
+  const existingFeeds = await storage.getThreatFeeds();
+  if (existingFeeds.length === 0) {
+    await storage.createThreatFeed({
+      name: "Malware Domains",
+      type: "malware",
+      url: "https://malwaredomains.com/list",
+      isEnabled: true,
+    });
+    await storage.createThreatFeed({
+      name: "Phishing Database",
+      type: "phishing",
+      url: "https://phishtank.org/list",
+      isEnabled: true,
+    });
+    await storage.createThreatFeed({
+      name: "Ransomware Tracker",
+      type: "ransomware",
+      url: "https://ransomwaretracker.abuse.ch/list",
+      isEnabled: false,
+    });
   }
 }
