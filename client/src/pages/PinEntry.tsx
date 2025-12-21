@@ -59,7 +59,8 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
         <img 
           src={logoImage} 
           alt="SafeNet DNS" 
-          className="w-40 h-40 object-contain rounded-2xl mb-6"
+          className="w-20 h-20 object-contain rounded-xl mb-4"
+          style={{ imageRendering: 'crisp-edges' }}
         />
         <h1 className="text-4xl font-display font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 mb-2">
           SafeNet
@@ -68,18 +69,20 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
       </motion.div>
 
       {/* PIN Dots */}
-      <div className="flex gap-4 mb-12">
+      <div className="flex gap-5 mb-12">
         {[0, 1, 2, 3].map((i) => (
           <motion.div
             key={i}
             initial={false}
             animate={{
-              scale: pin.length > i ? 1.2 : 1,
-              borderColor: error ? "var(--destructive)" : pin.length > i ? "var(--primary)" : "var(--border)",
-              backgroundColor: pin.length > i ? (error ? "var(--destructive)" : "var(--primary)") : "transparent"
+              scale: pin.length > i ? 1.15 : 1,
+              borderColor: error ? "var(--destructive)" : pin.length > i ? "var(--primary)" : "rgba(255,255,255,0.2)",
+              backgroundColor: pin.length > i ? (error ? "var(--destructive)" : "var(--primary)") : "transparent",
+              boxShadow: pin.length > i ? (error ? "0 0 12px var(--destructive)" : "0 0 12px var(--primary)") : "none"
             }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className={cn(
-              "w-4 h-4 rounded-full border-2 transition-colors duration-200",
+              "w-5 h-5 rounded-full border-2 transition-colors duration-150",
               error && "animate-shake"
             )}
           />
