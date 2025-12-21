@@ -104,20 +104,22 @@ export default function Firewall() {
         </div>
       </CyberCard>
 
-      <Tabs defaultValue="rules" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-card border border-white/5 h-12">
-          <TabsTrigger value="rules" className="font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-            Access Rules
-          </TabsTrigger>
-          <TabsTrigger value="domains" className="font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-            Allow/Block URLs
-          </TabsTrigger>
-          <TabsTrigger value="keywords" className="font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-            Keyword Filtering
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="rules" className="w-full" orientation="vertical">
+        <div className="flex flex-col md:flex-row gap-6">
+          <TabsList className="flex flex-col h-auto bg-card border border-white/5 p-2 md:w-48 shrink-0">
+            <TabsTrigger value="rules" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              Access Rules
+            </TabsTrigger>
+            <TabsTrigger value="domains" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              Allow/Block URLs
+            </TabsTrigger>
+            <TabsTrigger value="keywords" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              Keyword Filtering
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex-1">
 
-        <TabsContent value="rules" className="mt-6 space-y-4">
+        <TabsContent value="rules" className="mt-0 space-y-4">
           <div className="flex justify-end mb-4">
             <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
               <DialogTrigger asChild>
@@ -255,7 +257,7 @@ export default function Firewall() {
           </div>
         </TabsContent>
 
-        <TabsContent value="domains" className="mt-6 space-y-4">
+        <TabsContent value="domains" className="mt-0 space-y-4">
           <div className="flex gap-2">
             <Select value={newDomainAction} onValueChange={(v: "allow" | "block") => setNewDomainAction(v)}>
               <SelectTrigger className="w-28 bg-card border-border">
@@ -326,7 +328,7 @@ export default function Firewall() {
           </div>
         </TabsContent>
 
-        <TabsContent value="keywords" className="mt-6 space-y-4">
+        <TabsContent value="keywords" className="mt-0 space-y-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <List className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -365,6 +367,8 @@ export default function Firewall() {
             )}
           </div>
         </TabsContent>
+          </div>
+        </div>
       </Tabs>
     </div>
   );
