@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Shield, Activity, List, Settings, Globe, Wifi, Bug } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: Activity },
@@ -19,9 +20,11 @@ export function Navigation() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
       <div className="hidden md:flex flex-col items-center mb-12">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-          <Shield className="w-6 h-6 text-white" />
-        </div>
+        <img 
+          src={logoImage} 
+          alt="SafeNet DNS" 
+          className="w-10 h-10 object-contain"
+        />
       </div>
 
       <div className="flex md:flex-col justify-around md:justify-start w-full md:space-y-4 md:px-2">
