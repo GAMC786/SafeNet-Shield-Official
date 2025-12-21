@@ -56,12 +56,14 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-12 flex flex-col items-center text-center"
       >
-        <img 
-          src={logoImage} 
-          alt="SafeNet DNS" 
-          className="w-20 h-20 object-contain rounded-xl mb-4"
-          style={{ imageRendering: 'crisp-edges' }}
-        />
+        <a href="https://safenetinc.ca" target="_blank" rel="noopener noreferrer">
+          <img 
+            src={logoImage} 
+            alt="SafeNet DNS" 
+            className="w-20 h-20 object-contain rounded-xl mb-4 hover:opacity-80 transition-opacity"
+            style={{ imageRendering: 'crisp-edges' }}
+          />
+        </a>
         <h1 className="text-4xl font-display font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 mb-2">
           SafeNet
         </h1>
