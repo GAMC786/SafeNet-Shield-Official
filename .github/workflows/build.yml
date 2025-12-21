@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -47,6 +49,7 @@ jobs:
         with:
           name: SafeNet-DNS-Android
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
 
   build-windows:
     runs-on: windows-latest
@@ -76,11 +79,32 @@ jobs:
         with:
           name: SafeNet-DNS-Windows
           path: dist-electron/*.msi
+          retention-days: 30
+
+  build-complete:
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check build results
+        run: |
+          echo "Build Android Status: ${{ needs.build-android.result }}"
+          echo "Build Windows Status: ${{ needs.build-windows.result }}"
+          
+          if [ "${{ needs.build-android.result }}" == "success" ] && [ "${{ needs.build-windows.result }}" == "success" ]; then
+            echo "✅ All builds completed successfully!"
+            exit 0
+          else
+            echo "❌ One or more builds failed!"
+            exit 1
+          fi
 
   release:
     needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - name: Download Android artifact
         uses: actions/download-artifact@v4
