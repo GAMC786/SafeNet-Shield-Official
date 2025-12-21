@@ -76,9 +76,9 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
             initial={false}
             animate={{
               scale: pin.length > i ? 1.15 : 1,
-              borderColor: error ? "var(--destructive)" : pin.length > i ? "var(--primary)" : "rgba(255,255,255,0.2)",
-              backgroundColor: pin.length > i ? (error ? "var(--destructive)" : "var(--primary)") : "transparent",
-              boxShadow: pin.length > i ? (error ? "0 0 12px var(--destructive)" : "0 0 12px var(--primary)") : "none"
+              borderColor: error ? "#ef4444" : pin.length > i ? "#60a5fa" : "rgba(255,255,255,0.2)",
+              backgroundColor: pin.length > i ? (error ? "#ef4444" : "#60a5fa") : "transparent",
+              boxShadow: pin.length > i ? (error ? "0 0 14px #ef4444" : "0 0 14px #60a5fa") : "none"
             }}
             transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className={cn(
