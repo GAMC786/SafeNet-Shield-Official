@@ -211,25 +211,36 @@ export default function Firewall() {
           <div className="grid gap-3">
             {rules && rules.length > 0 ? (
               rules.map(rule => (
-                <CyberCard key={rule.id} className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                <CyberCard key={rule.id} className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Zap className={`w-4 h-4 ${rule.action === "deny" ? "text-destructive" : "text-primary"}`} />
                         <h4 className="font-display font-bold text-white">{rule.name}</h4>
                         <Badge variant={rule.action === "deny" ? "destructive" : "default"} className="text-xs">
                           {rule.action.toUpperCase()}
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono mt-1">
-                        {rule.sourceInterface} → {rule.destinationInterface} | Service: {rule.service}
-                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground">Source</span>
+                          <span className="text-foreground uppercase">{rule.sourceInterface}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground">Destination</span>
+                          <span className="text-foreground uppercase">{rule.destinationInterface}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground">Service</span>
+                          <span className="text-foreground uppercase">{rule.service}</span>
+                        </div>
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => deleteRule.mutate(rule.id)}
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
