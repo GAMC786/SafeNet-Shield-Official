@@ -91,16 +91,25 @@ jobs:
           echo "Build Android Status: ${{ needs.build-android.result }}"
           echo "Build Windows Status: ${{ needs.build-windows.result }}"
           
-          if [ "${{ needs.build-android.result }}" == "success" ] && [ "${{ needs.build-windows.result }}" == "success" ]; then
+          android_status="${{ needs.build-android.result }}"
+          windows_status="${{ needs.build-windows.result }}"
+          
+          if [ "$android_status" == "success" ] && [ "$windows_status" == "success" ]; then
             echo "✅ All builds completed successfully!"
             exit 0
+          elif [ "$android_status" == "cancelled" ] || [ "$windows_status" == "cancelled" ]; then
+            echo "⚠️ One or more builds were cancelled!"
+            exit 1
+          elif [ "$android_status" == "skipped" ] || [ "$windows_status" == "skipped" ]; then
+            echo "⚠️ One or more builds were skipped!"
+            exit 1
           else
             echo "❌ One or more builds failed!"
             exit 1
           fi
 
   release:
-    needs: [build-android, build-windows]
+    needs: [build-complete]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
