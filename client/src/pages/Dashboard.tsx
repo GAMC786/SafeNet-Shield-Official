@@ -13,9 +13,7 @@ export default function Dashboard() {
   const { data: settings } = useSettings();
 
   const handleSimulateTraffic = async () => {
-    // This endpoint doesn't really exist in our schema but we can fake it by creating logs
-    // In a real app this would trigger a backend simulation
-    // For now we'll just invalidate to refresh
+    await apiRequest("POST", "/api/simulate-traffic");
     await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/logs"] });
   };

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, useManualDdnsUpdate } from "@/hooks/use-ddns";
+import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, useManualDdnsUpdate, usePublicIp } from "@/hooks/use-ddns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Trash2, RefreshCw, Check, Clock } from "lucide-react";
+import { Globe, Plus, Trash2, RefreshCw, Check, Clock, Wifi } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
+  const { data: publicIpData } = usePublicIp();
   const createUpdater = useCreateDdnsUpdater();
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
@@ -46,6 +47,25 @@ export default function DdnsUpdater() {
         title="Dynamic DNS"
         subtitle="Auto-Update DNS Records"
       />
+
+      <CyberCard className="mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/20 rounded-lg">
+              <Wifi className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Your Public IP Address</p>
+              <p className="text-2xl font-mono font-bold text-white" data-testid="text-public-ip">
+                {publicIpData?.ip || "Loading..."}
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs">
+            Auto-detected
+          </Badge>
+        </div>
+      </CyberCard>
 
       <div className="flex gap-2 justify-end mb-6">
         <Button

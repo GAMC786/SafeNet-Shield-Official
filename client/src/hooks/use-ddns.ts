@@ -15,10 +15,7 @@ export function useDdnsUpdaters() {
 export function useCreateDdnsUpdater() {
   return useMutation({
     mutationFn: async (data: InsertDdnsUpdater) => {
-      return apiRequest("/api/ddns", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      return apiRequest("POST", "/api/ddns", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
@@ -29,10 +26,7 @@ export function useCreateDdnsUpdater() {
 export function useUpdateDdnsUpdater() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertDdnsUpdater> }) => {
-      return apiRequest(`/api/ddns/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      });
+      return apiRequest("PATCH", `/api/ddns/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
@@ -43,7 +37,7 @@ export function useUpdateDdnsUpdater() {
 export function useDeleteDdnsUpdater() {
   return useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/ddns/${id}`, { method: "DELETE" });
+      return apiRequest("DELETE", `/api/ddns/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
@@ -54,10 +48,21 @@ export function useDeleteDdnsUpdater() {
 export function useManualDdnsUpdate() {
   return useMutation({
     mutationFn: async () => {
-      return apiRequest("/api/ddns/manual/update", { method: "POST" });
+      return apiRequest("POST", "/api/ddns/0/update");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
     },
+  });
+}
+
+export function usePublicIp() {
+  return useQuery({
+    queryKey: ["/api/public-ip"],
+    queryFn: async () => {
+      const response = await fetch("/api/public-ip");
+      return response.json() as Promise<{ ip: string }>;
+    },
+    staleTime: 60000,
   });
 }

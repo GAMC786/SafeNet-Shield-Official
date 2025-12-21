@@ -311,6 +311,51 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  // === Simulate Traffic ===
+  app.post("/api/simulate-traffic", async (req, res) => {
+    try {
+      const domains = [
+        "google.com", "facebook.com", "amazon.com", "twitter.com", "github.com",
+        "ads.tracking.com", "malware.badsite.net", "phishing.scam.org", 
+        "news.com", "reddit.com", "youtube.com", "netflix.com"
+      ];
+      const protocols = ["DoH", "DoT", "Plain"];
+      const reasons = ["blocklist", "security", "ai_shield", "firewall", null];
+      
+      const numLogs = 5 + Math.floor(Math.random() * 10);
+      const createdLogs = [];
+      
+      for (let i = 0; i < numLogs; i++) {
+        const domain = domains[Math.floor(Math.random() * domains.length)];
+        const isThreat = domain.includes("malware") || domain.includes("phishing") || domain.includes("tracking");
+        const isBlocked = isThreat || Math.random() > 0.75;
+        
+        const log = await storage.createLog({
+          domain,
+          protocol: protocols[Math.floor(Math.random() * protocols.length)],
+          status: isBlocked ? "blocked" : "allowed",
+          reason: isBlocked ? reasons[Math.floor(Math.random() * (reasons.length - 1))] : null,
+        });
+        createdLogs.push(log);
+      }
+      
+      res.json({ message: `Simulated ${numLogs} DNS queries`, logs: createdLogs });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to simulate traffic" });
+    }
+  });
+
+  // === Get Public IP ===
+  app.get("/api/public-ip", async (req, res) => {
+    try {
+      const { getCurrentPublicIp } = await import("./ddns-service");
+      const ip = await getCurrentPublicIp();
+      res.json({ ip });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to get public IP" });
+    }
+  });
+
   // === SEED DATA ===
   await seedDatabase();
 
@@ -372,7 +417,7 @@ async function seedDatabase() {
         domain: domains[Math.floor(Math.random() * domains.length)],
         protocol: Math.random() > 0.5 ? "DoH" : "DoT",
         status: isBlocked ? "blocked" : "allowed",
-        reason: isBlocked ? "security" : undefined,
+        reason: isBlocked ? "security" : null,
       });
     }
   }
