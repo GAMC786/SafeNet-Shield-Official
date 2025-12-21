@@ -19,6 +19,7 @@ export const blocklists = pgTable("blocklists", {
   type: text("type", { enum: ["domain", "keyword"] }).notNull(),
   content: text("content").notNull(),
   category: text("category").default("custom"),
+  action: text("action", { enum: ["allow", "block"] }).default("block"),
   isActive: boolean("is_active").default(true),
 });
 
