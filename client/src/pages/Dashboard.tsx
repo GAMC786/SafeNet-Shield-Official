@@ -1,16 +1,21 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useSettings } from "@/hooks/use-settings";
+import { useDnsServers } from "@/hooks/use-dns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Activity, Shield, Lock, AlertTriangle, Play, Wifi } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Play, Wifi, Server } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from "framer-motion";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
 
 export default function Dashboard() {
   const { data: stats } = useStats();
   const { data: logs } = useLogs();
   const { data: settings } = useSettings();
+  const { data: dnsServers } = useDnsServers();
+  
+  const activeDns = dnsServers?.find(s => s.isActive);
 
   const handleSimulateTraffic = async () => {
     await apiRequest("POST", "/api/simulate-traffic");
@@ -30,6 +35,37 @@ export default function Dashboard() {
         subtitle="System Status: Online" 
         status="active" 
       />
+
+      {/* Connection Status Bar */}
+      <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <Server className="w-6 h-6 text-primary" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm text-muted-foreground">Active DNS Server</p>
+                <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
+                  Connected
+                </Badge>
+              </div>
+              <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
+                {activeDns?.name || "No server configured"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <p className="text-xs text-muted-foreground">Protocol</p>
+            <Badge className="uppercase text-xs">
+              {activeDns?.protocol || "N/A"}
+            </Badge>
+          </div>
+        </div>
+      </CyberCard>
 
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

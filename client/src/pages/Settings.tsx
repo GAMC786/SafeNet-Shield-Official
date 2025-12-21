@@ -13,7 +13,7 @@ export default function Settings() {
   const updateSettings = useUpdateSettings();
   const [pin, setPin] = useState("");
 
-  const handleToggle = (key: keyof typeof settings, checked: boolean) => {
+  const handleToggle = (key: string, checked: boolean) => {
     updateSettings.mutate({ [key]: checked });
   };
 
@@ -47,7 +47,7 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground max-w-[200px]">Active content analysis for nudity and threats</p>
             </div>
             <Switch 
-              checked={settings?.aiShieldEnabled} 
+              checked={settings?.aiShieldEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("aiShieldEnabled", c)}
             />
           </div>
@@ -60,7 +60,7 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">Block connections from unauthorized apps</p>
             </div>
             <Switch 
-              checked={settings?.firewallEnabled} 
+              checked={settings?.firewallEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("firewallEnabled", c)}
             />
           </div>
@@ -81,7 +81,7 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">Prevent leaks when connection drops</p>
             </div>
             <Switch 
-              checked={settings?.alwaysOnEnabled} 
+              checked={settings?.alwaysOnEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("alwaysOnEnabled", c)}
             />
           </div>
@@ -94,7 +94,7 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">Prevent app uninstallation</p>
             </div>
             <Switch 
-              checked={settings?.deviceAdminEnabled} 
+              checked={settings?.deviceAdminEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
             />
           </div>
@@ -114,7 +114,7 @@ export default function Settings() {
                 <p className="text-xs text-muted-foreground">Require PIN to open app</p>
               </div>
               <Switch 
-                checked={settings?.isPinEnabled} 
+                checked={settings?.isPinEnabled ?? false} 
                 onCheckedChange={(c) => handleToggle("isPinEnabled", c)}
               />
             </div>
