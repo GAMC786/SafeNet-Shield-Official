@@ -17,7 +17,8 @@ async function updateDnsRecord(
   hostname: string,
   provider: string,
   apiKey: string,
-  ipAddress: string
+  ipAddress: string,
+  customUrl?: string | null
 ): Promise<boolean> {
   try {
     switch (provider.toLowerCase()) {
@@ -29,6 +30,8 @@ async function updateDnsRecord(
         return await updateDynu(hostname, apiKey, ipAddress);
       case "dnsomatic":
         return await updateDnsOMatic(hostname, apiKey, ipAddress);
+      case "iplink":
+        return await updateIpLink(hostname, ipAddress, customUrl);
       default:
         console.warn(`Unsupported DDNS provider: ${provider}`);
         return false;
@@ -82,6 +85,29 @@ async function updateDnsOMatic(hostname: string, credentials: string, ip: string
   return text.includes("good") || text.includes("nochg");
 }
 
+async function updateIpLink(hostname: string, ip: string, customUrl?: string | null): Promise<boolean> {
+  if (!customUrl) {
+    console.error("IP Link requires a custom URL");
+    return false;
+  }
+  
+  // Replace placeholders in the custom URL
+  const url = customUrl
+    .replace(/\{ip\}/gi, ip)
+    .replace(/\{hostname\}/gi, hostname)
+    .replace(/\{IP\}/g, ip)
+    .replace(/\{HOSTNAME\}/g, hostname);
+  
+  try {
+    const response = await fetch(url);
+    // Consider any 2xx response as success
+    return response.ok;
+  } catch (error) {
+    console.error("IP Link update failed:", error);
+    return false;
+  }
+}
+
 // Check and update all enabled DDNS updaters
 export async function checkAndUpdateDdns(): Promise<void> {
   const updaters = await storage.getDdnsUpdaters();
@@ -95,7 +121,7 @@ export async function checkAndUpdateDdns(): Promise<void> {
     const now = Date.now();
     const timeSinceLastUpdate = (now - lastUpdate) / 1000; // in seconds
 
-    if (timeSinceLastUpdate < updater.updateInterval && updater.lastIpAddress === currentIp) {
+    if (timeSinceLastUpdate < (updater.updateInterval ?? 3600) && updater.lastIpAddress === currentIp) {
       continue; // No need to update
     }
 
@@ -104,7 +130,8 @@ export async function checkAndUpdateDdns(): Promise<void> {
       updater.hostname,
       updater.provider,
       updater.apiKey,
-      currentIp
+      currentIp,
+      updater.customUrl
     );
 
     if (success) {

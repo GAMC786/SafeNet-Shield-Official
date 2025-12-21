@@ -46,8 +46,9 @@ export const appSettings = pgTable("app_settings", {
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
-  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsomatic"] }).notNull(),
+  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"] }).notNull(),
   apiKey: text("api_key").notNull(),
+  customUrl: text("custom_url"), // For IP Link - URL with {ip} and {hostname} placeholders
   lastIpAddress: text("last_ip_address"),
   lastUpdateTime: timestamp("last_update_time"),
   isEnabled: boolean("is_enabled").default(true),

@@ -22,8 +22,9 @@ export default function DdnsUpdater() {
 
   const [formData, setFormData] = useState({
     hostname: "",
-    provider: "duckdns" as const,
+    provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
     apiKey: "",
+    customUrl: "",
     updateInterval: 3600,
     isEnabled: true,
   });
@@ -36,6 +37,7 @@ export default function DdnsUpdater() {
       hostname: "",
       provider: "duckdns",
       apiKey: "",
+      customUrl: "",
       updateInterval: 3600,
       isEnabled: true,
     });
@@ -112,19 +114,36 @@ export default function DdnsUpdater() {
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
                     <SelectItem value="dnsomatic">DNS-O-MATIC</SelectItem>
+                    <SelectItem value="iplink">IP Link (Custom URL)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
+              {formData.provider === "iplink" && (
+                <div className="space-y-2">
+                  <Label>Update URL</Label>
+                  <Input
+                    value={formData.customUrl}
+                    onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
+                    placeholder="https://example.com/update?ip={ip}&host={hostname}"
+                    className="bg-background border-border font-mono text-xs"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use {"{ip}"} and {"{hostname}"} as placeholders
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>API Key / Token</Label>
+                <Label>{formData.provider === "iplink" ? "Auth Token (optional)" : "API Key / Token"}</Label>
                 <Input
                   value={formData.apiKey}
                   onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                  placeholder="Your API key"
+                  placeholder={formData.provider === "iplink" ? "Optional auth token" : "Your API key"}
                   type="password"
                   className="bg-background border-border font-mono"
-                  required
+                  required={formData.provider !== "iplink"}
                 />
               </div>
 
