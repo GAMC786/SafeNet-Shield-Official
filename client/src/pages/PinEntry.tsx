@@ -59,7 +59,7 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
         <img 
           src={logoImage} 
           alt="SafeNet DNS" 
-          className="w-20 h-20 object-contain rounded-2xl mb-6"
+          className="w-40 h-40 object-contain rounded-2xl mb-6"
         />
         <h1 className="text-4xl font-display font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 mb-2">
           SafeNet
