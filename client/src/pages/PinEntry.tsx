@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useVerifyPin } from "@/hooks/use-settings";
-import { Lock, Shield, ArrowRight } from "lucide-react";
+import { Lock, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
 
 interface PinEntryProps {
   onSuccess: () => void;
@@ -55,9 +56,11 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-12 flex flex-col items-center text-center"
       >
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)] mb-6 border border-white/10">
-          <Shield className="w-10 h-10 text-white" />
-        </div>
+        <img 
+          src={logoImage} 
+          alt="SafeNet DNS" 
+          className="w-20 h-20 object-contain rounded-2xl mb-6"
+        />
         <h1 className="text-4xl font-display font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 mb-2">
           SafeNet
         </h1>
