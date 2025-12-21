@@ -4,7 +4,7 @@ import { useFirewallRules, useCreateFirewallRule, useDeleteFirewallRule } from "
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, List, Search, Trash2, Plus, Ban, Zap } from "lucide-react";
+import { Shield, List, Search, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,6 +24,7 @@ export default function Firewall() {
   const deleteRule = useDeleteFirewallRule();
 
   const [newDomain, setNewDomain] = useState("");
+  const [newDomainAction, setNewDomainAction] = useState<"allow" | "block">("block");
   const [newKeyword, setNewKeyword] = useState("");
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [newRule, setNewRule] = useState({
@@ -42,6 +43,7 @@ export default function Firewall() {
       type: "domain",
       content: newDomain,
       category: "custom",
+      action: newDomainAction,
       isActive: true
     });
     setNewDomain("");
@@ -108,7 +110,7 @@ export default function Firewall() {
             Access Rules
           </TabsTrigger>
           <TabsTrigger value="domains" className="font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-            Domain Blacklist
+            Allow/Block URLs
           </TabsTrigger>
           <TabsTrigger value="keywords" className="font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
             Keyword Filtering
@@ -244,41 +246,71 @@ export default function Firewall() {
 
         <TabsContent value="domains" className="mt-6 space-y-4">
           <div className="flex gap-2">
+            <Select value={newDomainAction} onValueChange={(v: "allow" | "block") => setNewDomainAction(v)}>
+              <SelectTrigger className="w-28 bg-card border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                <SelectItem value="allow">Allow</SelectItem>
+                <SelectItem value="block">Block</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Enter domain to block (e.g. ads.example.com)" 
+                placeholder="Enter URL or domain (e.g. example.com)" 
                 className="pl-10 bg-card border-border font-mono"
                 value={newDomain}
                 onChange={e => setNewDomain(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAddDomain()}
+                data-testid="input-domain-url"
               />
             </div>
-            <Button onClick={handleAddDomain} className="bg-destructive hover:bg-destructive/80 text-white font-bold">
-              <Plus className="w-4 h-4 mr-2" /> Block
+            <Button 
+              onClick={handleAddDomain} 
+              className={newDomainAction === "block" ? "bg-destructive hover:bg-destructive/80 text-white font-bold" : "bg-primary hover:bg-primary/80 text-white font-bold"}
+              data-testid="button-add-domain"
+            >
+              <Plus className="w-4 h-4 mr-2" /> {newDomainAction === "block" ? "Block" : "Allow"}
             </Button>
           </div>
 
           <div className="grid gap-2">
             {domains.map(item => (
-              <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-card/50 border border-white/5 hover:border-destructive/30 transition-colors group">
+              <div 
+                key={item.id} 
+                className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border transition-colors group ${
+                  item.action === "block" ? "border-destructive/20 hover:border-destructive/40" : "border-primary/20 hover:border-primary/40"
+                }`}
+                data-testid={`url-rule-${item.id}`}
+              >
                 <div className="flex items-center gap-3">
-                  <Shield className="w-4 h-4 text-destructive" />
+                  {item.action === "block" ? (
+                    <X className="w-4 h-4 text-destructive" />
+                  ) : (
+                    <Check className="w-4 h-4 text-primary" />
+                  )}
                   <span className="font-mono text-sm">{item.content}</span>
-                  <Badge variant="secondary" className="text-[10px] bg-white/5 text-muted-foreground">CUSTOM</Badge>
+                  <Badge 
+                    variant={item.action === "block" ? "destructive" : "default"} 
+                    className="text-[10px]"
+                  >
+                    {item.action?.toUpperCase() || "BLOCK"}
+                  </Badge>
                 </div>
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  className="text-muted-foreground hover:text-destructive"
                   onClick={() => deleteBlock.mutate(item.id)}
+                  data-testid={`button-delete-rule-${item.id}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             ))}
             {domains.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground font-mono text-sm">No domains blocked yet.</p>
+              <p className="text-center py-8 text-muted-foreground font-mono text-sm">No URL rules configured yet.</p>
             )}
           </div>
         </TabsContent>
