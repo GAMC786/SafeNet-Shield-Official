@@ -224,6 +224,86 @@ export async function registerRoutes(
     }
   });
 
+  // === Antivirus ===
+  app.get("/api/antivirus/settings", async (req, res) => {
+    const settings = await storage.getAntivirusSettings();
+    res.json(settings);
+  });
+
+  app.put("/api/antivirus/settings", async (req, res) => {
+    try {
+      const settings = await storage.updateAntivirusSettings(req.body);
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update antivirus settings" });
+    }
+  });
+
+  app.get("/api/antivirus/feeds", async (req, res) => {
+    const feeds = await storage.getThreatFeeds();
+    res.json(feeds);
+  });
+
+  app.post("/api/antivirus/feeds", async (req, res) => {
+    try {
+      const { name, type, url, isEnabled } = req.body;
+      if (!name || !type) {
+        return res.status(400).json({ message: "Name and type are required" });
+      }
+      const feed = await storage.createThreatFeed({ name, type, url, isEnabled });
+      res.status(201).json(feed);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create threat feed" });
+    }
+  });
+
+  app.patch("/api/antivirus/feeds/:id", async (req, res) => {
+    try {
+      const feed = await storage.updateThreatFeed(Number(req.params.id), req.body);
+      res.json(feed);
+    } catch (err) {
+      res.status(404).json({ message: "Threat feed not found" });
+    }
+  });
+
+  app.delete("/api/antivirus/feeds/:id", async (req, res) => {
+    try {
+      await storage.deleteThreatFeed(Number(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      res.status(404).json({ message: "Threat feed not found" });
+    }
+  });
+
+  app.get("/api/antivirus/events", async (req, res) => {
+    const limit = Number(req.query.limit) || 100;
+    const events = await storage.getAntivirusEvents(limit);
+    res.json(events);
+  });
+
+  app.post("/api/antivirus/events", async (req, res) => {
+    try {
+      const event = await storage.createAntivirusEvent(req.body);
+      res.status(201).json(event);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create antivirus event" });
+    }
+  });
+
+  app.patch("/api/antivirus/events/:id/resolve", async (req, res) => {
+    try {
+      const event = await storage.resolveAntivirusEvent(Number(req.params.id));
+      res.json(event);
+    } catch (err) {
+      res.status(404).json({ message: "Event not found" });
+    }
+  });
+
+  app.get("/api/antivirus/stats", async (req, res) => {
+    const stats = await storage.getAntivirusStats();
+    res.json(stats);
+  });
+
   // === SEED DATA ===
   await seedDatabase();
 
