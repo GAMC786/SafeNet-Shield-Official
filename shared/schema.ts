@@ -68,7 +68,48 @@ export const firewallRules = pgTable("firewall_rules", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === ANTIVIRUS TABLES ===
+
+export const antivirusSettings = pgTable("antivirus_settings", {
+  id: serial("id").primaryKey(),
+  isEnabled: boolean("is_enabled").default(true),
+  realTimeProtection: boolean("real_time_protection").default(true),
+  malwareDomainBlocking: boolean("malware_domain_blocking").default(true),
+  phishingProtection: boolean("phishing_protection").default(true),
+  downloadScanning: boolean("download_scanning").default(true),
+  threatSensitivity: text("threat_sensitivity", { enum: ["low", "medium", "high"] }).default("medium"),
+  autoQuarantine: boolean("auto_quarantine").default(true),
+  lastScanTime: timestamp("last_scan_time"),
+  lastUpdateTime: timestamp("last_update_time"),
+});
+
+export const threatFeeds = pgTable("threat_feeds", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  url: text("url"),
+  type: text("type", { enum: ["malware", "phishing", "ransomware", "botnet", "spam"] }).notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  lastSync: timestamp("last_sync"),
+  entriesCount: integer("entries_count").default(0),
+});
+
+export const antivirusEvents = pgTable("antivirus_events", {
+  id: serial("id").primaryKey(),
+  threatType: text("threat_type", { enum: ["malware", "phishing", "ransomware", "botnet", "suspicious"] }).notNull(),
+  domain: text("domain").notNull(),
+  action: text("action", { enum: ["blocked", "quarantined", "allowed", "warned"] }).notNull(),
+  severity: text("severity", { enum: ["low", "medium", "high", "critical"] }).notNull(),
+  details: text("details"),
+  sourceIp: text("source_ip"),
+  isResolved: boolean("is_resolved").default(false),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
 // === SCHEMAS ===
+
+export const insertAntivirusSettingsSchema = createInsertSchema(antivirusSettings).omit({ id: true });
+export const insertThreatFeedSchema = createInsertSchema(threatFeeds).omit({ id: true, lastSync: true, entriesCount: true });
+export const insertAntivirusEventSchema = createInsertSchema(antivirusEvents).omit({ id: true, timestamp: true });
 
 export const insertDnsServerSchema = createInsertSchema(dnsServers).omit({ id: true });
 export const insertBlocklistSchema = createInsertSchema(blocklists).omit({ id: true });
@@ -94,6 +135,15 @@ export type InsertDdnsUpdater = z.infer<typeof insertDdnsUpdaterSchema>;
 
 export type FirewallRule = typeof firewallRules.$inferSelect;
 export type InsertFirewallRule = z.infer<typeof insertFirewallRuleSchema>;
+
+export type AntivirusSettings = typeof antivirusSettings.$inferSelect;
+export type InsertAntivirusSettings = z.infer<typeof insertAntivirusSettingsSchema>;
+
+export type ThreatFeed = typeof threatFeeds.$inferSelect;
+export type InsertThreatFeed = z.infer<typeof insertThreatFeedSchema>;
+
+export type AntivirusEvent = typeof antivirusEvents.$inferSelect;
+export type InsertAntivirusEvent = z.infer<typeof insertAntivirusEventSchema>;
 
 // === API CONTRACT TYPES ===
 

@@ -1,7 +1,9 @@
 import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
-  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule
+  antivirusSettings, threatFeeds, antivirusEvents,
+  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
+  type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent
 } from "@shared/schema";
 import { eq, desc, count } from "drizzle-orm";
 
@@ -39,6 +41,18 @@ export interface IStorage {
   createFirewallRule(rule: InsertFirewallRule): Promise<FirewallRule>;
   updateFirewallRule(id: number, updates: Partial<InsertFirewallRule>): Promise<FirewallRule>;
   deleteFirewallRule(id: number): Promise<void>;
+
+  // Antivirus
+  getAntivirusSettings(): Promise<AntivirusSettings>;
+  updateAntivirusSettings(updates: Partial<InsertAntivirusSettings>): Promise<AntivirusSettings>;
+  getThreatFeeds(): Promise<ThreatFeed[]>;
+  createThreatFeed(feed: InsertThreatFeed): Promise<ThreatFeed>;
+  updateThreatFeed(id: number, updates: Partial<InsertThreatFeed>): Promise<ThreatFeed>;
+  deleteThreatFeed(id: number): Promise<void>;
+  getAntivirusEvents(limit?: number): Promise<AntivirusEvent[]>;
+  createAntivirusEvent(event: InsertAntivirusEvent): Promise<AntivirusEvent>;
+  resolveAntivirusEvent(id: number): Promise<AntivirusEvent>;
+  getAntivirusStats(): Promise<{ totalThreats: number; blockedToday: number; activeFeeds: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -174,6 +188,76 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFirewallRule(id: number): Promise<void> {
     await db.delete(firewallRules).where(eq(firewallRules.id, id));
+  }
+
+  // Antivirus methods
+  async getAntivirusSettings(): Promise<AntivirusSettings> {
+    const [settings] = await db.select().from(antivirusSettings);
+    if (!settings) {
+      const [newSettings] = await db.insert(antivirusSettings).values({}).returning();
+      return newSettings;
+    }
+    return settings;
+  }
+
+  async updateAntivirusSettings(updates: Partial<InsertAntivirusSettings>): Promise<AntivirusSettings> {
+    const current = await this.getAntivirusSettings();
+    const [updated] = await db.update(antivirusSettings)
+      .set(updates)
+      .where(eq(antivirusSettings.id, current.id))
+      .returning();
+    return updated;
+  }
+
+  async getThreatFeeds(): Promise<ThreatFeed[]> {
+    return await db.select().from(threatFeeds);
+  }
+
+  async createThreatFeed(feed: InsertThreatFeed): Promise<ThreatFeed> {
+    const [created] = await db.insert(threatFeeds).values(feed).returning();
+    return created;
+  }
+
+  async updateThreatFeed(id: number, updates: Partial<InsertThreatFeed>): Promise<ThreatFeed> {
+    const [updated] = await db.update(threatFeeds)
+      .set(updates)
+      .where(eq(threatFeeds.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteThreatFeed(id: number): Promise<void> {
+    await db.delete(threatFeeds).where(eq(threatFeeds.id, id));
+  }
+
+  async getAntivirusEvents(limit: number = 100): Promise<AntivirusEvent[]> {
+    return await db.select().from(antivirusEvents).orderBy(desc(antivirusEvents.timestamp)).limit(limit);
+  }
+
+  async createAntivirusEvent(event: InsertAntivirusEvent): Promise<AntivirusEvent> {
+    const [created] = await db.insert(antivirusEvents).values(event).returning();
+    return created;
+  }
+
+  async resolveAntivirusEvent(id: number): Promise<AntivirusEvent> {
+    const [updated] = await db.update(antivirusEvents)
+      .set({ isResolved: true })
+      .where(eq(antivirusEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getAntivirusStats() {
+    const events = await db.select().from(antivirusEvents);
+    const feeds = await db.select().from(threatFeeds);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return {
+      totalThreats: events.length,
+      blockedToday: events.filter(e => e.timestamp && new Date(e.timestamp) >= today).length,
+      activeFeeds: feeds.filter(f => f.isEnabled).length,
+    };
   }
 }
 
