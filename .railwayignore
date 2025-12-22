@@ -1,0 +1,8 @@
+dist/
+node_modules/
+.git/
+android/
+electron/
+*. log
+. env
+.env.local
