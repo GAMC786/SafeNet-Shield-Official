@@ -7,3 +7,4 @@ cmds = ['npm run build']
 
 [start]
 cmd = 'npm start'
+# Force clean rebuild v2
