@@ -38,13 +38,12 @@ vMAJOR.MINOR.PATCH
 2. **Automated build:**
    - GitHub Actions automatically triggers the release workflow
    - Builds Android APK (release version)
-   - Builds Windows MSI installer
-   - Creates a GitHub Release with both files attached
+   - Creates a GitHub Release with the APK attached
 
 3. **Verify the release:**
    - Go to https://github.com/GAMC786/SafeNet-Shield-Official/releases
    - Verify the new release appears with correct version
-   - Confirm APK and MSI files are attached
+   - Confirm APK file is attached
    - Check auto-generated release notes
 
 ### Testing Pre-releases
@@ -67,15 +66,10 @@ git push origin v1.0.0-rc.1
 
 Each release automatically includes:
 
-1. **Android APK** - `SafeNet-Shield-v{version}.apk`
-   - Built using Capacitor
-   - Release build (signed for production)
-   - Compatible with Android 8.0+
-
-2. **Windows MSI** - `SafeNet DNS Setup {version}.msi`
-   - Built using Electron Builder
-   - 64-bit Windows installer
-   - Compatible with Windows 10/11
+**Android APK** - `SafeNet-Shield-v{version}.apk`
+- Built using Capacitor
+- Release build (production ready)
+- Compatible with Android 8.0+
 
 ## Version Numbering Guidelines
 
@@ -113,6 +107,6 @@ If a release has critical issues:
 ## Notes
 
 - Only repository maintainers can push tags to trigger releases
-- The release workflow requires successful builds on both Android and Windows
+- The release workflow requires successful Android build
 - Release notes are auto-generated from commit messages between releases
 - Keep commit messages clear and descriptive for better release notes
