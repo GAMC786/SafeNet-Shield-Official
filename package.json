@@ -2,7 +2,7 @@
   "name": "safenet-shield",
   "version": "1.0.0",
   "type": "module",
-  "description": "Best-in-Class Ethical Web Filtering and DNS Server HAPP (Hardware App)",
+  "description": "Best-in-Class Ethical Web Filtering and DNS Server - Android App",
   "author": "Abdul Mahmood Ghazimal <gamcpost@gmail.com>",
   "license": "MIT",
   "scripts": {
@@ -103,8 +103,6 @@
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
     "esbuild": "^0.25.0",
-    "electron": "^39.2.7",
-    "electron-builder": "^26.0.12",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",
