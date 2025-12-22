@@ -10,8 +10,8 @@ Best-in-Class Ethical Web Filtering, and DNS Server HAPP (Hardware App)
 Download pre-built installers for Android and Windows from the [latest release](https://github.com/GAMC786/SafeNet-Shield-Official/releases/latest).
 
 ### Available Downloads:
-- **Android APK** - `SafeNet-Shield-v*.*.*.apk` - For Android devices
-- **Windows MSI** - `SafeNet DNS Setup *.*.*.msi` - For Windows 10/11 (64-bit)
+- **Android APK** - `SafeNet-Shield-v{version}.apk` - For Android devices (e.g., SafeNet-Shield-v1.0.0.apk)
+- **Windows MSI** - `SafeNet DNS Setup {version}.msi` - For Windows 10/11 (64-bit) (e.g., SafeNet DNS Setup 1.0.0.msi)
 
 ### Installation Instructions
 
