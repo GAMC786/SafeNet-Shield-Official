@@ -76,6 +76,7 @@ Each release automatically includes:
    - Built using Electron Builder
    - 64-bit Windows installer
    - Compatible with Windows 10/11
+   - Note: Actual filename will include the version number from package.json
 
 ## Version Numbering Guidelines
 

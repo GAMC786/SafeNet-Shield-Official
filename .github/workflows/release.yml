@@ -105,6 +105,15 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+          
+          # Detect if this is a pre-release based on tag name
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "Pre-release detected"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "Stable release"
+          fi
 
       - name: Rename APK file
         run: |
@@ -117,7 +126,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.get_version.outputs.is_prerelease }}
           files: |
             artifacts/android/SafeNet-Shield-v${{ steps.get_version.outputs.version }}.apk
             artifacts/windows/*.msi
