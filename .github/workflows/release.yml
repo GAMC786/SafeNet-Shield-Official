@@ -111,8 +111,8 @@ jobs:
           echo "Version: $VERSION"
           
           # Detect if this is a pre-release based on tag name
-          # Matches patterns like: 1.0.0-alpha, 1.0.0-beta.1, 1.0.0-rc.2
-          if [[ "$VERSION" =~ -(alpha|beta|rc)($|\.) ]]; then
+          # Matches patterns like: 1.0.0-alpha, 1.0.0-beta.1, 1.0.0-rc.2, 1.0.0-rc1
+          if [[ "$VERSION" =~ -(alpha|beta|rc)(\.|$|[0-9]) ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
             echo "Pre-release detected"
           else
