@@ -40,6 +40,9 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleDebug
