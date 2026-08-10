@@ -3,7 +3,7 @@
 ![Latest Release](https://img.shields.io/github/v/release/GAMC786/SafeNet-Shield-Official?label=Latest%20Release)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-Best-in-Class Ethical Web Filtering, and DNS Server HAPP (Hardware App)
+Best-in-Class Ethical Web Content-Filtering, and DNS Server HAPP (Hardware App) with Advanced features. Built in Replit.Com
 
 ## 📥 Download
 
