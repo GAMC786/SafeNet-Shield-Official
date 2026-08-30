@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${OFFICIAL_REPO_TOKEN}" ]]; then
-            echo "::error::GITHUB_RELEASE_TOKEN is required to sync SafeNet-Shield-Official."
+            echo "::error::OFFICIAL_REPO_TOKEN is required to sync SafeNet-Shield-Official."
             exit 1
           fi
 
