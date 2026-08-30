@@ -45,25 +45,70 @@ jobs:
 
           auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${OFFICIAL_REPO_TOKEN}" | base64 -w 0)"
           official_url="https://github.com/${OFFICIAL_REPOSITORY}.git"
+          source_sha="$(git rev-parse HEAD)"
+          source_tree="$(git rev-parse "${source_sha}^{tree}")"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add official "${official_url}"
 
-          # Fetch the existing branch, if any, so git can enforce a normal
-          # fast-forward push. This deliberately refuses to overwrite a
-          # branch that was changed independently in the official repository.
+          git -c http.extraheader="${auth_header}" fetch official \
+            "refs/heads/main:refs/remotes/official/main"
+          official_main_sha="$(git rev-parse refs/remotes/official/main)"
+
+          existing_sha=""
           if git -c http.extraheader="${auth_header}" fetch official \
             "refs/heads/${SYNC_BRANCH}:refs/remotes/official/${SYNC_BRANCH}"; then
             existing_sha="$(git rev-parse "refs/remotes/official/${SYNC_BRANCH}")"
-            if ! git merge-base --is-ancestor "${existing_sha}" HEAD; then
-              echo "::error::${SYNC_BRANCH} has diverged in ${OFFICIAL_REPOSITORY}; refusing to force-push it."
+          fi
+
+          parent_args=(-p "${official_main_sha}")
+          if [[ -n "${existing_sha}" ]]; then
+            previous_source_sha="$(git show -s --format=%B "${existing_sha}" |
+              sed -n 's/^Source-Commit: //p' | tail -n 1)"
+
+            if [[ -n "${previous_source_sha}" ]]; then
+              if ! git cat-file -e "${previous_source_sha}^{commit}" 2>/dev/null; then
+                echo "::error::The previous source commit ${previous_source_sha} is unavailable; refusing to overwrite ${SYNC_BRANCH}."
+                exit 1
+              fi
+
+              previous_source_tree="$(git rev-parse "${previous_source_sha}^{tree}")"
+              existing_tree="$(git rev-parse "${existing_sha}^{tree}")"
+              if [[ "${existing_tree}" != "${previous_source_tree}" ]]; then
+                echo "::error::${SYNC_BRANCH} no longer matches its recorded source snapshot; refusing to overwrite it."
+                exit 1
+              fi
+
+              parent_args=(-p "${existing_sha}")
+            elif git merge-base --is-ancestor "${existing_sha}" "${source_sha}" &&
+              ! git merge-base "${existing_sha}" "${official_main_sha}" >/dev/null 2>&1; then
+              # One-time migration for the original source-history branch.
+              # Joining it to official main preserves the existing tip while
+              # giving GitHub a common ancestor for the review pull request.
+              parent_args=(-p "${existing_sha}" -p "${official_main_sha}")
+            else
+              echo "::error::${SYNC_BRANCH} was changed independently; refusing to overwrite it."
               exit 1
             fi
           fi
 
+          if [[ -n "${existing_sha}" ]] &&
+            [[ "$(git rev-parse "${existing_sha}^{tree}")" == "${source_tree}" ]] &&
+            [[ -n "${previous_source_sha:-}" ]]; then
+            snapshot_sha="${existing_sha}"
+          else
+            snapshot_sha="$(git commit-tree "${source_tree}" "${parent_args[@]}" <<EOF
+          Sync SafeNet-Shield source snapshot
+
+          Source-Repository: ${GITHUB_REPOSITORY}
+          Source-Commit: ${source_sha}
+          EOF
+          )"
+          fi
+
           git -c http.extraheader="${auth_header}" push official \
-            "HEAD:refs/heads/${SYNC_BRANCH}"
+            "${snapshot_sha}:refs/heads/${SYNC_BRANCH}"
 
       - name: Create or update the official review pull request
         env:
