@@ -1,1 +1,2 @@
 - [GitHub workflow push permissions](github-workflow-push.md) — Actions workflow files need separately granted workflow access when pushed through Replit.
+- [Cross-repository Actions sync](cross-repository-actions-sync.md) — disable checkout credentials, avoid reserved secret names, and establish PR ancestry.
