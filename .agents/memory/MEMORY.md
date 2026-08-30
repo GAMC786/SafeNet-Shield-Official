@@ -1,0 +1,1 @@
+- [GitHub workflow push permissions](github-workflow-push.md) — Actions workflow files need separately granted workflow access when pushed through Replit.

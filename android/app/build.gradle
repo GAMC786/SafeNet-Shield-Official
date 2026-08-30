@@ -24,6 +24,23 @@ android {
     }
 }
 
+tasks.register("verifyMobileWebAssets") {
+    doLast {
+        def marker = file("src/main/assets/public/mobile-build.json")
+        if (!marker.exists()) {
+            throw new GradleException(
+                "Android web assets are not configured. Run scripts/build-android.sh with MOBILE_API_URL before building the APK."
+            )
+        }
+        def config = new groovy.json.JsonSlurper().parse(marker)
+        if (!(config.apiOrigin instanceof String) || !config.apiOrigin.startsWith("https://")) {
+            throw new GradleException("Android mobile-build.json contains an invalid API origin.")
+        }
+    }
+}
+
+preBuild.dependsOn verifyMobileWebAssets
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'

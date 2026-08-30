@@ -118,6 +118,27 @@ export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id
 export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({ id: true, lastIpAddress: true, lastUpdateTime: true });
 export const insertFirewallRuleSchema = createInsertSchema(firewallRules).omit({ id: true, createdAt: true });
 
+// API response schemas intentionally exclude secrets stored in these tables.
+export const publicAppSettingsSchema = z.object({
+  id: z.number(),
+  isPinEnabled: z.boolean().nullable(),
+  aiShieldEnabled: z.boolean().nullable(),
+  alwaysOnEnabled: z.boolean().nullable(),
+  deviceAdminEnabled: z.boolean().nullable(),
+  firewallEnabled: z.boolean().nullable(),
+  theme: z.string().nullable(),
+});
+
+export const publicDdnsUpdaterSchema = z.object({
+  id: z.number(),
+  hostname: z.string(),
+  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"]),
+  lastIpAddress: z.string().nullable(),
+  lastUpdateTime: z.coerce.date().nullable(),
+  isEnabled: z.boolean().nullable(),
+  updateInterval: z.number().nullable(),
+});
+
 // === TYPES ===
 
 export type DnsServer = typeof dnsServers.$inferSelect;
@@ -129,9 +150,11 @@ export type InsertBlocklist = z.infer<typeof insertBlocklistSchema>;
 export type AccessLog = typeof accessLogs.$inferSelect;
 
 export type AppSettings = typeof appSettings.$inferSelect;
+export type PublicAppSettings = z.infer<typeof publicAppSettingsSchema>;
 export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
+export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;
 export type InsertDdnsUpdater = z.infer<typeof insertDdnsUpdaterSchema>;
 
 export type FirewallRule = typeof firewallRules.$inferSelect;

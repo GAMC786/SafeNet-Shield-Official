@@ -61,7 +61,7 @@ export default function Dashboard() {
           <div className="flex flex-col items-end gap-1">
             <p className="text-xs text-muted-foreground">Protocol</p>
             <Badge className="uppercase text-xs">
-              {activeDns?.protocol || "N/A"}
+              {activeDns?.type || "N/A"}
             </Badge>
           </div>
         </div>

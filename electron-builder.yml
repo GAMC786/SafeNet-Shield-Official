@@ -12,7 +12,6 @@ files:
 asar: true
 
 win:
-  icon: build/icon.ico
   target:
     - target: msi
       arch:

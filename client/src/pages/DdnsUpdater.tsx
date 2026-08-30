@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, useManualDdnsUpdate, usePublicIp } from "@/hooks/use-ddns";
+import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useUpdateDdnsWithIp } from "@/hooks/use-ddns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Globe, Plus, Trash2, RefreshCw, Check, Clock, Wifi } from "lucide-react";
@@ -17,7 +17,7 @@ export default function DdnsUpdater() {
   const createUpdater = useCreateDdnsUpdater();
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
-  const manualUpdate = useManualDdnsUpdate();
+  const updateWithIp = useUpdateDdnsWithIp();
   const [isOpen, setIsOpen] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -72,11 +72,11 @@ export default function DdnsUpdater() {
       <div className="flex gap-2 justify-end mb-6">
         <Button
           variant="outline"
-          onClick={() => manualUpdate.mutate()}
-          disabled={manualUpdate.isPending}
+          onClick={() => publicIpData?.ip && updateWithIp.mutate(publicIpData.ip)}
+          disabled={updateWithIp.isPending || !publicIpData?.ip}
           className="flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" /> {manualUpdate.isPending ? "Updating..." : "Update Now"}
+          <RefreshCw className="w-4 h-4" /> {updateWithIp.isPending ? "Updating..." : "Update Now"}
         </Button>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
@@ -151,9 +151,9 @@ export default function DdnsUpdater() {
                 <Label>Update Interval (seconds)</Label>
                 <Input
                   value={formData.updateInterval}
-                  onChange={(e) => setFormData({ ...formData, updateInterval: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, updateInterval: parseInt(e.target.value) || 1 })}
                   type="number"
-                  min="300"
+                  min="1"
                   className="bg-background border-border"
                 />
               </div>

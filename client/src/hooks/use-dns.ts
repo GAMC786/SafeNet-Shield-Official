@@ -2,12 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type errorSchemas } from "@shared/routes";
 import { type InsertDnsServer, type DnsServer } from "@shared/schema";
 import { z } from "zod";
+import { apiFetch } from "@/lib/api";
 
 export function useDnsServers() {
   return useQuery({
     queryKey: [api.dns.list.path],
     queryFn: async () => {
-      const res = await fetch(api.dns.list.path, { credentials: "include" });
+      const res = await apiFetch(api.dns.list.path);
       if (!res.ok) throw new Error("Failed to fetch DNS servers");
       return api.dns.list.responses[200].parse(await res.json());
     },
@@ -19,7 +20,7 @@ export function useCreateDnsServer() {
   return useMutation({
     mutationFn: async (data: InsertDnsServer) => {
       const validated = api.dns.create.input.parse(data);
-      const res = await fetch(api.dns.create.path, {
+      const res = await apiFetch(api.dns.create.path, {
         method: api.dns.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validated),
@@ -45,7 +46,7 @@ export function useUpdateDnsServer() {
     mutationFn: async ({ id, ...data }: { id: number } & Partial<InsertDnsServer>) => {
       const validated = api.dns.update.input.parse(data);
       const url = buildUrl(api.dns.update.path, { id });
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: api.dns.update.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validated),
@@ -63,7 +64,7 @@ export function useDeleteDnsServer() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.dns.delete.path, { id });
-      const res = await fetch(url, { method: api.dns.delete.method, credentials: "include" });
+      const res = await apiFetch(url, { method: api.dns.delete.method });
       if (!res.ok) throw new Error("Failed to delete DNS server");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.dns.list.path] }),
@@ -75,7 +76,7 @@ export function useActivateDnsServer() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.dns.activate.path, { id });
-      const res = await fetch(url, { method: api.dns.activate.method, credentials: "include" });
+      const res = await apiFetch(url, { method: api.dns.activate.method });
       if (!res.ok) throw new Error("Failed to activate DNS server");
       return api.dns.activate.responses[200].parse(await res.json());
     },

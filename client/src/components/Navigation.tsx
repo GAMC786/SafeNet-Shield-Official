@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Shield, Activity, List, Settings, Globe, Wifi, Bug } from "lucide-react";
+import { Shield, Activity, List, Settings, Globe, Wifi, Bug, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
@@ -8,6 +8,7 @@ const navItems = [
   { path: "/", label: "Dashboard", icon: Activity },
   { path: "/dns", label: "DNS Servers", icon: Globe },
   { path: "/ddns", label: "Dynamic DNS", icon: Wifi },
+  { path: "/speedtest", label: "Speed Test", icon: Gauge },
   { path: "/firewall", label: "Firewall", icon: Shield },
   { path: "/antivirus", label: "Antivirus", icon: Bug },
   { path: "/logs", label: "Activity", icon: List },

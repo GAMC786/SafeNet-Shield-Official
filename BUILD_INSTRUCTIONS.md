@@ -1,6 +1,6 @@
-# SafeNet DNS - Build Instructions
+# SafeNet DNS - Native Build Instructions
 
-This document provides instructions for building the Android APK.
+This document provides instructions for building native installers for Android (APK) and Windows (MSI).
 
 ## Prerequisites
 
@@ -10,26 +10,36 @@ This document provides instructions for building the Android APK.
 - Java JDK 17+
 - Gradle
 
+### For Windows MSI:
+- Node.js 22+
+- Windows OS (or Wine on Linux/macOS)
+- Visual Studio Build Tools (for native modules)
+
 ---
 
 ## Building Android APK
 
+The APK packages the SafeNet DNS frontend only. It must connect to a separately
+running SafeNet DNS backend over HTTPS. The backend must be publicly reachable
+from the Android device.
+
 ### Step 1: Build the web application
 ```bash
-npm run build
+MOBILE_API_URL=https://your-server.example.com ./scripts/build-android.sh
 ```
 
-### Step 2: Sync web assets to Android
-```bash
-npx cap sync android
-```
+This validates the backend URL, builds the web application with that API origin,
+checks its settings endpoint, and syncs the latest assets into the Android
+project. The URL must be a public HTTPS origin without a path or query. Do not
+use `localhost` or a private network address: on the phone, `localhost` refers
+to the phone itself.
 
-### Step 3: Open in Android Studio
+### Step 2: Open in Android Studio
 ```bash
 npx cap open android
 ```
 
-### Step 4: Build APK in Android Studio
+### Step 3: Build APK in Android Studio
 1. In Android Studio, go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**
 2. The APK will be generated in `android/app/build/outputs/apk/debug/`
 
@@ -40,6 +50,9 @@ cd android
 ```
 
 The debug APK will be at: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+Gradle verifies that the validated mobile build marker exists. If it asks you to
+run `scripts/build-android.sh`, repeat Step 1 before building the APK.
 
 ### For Release APK (signed):
 1. Generate a keystore:
@@ -55,7 +68,34 @@ cd android
 
 ---
 
-## Project Structure for Android Build
+## Building Windows MSI
+
+### Step 1: Build the web application
+```bash
+npm run build
+```
+
+### Step 2: Run Electron Builder
+```bash
+npx electron-builder --win --x64
+```
+
+### Output Files:
+- MSI installer: `dist-electron/SafeNet DNS Setup X.X.X.msi`
+- NSIS installer: `dist-electron/SafeNet DNS Setup X.X.X.exe`
+
+### For specific targets only:
+```bash
+# MSI only
+npx electron-builder --win msi
+
+# NSIS only
+npx electron-builder --win nsis
+```
+
+---
+
+## Project Structure for Native Builds
 
 ```
 project/
@@ -66,9 +106,18 @@ project/
 │   │   │       └── apk/    # APK files here
 │   │   └── src/
 │   └── gradle/
+├── electron/
+│   ├── main.cjs            # Electron main process (CommonJS)
+│   └── preload.cjs         # Electron preload script (CommonJS)
+├── build/
+│   ├── icon.ico            # Windows icon
+│   ├── icon.icns           # macOS icon
+│   └── icon.png            # Linux icon
 ├── dist/
 │   └── public/             # Built web assets
-└── capacitor.config.ts     # Capacitor configuration
+├── dist-electron/          # Electron build output
+├── capacitor.config.ts     # Capacitor configuration
+└── electron-builder.yml    # Electron Builder configuration
 ```
 
 ---
@@ -83,6 +132,12 @@ Place icons in `android/app/src/main/res/` directories:
 - `mipmap-xxhdpi/ic_launcher.png` (144x144)
 - `mipmap-xxxhdpi/ic_launcher.png` (192x192)
 
+### For Windows/macOS/Linux:
+Place icons in `build/` directory:
+- `icon.ico` - Windows (256x256 recommended)
+- `icon.icns` - macOS
+- `icon.png` - Linux (512x512 recommended)
+
 ---
 
 ## Troubleshooting
@@ -91,12 +146,21 @@ Place icons in `android/app/src/main/res/` directories:
 - Ensure Android SDK is properly configured
 - Run `npx cap doctor` to diagnose issues
 - Check `android/local.properties` for correct SDK path
+- If the app shows **Server connection unavailable**, confirm the backend URL is
+  reachable from the phone and rebuild with the correct `MOBILE_API_URL`
+- Re-run the Android build script before creating every APK so stale web assets
+  are not left in `android/app/src/main/assets/public`
+
+### Windows Build Issues:
+- Install Windows Build Tools: `npm install --global windows-build-tools`
+- Ensure you have sufficient disk space
+- Run as Administrator if permission issues occur
 
 ---
 
 ## Automated Builds with GitHub Actions
 
-This project includes a GitHub Actions workflow that automatically builds the Android APK.
+This project includes a GitHub Actions workflow that automatically builds APK and MSI files.
 
 ### Setup:
 1. Push this project to a GitHub repository
@@ -107,12 +171,12 @@ This project includes a GitHub Actions workflow that automatically builds the An
 2. Click the **Actions** tab
 3. Click the latest workflow run
 4. Scroll down to **Artifacts**
-5. Download **SafeNet-DNS-Android** (APK)
+5. Download **SafeNet-DNS-Android** (APK) or **SafeNet-DNS-Windows** (MSI)
 
 ### Create a Release with downloads:
 1. Create a git tag: `git tag v1.0.0`
 2. Push the tag: `git push origin v1.0.0`
-3. GitHub will automatically create a Release with the APK attached
+3. GitHub will automatically create a Release with APK and MSI attached
 
 ---
 

@@ -1,0 +1,12 @@
+{
+  "files": ["client/src/service-worker.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "WebWorker"],
+    "skipLibCheck": true
+  }
+}

@@ -7,6 +7,25 @@ export const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
+function decodeImageData(
+  base64: string | null | undefined,
+  operation: "generation" | "editing",
+): Buffer {
+  if (base64 === null || base64 === undefined) {
+    throw new Error(`Image ${operation} returned no image data`);
+  }
+  if (base64.length === 0) {
+    throw new Error(`Image ${operation} returned empty image data`);
+  }
+
+  const imageBytes = Buffer.from(base64, "base64");
+  if (imageBytes.length === 0) {
+    throw new Error(`Image ${operation} returned empty image data`);
+  }
+
+  return imageBytes;
+}
+
 /**
  * Generate an image and return as Buffer.
  * Uses gpt-image-1 model via Replit AI Integrations.
@@ -20,8 +39,7 @@ export async function generateImageBuffer(
     prompt,
     size,
   });
-  const base64 = response.data[0]?.b64_json ?? "";
-  return Buffer.from(base64, "base64");
+  return decodeImageData(response.data?.[0]?.b64_json, "generation");
 }
 
 /**
@@ -47,8 +65,10 @@ export async function editImages(
     prompt,
   });
 
-  const imageBase64 = response.data[0]?.b64_json ?? "";
-  const imageBytes = Buffer.from(imageBase64, "base64");
+  const imageBytes = decodeImageData(
+    response.data?.[0]?.b64_json,
+    "editing",
+  );
 
   if (outputPath) {
     fs.writeFileSync(outputPath, imageBytes);

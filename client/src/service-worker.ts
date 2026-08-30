@@ -1,22 +1,22 @@
-const CACHE_NAME = 'safenet-dns-v1';
+const CACHE_NAME = "safenet-dns-v1";
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
+  "/",
+  "/index.html",
+  "/manifest.json",
 ];
 
-declare const self: ServiceWorkerGlobalScope;
+const serviceWorker = self as unknown as ServiceWorkerGlobalScope;
 
-self.addEventListener('install', (event) => {
+serviceWorker.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(urlsToCache);
-    })
+    }),
   );
 });
 
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') {
+serviceWorker.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") {
     return;
   }
 
@@ -27,7 +27,7 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
+        if (!response || response.status !== 200 || response.type !== "basic") {
           return response;
         }
 
@@ -38,6 +38,8 @@ self.addEventListener('fetch', (event) => {
 
         return response;
       });
-    })
+    }),
   );
 });
+
+export {};

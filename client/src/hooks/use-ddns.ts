@@ -1,13 +1,15 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { DdnsUpdater, InsertDdnsUpdater } from "@shared/schema";
+import type { PublicDdnsUpdater, InsertDdnsUpdater } from "@shared/schema";
+import { apiFetch } from "@/lib/api";
 
 export function useDdnsUpdaters() {
   return useQuery({
     queryKey: ["/api/ddns"],
     queryFn: async () => {
-      const response = await fetch("/api/ddns");
-      return response.json() as Promise<DdnsUpdater[]>;
+      const response = await apiFetch("/api/ddns");
+      if (!response.ok) throw new Error("Failed to fetch DDNS updaters");
+      return response.json() as Promise<PublicDdnsUpdater[]>;
     },
   });
 }
@@ -58,11 +60,23 @@ export function useManualDdnsUpdate() {
 
 export function usePublicIp() {
   return useQuery({
-    queryKey: ["/api/public-ip"],
+    queryKey: ["public-ip-client"],
     queryFn: async () => {
-      const response = await fetch("/api/public-ip");
+      // Fetch IP directly from client to get user's actual IP, not server's
+      const response = await fetch("https://api.ipify.org?format=json");
       return response.json() as Promise<{ ip: string }>;
     },
     staleTime: 60000,
+  });
+}
+
+export function useUpdateDdnsWithIp() {
+  return useMutation({
+    mutationFn: async (clientIp: string) => {
+      return apiRequest("POST", "/api/ddns/update-all", { clientIp });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
+    },
   });
 }
