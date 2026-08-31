@@ -286,7 +286,7 @@ export default function Settings() {
         
         <div className="md:col-span-2 flex items-center justify-center p-4 rounded border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-sm gap-2">
           <AlertTriangle className="w-4 h-4" />
-          <span className="font-mono uppercase">SafeNet DNS Server (Official) v1.0.5</span>
+          <span className="font-mono uppercase">SafeNet DNS Server (Official) v1.0.6</span>
         </div>
       </div>
       {vpn.supported && (
