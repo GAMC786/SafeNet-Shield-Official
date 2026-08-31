@@ -2,17 +2,13 @@ package com.safenet.dns;
 
 import android.app.Activity;
 import android.app.Instrumentation;
-import android.os.Handler;
-import android.os.Looper;
+import android.content.Intent;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
-import androidx.test.runner.lifecycle.Stage;
-import java.util.Collection;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,7 +35,20 @@ public class SafeNetVpnEulaTest {
             .remove(EULA_PREFERENCE)
             .commit();
 
-        Activity activity = waitForResumedActivity();
+        Intent intent = instrumentation.getTargetContext().getPackageManager()
+            .getLaunchIntentForPackage(PACKAGE_NAME);
+        Assert.assertNotNull("SafeNet DNS launch intent is missing", intent);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+
+        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(
+            "com.safenet.dns.MainActivity",
+            null,
+            false
+        );
+        instrumentation.getTargetContext().startActivity(intent);
+        Activity activity = monitor.waitForActivityWithTimeout(45_000);
+        instrumentation.removeMonitor(monitor);
+        Assert.assertNotNull("SafeNet DNS Activity did not launch", activity);
 
         WebView webView = waitForWebView(activity);
         waitForWebViewDocument(activity, webView);
@@ -77,28 +86,6 @@ public class SafeNetVpnEulaTest {
             SystemClock.sleep(250);
         }
         Assert.fail("SafeNet DNS WebView was not created");
-        return null;
-    }
-
-    private static Activity waitForResumedActivity() throws InterruptedException {
-        Handler mainHandler = new Handler(Looper.getMainLooper());
-        for (int attempt = 0; attempt < 120; attempt++) {
-            AtomicReference<Activity> resumed = new AtomicReference<>();
-            CountDownLatch latch = new CountDownLatch(1);
-            mainHandler.post(() -> {
-                Collection<Activity> activities =
-                    ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
-                if (!activities.isEmpty()) {
-                    resumed.set(activities.iterator().next());
-                }
-                latch.countDown();
-            });
-            if (latch.await(2, TimeUnit.SECONDS) && resumed.get() != null) {
-                return resumed.get();
-            }
-            SystemClock.sleep(500);
-        }
-        Assert.fail("SafeNet DNS Activity was not resumed");
         return null;
     }
 
