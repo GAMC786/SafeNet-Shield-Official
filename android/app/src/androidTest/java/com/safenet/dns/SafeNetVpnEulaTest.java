@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.Intent;
 import android.os.SystemClock;
 import android.view.View;
@@ -28,7 +29,7 @@ public class SafeNetVpnEulaTest {
 
     @Test
     public void startingWithoutEulaIsRejected() throws Exception {
-        InstrumentationRegistry instrumentation = InstrumentationRegistry.getInstrumentation();
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
         Intent intent = instrumentation.getTargetContext().getPackageManager()
             .getLaunchIntentForPackage(PACKAGE_NAME);
         Assert.assertNotNull("SafeNet DNS launch intent is missing", intent);
