@@ -262,7 +262,6 @@ if [[ -n "${ANDROID_KEYSTORE_FILE:-}" ]]; then
   sign_instrumentation_apk
 fi
 adb_target install -r "$TEST_APK" | tee "$EVIDENCE_ROOT/traffic-install.txt"
-launch_app
 run_instrumentation_test \
   com.safenet.dns.SafeNetVpnEulaTest \
   "$EVIDENCE_ROOT/eula-test.txt"
