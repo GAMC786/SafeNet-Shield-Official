@@ -2,6 +2,8 @@ package com.safenet.dns;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
@@ -79,11 +81,20 @@ public class SafeNetVpnEulaTest {
     }
 
     private static Activity waitForResumedActivity() throws InterruptedException {
+        Handler mainHandler = new Handler(Looper.getMainLooper());
         for (int attempt = 0; attempt < 120; attempt++) {
-            Collection<Activity> activities =
-                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
-            if (!activities.isEmpty()) {
-                return activities.iterator().next();
+            AtomicReference<Activity> resumed = new AtomicReference<>();
+            CountDownLatch latch = new CountDownLatch(1);
+            mainHandler.post(() -> {
+                Collection<Activity> activities =
+                    ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
+                if (!activities.isEmpty()) {
+                    resumed.set(activities.iterator().next());
+                }
+                latch.countDown();
+            });
+            if (latch.await(2, TimeUnit.SECONDS) && resumed.get() != null) {
+                return resumed.get();
             }
             SystemClock.sleep(500);
         }
