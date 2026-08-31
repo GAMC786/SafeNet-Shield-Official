@@ -8,7 +8,7 @@ export function useDnsServers() {
   return useQuery({
     queryKey: [api.dns.list.path],
     queryFn: async () => {
-      const res = await apiFetch(api.dns.list.path);
+      const res = await apiFetch(api.dns.list.path, { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch DNS servers");
       return api.dns.list.responses[200].parse(await res.json());
     },
@@ -20,23 +20,59 @@ export function useCreateDnsServer() {
   return useMutation({
     mutationFn: async (data: InsertDnsServer) => {
       const validated = api.dns.create.input.parse(data);
-      const res = await apiFetch(api.dns.create.path, {
-        method: api.dns.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        if (res.status === 400) {
-           // Try to parse error response
-           const error = await res.json();
-           throw new Error(error.message || "Validation failed");
+      const requestBody = JSON.stringify(validated);
+      const createRequest = () =>
+        apiFetch(api.dns.create.path, {
+          method: api.dns.create.method,
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+          credentials: "include",
+        });
+      let res = await createRequest();
+
+      // A long-lived Web tab can retain React state after the server session
+      // has expired or been replaced. Refresh the auth session once before
+      // reporting the create failure to the user.
+      if (res.status === 401) {
+        const authRes = await apiFetch(api.auth.status.path, { cache: "no-store" });
+        if (authRes.ok) {
+          const authStatus = api.auth.status.responses[200].parse(await authRes.json());
+          if (authStatus.authenticated) {
+            res = await createRequest();
+          }
         }
-        throw new Error("Failed to create DNS server");
+      }
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        const message =
+          res.status === 401
+            ? "Your session expired. Refresh the page and try again."
+            : typeof error?.message === "string"
+              ? error.message
+              : res.status === 400
+                ? "Check the DNS server name and primary address."
+                : `Failed to create DNS server (${res.status}).`;
+        throw new Error(message);
       }
       return api.dns.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.dns.list.path] }),
+    onSuccess: (createdServer) => {
+      queryClient.setQueryData<DnsServer[]>(
+        [api.dns.list.path],
+        (servers = []) => (
+          servers.some((server) => server.id === createdServer.id)
+            ? servers
+            : [...servers, createdServer]
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: [api.dns.list.path] });
+    },
+    onError: (error) => {
+      if (error instanceof Error && error.message.includes("session expired")) {
+        void queryClient.invalidateQueries({ queryKey: [api.auth.status.path] });
+      }
+    },
   });
 }
 

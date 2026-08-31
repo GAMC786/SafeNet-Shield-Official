@@ -1,0 +1,1 @@
+dist-electron/win-unpacked/SafeNet[[:space:]]DNS.exe filter=lfs diff=lfs merge=lfs -text

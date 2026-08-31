@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { storage } from "./storage";
 
 const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const PIN_ATTEMPT_LIMIT = 5;
@@ -16,18 +17,24 @@ declare module "express-session" {
   }
 }
 
-export const requireAuthentication: RequestHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const requireAuthentication: RequestHandler = (req, res, next) => {
   if (req.session.authenticated === true) {
     return next();
   }
 
-  res.status(401).json({
-    message: "Authentication required",
-  });
+  // PIN protection is optional. If it is disabled, allow a stale or missing
+  // session to recover automatically so mutating Web requests do not fail
+  // after a deployment or long-lived browser tab.
+  void storage.getSettings().then((settings) => {
+    if (settings.isPinEnabled !== true) {
+      req.session.authenticated = true;
+      return next();
+    }
+
+    res.status(401).json({
+      message: "Authentication required",
+    });
+  }).catch(next);
 };
 
 function pinAttemptKey(req: Request) {
