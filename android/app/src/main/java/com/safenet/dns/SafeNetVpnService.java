@@ -3,7 +3,11 @@ package com.safenet.dns;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.IBinder;
@@ -22,6 +26,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
@@ -364,13 +369,18 @@ public class SafeNetVpnService extends VpnService {
         byte[] forward(byte[] query, SafeNetVpnService service) {
             for (String address : addresses) {
                 try {
+                    byte[] response;
                     if (type.equals("plain")) {
-                        return forwardPlain(query, address, service);
+                        response = forwardPlain(query, address, service);
+                    } else if (type.equals("dot")) {
+                        response = forwardDot(query, address, service);
+                    } else {
+                        response = forwardDoh(query, address, service);
                     }
-                    if (type.equals("dot")) {
-                        return forwardDot(query, address, service);
+                    if (response != null && response.length > 0) {
+                        lastError = null;
+                        return response;
                     }
-                    return forwardDoh(query, address, service);
                 } catch (Exception error) {
                     lastError = safeMessage(error, "The configured DNS resolver did not respond.");
                 }
@@ -379,26 +389,38 @@ public class SafeNetVpnService extends VpnService {
         }
 
         private static byte[] forwardPlain(byte[] query, String address, SafeNetVpnService service) throws IOException {
-            InetAddress upstream = InetAddress.getByName(address);
-            try (DatagramSocket socket = new DatagramSocket()) {
-                if (!service.protect(socket)) {
-                    throw new IOException("Could not protect the DNS connection from the VPN loop.");
+            InetAddress[] upstreams = service.resolveHost(address);
+            IOException last = null;
+            for (InetAddress upstream : upstreams) {
+                try (DatagramSocket socket = new DatagramSocket()) {
+                    if (!service.protect(socket)) {
+                        throw new IOException("Could not protect the DNS connection from the VPN loop.");
+                    }
+                    socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+                    socket.connect(new InetSocketAddress(upstream, DNS_PORT));
+                    socket.send(new DatagramPacket(query, query.length));
+                    byte[] response = new byte[MAX_DNS_RESPONSE];
+                    DatagramPacket packet = new DatagramPacket(response, response.length);
+                    socket.receive(packet);
+                    byte[] result = new byte[packet.getLength()];
+                    System.arraycopy(packet.getData(), packet.getOffset(), result, 0, packet.getLength());
+                    return result;
+                } catch (IOException error) {
+                    last = error;
                 }
-                socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-                socket.send(new DatagramPacket(query, query.length, upstream, DNS_PORT));
-                byte[] response = new byte[MAX_DNS_RESPONSE];
-                DatagramPacket packet = new DatagramPacket(response, response.length);
-                socket.receive(packet);
-                byte[] result = new byte[packet.getLength()];
-                System.arraycopy(packet.getData(), packet.getOffset(), result, 0, packet.getLength());
-                return result;
             }
+            throw last == null
+                ? new IOException("The configured DNS resolver address could not be reached.")
+                : last;
         }
 
         private static byte[] forwardDot(byte[] query, String address, SafeNetVpnService service)
             throws IOException, GeneralSecurityException {
             Endpoint endpoint = Endpoint.forDot(address);
-            try (Socket raw = service.openProtectedSocket(endpoint.host, endpoint.port)) {
+            try (Socket raw = service.openProtectedSocket(
+                service.resolveHost(endpoint.host),
+                endpoint.port
+            )) {
                 SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
                     .createSocket(raw, endpoint.host, endpoint.port, true);
                 socket.setSoTimeout(SOCKET_TIMEOUT_MS);
@@ -437,7 +459,10 @@ public class SafeNetVpnService extends VpnService {
             if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
                 path += "?" + uri.getRawQuery();
             }
-            try (Socket raw = service.openProtectedSocket(uri.getHost(), port)) {
+            try (Socket raw = service.openProtectedSocket(
+                service.resolveHost(uri.getHost()),
+                port
+            )) {
                 SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
                     .createSocket(raw, uri.getHost(), port, true);
                 socket.setSoTimeout(SOCKET_TIMEOUT_MS);
@@ -554,8 +579,51 @@ public class SafeNetVpnService extends VpnService {
         }
     }
 
-    private Socket openProtectedSocket(String host, int port) throws IOException {
-        InetAddress[] addresses = InetAddress.getAllByName(host);
+    private InetAddress[] resolveHost(String host) throws IOException {
+        String normalizedHost = host == null ? "" : host.trim();
+        if (normalizedHost.isEmpty()) {
+            throw new IOException("The DNS resolver hostname is empty.");
+        }
+
+        if (isIpLiteral(normalizedHost)) {
+            try {
+                return new InetAddress[] { InetAddress.getByName(normalizedHost) };
+            } catch (UnknownHostException error) {
+                throw new IOException("The DNS resolver address is invalid.", error);
+            }
+        }
+
+        ConnectivityManager connectivity =
+            (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity != null) {
+            Network[] networks = connectivity.getAllNetworks();
+            for (Network network : networks) {
+                NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+                if (capabilities == null ||
+                    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                    continue;
+                }
+                try {
+                    InetAddress[] addresses = network.getAllByName(normalizedHost);
+                    if (addresses.length > 0) {
+                        return addresses;
+                    }
+                } catch (UnknownHostException ignored) {
+                    // Try another underlying network before falling back.
+                }
+            }
+        }
+
+        throw new IOException("No underlying network is available to resolve the DNS resolver.");
+    }
+
+    private static boolean isIpLiteral(String host) {
+        return host.indexOf(':') >= 0 || host.matches("\\d{1,3}(\\.\\d{1,3}){3}");
+    }
+
+    private Socket openProtectedSocket(InetAddress[] addresses, int port) throws IOException {
         IOException last = null;
         for (InetAddress address : addresses) {
             Socket socket = new Socket();
