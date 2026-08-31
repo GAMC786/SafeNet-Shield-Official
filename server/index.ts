@@ -6,6 +6,7 @@ import { startDdnsScheduler } from "./ddns-service";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
+import { registerRequestOriginMiddleware } from "./request-origin";
 
 const app = express();
 const httpServer = createServer(app);
@@ -52,57 +53,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
-
-const mobileOrigins = new Set(
-  (process.env.MOBILE_APP_ORIGINS || "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-);
-mobileOrigins.add("https://localhost");
-mobileOrigins.add("http://localhost");
-mobileOrigins.add("capacitor://localhost");
-
-function isTrustedRequestOrigin(req: Request) {
-  const origin = req.headers.origin;
-  if (!origin) {
-    return false;
-  }
-
-  const sameOrigin = `${req.protocol}://${req.get("host")}`;
-  return origin === sameOrigin || mobileOrigins.has(origin);
-}
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && mobileOrigins.has(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Vary", "Origin");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  }
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(origin && mobileOrigins.has(origin) ? 204 : 403);
-  }
-
-  next();
-});
-
-app.use("/api", (req, res, next) => {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    return next();
-  }
-
-  if (!isTrustedRequestOrigin(req)) {
-    return res.status(403).json({
-      message: "Request origin is not allowed",
-    });
-  }
-
-  next();
-});
+registerRequestOriginMiddleware(app);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

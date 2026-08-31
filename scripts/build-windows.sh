@@ -5,6 +5,22 @@ echo "================================"
 echo "SafeNet DNS - Windows Build"
 echo "================================"
 
+# The MSI contains the web frontend and loads it from file://. API requests
+# must target a separately deployed HTTPS backend.
+if [ -z "${DESKTOP_API_URL:-}" ]; then
+    echo "ERROR: DESKTOP_API_URL is required."
+    echo "Example: DESKTOP_API_URL=https://your-server.example.com ./scripts/build-windows.sh"
+    exit 1
+fi
+
+echo "Checking backend settings endpoint..."
+if ! VITE_API_URL=$(node scripts/validate-mobile-api.mjs "$DESKTOP_API_URL"); then
+    exit 1
+fi
+export VITE_API_URL
+
+echo "Windows backend: $VITE_API_URL"
+
 # Step 1: Build web application
 echo ""
 echo "[1/2] Building web application..."
@@ -18,7 +34,7 @@ fi
 # Step 2: Build Electron app
 echo ""
 echo "[2/2] Building Windows installer..."
-npx electron-builder --win --x64
+npx electron-builder --win --x64 --publish never
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Electron build failed!"

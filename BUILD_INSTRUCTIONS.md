@@ -70,14 +70,22 @@ cd android
 
 ## Building Windows MSI
 
+The MSI packages the web frontend and loads it from a local `file://` URL. It
+must be built with a separately running SafeNet DNS backend over HTTPS.
+
 ### Step 1: Build the web application
 ```bash
-npm run build
+DESKTOP_API_URL=https://your-server.example.com ./scripts/build-windows.sh
 ```
 
-### Step 2: Run Electron Builder
+This validates the backend URL, builds the web application with that API origin,
+and creates the Windows installer. The URL must be a public HTTPS origin
+without a path or query.
+
+### Alternative: Run Electron Builder manually
 ```bash
-npx electron-builder --win --x64
+VITE_API_URL=https://your-server.example.com npm run build
+npx electron-builder --win --x64 --publish never
 ```
 
 ### Output Files:
@@ -177,6 +185,63 @@ This project includes a GitHub Actions workflow that automatically builds APK an
 1. Create a git tag: `git tag v1.0.0`
 2. Push the tag: `git push origin v1.0.0`
 3. GitHub will automatically create a Release with APK and MSI attached
+
+---
+
+## Keeping SafeNet-Shield-Official synchronized
+
+`GAMC786/SafeNet-Shield` is the source repository. The
+`Sync SafeNet-Shield-Official` workflow runs after every push to its `main`
+branch, and can also be started manually from the Actions tab. It advances the
+`sync/from-safenet-shield` branch in
+`GAMC786/SafeNet-Shield-Official` and creates or updates a pull request against
+the official repository's `main` branch.
+
+The workflow requires an `OFFICIAL_REPO_TOKEN` Actions secret in the source
+repository. GitHub reserves secret names beginning with `GITHUB_`, so the
+workspace token may not use its `GITHUB_RELEASE_TOKEN` name when it is added to
+Actions. Use a fine-grained token scoped only to
+`GAMC786/SafeNet-Shield-Official` with:
+
+- **Contents:** Read and write
+- **Pull requests:** Read and write
+- **Workflows:** Read and write
+- **Metadata:** Read-only
+
+No source-repository administration or Actions-management access is needed. The
+token is not used for source pull requests, and it must not be printed in
+workflow output.
+
+Reviewers must merge the synchronization pull request before changes become
+part of the official `main` branch. The workflow never force-pushes the sync
+branch and never writes directly to official `main`. If someone changes the
+sync branch independently, the workflow stops rather than overwriting that
+work; resolve the branch manually before running synchronization again. The
+existing replication pull request is independent of this recurring sync branch
+and is not modified by the workflow.
+
+### Release workflows and tags
+
+The build workflow is present in both repositories after a synchronization
+pull request is merged. It builds validation artifacts for branches and pull
+requests. A `v*` tag runs the release job in the repository where that tag was
+created and attaches the APK and MSI artifacts to a GitHub Release.
+
+To publish an official release:
+
+1. Merge the reviewed synchronization pull request into
+   `GAMC786/SafeNet-Shield-Official/main`.
+2. Ensure the `package.json` version and the release version agree.
+3. Create and push the matching tag from the official repository, for example:
+   ```bash
+   git tag -a v1.0.0 -m "SafeNet DNS v1.0.0"
+   git push origin v1.0.0
+   ```
+4. Download the APK and MSI from the resulting official GitHub Release.
+
+Tags created only in the source repository are not copied automatically and do
+not publish an official release. This keeps official releases tied to reviewed
+content on the official `main` branch.
 
 ---
 

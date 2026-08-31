@@ -1,8 +1,10 @@
 {
   "name": "rest-express",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "type": "module",
   "license": "MIT",
+  "author": "SafeNet Inc.",
+  "description": "SafeNet DNS is a secure DNS management application with AI Shield protection, firewall rules, dynamic DNS updating, and access logging.",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",

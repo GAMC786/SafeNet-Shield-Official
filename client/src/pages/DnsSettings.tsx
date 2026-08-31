@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useDnsServers, useCreateDnsServer, useDeleteDnsServer, useActivateDnsServer } from "@/hooks/use-dns";
+import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Globe, Server, Plus, Trash2, CheckCircle, Shield, Lock } from "lucide-react";
@@ -15,6 +16,7 @@ export default function DnsSettings() {
   const createServer = useCreateDnsServer();
   const deleteServer = useDeleteDnsServer();
   const activateServer = useActivateDnsServer();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
 
   // Form state
@@ -27,13 +29,25 @@ export default function DnsSettings() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createServer.mutateAsync({
-      ...formData,
-      isCustom: true,
-      isActive: false
-    } as any);
-    setIsOpen(false);
-    setFormData({ name: "", type: "plain", primaryAddress: "", secondaryAddress: "" });
+    try {
+      await createServer.mutateAsync({
+        ...formData,
+        isCustom: true,
+        isActive: false
+      } as any);
+      setIsOpen(false);
+      setFormData({ name: "", type: "plain", primaryAddress: "", secondaryAddress: "" });
+      toast({
+        title: "DNS server added",
+        description: `${formData.name} is now available in your resolver list.`,
+      });
+    } catch (error) {
+      toast({
+        title: "DNS server not added",
+        description: error instanceof Error ? error.message : "Unable to save this DNS server.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

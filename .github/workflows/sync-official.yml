@@ -1,0 +1,182 @@
+name: Sync SafeNet-Shield-Official
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The source repository's GITHUB_TOKEN is intentionally read-only. The
+# cross-repository token is used only for the explicit push and PR steps below.
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-official
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # This file is copied to the official repository by the sync PR. Keep it
+    # inert there so the official repository can never sync back to itself.
+    if: github.repository == 'GAMC786/SafeNet-Shield'
+    runs-on: ubuntu-latest
+    env:
+      OFFICIAL_REPOSITORY: GAMC786/SafeNet-Shield-Official
+      SYNC_BRANCH: sync/from-safenet-shield
+      PRE_REBASE_SYNC_TIP: 296e93f24b37f946a1fdf47b4cfcc2280313e811
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push source snapshot to the official sync branch
+        env:
+           OFFICIAL_REPO_TOKEN: ${{ secrets.OFFICIAL_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${OFFICIAL_REPO_TOKEN}" ]]; then
+            echo "::error::OFFICIAL_REPO_TOKEN is required to sync SafeNet-Shield-Official."
+            exit 1
+          fi
+
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${OFFICIAL_REPO_TOKEN}" | base64 -w 0)"
+          official_url="https://github.com/${OFFICIAL_REPOSITORY}.git"
+          source_sha="$(git rev-parse HEAD)"
+          source_tree="$(git rev-parse "${source_sha}^{tree}")"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add official "${official_url}"
+
+          git -c http.extraheader="${auth_header}" fetch official \
+            "refs/heads/main:refs/remotes/official/main"
+          official_main_sha="$(git rev-parse refs/remotes/official/main)"
+
+          existing_sha=""
+          if git -c http.extraheader="${auth_header}" fetch official \
+            "refs/heads/${SYNC_BRANCH}:refs/remotes/official/${SYNC_BRANCH}"; then
+            existing_sha="$(git rev-parse "refs/remotes/official/${SYNC_BRANCH}")"
+          fi
+
+          parent_args=(-p "${official_main_sha}")
+          if [[ -n "${existing_sha}" ]]; then
+            previous_source_sha="$(git show -s --format=%B "${existing_sha}" |
+              sed -n 's/^Source-Commit: //p' | tail -n 1)"
+            recorded_source_tree="$(git show -s --format=%B "${existing_sha}" |
+              sed -n 's/^Source-Tree: //p' | tail -n 1)"
+            existing_tree="$(git rev-parse "${existing_sha}^{tree}")"
+
+            if [[ -n "${previous_source_sha}" ]]; then
+              if [[ -n "${recorded_source_tree}" ]]; then
+                previous_source_tree="${recorded_source_tree}"
+              elif git cat-file -e "${previous_source_sha}^{commit}" 2>/dev/null; then
+                previous_source_tree="$(git rev-parse "${previous_source_sha}^{tree}")"
+              elif [[ "${existing_sha}" == "${PRE_REBASE_SYNC_TIP}" ]]; then
+                # One-time bridge from snapshots created before Source-Tree
+                # markers were recorded. Matching the exact established tip
+                # ensures an independently advanced branch is still rejected.
+                previous_source_tree="${existing_tree}"
+              else
+                echo "::error::The previous source commit ${previous_source_sha} is unavailable and ${SYNC_BRANCH} is not the expected pre-rebase tip."
+                exit 1
+              fi
+
+              if [[ "${existing_tree}" != "${previous_source_tree}" ]]; then
+                echo "::error::${SYNC_BRANCH} no longer matches its recorded source snapshot; refusing to overwrite it."
+                exit 1
+              fi
+
+              parent_args=(-p "${existing_sha}")
+              if ! git merge-base --is-ancestor "${official_main_sha}" "${existing_sha}"; then
+                # Squash and rebase merges can accept the snapshot content
+                # without preserving the sync commit on official main. Keep
+                # the branch fast-forwardable while basing its next review
+                # diff on the current official main.
+                parent_args+=(-p "${official_main_sha}")
+              fi
+            elif git merge-base --is-ancestor "${existing_sha}" "${source_sha}" &&
+              ! git merge-base "${existing_sha}" "${official_main_sha}" >/dev/null 2>&1; then
+              # One-time migration for the original source-history branch.
+              # Joining it to official main preserves the existing tip while
+              # giving GitHub a common ancestor for the review pull request.
+              parent_args=(-p "${existing_sha}" -p "${official_main_sha}")
+            else
+              echo "::error::${SYNC_BRANCH} was changed independently; refusing to overwrite it."
+              exit 1
+            fi
+          fi
+
+          if [[ -n "${existing_sha}" ]] &&
+            [[ "$(git rev-parse "${existing_sha}^{tree}")" == "${source_tree}" ]] &&
+            [[ -n "${previous_source_sha:-}" ]]; then
+            snapshot_sha="${existing_sha}"
+          else
+            snapshot_sha="$(git commit-tree "${source_tree}" "${parent_args[@]}" <<EOF
+          Sync SafeNet-Shield source snapshot
+
+          Source-Repository: ${GITHUB_REPOSITORY}
+          Source-Commit: ${source_sha}
+          Source-Tree: ${source_tree}
+          EOF
+          )"
+          fi
+
+          git -c http.extraheader="${auth_header}" push official \
+            "${snapshot_sha}:refs/heads/${SYNC_BRANCH}"
+
+      - name: Create or update the official review pull request
+        env:
+           GH_TOKEN: ${{ secrets.OFFICIAL_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          head_ref="${SYNC_BRANCH}"
+          existing_pr="$(gh pr list \
+            --repo "${OFFICIAL_REPOSITORY}" \
+            --head "${head_ref}" \
+            --base main \
+            --state open \
+            --json url \
+            --jq '.[0].url')"
+
+          if [[ -n "${existing_pr}" ]]; then
+            echo "Official sync pull request is already open: ${existing_pr}"
+            exit 0
+          fi
+
+          ahead_by="$(gh api \
+            "repos/${OFFICIAL_REPOSITORY}/compare/main...${SYNC_BRANCH}" \
+            --jq '.ahead_by')"
+
+          if [[ "${ahead_by}" -eq 0 ]]; then
+            echo "The official main branch already contains this source snapshot."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "${OFFICIAL_REPOSITORY}" \
+            --head "${head_ref}" \
+            --base main \
+            --title "Sync SafeNet-Shield source" \
+            --body "$(cat <<'EOF'
+          ## Summary
+
+          This pull request mirrors the reviewed source state from
+          [SafeNet-Shield](https://github.com/GAMC786/SafeNet-Shield) into the
+          official repository.
+
+          ## Review and release policy
+
+          - The official `main` branch is updated only by merging this pull request.
+          - This automation never force-pushes or writes directly to official `main`.
+          - After merging, create the matching `v*` tag in this repository when
+            publishing an official release. See `BUILD_INSTRUCTIONS.md` for the
+            full release and tag procedure.
+          EOF
+          )"

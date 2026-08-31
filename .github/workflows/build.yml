@@ -5,7 +5,12 @@ on:
     branches: [main]
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-android:
@@ -36,13 +41,15 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Sync Capacitor
-        run: npx cap sync android
+      - name: Build and sync mobile web assets
+        run: ./scripts/build-android.sh
+        env:
+          MOBILE_API_URL: https://safe-net-shield-official.replit.app
 
       - name: Build APK
         working-directory: android
@@ -69,17 +76,45 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Windows application metadata
+        shell: pwsh
+        run: |
+          $expectedDescription = "SafeNet DNS is a secure DNS management application with AI Shield protection, firewall rules, dynamic DNS updating, and access logging."
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $description = $package.description
+
+          if ([string]::IsNullOrWhiteSpace($description)) {
+            Write-Error "package.json is missing a non-empty description. Expected: $expectedDescription"
+            exit 1
+          }
+
+          if ($description -cne $expectedDescription) {
+            Write-Error "package.json description changed unexpectedly. Expected: $expectedDescription"
+            exit 1
+          }
+
+          Write-Host "Verified package.json contains the intended SafeNet DNS description."
+
       - name: Check TypeScript
         run: npm run check
 
       - name: Run tests
         run: npm test
 
-      - name: Build web app
-        run: npm run build
+      - name: Build web app for Windows
+        shell: pwsh
+        env:
+          DESKTOP_API_URL: https://safe-net-shield-official.replit.app
+        run: |
+          $apiOrigin = node scripts/validate-mobile-api.mjs $env:DESKTOP_API_URL
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          $env:VITE_API_URL = $apiOrigin
+          npm run build
 
       - name: Build Windows installer
-        run: npx electron-builder --win --x64
+        run: npx electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -93,6 +128,8 @@ jobs:
     needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - name: Download Android artifact
         uses: actions/download-artifact@v4
@@ -105,6 +142,26 @@ jobs:
         with:
           name: SafeNet-DNS-Windows
           path: artifacts/windows
+
+      - name: Verify release installers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk_count=$(find artifacts/android -maxdepth 1 -type f -name '*.apk' | wc -l)
+          msi_count=$(find artifacts/windows -maxdepth 1 -type f -name '*.msi' | wc -l)
+
+          if [[ "$apk_count" -eq 0 ]]; then
+            echo "::error::Android APK installer is missing from artifacts/android"
+            exit 1
+          fi
+
+          if [[ "$msi_count" -eq 0 ]]; then
+            echo "::error::Windows MSI installer is missing from artifacts/windows"
+            exit 1
+          fi
+
+          echo "Verified $apk_count APK installer(s) and $msi_count MSI installer(s)."
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
