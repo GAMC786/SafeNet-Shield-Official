@@ -197,6 +197,7 @@ Actions. Use a fine-grained token scoped only to
 
 - **Contents:** Read and write
 - **Pull requests:** Read and write
+- **Workflows:** Read and write
 - **Metadata:** Read-only
 
 No source-repository administration or Actions-management access is needed. The
