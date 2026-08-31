@@ -42,6 +42,7 @@ public class SafeNetVpnEulaTest {
             .commit();
 
         WebView webView = waitForWebView(activity);
+        waitForWebViewDocument(activity, webView);
         waitForCapacitorVpnPlugin(activity, webView);
         String result = evaluate(
             activity,
@@ -76,6 +77,27 @@ public class SafeNetVpnEulaTest {
         }
         Assert.fail("SafeNet DNS WebView was not created");
         return null;
+    }
+
+    private static void waitForWebViewDocument(Activity activity, WebView webView)
+        throws InterruptedException {
+        for (int attempt = 0; attempt < 120; attempt++) {
+            AtomicReference<String> url = new AtomicReference<>();
+            AtomicReference<Integer> progress = new AtomicReference<>(0);
+            CountDownLatch latch = new CountDownLatch(1);
+            activity.runOnUiThread(() -> {
+                url.set(webView.getUrl());
+                progress.set(webView.getProgress());
+                latch.countDown();
+            });
+            Assert.assertTrue("Timed out reading WebView loading state",
+                latch.await(1, TimeUnit.SECONDS));
+            if (url.get() != null && progress.get() > 0) {
+                return;
+            }
+            SystemClock.sleep(250);
+        }
+        Assert.fail("SafeNet DNS WebView did not start loading a document");
     }
 
     private static void waitForCapacitorVpnPlugin(

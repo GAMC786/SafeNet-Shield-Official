@@ -212,6 +212,7 @@ jobs:
             android/app/build/android-smoke/active-ui.xml
             android/app/build/android-smoke/dns-query.txt
             android/app/build/android-smoke/https-test.txt
+            android/app/build/android-smoke/logcat.txt
 
   build-windows:
     runs-on: windows-latest

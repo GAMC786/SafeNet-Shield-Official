@@ -226,8 +226,10 @@ run_instrumentation_test() {
     com.safenet.dns.test/androidx.test.runner.AndroidJUnitRunner \
     | tee "$evidence_file"
 
-  grep -Eq '(^|[[:space:]])OK \(1 test\)' "$evidence_file" \
-    || fail "Instrumentation test failed: $test_class"
+  if ! grep -Eq '(^|[[:space:]])OK \(1 test\)' "$evidence_file"; then
+    adb_target logcat -d -v threadtime -t 1000 > "$EVIDENCE_ROOT/logcat.txt" || true
+    fail "Instrumentation test failed: $test_class"
+  fi
 }
 
 sign_instrumentation_apk() {
