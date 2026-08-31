@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import {
@@ -17,7 +17,7 @@ import {
   clearPinAttempts,
   getPinRetryAfterSeconds,
   recordFailedPinAttempt,
-  requireAuthentication,
+  createRequireAuthentication,
 } from "./auth";
 
 function publicSettings(settings: AppSettings) {
@@ -32,8 +32,11 @@ function publicDdnsUpdater(updater: DdnsUpdater) {
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
+  routeStorage?: IStorage,
+  options: { seed?: boolean } = {},
 ): Promise<Server> {
+  const storage = routeStorage ?? defaultStorage;
 
   // These endpoints are the only unauthenticated API surface. The status
   // response contains no settings, PIN, or provider data.
@@ -93,7 +96,7 @@ export async function registerRoutes(
 
   // Every remaining API route, including the AI integrations, requires the
   // short-lived server session created above.
-  app.use("/api", requireAuthentication);
+  app.use("/api", createRequireAuthentication(storage));
 
   // Register AI Integrations
   registerChatRoutes(app);
@@ -509,12 +512,14 @@ export async function registerRoutes(
   });
 
   // === SEED DATA ===
-  await seedDatabase();
+  if (options.seed !== false) {
+    await seedDatabase(storage);
+  }
 
   return httpServer;
 }
 
-async function seedDatabase() {
+async function seedDatabase(storage: IStorage) {
   const existingServers = await storage.getDnsServers();
   if (existingServers.length === 0) {
     await storage.createDnsServer({
