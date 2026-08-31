@@ -1,17 +1,26 @@
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
+import { useDnsServers } from "@/hooks/use-dns";
+import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { EulaDialog } from "@/components/EulaDialog";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Smartphone, Lock, Activity, Eye, Zap, AlertTriangle } from "lucide-react";
+import { Shield, Smartphone, Lock, Activity, Eye, Zap, AlertTriangle, Loader2, ShieldCheck } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
   const { data: settings } = useSettings();
+  const { data: dnsServers } = useDnsServers();
   const updateSettings = useUpdateSettings();
+  const vpn = useSafeNetVpn();
+  const { toast } = useToast();
   const [pin, setPin] = useState("");
+  const [eulaOpen, setEulaOpen] = useState(false);
+  const [startAfterEula, setStartAfterEula] = useState(false);
 
   const handleToggle = (key: string, checked: boolean) => {
     updateSettings.mutate({ [key]: checked });
@@ -21,6 +30,80 @@ export default function Settings() {
     if (pin.length === 4) {
       updateSettings.mutate({ pinCode: pin, isPinEnabled: true });
       setPin("");
+    }
+  };
+
+  const activeDnsServer = dnsServers?.find((server) => server.isActive);
+  const startVpn = async () => {
+    if (!activeDnsServer) {
+      toast({
+        title: "Select a DNS server first",
+        description: "Choose an active resolver in DNS Configuration before enabling protection.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const nextStatus = await vpn.start({
+        type: activeDnsServer.type,
+        primaryAddress: activeDnsServer.primaryAddress,
+        secondaryAddress: activeDnsServer.secondaryAddress,
+      });
+      if (nextStatus.error) {
+        throw new Error(nextStatus.error);
+      }
+      toast({
+        title: "DNS protection enabled",
+        description: `${activeDnsServer.name} is now handling DNS requests.`,
+      });
+    } catch (error) {
+      toast({
+        title: "DNS protection not enabled",
+        description: error instanceof Error ? error.message : "Android could not start the VPN service.",
+        variant: "destructive",
+      });
+      await vpn.refresh().catch(() => undefined);
+    }
+  };
+
+  const handleVpnToggle = async (checked: boolean) => {
+    if (!checked) {
+      try {
+        await vpn.stop();
+        toast({ title: "DNS protection disabled" });
+      } catch (error) {
+        toast({
+          title: "Could not stop DNS protection",
+          description: error instanceof Error ? error.message : "Android could not stop the VPN service.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    if (!vpn.status?.eulaAccepted) {
+      setStartAfterEula(true);
+      setEulaOpen(true);
+      return;
+    }
+    await startVpn();
+  };
+
+  const handleEulaAccept = async () => {
+    try {
+      await vpn.acceptEula();
+      setEulaOpen(false);
+      if (startAfterEula) {
+        setStartAfterEula(false);
+        await startVpn();
+      }
+    } catch (error) {
+      toast({
+        title: "Agreement could not be saved",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -100,6 +183,65 @@ export default function Settings() {
           </div>
         </CyberCard>
 
+        {vpn.supported && (
+          <CyberCard className="md:col-span-2 space-y-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-6 h-6 text-primary" />
+                <div>
+                  <h2 className="text-xl font-display font-bold">DNS Protection VPN</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Route DNS requests through your active SafeNet resolver
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={vpn.status?.running ?? false}
+                onCheckedChange={(checked) => void handleVpnToggle(checked)}
+                disabled={vpn.isBusy || !activeDnsServer}
+                aria-label="Enable DNS Protection VPN"
+              />
+            </div>
+
+            <div className="rounded-md border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                {vpn.isBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                ) : (
+                  <Activity className="h-4 w-4 text-primary" />
+                )}
+                <span>
+                  {vpn.status?.running
+                    ? "Protected and connected"
+                    : activeDnsServer
+                      ? "Ready to protect DNS"
+                      : "Select an active DNS server to continue"}
+                </span>
+              </div>
+              {activeDnsServer && (
+                <p className="mt-2 font-mono text-xs text-muted-foreground">
+                  Resolver: {activeDnsServer.name} ({activeDnsServer.type.toUpperCase()})
+                </p>
+              )}
+              {vpn.status?.error && (
+                <p className="mt-2 text-xs text-destructive">{vpn.status.error}</p>
+              )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                DNS-only protection. Regular web traffic is not routed through this VPN.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setEulaOpen(true)}
+            >
+              View DNS VPN EULA
+            </Button>
+          </CyberCard>
+        )}
+
         {/* Access Control */}
         <CyberCard className="md:col-span-2 space-y-6">
           <div className="flex items-center gap-3 mb-6">
@@ -144,9 +286,22 @@ export default function Settings() {
         
         <div className="md:col-span-2 flex items-center justify-center p-4 rounded border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-sm gap-2">
           <AlertTriangle className="w-4 h-4" />
-          <span className="font-mono uppercase">SafeNet DNS Server (Official) v1.0.4 - Build 2024.10.25</span>
+          <span className="font-mono uppercase">SafeNet DNS Server (Official) v1.0.5</span>
         </div>
       </div>
+      {vpn.supported && (
+        <EulaDialog
+          open={eulaOpen}
+          onOpenChange={(open) => {
+            setEulaOpen(open);
+            if (!open) {
+              setStartAfterEula(false);
+            }
+          }}
+          onAccept={handleEulaAccept}
+          isAccepting={vpn.isBusy}
+        />
+      )}
     </div>
   );
 }

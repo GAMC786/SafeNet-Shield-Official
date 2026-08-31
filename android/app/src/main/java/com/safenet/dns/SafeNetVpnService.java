@@ -1,0 +1,604 @@
+package com.safenet.dns;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Intent;
+import android.net.VpnService;
+import android.os.Build;
+import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+
+public class SafeNetVpnService extends VpnService {
+    public static final String EXTRA_TYPE = "resolver_type";
+    public static final String EXTRA_PRIMARY = "resolver_primary";
+    public static final String EXTRA_SECONDARY = "resolver_secondary";
+
+    private static final String CHANNEL_ID = "safenet_dns_vpn";
+    private static final String VIRTUAL_DNS = "10.248.0.1";
+    private static final String VIRTUAL_CLIENT = "10.248.0.2";
+    private static final int DNS_PORT = 53;
+    private static final int SOCKET_TIMEOUT_MS = 3500;
+    private static final int MAX_DNS_RESPONSE = 65535;
+
+    private static volatile SafeNetVpnService instance;
+    private static volatile String lastError;
+
+    private final Object lifecycleLock = new Object();
+    private volatile boolean running;
+    private ParcelFileDescriptor vpnInterface;
+    private ExecutorService worker;
+    private ResolverConfig resolver;
+
+    public static boolean isRunning() {
+        SafeNetVpnService service = instance;
+        return service != null && service.running;
+    }
+
+    public static String getLastError() {
+        return lastError;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        instance = this;
+        createNotificationChannel();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        stopVpn(false);
+        if (intent == null) {
+            lastError = "VPN configuration was lost. Start protection again.";
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
+
+        try {
+            resolver = ResolverConfig.from(
+                intent.getStringExtra(EXTRA_TYPE),
+                intent.getStringExtra(EXTRA_PRIMARY),
+                intent.getStringExtra(EXTRA_SECONDARY)
+            );
+            startForeground(1001, buildNotification());
+            vpnInterface = new Builder()
+                .setSession("SafeNet DNS")
+                .setBlocking(true)
+                .addAddress(VIRTUAL_CLIENT, 32)
+                .addRoute(VIRTUAL_DNS, 32)
+                .addDnsServer(VIRTUAL_DNS)
+                .establish();
+            if (vpnInterface == null) {
+                throw new IOException("Android could not establish the DNS VPN interface.");
+            }
+
+            running = true;
+            lastError = null;
+            worker = Executors.newSingleThreadExecutor();
+            worker.execute(this::runVpnLoop);
+            return START_NOT_STICKY;
+        } catch (Exception error) {
+            lastError = safeMessage(error, "Unable to start DNS protection.");
+            stopVpn(true);
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        stopVpn(false);
+        if (instance == this) {
+            instance = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return super.onBind(intent);
+    }
+
+    private void runVpnLoop() {
+        ParcelFileDescriptor localInterface = vpnInterface;
+        if (localInterface == null) {
+            return;
+        }
+
+        byte[] packet = new byte[32767];
+        try (
+            FileInputStream input = new FileInputStream(localInterface.getFileDescriptor());
+            FileOutputStream output = new FileOutputStream(localInterface.getFileDescriptor())
+        ) {
+            while (running) {
+                int length = input.read(packet);
+                if (length <= 0) {
+                    continue;
+                }
+                forwardPacket(packet, length, output);
+            }
+        } catch (IOException error) {
+            if (running) {
+                lastError = safeMessage(error, "The DNS VPN stopped unexpectedly.");
+                stopSelf();
+            }
+        } finally {
+            running = false;
+        }
+    }
+
+    private void forwardPacket(byte[] packet, int length, FileOutputStream output) throws IOException {
+        if (length < 28 || (packet[0] & 0xf0) != 0x40) {
+            return;
+        }
+
+        int headerLength = (packet[0] & 0x0f) * 4;
+        if (headerLength < 20 || length < headerLength + 8 || (packet[9] & 0xff) != 17) {
+            return;
+        }
+        if (!matchesAddress(packet, 16, VIRTUAL_DNS)) {
+            return;
+        }
+
+        int sourcePort = readUnsignedShort(packet, headerLength);
+        int destinationPort = readUnsignedShort(packet, headerLength + 2);
+        if (destinationPort != DNS_PORT) {
+            return;
+        }
+
+        int udpLength = readUnsignedShort(packet, headerLength + 4);
+        int payloadOffset = headerLength + 8;
+        int payloadLength = Math.min(udpLength - 8, length - payloadOffset);
+        if (payloadLength <= 0 || payloadLength > MAX_DNS_RESPONSE) {
+            return;
+        }
+
+        byte[] query = new byte[payloadLength];
+        System.arraycopy(packet, payloadOffset, query, 0, payloadLength);
+        byte[] response = resolver.forward(query, this);
+        if (response == null || response.length == 0 || response.length > MAX_DNS_RESPONSE) {
+            return;
+        }
+
+        byte[] responsePacket = createUdpResponse(packet, headerLength, sourcePort, destinationPort, response);
+        output.write(responsePacket);
+        output.flush();
+    }
+
+    private byte[] createUdpResponse(
+        byte[] request,
+        int requestHeaderLength,
+        int sourcePort,
+        int destinationPort,
+        byte[] payload
+    ) {
+        int udpLength = 8 + payload.length;
+        int totalLength = 20 + udpLength;
+        byte[] response = new byte[totalLength];
+        response[0] = 0x45;
+        response[1] = 0;
+        writeUnsignedShort(response, 2, totalLength);
+        response[4] = request[4];
+        response[5] = request[5];
+        response[6] = 0;
+        response[7] = 0;
+        response[8] = 64;
+        response[9] = 17;
+        System.arraycopy(request, 16, response, 12, 4);
+        System.arraycopy(request, 12, response, 16, 4);
+        writeUnsignedShort(response, 10, checksum(response, 0, 20));
+
+        writeUnsignedShort(response, 20, destinationPort);
+        writeUnsignedShort(response, 22, sourcePort);
+        writeUnsignedShort(response, 24, udpLength);
+        System.arraycopy(payload, 0, response, 28, payload.length);
+        writeUnsignedShort(response, 26, udpChecksum(response, 20, udpLength));
+        return response;
+    }
+
+    private void stopVpn(boolean retainError) {
+        synchronized (lifecycleLock) {
+            running = false;
+            if (worker != null) {
+                worker.shutdownNow();
+                worker = null;
+            }
+            if (vpnInterface != null) {
+                try {
+                    vpnInterface.close();
+                } catch (IOException ignored) {
+                    // The interface is already being torn down.
+                }
+                vpnInterface = null;
+            }
+            resolver = null;
+            if (!retainError) {
+                lastError = null;
+            }
+        }
+    }
+
+    private Notification buildNotification() {
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+        return builder
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle("SafeNet DNS protection active")
+            .setContentText("DNS requests are being filtered through SafeNet.")
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .build();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) {
+            manager.createNotificationChannel(new NotificationChannel(
+                CHANNEL_ID,
+                "SafeNet DNS protection",
+                NotificationManager.IMPORTANCE_LOW
+            ));
+        }
+    }
+
+    private static boolean matchesAddress(byte[] packet, int offset, String expected) {
+        try {
+            byte[] address = InetAddress.getByName(expected).getAddress();
+            if (address.length != 4) {
+                return false;
+            }
+            for (int i = 0; i < 4; i++) {
+                if (packet[offset + i] != address[i]) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static int readUnsignedShort(byte[] value, int offset) {
+        return ((value[offset] & 0xff) << 8) | (value[offset + 1] & 0xff);
+    }
+
+    private static void writeUnsignedShort(byte[] value, int offset, int number) {
+        value[offset] = (byte) ((number >>> 8) & 0xff);
+        value[offset + 1] = (byte) (number & 0xff);
+    }
+
+    private static int checksum(byte[] value, int offset, int length) {
+        long sum = 0;
+        for (int i = offset; i < offset + length; i += 2) {
+            sum += ((value[i] & 0xff) << 8) | (value[i + 1] & 0xff);
+        }
+        while ((sum >>> 16) != 0) {
+            sum = (sum & 0xffff) + (sum >>> 16);
+        }
+        return (int) (~sum) & 0xffff;
+    }
+
+    private static int udpChecksum(byte[] packet, int udpOffset, int udpLength) {
+        long sum = 0;
+        for (int i = 12; i < 20; i += 2) {
+            sum += ((packet[i] & 0xff) << 8) | (packet[i + 1] & 0xff);
+        }
+        sum += 17;
+        sum += udpLength;
+        for (int i = udpOffset; i < udpOffset + udpLength; i += 2) {
+            int high = packet[i] & 0xff;
+            int low = i + 1 < udpOffset + udpLength ? packet[i + 1] & 0xff : 0;
+            sum += (high << 8) | low;
+        }
+        while ((sum >>> 16) != 0) {
+            sum = (sum & 0xffff) + (sum >>> 16);
+        }
+        int result = (int) (~sum) & 0xffff;
+        return result == 0 ? 0xffff : result;
+    }
+
+    private static String safeMessage(Exception error, String fallback) {
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty() ? fallback : message;
+    }
+
+    private static final class ResolverConfig {
+        private final String type;
+        private final List<String> addresses;
+
+        private ResolverConfig(String type, List<String> addresses) {
+            this.type = type;
+            this.addresses = addresses;
+        }
+
+        static ResolverConfig from(String type, String primary, String secondary) throws IOException {
+            String normalizedType = type == null ? "plain" : type.trim().toLowerCase(Locale.US);
+            if (!normalizedType.equals("plain") && !normalizedType.equals("doh") && !normalizedType.equals("dot")) {
+                throw new IOException("Unsupported DNS resolver type.");
+            }
+
+            List<String> addresses = new ArrayList<>();
+            if (primary != null && !primary.trim().isEmpty()) {
+                addresses.add(primary.trim());
+            }
+            if (secondary != null && !secondary.trim().isEmpty()) {
+                addresses.add(secondary.trim());
+            }
+            if (addresses.isEmpty()) {
+                throw new IOException("Select an active DNS server before starting protection.");
+            }
+            return new ResolverConfig(normalizedType, addresses);
+        }
+
+        byte[] forward(byte[] query, SafeNetVpnService service) {
+            for (String address : addresses) {
+                try {
+                    if (type.equals("plain")) {
+                        return forwardPlain(query, address, service);
+                    }
+                    if (type.equals("dot")) {
+                        return forwardDot(query, address, service);
+                    }
+                    return forwardDoh(query, address, service);
+                } catch (Exception error) {
+                    lastError = safeMessage(error, "The configured DNS resolver did not respond.");
+                }
+            }
+            return null;
+        }
+
+        private static byte[] forwardPlain(byte[] query, String address, SafeNetVpnService service) throws IOException {
+            InetAddress upstream = InetAddress.getByName(address);
+            try (DatagramSocket socket = new DatagramSocket()) {
+                if (!service.protect(socket)) {
+                    throw new IOException("Could not protect the DNS connection from the VPN loop.");
+                }
+                socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+                socket.send(new DatagramPacket(query, query.length, upstream, DNS_PORT));
+                byte[] response = new byte[MAX_DNS_RESPONSE];
+                DatagramPacket packet = new DatagramPacket(response, response.length);
+                socket.receive(packet);
+                byte[] result = new byte[packet.getLength()];
+                System.arraycopy(packet.getData(), packet.getOffset(), result, 0, packet.getLength());
+                return result;
+            }
+        }
+
+        private static byte[] forwardDot(byte[] query, String address, SafeNetVpnService service)
+            throws IOException, GeneralSecurityException {
+            Endpoint endpoint = Endpoint.forDot(address);
+            try (Socket raw = service.openProtectedSocket(endpoint.host, endpoint.port)) {
+                SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
+                    .createSocket(raw, endpoint.host, endpoint.port, true);
+                socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+                try (SSLSocket secure = socket) {
+                    secure.startHandshake();
+                    DataOutputStream output = new DataOutputStream(secure.getOutputStream());
+                    DataInputStream input = new DataInputStream(secure.getInputStream());
+                    output.writeShort(query.length);
+                    output.write(query);
+                    output.flush();
+                    int length = input.readUnsignedShort();
+                    if (length <= 0 || length > MAX_DNS_RESPONSE) {
+                        throw new IOException("The DNS-over-TLS response was invalid.");
+                    }
+                    byte[] response = new byte[length];
+                    input.readFully(response);
+                    return response;
+                }
+            }
+        }
+
+        private static byte[] forwardDoh(byte[] query, String address, SafeNetVpnService service)
+            throws IOException, GeneralSecurityException {
+            URI uri;
+            try {
+                uri = URI.create(address);
+            } catch (IllegalArgumentException error) {
+                throw new IOException("The DNS-over-HTTPS address is invalid.", error);
+            }
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+                throw new IOException("DNS-over-HTTPS requires an HTTPS resolver address.");
+            }
+
+            int port = uri.getPort() == -1 ? 443 : uri.getPort();
+            String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+            if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
+                path += "?" + uri.getRawQuery();
+            }
+            try (Socket raw = service.openProtectedSocket(uri.getHost(), port)) {
+                SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
+                    .createSocket(raw, uri.getHost(), port, true);
+                socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+                try (SSLSocket secure = socket) {
+                    secure.startHandshake();
+                    String headers =
+                        "POST " + path + " HTTP/1.1\r\n" +
+                        "Host: " + uri.getHost() + "\r\n" +
+                        "Accept: application/dns-message\r\n" +
+                        "Content-Type: application/dns-message\r\n" +
+                        "Content-Length: " + query.length + "\r\n" +
+                        "Connection: close\r\n\r\n";
+                    secure.getOutputStream().write(headers.getBytes(StandardCharsets.US_ASCII));
+                    secure.getOutputStream().write(query);
+                    secure.getOutputStream().flush();
+                    return readHttpResponse(secure.getInputStream());
+                }
+            }
+        }
+
+        private static byte[] readHttpResponse(InputStream stream) throws IOException {
+            BufferedInputStream input = new BufferedInputStream(stream);
+            ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
+            int matched = 0;
+            while (headerBytes.size() < 16384) {
+                int value = input.read();
+                if (value == -1) {
+                    throw new IOException("The DNS-over-HTTPS connection closed before its headers.");
+                }
+                headerBytes.write(value);
+                if ((matched == 0 && value == '\r') ||
+                    (matched == 2 && value == '\r') ||
+                    (matched == 1 && value == '\n') ||
+                    (matched == 3 && value == '\n')) {
+                    matched++;
+                    if (matched == 4) {
+                        break;
+                    }
+                } else {
+                    matched = value == '\r' ? 1 : 0;
+                }
+            }
+            if (matched != 4) {
+                throw new IOException("The DNS-over-HTTPS response headers were invalid.");
+            }
+
+            String header = new String(headerBytes.toByteArray(), StandardCharsets.ISO_8859_1);
+            String[] lines = header.split("\r\n");
+            if (lines.length == 0 || !lines[0].contains(" 2")) {
+                throw new IOException("The DNS-over-HTTPS resolver returned an error.");
+            }
+            int contentLength = -1;
+            boolean chunked = false;
+            for (String line : lines) {
+                String lower = line.toLowerCase(Locale.US);
+                if (lower.startsWith("content-length:")) {
+                    contentLength = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
+                } else if (lower.startsWith("transfer-encoding:") && lower.contains("chunked")) {
+                    chunked = true;
+                }
+            }
+
+            if (chunked) {
+                return readChunkedBody(input);
+            }
+            if (contentLength < 0 || contentLength > MAX_DNS_RESPONSE) {
+                throw new IOException("The DNS-over-HTTPS response length was invalid.");
+            }
+            byte[] body = new byte[contentLength];
+            new DataInputStream(input).readFully(body);
+            return body;
+        }
+
+        private static byte[] readChunkedBody(InputStream input) throws IOException {
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            while (true) {
+                String line = readAsciiLine(input);
+                int separator = line.indexOf(';');
+                String sizeText = separator >= 0 ? line.substring(0, separator) : line;
+                int size = Integer.parseInt(sizeText.trim(), 16);
+                if (size == 0) {
+                    readAsciiLine(input);
+                    break;
+                }
+                if (body.size() + size > MAX_DNS_RESPONSE) {
+                    throw new IOException("The DNS-over-HTTPS response was too large.");
+                }
+                byte[] chunk = new byte[size];
+                new DataInputStream(input).readFully(chunk);
+                body.write(chunk);
+                if (input.read() != '\r' || input.read() != '\n') {
+                    throw new IOException("The DNS-over-HTTPS chunk was invalid.");
+                }
+            }
+            return body.toByteArray();
+        }
+
+        private static String readAsciiLine(InputStream input) throws IOException {
+            ByteArrayOutputStream line = new ByteArrayOutputStream();
+            int previous = -1;
+            while (line.size() < 4096) {
+                int value = input.read();
+                if (value == -1) {
+                    throw new IOException("The DNS-over-HTTPS response ended unexpectedly.");
+                }
+                if (previous == '\r' && value == '\n') {
+                    byte[] bytes = line.toByteArray();
+                    return new String(bytes, 0, bytes.length - 1, StandardCharsets.US_ASCII);
+                }
+                line.write(value);
+                previous = value;
+            }
+            throw new IOException("The DNS-over-HTTPS response line was too long.");
+        }
+    }
+
+    private Socket openProtectedSocket(String host, int port) throws IOException {
+        InetAddress[] addresses = InetAddress.getAllByName(host);
+        IOException last = null;
+        for (InetAddress address : addresses) {
+            Socket socket = new Socket();
+            if (!protect(socket)) {
+                socket.close();
+                throw new IOException("Could not protect the DNS connection from the VPN loop.");
+            }
+            try {
+                socket.connect(new InetSocketAddress(address, port), SOCKET_TIMEOUT_MS);
+                return socket;
+            } catch (IOException error) {
+                last = error;
+                socket.close();
+            }
+        }
+        throw last == null ? new IOException("The DNS resolver address could not be reached.") : last;
+    }
+
+    private static final class Endpoint {
+        final String host;
+        final int port;
+
+        private Endpoint(String host, int port) {
+            this.host = host;
+            this.port = port;
+        }
+
+        static Endpoint forDot(String value) throws IOException {
+            String normalized = value.trim();
+            if (normalized.startsWith("dot://")) {
+                normalized = normalized.substring("dot://".length());
+            } else if (normalized.startsWith("tls://")) {
+                normalized = normalized.substring("tls://".length());
+            }
+            try {
+                URI uri = URI.create("dot://" + normalized);
+                if (uri.getHost() == null) {
+                    throw new IOException("The DNS-over-TLS address is invalid.");
+                }
+                return new Endpoint(uri.getHost(), uri.getPort() == -1 ? 853 : uri.getPort());
+            } catch (IllegalArgumentException error) {
+                throw new IOException("The DNS-over-TLS address is invalid.", error);
+            }
+        }
+    }
+}
