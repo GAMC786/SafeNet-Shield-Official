@@ -1,21 +1,20 @@
 {
-  "name": "safenet-shield",
+  "name": "rest-express",
   "version": "1.0.0",
   "type": "module",
-  "description": "Best-in-Class Ethical Web Filtering and DNS Server - Android App",
-  "author": "Abdul Mahmood Ghazimal <gamcpost@gmail.com>",
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc",
+    "check": "tsc && tsc -p tsconfig.worker.json",
+    "test": "node --import tsx --test \"server/**/*.test.ts\"",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@capacitor/android": "^7.0.0",
-    "@capacitor/cli": "^7.4.4",
-    "@capacitor/core": "^7.0.0",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.0.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^1.0.2",
@@ -102,6 +101,8 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
@@ -110,6 +111,7 @@
     "vite": "^7.3.0"
   },
   "overrides": {
+    "tar": "7.5.22",
     "drizzle-kit": {
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
     }

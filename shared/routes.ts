@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { insertDnsServerSchema, insertBlocklistSchema, insertAppSettingsSchema, dnsServers, blocklists, accessLogs, appSettings } from './schema';
+import {
+  insertDnsServerSchema,
+  insertBlocklistSchema,
+  insertAppSettingsSchema,
+  publicAppSettingsSchema,
+  publicDdnsUpdaterSchema,
+  dnsServers,
+  blocklists,
+  accessLogs,
+} from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -15,6 +24,18 @@ export const errorSchemas = {
 };
 
 export const api = {
+  auth: {
+    status: {
+      method: 'GET' as const,
+      path: '/api/auth/status',
+      responses: {
+        200: z.object({
+          authenticated: z.boolean(),
+          pinRequired: z.boolean(),
+        }),
+      },
+    },
+  },
   dns: {
     list: {
       method: 'GET' as const,
@@ -109,7 +130,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/settings',
       responses: {
-        200: z.custom<typeof appSettings.$inferSelect>(),
+        200: publicAppSettingsSchema,
       },
     },
     update: {
@@ -117,7 +138,7 @@ export const api = {
       path: '/api/settings',
       input: insertAppSettingsSchema.partial(),
       responses: {
-        200: z.custom<typeof appSettings.$inferSelect>(),
+        200: publicAppSettingsSchema,
       },
     },
     verifyPin: {
@@ -126,6 +147,17 @@ export const api = {
       input: z.object({ pin: z.string() }),
       responses: {
         200: z.object({ valid: z.boolean() }),
+        401: z.object({ valid: z.literal(false), message: z.string() }),
+        429: z.object({ message: z.string() }),
+      },
+    },
+  },
+  ddns: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/ddns',
+      responses: {
+        200: z.array(publicDdnsUpdaterSchema),
       },
     },
   },

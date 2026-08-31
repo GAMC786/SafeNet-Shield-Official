@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
+import { apiFetch } from "@/lib/api";
 
 export function useLogs() {
   return useQuery({
     queryKey: [api.logs.list.path],
     queryFn: async () => {
-      const res = await fetch(api.logs.list.path, { credentials: "include" });
+      const res = await apiFetch(api.logs.list.path);
       if (!res.ok) throw new Error("Failed to fetch logs");
       return api.logs.list.responses[200].parse(await res.json());
     },
@@ -17,7 +18,7 @@ export function useStats() {
   return useQuery({
     queryKey: [api.logs.stats.path],
     queryFn: async () => {
-      const res = await fetch(api.logs.stats.path, { credentials: "include" });
+      const res = await apiFetch(api.logs.stats.path);
       if (!res.ok) throw new Error("Failed to fetch stats");
       return api.logs.stats.responses[200].parse(await res.json());
     },

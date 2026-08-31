@@ -1,16 +1,99 @@
 import type { Express } from "express";
+import express from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { dnsServers, blocklists, insertAntivirusSettingsSchema } from "@shared/schema";
+import {
+  type AppSettings,
+  type DdnsUpdater,
+  dnsServers,
+  blocklists,
+  insertAntivirusSettingsSchema,
+} from "@shared/schema";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
+import {
+  clearPinAttempts,
+  getPinRetryAfterSeconds,
+  recordFailedPinAttempt,
+  requireAuthentication,
+} from "./auth";
+
+function publicSettings(settings: AppSettings) {
+  const { pinCode: _pinCode, ...safeSettings } = settings;
+  return safeSettings;
+}
+
+function publicDdnsUpdater(updater: DdnsUpdater) {
+  const { apiKey: _apiKey, customUrl: _customUrl, ...safeUpdater } = updater;
+  return safeUpdater;
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // These endpoints are the only unauthenticated API surface. The status
+  // response contains no settings, PIN, or provider data.
+  app.get(api.auth.status.path, async (req, res) => {
+    const settings = await storage.getSettings();
+    const pinRequired = settings.isPinEnabled === true;
+
+    if (!pinRequired) {
+      req.session.authenticated = true;
+    }
+
+    res.json({
+      authenticated: req.session.authenticated === true,
+      pinRequired,
+    });
+  });
+
+  app.post(api.settings.verifyPin.path, async (req, res) => {
+    const retryAfter = getPinRetryAfterSeconds(req);
+    if (retryAfter > 0) {
+      res.setHeader("Retry-After", retryAfter);
+      return res.status(429).json({
+        message: "Too many PIN attempts. Try again later.",
+      });
+    }
+
+    const parsed = z.object({ pin: z.string() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "A PIN is required" });
+    }
+
+    const settings = await storage.getSettings();
+    const valid = settings.isPinEnabled !== true || settings.pinCode === parsed.data.pin;
+
+    if (!valid) {
+      recordFailedPinAttempt(req);
+      return res.status(401).json({
+        valid: false,
+        message: "Invalid PIN",
+      });
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
+    req.session.authenticated = true;
+    clearPinAttempts(req);
+
+    res.json({ valid: true });
+  });
+
+  // Every remaining API route, including the AI integrations, requires the
+  // short-lived server session created above.
+  app.use("/api", requireAuthentication);
 
   // Register AI Integrations
   registerChatRoutes(app);
@@ -96,46 +179,47 @@ export async function registerRoutes(
   // === Settings ===
   app.get(api.settings.get.path, async (req, res) => {
     const settings = await storage.getSettings();
-    res.json(settings);
+    res.json(publicSettings(settings));
   });
 
   app.put(api.settings.update.path, async (req, res) => {
     try {
       const input = api.settings.update.input.parse(req.body);
       const settings = await storage.updateSettings(input);
-      res.json(settings);
+      res.json(publicSettings(settings));
     } catch (err) {
       throw err;
     }
   });
 
-  app.post(api.settings.verifyPin.path, async (req, res) => {
-    const { pin } = req.body;
-    const settings = await storage.getSettings();
-    const valid = !settings.isPinEnabled || settings.pinCode === pin;
-    res.json({ valid });
-  });
-
   // === DDNS Updaters ===
   app.get("/api/ddns", async (req, res) => {
     const updaters = await storage.getDdnsUpdaters();
-    res.json(updaters);
+    res.json(updaters.map(publicDdnsUpdater));
   });
 
   app.post("/api/ddns", async (req, res) => {
     try {
-      const { hostname, provider, apiKey, updateInterval, isEnabled } = req.body;
-      if (!hostname || !provider || !apiKey) {
+      const { hostname, provider, apiKey, customUrl, updateInterval, isEnabled } = req.body;
+      if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      // IP Link requires customUrl, others require apiKey
+      if (provider === "iplink" && !customUrl) {
+        return res.status(400).json({ message: "Custom URL is required for IP Link provider" });
+      }
+      if (provider !== "iplink" && !apiKey) {
+        return res.status(400).json({ message: "API key is required" });
       }
       const updater = await storage.createDdnsUpdater({
         hostname,
         provider,
-        apiKey,
+        apiKey: apiKey || "",
+        customUrl: customUrl || null,
         updateInterval: updateInterval || 3600,
         isEnabled: isEnabled !== false,
       });
-      res.status(201).json(updater);
+      res.status(201).json(publicDdnsUpdater(updater));
     } catch (err) {
       res.status(500).json({ message: "Failed to create DDNS updater" });
     }
@@ -144,15 +228,16 @@ export async function registerRoutes(
   app.patch("/api/ddns/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { hostname, provider, apiKey, updateInterval, isEnabled } = req.body;
+      const { hostname, provider, apiKey, customUrl, updateInterval, isEnabled } = req.body;
       const updater = await storage.updateDdnsUpdater(id, {
         ...(hostname && { hostname }),
         ...(provider && { provider }),
-        ...(apiKey && { apiKey }),
+        ...(apiKey !== undefined && { apiKey }),
+        ...(customUrl !== undefined && { customUrl }),
         ...(updateInterval && { updateInterval }),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
-      res.json(updater);
+      res.json(publicDdnsUpdater(updater));
     } catch (err) {
       res.status(404).json({ message: "DDNS updater not found" });
     }
@@ -169,10 +254,27 @@ export async function registerRoutes(
 
   app.post("/api/ddns/:id/update", async (req, res) => {
     try {
+      const { clientIp } = req.body;
       const { checkAndUpdateDdns } = await import("./ddns-service");
-      await checkAndUpdateDdns();
+      await checkAndUpdateDdns(clientIp);
       const updaters = await storage.getDdnsUpdaters();
-      res.json(updaters);
+      res.json(updaters.map(publicDdnsUpdater));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update DDNS" });
+    }
+  });
+
+  // Update all DDNS with client-provided IP
+  app.post("/api/ddns/update-all", async (req, res) => {
+    try {
+      const { clientIp } = req.body;
+      if (!clientIp) {
+        return res.status(400).json({ message: "Client IP is required" });
+      }
+      const { checkAndUpdateDdns } = await import("./ddns-service");
+      await checkAndUpdateDdns(clientIp);
+      const updaters = await storage.getDdnsUpdaters();
+      res.json(updaters.map(publicDdnsUpdater));
     } catch (err) {
       res.status(500).json({ message: "Failed to update DDNS" });
     }
@@ -354,6 +456,56 @@ export async function registerRoutes(
     } catch (err) {
       res.status(500).json({ message: "Failed to get public IP" });
     }
+  });
+
+  // === Speed Test ===
+  // Download test - returns random data for speed measurement
+  app.get("/api/speedtest/download", (req, res) => {
+    const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
+    const maxSize = 10000000; // Max 10MB
+    const actualSize = Math.min(size, maxSize);
+    
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", actualSize);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    
+    // Generate random data in chunks
+    const chunkSize = 65536; // 64KB chunks
+    let remaining = actualSize;
+    
+    const sendChunk = () => {
+      while (remaining > 0) {
+        const size = Math.min(chunkSize, remaining);
+        const chunk = Buffer.alloc(size, Math.random() * 255);
+        const canContinue = res.write(chunk);
+        remaining -= size;
+        if (!canContinue) {
+          res.once("drain", sendChunk);
+          return;
+        }
+      }
+      res.end();
+    };
+    
+    sendChunk();
+  });
+
+  // Upload test - receives data and measures speed
+  app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
+    const startTime = Date.now();
+    const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
+    const duration = Math.max((Date.now() - startTime) / 1000, 0.001);
+    const speedMbps = (bytesReceived * 8) / (duration * 1000000);
+    res.json({ 
+      bytesReceived, 
+      duration, 
+      speedMbps: Math.round(speedMbps * 100) / 100 
+    });
+  });
+
+  // Ping test
+  app.get("/api/speedtest/ping", (req, res) => {
+    res.json({ timestamp: Date.now() });
   });
 
   // === SEED DATA ===
