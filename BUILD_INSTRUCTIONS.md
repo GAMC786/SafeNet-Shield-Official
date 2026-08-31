@@ -70,14 +70,22 @@ cd android
 
 ## Building Windows MSI
 
+The MSI packages the web frontend and loads it from a local `file://` URL. It
+must be built with a separately running SafeNet DNS backend over HTTPS.
+
 ### Step 1: Build the web application
 ```bash
-npm run build
+DESKTOP_API_URL=https://your-server.example.com ./scripts/build-windows.sh
 ```
 
-### Step 2: Run Electron Builder
+This validates the backend URL, builds the web application with that API origin,
+and creates the Windows installer. The URL must be a public HTTPS origin
+without a path or query.
+
+### Alternative: Run Electron Builder manually
 ```bash
-npx electron-builder --win --x64
+VITE_API_URL=https://your-server.example.com npm run build
+npx electron-builder --win --x64 --publish never
 ```
 
 ### Output Files:

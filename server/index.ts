@@ -62,6 +62,7 @@ const mobileOrigins = new Set(
 mobileOrigins.add("https://localhost");
 mobileOrigins.add("http://localhost");
 mobileOrigins.add("capacitor://localhost");
+mobileOrigins.add("https://desktop.safenet.dns");
 
 function isTrustedRequestOrigin(req: Request) {
   const origin = req.headers.origin;

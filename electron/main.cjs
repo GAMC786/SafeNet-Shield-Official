@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 
 let mainWindow;
+const DESKTOP_APP_ORIGIN = 'https://desktop.safenet.dns';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,6 +30,18 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5000');
     mainWindow.webContents.openDevTools();
   } else {
+    // Electron loads the packaged renderer from file://, which has an opaque
+    // origin. Give API requests a stable origin that the backend can allow
+    // explicitly instead of weakening CORS for null or file:// origins.
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+      { urls: ['*://*/*'] },
+      (details, callback) => {
+        if (details.url.startsWith('http://') || details.url.startsWith('https://')) {
+          details.requestHeaders.Origin = DESKTOP_APP_ORIGIN;
+        }
+        callback({ requestHeaders: details.requestHeaders });
+      },
+    );
     mainWindow.loadFile(path.join(__dirname, '../dist/public/index.html'));
   }
 

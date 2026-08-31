@@ -10,6 +10,13 @@ function isCapacitorLocalOrigin() {
   );
 }
 
+function isPackagedAppOrigin() {
+  return (
+    typeof window !== "undefined" &&
+    (window.location.protocol === "file:" || isCapacitorLocalOrigin())
+  );
+}
+
 export function resolveApiUrl(path: string) {
   if (!path.startsWith("/api")) {
     return path;
@@ -19,9 +26,9 @@ export function resolveApiUrl(path: string) {
     return `${configuredApiOrigin}${path}`;
   }
 
-  if (isCapacitorLocalOrigin()) {
+  if (isPackagedAppOrigin()) {
     throw new Error(
-      "This APK does not have a backend address. Rebuild it with MOBILE_API_URL set to the HTTPS address of the SafeNet DNS server.",
+      "This packaged app does not have a backend address. Rebuild it with DESKTOP_API_URL or MOBILE_API_URL set to the HTTPS address of the SafeNet DNS server.",
     );
   }
 
