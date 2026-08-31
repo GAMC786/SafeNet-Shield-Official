@@ -41,11 +41,11 @@ public class SafeNetVpnEulaTest {
             .remove(EULA_PREFERENCE)
             .commit();
 
-        WebView webView = waitForWebView(activity, instrumentation);
-        waitForCapacitorVpnPlugin(webView, instrumentation);
+        WebView webView = waitForWebView(activity);
+        waitForCapacitorVpnPlugin(activity, webView);
         String result = evaluate(
+            activity,
             webView,
-            instrumentation,
             "window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SafeNetVpn"
                 + " ? window.Capacitor.Plugins.SafeNetVpn.start({type:'plain', primaryAddress:'1.1.1.1'})"
                 + ".then(function(value){return JSON.stringify({ok:true,value:value});})"
@@ -58,13 +58,17 @@ public class SafeNetVpnEulaTest {
         activity.finish();
     }
 
-    private static WebView waitForWebView(Activity activity, Instrumentation instrumentation)
+    private static WebView waitForWebView(Activity activity)
         throws InterruptedException {
         AtomicReference<WebView> found = new AtomicReference<>();
         for (int attempt = 0; attempt < 60; attempt++) {
-            instrumentation.runOnMainSync(() -> {
+            CountDownLatch latch = new CountDownLatch(1);
+            activity.runOnUiThread(() -> {
                 found.set(findWebView(activity.getWindow().getDecorView()));
+                latch.countDown();
             });
+            Assert.assertTrue("Timed out waiting for the app WebView",
+                latch.await(1, TimeUnit.SECONDS));
             if (found.get() != null) {
                 return found.get();
             }
@@ -75,13 +79,13 @@ public class SafeNetVpnEulaTest {
     }
 
     private static void waitForCapacitorVpnPlugin(
-        WebView webView,
-        Instrumentation instrumentation
+        Activity activity,
+        WebView webView
     ) throws Exception {
         for (int attempt = 0; attempt < 60; attempt++) {
             String available = tryEvaluate(
+                activity,
                 webView,
-                instrumentation,
                 "Boolean(window.Capacitor && window.Capacitor.Plugins"
                     + " && window.Capacitor.Plugins.SafeNetVpn)",
                 2
@@ -95,24 +99,24 @@ public class SafeNetVpnEulaTest {
     }
 
     private static String evaluate(
+        Activity activity,
         WebView webView,
-        Instrumentation instrumentation,
         String expression
     ) throws Exception {
-        String result = tryEvaluate(webView, instrumentation, expression, 15);
+        String result = tryEvaluate(activity, webView, expression, 15);
         Assert.assertNotNull("Timed out waiting for Capacitor bridge response", result);
         return result;
     }
 
     private static String tryEvaluate(
+        Activity activity,
         WebView webView,
-        Instrumentation instrumentation,
         String expression,
         int timeoutSeconds
     ) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<String> result = new AtomicReference<>();
-        instrumentation.runOnMainSync(() -> webView.evaluateJavascript(
+        activity.runOnUiThread(() -> webView.evaluateJavascript(
                 "(async function(){return await (" + expression + ");})()",
                 value -> {
                     result.set(value == null ? "" : value);
