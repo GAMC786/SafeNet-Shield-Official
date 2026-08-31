@@ -92,6 +92,13 @@ jobs:
               fi
 
               parent_args=(-p "${existing_sha}")
+              if ! git merge-base --is-ancestor "${official_main_sha}" "${existing_sha}"; then
+                # Squash and rebase merges can accept the snapshot content
+                # without preserving the sync commit on official main. Keep
+                # the branch fast-forwardable while basing its next review
+                # diff on the current official main.
+                parent_args+=(-p "${official_main_sha}")
+              fi
             elif git merge-base --is-ancestor "${existing_sha}" "${source_sha}" &&
               ! git merge-base "${existing_sha}" "${official_main_sha}" >/dev/null 2>&1; then
               # One-time migration for the original source-history branch.
