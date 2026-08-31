@@ -42,6 +42,7 @@ public class SafeNetVpnEulaTest {
             .commit();
 
         WebView webView = waitForWebView(activity);
+        waitForWebViewReady(webView);
         waitForCapacitorVpnPlugin(webView);
         String result = evaluate(
             webView,
@@ -76,12 +77,31 @@ public class SafeNetVpnEulaTest {
         return null;
     }
 
+    private static void waitForWebViewReady(WebView webView) throws Exception {
+        for (int attempt = 0; attempt < 120; attempt++) {
+            AtomicReference<Boolean> ready = new AtomicReference<>(false);
+            CountDownLatch latch = new CountDownLatch(1);
+            webView.post(() -> {
+                ready.set(webView.getUrl() != null && webView.getProgress() >= 100);
+                latch.countDown();
+            });
+            Assert.assertTrue("Timed out waiting for the WebView UI thread",
+                latch.await(1, TimeUnit.SECONDS));
+            if (Boolean.TRUE.equals(ready.get())) {
+                return;
+            }
+            SystemClock.sleep(250);
+        }
+        Assert.fail("SafeNet DNS WebView did not finish loading");
+    }
+
     private static void waitForCapacitorVpnPlugin(WebView webView) throws Exception {
         for (int attempt = 0; attempt < 60; attempt++) {
-            String available = evaluate(
+            String available = tryEvaluate(
                 webView,
                 "Boolean(window.Capacitor && window.Capacitor.Plugins"
-                    + " && window.Capacitor.Plugins.SafeNetVpn)"
+                    + " && window.Capacitor.Plugins.SafeNetVpn)",
+                2
             );
             if ("true".equals(available)) {
                 return;
@@ -92,6 +112,13 @@ public class SafeNetVpnEulaTest {
     }
 
     private static String evaluate(WebView webView, String expression) throws Exception {
+        String result = tryEvaluate(webView, expression, 15);
+        Assert.assertNotNull("Timed out waiting for Capacitor bridge response", result);
+        return result;
+    }
+
+    private static String tryEvaluate(WebView webView, String expression, int timeoutSeconds)
+        throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<String> result = new AtomicReference<>();
         webView.post(() -> webView.evaluateJavascript(
@@ -101,8 +128,9 @@ public class SafeNetVpnEulaTest {
                 latch.countDown();
             }
         ));
-        Assert.assertTrue("Timed out waiting for Capacitor bridge response",
-            latch.await(15, TimeUnit.SECONDS));
+        if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+            return null;
+        }
         return result.get();
     }
 
