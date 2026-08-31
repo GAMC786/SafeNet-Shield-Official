@@ -1,1 +1,2 @@
 - [Release API DNS validation](release-api-dns-validation.md) — tag builds validate the deployed API through public DNS; transient resolver failures should be rerun before changing code.
+- [Android VPN smoke evidence](android-vpn-smoke-evidence.md) — install instrumentation before enabling the VPN so test setup cannot tear down the service under test.
