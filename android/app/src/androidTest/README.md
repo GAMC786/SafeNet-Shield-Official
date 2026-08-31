@@ -13,7 +13,7 @@ The end-to-end command is run from the repository root:
 
 ```bash
 npm run android:smoke -- \
-  --apk android/app/build/outputs/apk/debug/app-debug.apk \
+  --apk android/app/build/outputs/apk/release/app-release.apk \
   --reset-data
 ```
 
@@ -40,9 +40,11 @@ The release job refuses to publish unless all four files exist and `run.log`
 ends with `RESULT: PASS`.
 
 The hosted release check is defined in `.github/workflows/build.yml`. It
-provisions a Google APIs API 33 emulator, installs the debug APK, builds and
-installs the instrumentation APK before enabling the VPN, and uses the public
-PIN-disabled SafeNet backend so no interactive sign-in is needed.
+provisions a Google APIs API 33 emulator, installs the signed release APK,
+builds and installs the instrumentation APK before enabling the VPN, and uses
+the public PIN-disabled SafeNet backend so no interactive sign-in is needed.
+The instrumentation APK is invoked directly after installation so it cannot
+replace the signed release target with a debug APK.
 
 ## Evidence
 

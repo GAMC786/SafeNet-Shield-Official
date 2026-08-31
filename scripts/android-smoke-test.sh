@@ -5,7 +5,7 @@
 # permission dialog, then runs the network assertions as instrumentation tests.
 #
 # Usage:
-#   npm run android:smoke -- --apk android/app/build/outputs/apk/debug/app-debug.apk --reset-data
+#   npm run android:smoke -- --apk android/app/build/outputs/apk/release/app-release.apk --reset-data
 #
 set -Eeuo pipefail
 
@@ -14,7 +14,7 @@ readonly EVIDENCE_ROOT="${ANDROID_SMOKE_EVIDENCE_DIR:-android/app/build/android-
 readonly UI_REMOTE="/sdcard/safenet-smoke-ui.xml"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-APK="${ANDROID_SMOKE_APK:-$REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk}"
+APK="${ANDROID_SMOKE_APK:-$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk}"
 TEST_APK="${ANDROID_SMOKE_TEST_APK:-$REPO_ROOT/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk}"
 RESET_DATA=false
 SKIP_INSTALL=false
@@ -25,7 +25,7 @@ usage() {
 Usage: scripts/android-smoke-test.sh [options]
 
 Options:
-  --apk PATH          APK to install (default: android/app/build/outputs/apk/debug/app-debug.apk)
+  --apk PATH          APK to install (default: android/app/build/outputs/apk/release/app-release.apk)
   --serial SERIAL     adb device/emulator serial (default: ADB_SERIAL or the only connected device)
   --reset-data        Clear SafeNet DNS app data before the run (required for a clean EULA gate)
   --skip-install      Reuse the installed APK
@@ -217,12 +217,27 @@ launch_app() {
   adb_target shell monkey -p "$PACKAGE_NAME" 1 >/dev/null
 }
 
+run_instrumentation_test() {
+  local test_class="$1"
+  local evidence_file="$2"
+
+  adb_target shell am instrument -w -r \
+    -e class "$test_class" \
+    com.safenet.dns.test/androidx.test.runner.AndroidJUnitRunner \
+    | tee "$evidence_file"
+
+  grep -Eq '(^|[[:space:]])OK \(1 test\)' "$evidence_file" \
+    || fail "Instrumentation test failed: $test_class"
+}
+
 launch_app
-(
-  cd android
-  ./gradlew :app:connectedDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.safenet.dns.SafeNetVpnEulaTest
-) | tee "$EVIDENCE_ROOT/eula-test.txt"
+(cd android && ./gradlew :app:assembleDebugAndroidTest) \
+  | tee "$EVIDENCE_ROOT/traffic-build.txt"
+[[ -f "$TEST_APK" ]] || fail "Instrumentation APK not found: $TEST_APK"
+adb_target install -r "$TEST_APK" | tee "$EVIDENCE_ROOT/traffic-install.txt"
+run_instrumentation_test \
+  com.safenet.dns.SafeNetVpnEulaTest \
+  "$EVIDENCE_ROOT/eula-test.txt"
 pass "Native plugin rejected starting before EULA acceptance."
 
 launch_app
@@ -265,14 +280,9 @@ grep -Eq "PING[[:space:]]+example\.com[[:space:]]+\(|bytes from|1 packets transm
   || fail "DNS query did not resolve example.com."
 pass "Resolved example.com through the active DNS path."
 
-(cd android && ./gradlew :app:assembleDebugAndroidTest) \
-  | tee "$EVIDENCE_ROOT/traffic-build.txt"
-[[ -f "$TEST_APK" ]] || fail "Instrumentation APK not found: $TEST_APK"
-adb_target install -r "$TEST_APK" | tee "$EVIDENCE_ROOT/traffic-install.txt"
-adb_target shell am instrument -w -r \
-  -e class com.safenet.dns.SafeNetVpnTrafficTest \
-  com.safenet.dns.test/androidx.test.runner.AndroidJUnitRunner \
-  | tee "$EVIDENCE_ROOT/https-test.txt"
+run_instrumentation_test \
+  com.safenet.dns.SafeNetVpnTrafficTest \
+  "$EVIDENCE_ROOT/https-test.txt"
 pass "Ordinary HTTPS traffic passed while DNS protection was active."
 
 tap_node "Enable DNS Protection VPN"

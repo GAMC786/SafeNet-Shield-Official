@@ -60,11 +60,24 @@ run `scripts/build-android.sh`, repeat Step 1 before building the APK.
 keytool -genkey -v -keystore safenet-dns.keystore -alias safenet -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-2. Build release:
+2. Export the keystore path and credentials without committing them:
+```bash
+export ANDROID_KEYSTORE_FILE="$PWD/safenet-dns.keystore"
+export ANDROID_KEYSTORE_PASSWORD='your-keystore-password'
+export ANDROID_KEY_ALIAS='safenet'
+export ANDROID_KEY_PASSWORD='your-key-password'
+```
+
+3. Build release:
 ```bash
 cd android
 ./gradlew assembleRelease
 ```
+
+The repository workflow uses the equivalent encrypted repository secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and
+`ANDROID_KEY_PASSWORD` for tagged releases and manual release builds. Branch and
+pull-request builds continue to produce the debug APK.
 
 ---
 
