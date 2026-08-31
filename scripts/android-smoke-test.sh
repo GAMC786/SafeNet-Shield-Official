@@ -255,7 +255,6 @@ sign_instrumentation_apk() {
   pass "Signed the instrumentation APK with the release key."
 }
 
-launch_app
 (cd android && ./gradlew :app:assembleDebugAndroidTest) \
   | tee "$EVIDENCE_ROOT/traffic-build.txt"
 [[ -f "$TEST_APK" ]] || fail "Instrumentation APK not found: $TEST_APK"
@@ -263,6 +262,7 @@ if [[ -n "${ANDROID_KEYSTORE_FILE:-}" ]]; then
   sign_instrumentation_apk
 fi
 adb_target install -r "$TEST_APK" | tee "$EVIDENCE_ROOT/traffic-install.txt"
+launch_app
 run_instrumentation_test \
   com.safenet.dns.SafeNetVpnEulaTest \
   "$EVIDENCE_ROOT/eula-test.txt"
