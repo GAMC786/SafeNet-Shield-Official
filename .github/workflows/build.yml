@@ -124,6 +124,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Decode Android smoke-test keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 repository secret is required for release smoke tests."
+            exit 1
+          fi
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/safenet-release.keystore"
+          chmod 600 "${RUNNER_TEMP}/safenet-release.keystore"
+
       - name: Verify authenticated smoke backend
         shell: bash
         run: |
@@ -165,6 +178,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: ./scripts/android-smoke-test.sh --apk android/app/build/outputs/apk/release/app-release.apk --reset-data
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Require a real smoke-test pass
         if: always()

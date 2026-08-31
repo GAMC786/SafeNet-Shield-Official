@@ -230,10 +230,36 @@ run_instrumentation_test() {
     || fail "Instrumentation test failed: $test_class"
 }
 
+sign_instrumentation_apk() {
+  local required_var
+  for required_var in ANDROID_KEYSTORE_FILE ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+    [[ -n "${!required_var:-}" ]] || fail "$required_var is required to sign the instrumentation APK."
+  done
+  [[ -f "$ANDROID_KEYSTORE_FILE" ]] || fail "Android release keystore not found: $ANDROID_KEYSTORE_FILE"
+
+  local apksigner="${ANDROID_APKSIGNER:-}"
+  if [[ -z "$apksigner" ]]; then
+    apksigner="$(find "${ANDROID_HOME:-}" -type f -name apksigner -perm -u+x 2>/dev/null | sort -V | tail -n 1)"
+  fi
+  [[ -n "$apksigner" && -x "$apksigner" ]] || fail "Android apksigner was not found."
+
+  "$apksigner" sign \
+    --ks "$ANDROID_KEYSTORE_FILE" \
+    --ks-key-alias "$ANDROID_KEY_ALIAS" \
+    --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+    --key-pass env:ANDROID_KEY_PASSWORD \
+    "$TEST_APK"
+  "$apksigner" verify "$TEST_APK" >/dev/null
+  pass "Signed the instrumentation APK with the release key."
+}
+
 launch_app
 (cd android && ./gradlew :app:assembleDebugAndroidTest) \
   | tee "$EVIDENCE_ROOT/traffic-build.txt"
 [[ -f "$TEST_APK" ]] || fail "Instrumentation APK not found: $TEST_APK"
+if [[ -n "${ANDROID_KEYSTORE_FILE:-}" ]]; then
+  sign_instrumentation_apk
+fi
 adb_target install -r "$TEST_APK" | tee "$EVIDENCE_ROOT/traffic-install.txt"
 run_instrumentation_test \
   com.safenet.dns.SafeNetVpnEulaTest \
