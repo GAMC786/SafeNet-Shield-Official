@@ -35,11 +35,20 @@ public class SafeNetVpnEulaTest {
         Assert.assertNotNull("SafeNet DNS launch intent is missing", intent);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-        Activity activity = instrumentation.startActivitySync(intent);
-        activity.getSharedPreferences(VPN_PREFERENCES, Activity.MODE_PRIVATE)
+        instrumentation.getTargetContext().getSharedPreferences(VPN_PREFERENCES, Activity.MODE_PRIVATE)
             .edit()
             .remove(EULA_PREFERENCE)
             .commit();
+
+        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(
+            "com.safenet.dns.MainActivity",
+            null,
+            false
+        );
+        instrumentation.getTargetContext().startActivity(intent);
+        Activity activity = monitor.waitForActivityWithTimeout(45_000);
+        instrumentation.removeMonitor(monitor);
+        Assert.assertNotNull("SafeNet DNS Activity did not launch", activity);
 
         WebView webView = waitForWebView(activity);
         waitForWebViewDocument(activity, webView);
