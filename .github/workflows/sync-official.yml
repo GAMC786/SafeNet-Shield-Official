@@ -23,6 +23,7 @@ jobs:
     env:
       OFFICIAL_REPOSITORY: GAMC786/SafeNet-Shield-Official
       SYNC_BRANCH: sync/from-safenet-shield
+      PRE_REBASE_SYNC_TIP: 296e93f24b37f946a1fdf47b4cfcc2280313e811
 
     steps:
       - name: Check out source
@@ -66,15 +67,25 @@ jobs:
           if [[ -n "${existing_sha}" ]]; then
             previous_source_sha="$(git show -s --format=%B "${existing_sha}" |
               sed -n 's/^Source-Commit: //p' | tail -n 1)"
+            recorded_source_tree="$(git show -s --format=%B "${existing_sha}" |
+              sed -n 's/^Source-Tree: //p' | tail -n 1)"
+            existing_tree="$(git rev-parse "${existing_sha}^{tree}")"
 
             if [[ -n "${previous_source_sha}" ]]; then
-              if ! git cat-file -e "${previous_source_sha}^{commit}" 2>/dev/null; then
-                echo "::error::The previous source commit ${previous_source_sha} is unavailable; refusing to overwrite ${SYNC_BRANCH}."
+              if [[ -n "${recorded_source_tree}" ]]; then
+                previous_source_tree="${recorded_source_tree}"
+              elif git cat-file -e "${previous_source_sha}^{commit}" 2>/dev/null; then
+                previous_source_tree="$(git rev-parse "${previous_source_sha}^{tree}")"
+              elif [[ "${existing_sha}" == "${PRE_REBASE_SYNC_TIP}" ]]; then
+                # One-time bridge from snapshots created before Source-Tree
+                # markers were recorded. Matching the exact established tip
+                # ensures an independently advanced branch is still rejected.
+                previous_source_tree="${existing_tree}"
+              else
+                echo "::error::The previous source commit ${previous_source_sha} is unavailable and ${SYNC_BRANCH} is not the expected pre-rebase tip."
                 exit 1
               fi
 
-              previous_source_tree="$(git rev-parse "${previous_source_sha}^{tree}")"
-              existing_tree="$(git rev-parse "${existing_sha}^{tree}")"
               if [[ "${existing_tree}" != "${previous_source_tree}" ]]; then
                 echo "::error::${SYNC_BRANCH} no longer matches its recorded source snapshot; refusing to overwrite it."
                 exit 1
@@ -103,6 +114,7 @@ jobs:
 
           Source-Repository: ${GITHUB_REPOSITORY}
           Source-Commit: ${source_sha}
+          Source-Tree: ${source_tree}
           EOF
           )"
           fi
