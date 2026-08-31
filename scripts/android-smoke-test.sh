@@ -282,5 +282,5 @@ if has_node "Protected and connected"; then
 fi
 pass "Stopped protection and confirmed the VPN status cleared."
 
-echo "RESULT: PASS"
 echo "Evidence: $EVIDENCE_ROOT"
+echo "RESULT: PASS"

@@ -181,6 +181,22 @@ This project includes a GitHub Actions workflow that automatically builds APK an
 4. Scroll down to **Artifacts**
 5. Download **SafeNet-DNS-Android** (APK) or **SafeNet-DNS-Windows** (MSI)
 
+### Android release smoke evidence:
+1. Push a matching `v*` tag to run the release workflow.
+2. Open the **Android API 33 smoke test** job in that workflow run.
+3. Download **SafeNet-DNS-Android-Smoke-Evidence** from the job's Artifacts
+   section. It contains `run.log`, `active-ui.xml`, `dns-query.txt`, and
+   `https-test.txt`.
+4. The same four files are attached to the GitHub Release after the smoke job
+   passes. The release is blocked unless `run.log` ends with `RESULT: PASS`.
+
+The hosted check is a real API 33 Android emulator pass: it installs the debug
+APK and instrumentation APK, exercises EULA and VPN permission handling, then
+checks DNS, HTTPS, and the stopped state. A local run that cannot find `adb`,
+the Android SDK, or an API 33+ target is **preflight blocked**, not a device
+pass; do not treat that output as release evidence. See
+`android/app/src/androidTest/README.md` for the evidence contract.
+
 ### Create a Release with downloads:
 1. Create a git tag: `git tag v1.0.0`
 2. Push the tag: `git push origin v1.0.0`

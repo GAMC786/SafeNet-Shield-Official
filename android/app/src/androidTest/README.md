@@ -27,14 +27,27 @@ Requirements:
 
 The script captures the UIAutomator tree and command output under
 `android/app/build/android-smoke/` (override with
-`ANDROID_SMOKE_EVIDENCE_DIR`). The directory is build output and is not
-committed; attach its `run.log`, `dns-query.txt`, and `https-test.txt` to the
-Android release record. A run is complete only when the output ends with
-`RESULT: PASS`.
+`ANDROID_SMOKE_EVIDENCE_DIR`). The release workflow retains these four files:
+
+- `run.log` — the complete smoke run, ending in `RESULT: PASS`;
+- `active-ui.xml` — the UIAutomator tree while protection is active;
+- `dns-query.txt` — the resolver check for `example.com`;
+- `https-test.txt` — the instrumentation HTTPS assertion.
+
+For a tagged release, retrieve them from the **SafeNet-DNS-Android-Smoke-Evidence**
+artifact on the Android smoke job, or from the assets on the GitHub Release.
+The release job refuses to publish unless all four files exist and `run.log`
+ends with `RESULT: PASS`.
+
+The hosted release check is defined in `.github/workflows/build.yml`. It
+provisions a Google APIs API 33 emulator, installs the debug APK, builds and
+installs the instrumentation APK before enabling the VPN, and uses the public
+PIN-disabled SafeNet backend so no interactive sign-in is needed.
 
 ## Evidence
 
-Environment check on 2026-08-31: **BLOCKED** in the current workspace because
-`adb`, an Android SDK, and an API 33+ emulator or attached device are not
-available. The instrumentation and `adb` runner are ready to execute on the
-next supported Android target; no device pass is claimed for this workspace.
+Environment check on 2026-08-31: **PREFLIGHT BLOCKED** in the current workspace
+because `adb`, an Android SDK, and an API 33+ emulator or attached device are
+not available. This is not a device pass and must not be used as release
+evidence. A real device or hosted-emulator pass is claimed only when its
+`run.log` ends with `RESULT: PASS` and the four evidence files are retained.
