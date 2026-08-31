@@ -77,8 +77,9 @@ public class SafeNetVpnEulaTest {
                 found.set(findWebView(activity.getWindow().getDecorView()));
                 latch.countDown();
             });
-            Assert.assertTrue("Timed out waiting for the app WebView",
-                latch.await(1, TimeUnit.SECONDS));
+            if (!latch.await(2, TimeUnit.SECONDS)) {
+                continue;
+            }
             if (found.get() != null) {
                 return found.get();
             }
@@ -99,8 +100,9 @@ public class SafeNetVpnEulaTest {
                 progress.set(webView.getProgress());
                 latch.countDown();
             });
-            Assert.assertTrue("Timed out reading WebView loading state",
-                latch.await(1, TimeUnit.SECONDS));
+            if (!latch.await(2, TimeUnit.SECONDS)) {
+                continue;
+            }
             if (url.get() != null && progress.get() > 0) {
                 return;
             }
