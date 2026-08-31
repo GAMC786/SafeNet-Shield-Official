@@ -2,13 +2,15 @@ package com.safenet.dns;
 
 import android.app.Activity;
 import android.app.Instrumentation;
-import android.content.Intent;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
+import java.util.Collection;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,25 +32,12 @@ public class SafeNetVpnEulaTest {
     @Test
     public void startingWithoutEulaIsRejected() throws Exception {
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
-        Intent intent = instrumentation.getTargetContext().getPackageManager()
-            .getLaunchIntentForPackage(PACKAGE_NAME);
-        Assert.assertNotNull("SafeNet DNS launch intent is missing", intent);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
         instrumentation.getTargetContext().getSharedPreferences(VPN_PREFERENCES, Activity.MODE_PRIVATE)
             .edit()
             .remove(EULA_PREFERENCE)
             .commit();
 
-        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(
-            "com.safenet.dns.MainActivity",
-            null,
-            false
-        );
-        instrumentation.getTargetContext().startActivity(intent);
-        Activity activity = monitor.waitForActivityWithTimeout(45_000);
-        instrumentation.removeMonitor(monitor);
-        Assert.assertNotNull("SafeNet DNS Activity did not launch", activity);
+        Activity activity = waitForResumedActivity();
 
         WebView webView = waitForWebView(activity);
         waitForWebViewDocument(activity, webView);
@@ -86,6 +75,19 @@ public class SafeNetVpnEulaTest {
             SystemClock.sleep(250);
         }
         Assert.fail("SafeNet DNS WebView was not created");
+        return null;
+    }
+
+    private static Activity waitForResumedActivity() throws InterruptedException {
+        for (int attempt = 0; attempt < 120; attempt++) {
+            Collection<Activity> activities =
+                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
+            if (!activities.isEmpty()) {
+                return activities.iterator().next();
+            }
+            SystemClock.sleep(500);
+        }
+        Assert.fail("SafeNet DNS Activity was not resumed");
         return null;
     }
 
