@@ -13,7 +13,7 @@ async function collectTests(directory) {
     if (entry.isDirectory()) {
       await collectTests(entryPath);
     } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
-      tests.push(entryPath);
+      tests.push(entryPath.replaceAll("\\", "/"));
     }
   }
 }
