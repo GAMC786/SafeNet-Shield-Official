@@ -287,7 +287,9 @@ EOF
     fi
     package_service_ready=false
     for _ in {1..90}; do
-        if timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
+        if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
+            grep -q "found" &&
+            timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
             package_service_ready=true
             break
         fi
