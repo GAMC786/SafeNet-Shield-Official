@@ -61,6 +61,17 @@ If a pinned package is unavailable, setup stops and names the missing package;
 do not change a version in the setup command. Update `android/variables.gradle`
 when intentionally changing the Android toolchain.
 
+The Windows CI lane runs `scripts/test-setup-android-sdk.ps1` on
+`windows-latest` with a mocked `sdkmanager`. It verifies that the pins from
+`android/variables.gradle` reach the command, including SDK paths escaped in
+`android/local.properties`, and checks the remediation shown for missing
+`sdkmanager` and unavailable packages. To run the same check locally on
+Windows:
+
+```powershell
+pwsh -NoProfile -File scripts/test-setup-android-sdk.ps1
+```
+
 ### Step 1: Build the web application
 ```bash
 MOBILE_API_URL=https://your-server.example.com ./scripts/build-android.sh

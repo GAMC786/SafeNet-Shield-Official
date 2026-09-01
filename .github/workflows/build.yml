@@ -467,6 +467,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate Windows Android SDK setup
+        shell: pwsh
+        run: ./scripts/test-setup-android-sdk.ps1
+
       - name: Verify Windows application metadata
         shell: pwsh
         run: |
