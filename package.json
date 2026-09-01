@@ -10,7 +10,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",
-    "test": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

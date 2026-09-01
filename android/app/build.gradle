@@ -16,6 +16,7 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.safenet.dns"
+        testApplicationId "com.safenet.dns.test"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 4
@@ -46,6 +47,7 @@ android {
             }
         }
     }
+    testBuildType "release"
 }
 
 tasks.register("verifyReleaseSigning") {

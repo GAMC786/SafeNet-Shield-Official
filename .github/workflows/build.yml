@@ -130,6 +130,18 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
+      - name: Verify release instrumentation APK
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_apk="android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
+          if [[ ! -f "$test_apk" ]]; then
+            echo "::error::Release instrumentation APK is missing: $test_apk"
+            exit 1
+          fi
+          echo "Verified release instrumentation APK: $test_apk"
+
       - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
