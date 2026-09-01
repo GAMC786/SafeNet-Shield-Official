@@ -11,6 +11,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",
     "test": "node scripts/run-tests.mjs",
+    "android:setup": "./scripts/setup-android-sdk.sh",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

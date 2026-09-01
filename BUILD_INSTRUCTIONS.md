@@ -6,7 +6,7 @@ This document provides instructions for building native installers for Android (
 
 ### For Android APK:
 - Android Studio installed
-- Android SDK (API level 33+)
+- Android SDK Command-line Tools
 - Java JDK 17+
 - Gradle
 
@@ -22,6 +22,29 @@ This document provides instructions for building native installers for Android (
 The APK packages the SafeNet DNS frontend only. It must connect to a separately
 running SafeNet DNS backend over HTTPS. The backend must be publicly reachable
 from the Android device.
+
+### Step 0: Prepare the Android SDK
+
+Set `ANDROID_SDK_ROOT` (or `ANDROID_HOME`) to the Android SDK directory, then
+run the shared setup command from the project root:
+
+```bash
+ANDROID_SDK_ROOT="$HOME/Android/Sdk" npm run android:setup
+```
+
+The command reads the compile SDK, target SDK, and build-tools versions from
+`android/variables.gradle`, accepts the SDK licenses, installs the required
+packages, and verifies that they are present. If Android Studio has already
+created `android/local.properties` with an `sdk.dir`, the environment variable
+can be omitted:
+
+```bash
+npm run android:setup
+```
+
+If a pinned package is unavailable, setup stops and names the missing package;
+do not change a version in the setup command. Update `android/variables.gradle`
+when intentionally changing the Android toolchain.
 
 ### Step 1: Build the web application
 ```bash
