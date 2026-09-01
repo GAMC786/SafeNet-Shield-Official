@@ -25,6 +25,10 @@ dot_secondary="${ANDROID_SMOKE_DOT_SECONDARY:-cloudflare-dns.com}"
 ordinary_url="${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}"
 fixture_tmp=""
 fixture_pid=""
+coverage_label="controlled-fixture"
+if [[ "$resolver_mode" == "public" ]]; then
+    coverage_label="external-network"
+fi
 
 cleanup_fixture() {
     if [[ -n "$fixture_pid" ]] && kill -0 "$fixture_pid" 2>/dev/null; then
@@ -139,6 +143,7 @@ command -v adb >/dev/null 2>&1 || {
 
 mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt "$output_dir"/failure-category.txt
+printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode" > "$output_dir/coverage.txt"
 
 adb_args=()
 if [[ -n "$serial" ]]; then
@@ -159,8 +164,8 @@ capture() {
 fixture_failure() {
     local message="$1"
     echo "FIXTURE_FAILURE: $message" | tee "$output_dir/failure-category.txt" >&2
-    printf 'target=%s\nresolver_mode=%s\nfailure_category=FIXTURE_FAILURE\nmessage=%s\n' \
-        "$serial" "$resolver_mode" "$message" | tee "$output_dir/result.txt" >&2
+    printf 'target=%s\nresolver_mode=%s\ncoverage=%s\nfailure_category=FIXTURE_FAILURE\nmessage=%s\n' \
+        "$serial" "$resolver_mode" "$coverage_label" "$message" | tee "$output_dir/result.txt" >&2
     exit 1
 }
 
@@ -384,8 +389,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nresolver_mode=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
-    "$serial" "$apk_path" "$resolver_mode" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
+    "$serial" "$apk_path" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2
