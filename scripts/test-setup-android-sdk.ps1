@@ -240,3 +240,5 @@ exit 0
         Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
 }
+
+exit 0
