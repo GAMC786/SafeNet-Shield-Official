@@ -529,9 +529,21 @@ jobs:
         run: ./scripts/build-android.sh
 
       - name: Build debug APK on Windows
+        id: build-windows-android
         working-directory: android
         shell: pwsh
         run: .\gradlew.bat assembleDebug
+
+      - name: Upload Windows Android build evidence
+        if: ${{ failure() && steps.build-windows-android.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Windows-Android-build-evidence
+          path: |
+            android/app/build/reports
+            android/app/build/outputs/apk
+          if-no-files-found: warn
 
       - name: Verify Windows debug APK
         shell: pwsh
