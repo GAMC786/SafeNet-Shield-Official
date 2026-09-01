@@ -471,6 +471,20 @@ jobs:
         shell: pwsh
         run: ./scripts/test-setup-android-sdk.ps1
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install and verify Android toolchain from Gradle pins
+        shell: pwsh
+        run: ./scripts/setup-android-sdk.ps1
+
       - name: Verify Windows application metadata
         shell: pwsh
         run: |
@@ -507,6 +521,34 @@ jobs:
           }
           $env:VITE_API_URL = $apiOrigin
           npm run build
+
+      - name: Sync Android web assets for Windows
+        shell: bash
+        env:
+          MOBILE_API_URL: https://safe-net-shield-official.replit.app
+        run: ./scripts/build-android.sh
+
+      - name: Build debug APK on Windows
+        working-directory: android
+        shell: pwsh
+        run: .\gradlew.bat assembleDebug
+
+      - name: Verify Windows debug APK
+        shell: pwsh
+        run: |
+          $apkPath = Join-Path $env:GITHUB_WORKSPACE "android\app\build\outputs\apk\debug\app-debug.apk"
+          if (-not (Test-Path -LiteralPath $apkPath -PathType Leaf)) {
+            Write-Error "Expected Windows Android debug APK was not produced: $apkPath"
+            exit 1
+          }
+
+          $apk = Get-Item -LiteralPath $apkPath
+          if ($apk.Length -le 0) {
+            Write-Error "Windows Android debug APK is empty: $apkPath"
+            exit 1
+          }
+
+          Write-Host "Verified Windows Android debug APK: $apkPath ($($apk.Length) bytes)"
 
       - name: Build Windows installer
         run: npx electron-builder --win --x64 --publish never
