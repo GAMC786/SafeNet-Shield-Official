@@ -53,6 +53,7 @@ import java.util.concurrent.TimeUnit;
 public class SafeNetVpnInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String VIRTUAL_DNS = "10.248.0.1";
+    private static final String VIRTUAL_DNS_V6 = "fd00:534e:5348::1";
     private static final int DNS_PORT = 53;
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long VPN_START_TIMEOUT_SECONDS = 15;
@@ -154,6 +155,7 @@ public class SafeNetVpnInstrumentationTest {
         assertNotNull(vpnProperties);
 
         boolean hasVirtualDnsRoute = false;
+        boolean hasVirtualDnsV6Route = false;
         boolean hasDefaultRoute = false;
         for (RouteInfo route : vpnProperties.getRoutes()) {
             if (route.isDefaultRoute()) {
@@ -164,8 +166,14 @@ public class SafeNetVpnInstrumentationTest {
                 route.getDestination().getPrefixLength() == 32) {
                 hasVirtualDnsRoute = true;
             }
+            if (route.getDestination() != null &&
+                VIRTUAL_DNS_V6.equalsIgnoreCase(route.getDestination().getAddress().getHostAddress()) &&
+                route.getDestination().getPrefixLength() == 128) {
+                hasVirtualDnsV6Route = true;
+            }
         }
         assertTrue("The VPN must own the virtual DNS /32 route", hasVirtualDnsRoute);
+        assertTrue("The VPN must own the virtual DNS IPv6 /128 route", hasVirtualDnsV6Route);
         assertFalse("DNS-only protection must not install a default route", hasDefaultRoute);
 
         byte[] response = queryVirtualDns();
@@ -177,6 +185,13 @@ public class SafeNetVpnInstrumentationTest {
         );
         assertEquals("DNS response ID must match the query ID", 0x534e, readUnsignedShort(response, 0));
         assertResolverResponse(response);
+
+        byte[] ipv6Response = queryVirtualDnsV6();
+        assertTrue("The virtual IPv6 DNS endpoint must return a DNS response",
+            ipv6Response.length >= 12);
+        assertEquals("IPv6 DNS response ID must match the query ID",
+            0x534e, readUnsignedShort(ipv6Response, 0));
+        assertResolverResponse(ipv6Response);
 
         checkOrdinaryConnectivity();
     }
@@ -384,6 +399,33 @@ public class SafeNetVpnInstrumentationTest {
         } catch (IOException error) {
             String category = classifyResolverFailure(error.getMessage());
             throw new AssertionError("DNS query failed category=" + category +
+                " message=" + error.getMessage(), error);
+        }
+    }
+
+    private byte[] queryVirtualDnsV6() throws Exception {
+        byte[] query = new byte[] {
+            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x07, 's', 'a', 'f', 'e', 'n', 'e', 't',
+            0x03, 'c', 'o', 'm', 0x00,
+            0x00, 0x01, 0x00, 0x01
+        };
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(5000);
+            DatagramPacket request = new DatagramPacket(
+                query, query.length, new InetSocketAddress(VIRTUAL_DNS_V6, DNS_PORT)
+            );
+            socket.send(request);
+            byte[] buffer = new byte[65535];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+            byte[] result = new byte[response.getLength()];
+            System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
+            return result;
+        } catch (IOException error) {
+            String category = classifyResolverFailure(error.getMessage());
+            throw new AssertionError("IPv6 DNS query failed category=" + category +
                 " message=" + error.getMessage(), error);
         }
     }

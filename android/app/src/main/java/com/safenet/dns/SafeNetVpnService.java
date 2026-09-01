@@ -45,9 +45,11 @@ public class SafeNetVpnService extends VpnService {
     private static final String CHANNEL_ID = "safenet_dns_vpn";
     private static final String VIRTUAL_DNS = "10.248.0.1";
     private static final String VIRTUAL_CLIENT = "10.248.0.2";
+    private static final String VIRTUAL_DNS_V6 = "fd00:534e:5348::1";
+    private static final String VIRTUAL_CLIENT_V6 = "fd00:534e:5348::2";
     private static final int DNS_PORT = 53;
     private static final int SOCKET_TIMEOUT_MS = 3500;
-    private static final int MAX_DNS_RESPONSE = 65535;
+    private static final int MAX_DNS_RESPONSE = 65527;
 
     private static volatile SafeNetVpnService instance;
     private static volatile String lastError;
@@ -94,8 +96,11 @@ public class SafeNetVpnService extends VpnService {
                 .setSession("SafeNet DNS")
                 .setBlocking(true)
                 .addAddress(VIRTUAL_CLIENT, 32)
+                .addAddress(VIRTUAL_CLIENT_V6, 128)
                 .addRoute(VIRTUAL_DNS, 32)
+                .addRoute(VIRTUAL_DNS_V6, 128)
                 .addDnsServer(VIRTUAL_DNS)
+                .addDnsServer(VIRTUAL_DNS_V6)
                 .establish();
             if (vpnInterface == null) {
                 throw new IOException("Android could not establish the DNS VPN interface.");
@@ -124,6 +129,13 @@ public class SafeNetVpnService extends VpnService {
     }
 
     @Override
+    public void onRevoke() {
+        stopVpn(false);
+        stopSelf();
+        super.onRevoke();
+    }
+
+    @Override
     public IBinder onBind(Intent intent) {
         return super.onBind(intent);
     }
@@ -134,7 +146,7 @@ public class SafeNetVpnService extends VpnService {
             return;
         }
 
-        byte[] packet = new byte[32767];
+        byte[] packet = new byte[65535];
         try (
             FileInputStream input = new FileInputStream(localInterface.getFileDescriptor());
             FileOutputStream output = new FileOutputStream(localInterface.getFileDescriptor())
@@ -157,46 +169,104 @@ public class SafeNetVpnService extends VpnService {
     }
 
     private void forwardPacket(byte[] packet, int length, FileOutputStream output) throws IOException {
-        if (length < 28 || (packet[0] & 0xf0) != 0x40) {
+        if (length < 1) {
+            return;
+        }
+
+        if ((packet[0] & 0xf0) == 0x40) {
+            forwardIpv4Packet(packet, length, output);
+        } else if ((packet[0] & 0xf0) == 0x60) {
+            forwardIpv6Packet(packet, length, output);
+        }
+    }
+
+    private void forwardIpv4Packet(byte[] packet, int length, FileOutputStream output) throws IOException {
+        if (length < 28) {
             return;
         }
 
         int headerLength = (packet[0] & 0x0f) * 4;
-        if (headerLength < 20 || length < headerLength + 8 || (packet[9] & 0xff) != 17) {
-            return;
-        }
-        if (!matchesAddress(packet, 16, VIRTUAL_DNS)) {
+        int ipv4TotalLength = readUnsignedShort(packet, 2);
+        if (headerLength < 20 || headerLength > 60 ||
+            length < headerLength + 8 || (packet[9] & 0xff) != 17 ||
+            ipv4TotalLength < headerLength + 8 || ipv4TotalLength > length ||
+            !matchesAddress(packet, 16, VIRTUAL_DNS)) {
             return;
         }
 
-        int sourcePort = readUnsignedShort(packet, headerLength);
-        int destinationPort = readUnsignedShort(packet, headerLength + 2);
+        int udpOffset = headerLength;
+        int sourcePort = readUnsignedShort(packet, udpOffset);
+        int destinationPort = readUnsignedShort(packet, udpOffset + 2);
         if (destinationPort != DNS_PORT) {
             return;
         }
 
-        int udpLength = readUnsignedShort(packet, headerLength + 4);
-        int payloadOffset = headerLength + 8;
-        int payloadLength = Math.min(udpLength - 8, length - payloadOffset);
-        if (payloadLength <= 0 || payloadLength > MAX_DNS_RESPONSE) {
+        int udpLength = readUnsignedShort(packet, udpOffset + 4);
+        int payloadOffset = udpOffset + 8;
+        if (udpLength < 8 || udpLength > ipv4TotalLength - udpOffset ||
+            udpLength > length - udpOffset || udpLength - 8 > MAX_DNS_RESPONSE) {
             return;
         }
+        int payloadLength = udpLength - 8;
 
         byte[] query = new byte[payloadLength];
         System.arraycopy(packet, payloadOffset, query, 0, payloadLength);
-        byte[] response = resolver.forward(query, this);
+        ResolverConfig activeResolver = resolver;
+        if (activeResolver == null) {
+            return;
+        }
+        byte[] response = activeResolver.forward(query, this);
         if (response == null || response.length == 0 || response.length > MAX_DNS_RESPONSE) {
             return;
         }
 
-        byte[] responsePacket = createUdpResponse(packet, headerLength, sourcePort, destinationPort, response);
+        byte[] responsePacket = createUdpResponse(packet, sourcePort, destinationPort, response);
+        output.write(responsePacket);
+        output.flush();
+    }
+
+    private void forwardIpv6Packet(byte[] packet, int length, FileOutputStream output) throws IOException {
+        final int ipv6HeaderLength = 40;
+        if (length < ipv6HeaderLength + 8 ||
+            (packet[6] & 0xff) != 17 ||
+            !matchesAddress(packet, 24, VIRTUAL_DNS_V6)) {
+            return;
+        }
+
+        int udpOffset = ipv6HeaderLength;
+        int sourcePort = readUnsignedShort(packet, udpOffset);
+        int destinationPort = readUnsignedShort(packet, udpOffset + 2);
+        if (destinationPort != DNS_PORT) {
+            return;
+        }
+
+        int udpLength = readUnsignedShort(packet, udpOffset + 4);
+        int payloadOffset = udpOffset + 8;
+        int ipv6PayloadLength = readUnsignedShort(packet, 4);
+        if (udpLength < 8 || udpLength > ipv6PayloadLength ||
+            udpLength > length - ipv6HeaderLength || udpLength - 8 > MAX_DNS_RESPONSE) {
+            return;
+        }
+        int payloadLength = udpLength - 8;
+
+        byte[] query = new byte[payloadLength];
+        System.arraycopy(packet, payloadOffset, query, 0, payloadLength);
+        ResolverConfig activeResolver = resolver;
+        if (activeResolver == null) {
+            return;
+        }
+        byte[] response = activeResolver.forward(query, this);
+        if (response == null || response.length == 0 || response.length > MAX_DNS_RESPONSE) {
+            return;
+        }
+
+        byte[] responsePacket = createUdpIpv6Response(packet, sourcePort, destinationPort, response);
         output.write(responsePacket);
         output.flush();
     }
 
     private byte[] createUdpResponse(
         byte[] request,
-        int requestHeaderLength,
         int sourcePort,
         int destinationPort,
         byte[] payload
@@ -222,6 +292,30 @@ public class SafeNetVpnService extends VpnService {
         writeUnsignedShort(response, 24, udpLength);
         System.arraycopy(payload, 0, response, 28, payload.length);
         writeUnsignedShort(response, 26, udpChecksum(response, 20, udpLength));
+        return response;
+    }
+
+    private byte[] createUdpIpv6Response(
+        byte[] request,
+        int sourcePort,
+        int destinationPort,
+        byte[] payload
+    ) {
+        int udpLength = 8 + payload.length;
+        int totalLength = 40 + udpLength;
+        byte[] response = new byte[totalLength];
+        System.arraycopy(request, 0, response, 0, 4);
+        writeUnsignedShort(response, 4, udpLength);
+        response[6] = 17;
+        response[7] = 64;
+        System.arraycopy(request, 24, response, 8, 16);
+        System.arraycopy(request, 8, response, 24, 16);
+
+        writeUnsignedShort(response, 40, destinationPort);
+        writeUnsignedShort(response, 42, sourcePort);
+        writeUnsignedShort(response, 44, udpLength);
+        System.arraycopy(payload, 0, response, 48, payload.length);
+        writeUnsignedShort(response, 46, udpChecksumIpv6(response, 40, udpLength));
         return response;
     }
 
@@ -280,10 +374,10 @@ public class SafeNetVpnService extends VpnService {
     private static boolean matchesAddress(byte[] packet, int offset, String expected) {
         try {
             byte[] address = InetAddress.getByName(expected).getAddress();
-            if (address.length != 4) {
+            if (offset < 0 || offset + address.length > packet.length) {
                 return false;
             }
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < address.length; i++) {
                 if (packet[offset + i] != address[i]) {
                     return false;
                 }
@@ -321,6 +415,26 @@ public class SafeNetVpnService extends VpnService {
         }
         sum += 17;
         sum += udpLength;
+        for (int i = udpOffset; i < udpOffset + udpLength; i += 2) {
+            int high = packet[i] & 0xff;
+            int low = i + 1 < udpOffset + udpLength ? packet[i + 1] & 0xff : 0;
+            sum += (high << 8) | low;
+        }
+        while ((sum >>> 16) != 0) {
+            sum = (sum & 0xffff) + (sum >>> 16);
+        }
+        int result = (int) (~sum) & 0xffff;
+        return result == 0 ? 0xffff : result;
+    }
+
+    private static int udpChecksumIpv6(byte[] packet, int udpOffset, int udpLength) {
+        long sum = 0;
+        for (int i = 8; i < 40; i += 2) {
+            sum += ((packet[i] & 0xff) << 8) | (packet[i + 1] & 0xff);
+        }
+        sum += (udpLength >>> 16) & 0xffff;
+        sum += udpLength & 0xffff;
+        sum += 17;
         for (int i = udpOffset; i < udpOffset + udpLength; i += 2) {
             int high = packet[i] & 0xff;
             int low = i + 1 < udpOffset + udpLength ? packet[i + 1] & 0xff : 0;
