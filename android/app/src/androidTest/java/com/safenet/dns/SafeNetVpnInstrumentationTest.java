@@ -33,14 +33,18 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.io.IOException;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * End-to-end checks for the native SafeNet DNS VPN.
@@ -192,6 +196,13 @@ public class SafeNetVpnInstrumentationTest {
         assertEquals("IPv6 DNS response ID must match the query ID",
             0x534e, readUnsignedShort(ipv6Response, 0));
         assertResolverResponse(ipv6Response);
+
+        byte[] tcpResponse = queryVirtualDnsTcp();
+        assertTrue("The virtual DNS TCP endpoint must return a DNS response",
+            tcpResponse.length >= 12);
+        assertEquals("TCP DNS response ID must match the query ID",
+            0x534e, readUnsignedShort(tcpResponse, 0));
+        assertResolverResponse(tcpResponse);
 
         checkOrdinaryConnectivity();
     }
@@ -365,7 +376,7 @@ public class SafeNetVpnInstrumentationTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
             UiObject2 allow = device.findObject(
-                By.textMatches("(?i)(allow|ok|connect|i trust this application)")
+                By.text(Pattern.compile("(?i)(allow|ok|connect|i trust this application)"))
             );
             if (allow != null && allow.isEnabled()) {
                 allow.click();
@@ -426,6 +437,36 @@ public class SafeNetVpnInstrumentationTest {
         } catch (IOException error) {
             String category = classifyResolverFailure(error.getMessage());
             throw new AssertionError("IPv6 DNS query failed category=" + category +
+                " message=" + error.getMessage(), error);
+        }
+    }
+
+    private byte[] queryVirtualDnsTcp() throws Exception {
+        byte[] query = new byte[] {
+            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x07, 's', 'a', 'f', 'e', 'n', 'e', 't',
+            0x03, 'c', 'o', 'm', 0x00,
+            0x00, 0x01, 0x00, 0x01
+        };
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(VIRTUAL_DNS, DNS_PORT), 5000);
+            socket.setSoTimeout(5000);
+            DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+            output.writeShort(query.length);
+            output.write(query);
+            output.flush();
+
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            int responseLength = input.readUnsignedShort();
+            assertTrue("The DNS-over-TCP response length must be valid",
+                responseLength > 0 && responseLength <= 65527);
+            byte[] response = new byte[responseLength];
+            input.readFully(response);
+            return response;
+        } catch (IOException error) {
+            String category = classifyResolverFailure(error.getMessage());
+            throw new AssertionError("TCP DNS query failed category=" + category +
                 " message=" + error.getMessage(), error);
         }
     }

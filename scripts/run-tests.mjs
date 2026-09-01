@@ -1,8 +1,17 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const tests = [];
+
+function encodeAnnotation(value) {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A")
+    .replaceAll(":", "%3A")
+    .replaceAll(",", "%2C");
+}
 
 async function collectTests(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -25,21 +34,38 @@ if (tests.length === 0) {
   process.exit(1);
 }
 
-const testProcess = spawn(
-  process.execPath,
-  ["--import", "tsx", "--test", ...tests],
-  { stdio: "inherit", shell: false },
-);
+let exitCode = 0;
+for (const test of tests) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--test", test],
+    { encoding: "utf8", shell: false },
+  );
 
-testProcess.on("error", (error) => {
-  console.error(`Could not start test runner: ${error.message}`);
-  process.exit(1);
-});
-
-testProcess.on("exit", (code, signal) => {
-  if (signal) {
-    console.error(`Test runner terminated by ${signal}.`);
-    process.exit(1);
+  if (result.error) {
+    const message = `Could not start test runner for ${test}: ${result.error.message}`;
+    console.error(message);
+    console.log(`::error title=Test runner failure::${encodeAnnotation(message)}`);
+    exitCode = 1;
+    continue;
   }
-  process.exit(code ?? 1);
-});
+  if (result.signal) {
+    const message = `Test runner for ${test} terminated by ${result.signal}.`;
+    console.error(message);
+    console.log(`::error title=Test runner failure::${encodeAnnotation(message)}`);
+    exitCode = 1;
+    continue;
+  }
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    const message = `Test failed for ${test} with exit code ${result.status ?? 1}.\n${output}`;
+    console.error(message);
+    console.log(`::error title=Test failure::${encodeAnnotation(message).slice(0, 60000)}`);
+    exitCode = result.status ?? 1;
+  } else {
+    process.stdout.write(result.stdout ?? "");
+    process.stderr.write(result.stderr ?? "");
+  }
+}
+
+process.exit(exitCode);

@@ -7,7 +7,7 @@ import test from "node:test";
 const workflow = readFileSync(
   path.resolve(process.cwd(), ".github/workflows/build.yml"),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 
 const failureStep = "Alert maintainers about public DNS smoke failure";
 const recoveryStep = "Close recovered public DNS smoke alert";
