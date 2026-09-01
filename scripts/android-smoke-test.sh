@@ -269,6 +269,18 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
+    package_service_ready=false
+    for _ in {1..120}; do
+        if [[ "$(adb_run shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]] &&
+            adb_run shell cmd package path android >/dev/null 2>&1; then
+            package_service_ready=true
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$package_service_ready" != true ]]; then
+        fixture_failure "the Android package service did not become ready after installing the temporary TLS CA"
+    fi
 
     fixture_privilege=()
     if [[ "${EUID}" -ne 0 ]]; then
