@@ -112,7 +112,9 @@ try {
         @'
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments
+    [string[]]$Arguments,
+    [Parameter(ValueFromPipeline = $true)]
+    [string]$LicenseInput
 )
 
 $joinedArguments = ($Arguments -join " ").Trim()
