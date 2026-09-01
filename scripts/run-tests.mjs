@@ -4,6 +4,15 @@ import { spawnSync } from "node:child_process";
 
 const tests = [];
 
+function encodeAnnotation(value) {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A")
+    .replaceAll(":", "%3A")
+    .replaceAll(",", "%2C");
+}
+
 async function collectTests(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
@@ -30,21 +39,32 @@ for (const test of tests) {
   const result = spawnSync(
     process.execPath,
     ["--import", "tsx", "--test", test],
-    { stdio: "inherit", shell: false },
+    { encoding: "utf8", shell: false },
   );
 
   if (result.error) {
-    console.error(`Could not start test runner for ${test}: ${result.error.message}`);
+    const message = `Could not start test runner for ${test}: ${result.error.message}`;
+    console.error(message);
+    console.log(`::error title=Test runner failure::${encodeAnnotation(message)}`);
     exitCode = 1;
     continue;
   }
   if (result.signal) {
-    console.error(`Test runner for ${test} terminated by ${result.signal}.`);
+    const message = `Test runner for ${test} terminated by ${result.signal}.`;
+    console.error(message);
+    console.log(`::error title=Test runner failure::${encodeAnnotation(message)}`);
     exitCode = 1;
     continue;
   }
   if (result.status !== 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    const message = `Test failed for ${test} with exit code ${result.status ?? 1}.\n${output}`;
+    console.error(message);
+    console.log(`::error title=Test failure::${encodeAnnotation(message).slice(0, 60000)}`);
     exitCode = result.status ?? 1;
+  } else {
+    process.stdout.write(result.stdout ?? "");
+    process.stderr.write(result.stderr ?? "");
   }
 }
 
