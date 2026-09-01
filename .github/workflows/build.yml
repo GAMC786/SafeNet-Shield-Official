@@ -159,6 +159,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
           # Release/tag smoke checks use the local fixture by default so a
           # public resolver outage cannot fail the release lane. Scheduled
