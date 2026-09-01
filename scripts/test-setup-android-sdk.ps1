@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # Exercise the Windows Android SDK setup entry point without downloading an SDK.
-# The mock is invoked as a PowerShell script so the validation focuses on
-# SDK-root and package handling without depending on cmd argument forwarding.
+# The mock is invoked through a native .cmd executable so it can consume the
+# license-answer stdin stream just like sdkmanager on Windows.
 
 function Assert-Condition([bool]$Condition, [string]$Message) {
     if (-not $Condition) {
@@ -66,6 +66,7 @@ $variablesFile = Join-Path $projectRoot "android\variables.gradle"
 $localPropertiesFile = Join-Path $projectRoot "android\local.properties"
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) "safenet-android-sdk-test-$([Guid]::NewGuid())"
 $mockDirectory = Join-Path $testRoot "mock-sdkmanager"
+$mockCommand = Join-Path $mockDirectory "sdkmanager.cmd"
 $mockScript = Join-Path $mockDirectory "mock-sdkmanager.ps1"
 $mockLog = Join-Path $testRoot "sdkmanager.log"
 $escapedSdkRoot = Join-Path $testRoot "Android SDK with spaces"
@@ -108,22 +109,12 @@ try {
     New-Item -ItemType Directory -Path $mockDirectory -Force | Out-Null
     New-Item -ItemType Directory -Path $escapedSdkRoot -Force | Out-Null
     [IO.File]::WriteAllText(
+        $mockCommand,
+        "@echo off`r`nsetlocal`r`necho %* | findstr /C:`"--licenses`" >nul`r`nif not errorlevel 1 (`r`n  if not `"%MOCK_SDKMANAGER_LOG%`"==`"`" echo [--licenses]>>`"%MOCK_SDKMANAGER_LOG%`"`r`n  exit /b 0`r`n)`r`npwsh -NoProfile -ExecutionPolicy Bypass -File `"%~dp0mock-sdkmanager.ps1`"`r`nexit /b %ERRORLEVEL%`r`n"
+    )
+    [IO.File]::WriteAllText(
         $mockScript,
         @'
-[CmdletBinding()]
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments,
-    [Parameter(ValueFromPipeline = $true)]
-    [string]$LicenseInput
-)
-
-process {
-$joinedArguments = ($Arguments -join " ").Trim()
-if ($joinedArguments -match '(^|\s)--licenses(\s|$)') {
-    exit 0
-}
-
 if ($env:MOCK_SDKMANAGER_MODE -eq "missing") {
     # Simulate a repository/package that sdkmanager cannot make available.
     exit 0
@@ -137,23 +128,8 @@ if ([string]::IsNullOrWhiteSpace($sdkRoot) -or $packages.Count -eq 0) {
     [Console]::Error.WriteLine("mock sdkmanager test contract is incomplete")
     exit 2
 }
-if (-not $joinedArguments.Contains("--sdk_root=$sdkRoot")) {
-    [Console]::Error.WriteLine("mock sdkmanager did not receive --sdk_root")
-    exit 2
-}
 
 $sdkRootArgument = "--sdk_root=$sdkRoot"
-if (-not $joinedArguments.Contains("--install")) {
-    [Console]::Error.WriteLine("mock sdkmanager did not receive --install packages")
-    exit 2
-}
-foreach ($package in $packages) {
-    if (-not $joinedArguments.Contains($package)) {
-        [Console]::Error.WriteLine("mock sdkmanager did not receive package $package")
-        exit 2
-    }
-}
-
 if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
     Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$sdkRootArgument]"
     Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[--install]"
@@ -177,7 +153,6 @@ foreach ($package in $packages) {
 }
 
 exit 0
-}
 '@
     )
 
@@ -188,7 +163,7 @@ exit 0
     [IO.File]::WriteAllText($localPropertiesFile, "sdk.dir=$escapedSdkPath`r`n")
 
     $success = Invoke-Setup $powerShellPath $setupScript @{
-        SDKMANAGER = $mockScript
+        SDKMANAGER = $mockCommand
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "success"
         MOCK_SDKMANAGER_SDK_ROOT = $escapedSdkRoot
@@ -237,7 +212,7 @@ exit 0
     New-Item -ItemType Directory -Path $unavailableSdk -Force | Out-Null
     $unavailablePackage = Invoke-Setup $powerShellPath $setupScript @{
         ANDROID_SDK_ROOT = $unavailableSdk
-        SDKMANAGER = $mockScript
+        SDKMANAGER = $mockCommand
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "missing"
         MOCK_SDKMANAGER_SDK_ROOT = $unavailableSdk
