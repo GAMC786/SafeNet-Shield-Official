@@ -8,6 +8,15 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      android_resolver_mode:
+        description: "Resolver mode for the Android smoke lane"
+        required: true
+        default: fixture
+        type: choice
+        options:
+          - fixture
+          - public
 
 permissions:
   contents: read
@@ -112,7 +121,12 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          # Release/tag smoke checks use the local fixture by default so a
+          # public resolver outage cannot fail the release lane. Choose
+          # "public" in workflow_dispatch only when an external-network check
+          # is intentionally wanted.
+          script: ANDROID_SMOKE_RESOLVER_MODE="${{ github.event.inputs.android_resolver_mode || 'fixture' }}" ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
 
       - name: Upload Android DNS smoke evidence
         if: always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')

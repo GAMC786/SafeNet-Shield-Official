@@ -169,8 +169,14 @@ public class SafeNetVpnInstrumentationTest {
         assertFalse("DNS-only protection must not install a default route", hasDefaultRoute);
 
         byte[] response = queryVirtualDns();
-        assertTrue("The virtual DNS endpoint must return a DNS response", response.length >= 12);
+        assertTrue(
+            isFixtureMode()
+                ? "FIXTURE_FAILURE: the virtual DNS endpoint did not return a DNS response"
+                : "The virtual DNS endpoint must return a DNS response",
+            response.length >= 12
+        );
         assertEquals("DNS response ID must match the query ID", 0x534e, readUnsignedShort(response, 0));
+        assertResolverResponse(response);
 
         checkOrdinaryConnectivity();
     }
@@ -186,15 +192,15 @@ public class SafeNetVpnInstrumentationTest {
         );
         assertTrue(dohStarted.getBoolean("ok"));
         waitForVpnState(true, VPN_START_TIMEOUT_SECONDS);
-        assertTrue("DoH fallback must resolve DNS through the secondary resolver",
-            queryVirtualDns().length >= 12);
+        byte[] dohResponse = queryVirtualDns();
+        assertResolverResponse(dohResponse);
         stopAndAssertClean();
 
         JSONObject dotStarted = startVpnWithPermission("dot", "192.0.2.1", dotSecondary());
         assertTrue(dotStarted.getBoolean("ok"));
         waitForVpnState(true, VPN_START_TIMEOUT_SECONDS);
-        assertTrue("DoT fallback must resolve DNS through the secondary resolver",
-            queryVirtualDns().length >= 12);
+        byte[] dotResponse = queryVirtualDns();
+        assertResolverResponse(dotResponse);
         stopAndAssertClean();
     }
 
@@ -376,10 +382,42 @@ public class SafeNetVpnInstrumentationTest {
             System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
             return result;
         } catch (IOException error) {
-            String category = classifyNetworkFailure(error.getMessage());
+            String category = classifyResolverFailure(error.getMessage());
             throw new AssertionError("DNS query failed category=" + category +
                 " message=" + error.getMessage(), error);
         }
+    }
+
+    private void assertResolverResponse(byte[] response) {
+        assertTrue(
+            isFixtureMode()
+                ? "FIXTURE_FAILURE: the virtual DNS endpoint did not return a DNS response"
+                : "The virtual DNS endpoint must return a DNS response",
+            response.length >= 12
+        );
+        if (isFixtureMode()) {
+            byte[] expectedAddress = new byte[] {(byte) 203, 0, 113, 7};
+            assertTrue(
+                "FIXTURE_FAILURE: controlled resolver returned an unexpected DNS response",
+                containsBytes(response, expectedAddress)
+            );
+        }
+    }
+
+    private static boolean containsBytes(byte[] value, byte[] expected) {
+        for (int start = 0; start <= value.length - expected.length; start++) {
+            boolean matches = true;
+            for (int offset = 0; offset < expected.length; offset++) {
+                if (value[start + offset] != expected[offset]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void checkOrdinaryConnectivity() throws Exception {
@@ -394,7 +432,9 @@ public class SafeNetVpnInstrumentationTest {
             assertTrue("Ordinary non-DNS connectivity returned an HTTP error",
                 responseCode >= 200 && responseCode < 500);
         } catch (IOException error) {
-            String category = classifyNetworkFailure(error.getMessage());
+            String category = isFixtureMode()
+                ? classifyResolverFailure(error.getMessage())
+                : classifyNetworkFailure(error.getMessage());
             fail("Ordinary non-DNS connectivity failed category=" + category +
                 " message=" + error.getMessage());
         } finally {
@@ -445,6 +485,20 @@ public class SafeNetVpnInstrumentationTest {
             return "UNRELATED_NETWORK_FAILURE";
         }
         return "NON_NETWORK_FAILURE";
+    }
+
+    private String classifyResolverFailure(String message) {
+        String category = classifyNetworkFailure(message);
+        if (isFixtureMode() &&
+            ("NON_NETWORK_FAILURE".equals(category) ||
+                (message != null && message.toUpperCase(Locale.US).contains("ECONNREFUSED")))) {
+            return "FIXTURE_FAILURE";
+        }
+        return category;
+    }
+
+    private boolean isFixtureMode() {
+        return "fixture".equals(argument("resolver-mode", "public"));
     }
 
     private static final class TestResultBridge {
