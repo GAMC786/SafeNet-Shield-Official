@@ -269,10 +269,16 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
+    command -v timeout >/dev/null 2>&1 || \
+        fixture_failure "timeout is required to bound Android readiness probes"
     package_service_ready=false
     for _ in {1..120}; do
-        if [[ "$(adb_run shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]] &&
-            adb_run shell cmd package path android >/dev/null 2>&1; then
+        boot_completed="$(
+            timeout 15s adb "${adb_args[@]}" shell getprop sys.boot_completed 2>/dev/null |
+                tr -d '\r' || true
+        )"
+        if [[ "$boot_completed" == "1" ]] &&
+            timeout 15s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
             package_service_ready=true
             break
         fi
