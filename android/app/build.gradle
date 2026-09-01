@@ -14,6 +14,7 @@ def releaseSigningConfigured = [
 android {
     namespace "com.safenet.dns"
     compileSdk rootProject.ext.compileSdkVersion
+    buildToolsVersion rootProject.ext.androidBuildToolsVersion
     defaultConfig {
         applicationId "com.safenet.dns"
         testApplicationId "com.safenet.dns.test"
@@ -48,6 +49,38 @@ android {
         }
     }
     testBuildType "release"
+}
+
+tasks.register("verifyAndroidToolchain") {
+    doLast {
+        def requiredPackages = [
+            "platforms;android-${rootProject.ext.compileSdkVersion}",
+            "platforms;android-${rootProject.ext.targetSdkVersion}",
+            "build-tools;${rootProject.ext.androidBuildToolsVersion}"
+        ].unique()
+        def sdkDirectory = android.sdkDirectory
+        if (sdkDirectory == null || !sdkDirectory.isDirectory()) {
+            throw new GradleException(
+                "Android toolchain unavailable. The Android SDK directory could not be found. " +
+                "Configure ANDROID_SDK_ROOT or local.properties before building."
+            )
+        }
+        def missingPackages = requiredPackages.findAll { packageName ->
+            def packagePath = packageName.replace(';', File.separator)
+            !new File(sdkDirectory, packagePath).isDirectory()
+        }
+
+        if (!missingPackages.isEmpty()) {
+            throw new GradleException(
+                "Android toolchain unavailable. SafeNet requires " +
+                "compileSdkVersion=${rootProject.ext.compileSdkVersion}, " +
+                "targetSdkVersion=${rootProject.ext.targetSdkVersion}, and " +
+                "buildToolsVersion=${rootProject.ext.androidBuildToolsVersion}. " +
+                "Missing SDK package(s): ${missingPackages.join(', ')}. " +
+                "Install the pinned Android SDK packages before building."
+            )
+        }
+    }
 }
 
 tasks.register("verifyReleaseSigning") {
@@ -86,6 +119,12 @@ tasks.register("verifyMobileWebAssets") {
 }
 
 preBuild.dependsOn verifyMobileWebAssets
+preBuild.dependsOn verifyAndroidToolchain
+tasks.configureEach {
+    if (name == "assembleRelease" || name == "assembleReleaseAndroidTest") {
+        dependsOn "verifyAndroidToolchain"
+    }
+}
 
 repositories {
     flatDir{

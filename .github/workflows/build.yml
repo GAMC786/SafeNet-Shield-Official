@@ -41,6 +41,9 @@ jobs:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
+      ANDROID_COMPILE_SDK: '36'
+      ANDROID_TARGET_SDK: '36'
+      ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,6 +74,66 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install and verify pinned Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          variables_file="android/variables.gradle"
+          compile_sdk_in_gradle="$(sed -nE 's/^[[:space:]]*compileSdkVersion[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p' "$variables_file")"
+          target_sdk_in_gradle="$(sed -nE 's/^[[:space:]]*targetSdkVersion[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p' "$variables_file")"
+          build_tools_in_gradle="$(sed -nE "s/^[[:space:]]*androidBuildToolsVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
+
+          if [[ "$compile_sdk_in_gradle" != "$ANDROID_COMPILE_SDK" ||
+                "$target_sdk_in_gradle" != "$ANDROID_TARGET_SDK" ||
+                "$build_tools_in_gradle" != "$ANDROID_BUILD_TOOLS_VERSION" ]]; then
+            echo "::error::Android toolchain pin mismatch. Workflow requires compile SDK $ANDROID_COMPILE_SDK, target SDK $ANDROID_TARGET_SDK, and build-tools $ANDROID_BUILD_TOOLS_VERSION; android/variables.gradle declares compile SDK $compile_sdk_in_gradle, target SDK $target_sdk_in_gradle, and build-tools $build_tools_in_gradle."
+            exit 1
+          fi
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk_root" || ! -d "$sdk_root" ]]; then
+            echo "::error::Android toolchain unavailable. ANDROID_SDK_ROOT/ANDROID_HOME is not configured."
+            exit 1
+          fi
+
+          packages=(
+            "platform-tools"
+            "platforms;android-$ANDROID_COMPILE_SDK"
+            "build-tools;$ANDROID_BUILD_TOOLS_VERSION"
+          )
+          if [[ "$ANDROID_TARGET_SDK" != "$ANDROID_COMPILE_SDK" ]]; then
+            packages+=("platforms;android-$ANDROID_TARGET_SDK")
+          fi
+
+          if ! (set +o pipefail; yes | sdkmanager --sdk_root="$sdk_root" --licenses >/dev/null); then
+            echo "::error::Android toolchain unavailable. The Android SDK licenses could not be accepted."
+            exit 1
+          fi
+          if ! sdkmanager --sdk_root="$sdk_root" --install "${packages[@]}"; then
+            echo "::error::Android toolchain unavailable. Could not install the pinned SDK packages: ${packages[*]}."
+            exit 1
+          fi
+
+          missing_packages=()
+          for package_path in \
+            "platforms/android-$ANDROID_COMPILE_SDK" \
+            "build-tools/$ANDROID_BUILD_TOOLS_VERSION"; do
+            if [[ ! -d "$sdk_root/$package_path" ]]; then
+              missing_packages+=("$package_path")
+            fi
+          done
+          if [[ "$ANDROID_TARGET_SDK" != "$ANDROID_COMPILE_SDK" &&
+                ! -d "$sdk_root/platforms/android-$ANDROID_TARGET_SDK" ]]; then
+            missing_packages+=("platforms/android-$ANDROID_TARGET_SDK")
+          fi
+          if (( ${#missing_packages[@]} > 0 )); then
+            echo "::error::Android toolchain unavailable after installation. Missing SDK package path(s): ${missing_packages[*]}."
+            exit 1
+          fi
+
+          echo "Verified Android compile SDK $ANDROID_COMPILE_SDK, target SDK $ANDROID_TARGET_SDK, and build-tools $ANDROID_BUILD_TOOLS_VERSION."
 
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
