@@ -62,9 +62,11 @@ function getEmbeddedScript(stepName: string) {
 function createGitHubMock(
   openAlerts: Alert[],
   transientFailures: Partial<Record<string, number>> = {},
+  acceptedWriteThenErrors: Partial<Record<string, number>> = {},
 ) {
   const calls: GitHubCall[] = [];
   const remainingTransientFailures = { ...transientFailures };
+  const remainingAcceptedWriteThenErrors = { ...acceptedWriteThenErrors };
   const record = (method: string, params: Record<string, unknown>) => {
     calls.push({ method, params });
   };
@@ -74,6 +76,15 @@ function createGitHubMock(
 
     remainingTransientFailures[method] = remaining - 1;
     const error = new Error(`simulated transient failure for ${method}`);
+    Object.assign(error, { status: 503 });
+    throw error;
+  };
+  const maybeFailAfterAcceptance = (method: string) => {
+    const remaining = remainingAcceptedWriteThenErrors[method] ?? 0;
+    if (remaining === 0) return;
+
+    remainingAcceptedWriteThenErrors[method] = remaining - 1;
+    const error = new Error(`simulated accepted write with lost response for ${method}`);
     Object.assign(error, { status: 503 });
     throw error;
   };
@@ -96,6 +107,15 @@ function createGitHubMock(
           maybeFailTransiently("listForRepo");
           return { data: openAlerts.filter((alert) => alert.state === "open") };
         },
+        listComments: async (params: Record<string, unknown>) => {
+          record("listComments", params);
+          maybeFailTransiently("listComments");
+          const alert = openAlerts.find(
+            (candidate) => candidate.number === params.issue_number,
+          );
+          assert.ok(alert, `Alert not found: ${params.issue_number}`);
+          return { data: alert.comments.map((body) => ({ body })) };
+        },
         createComment: async (params: Record<string, unknown>) => {
           record("createComment", params);
           maybeFailTransiently("createComment");
@@ -104,6 +124,7 @@ function createGitHubMock(
           );
           assert.ok(alert, `Alert not found: ${params.issue_number}`);
           alert.comments.push(String(params.body));
+          maybeFailAfterAcceptance("createComment");
           return { data: { body: params.body } };
         },
         create: async (params: Record<string, unknown>) => {
@@ -116,6 +137,16 @@ function createGitHubMock(
             comments: [],
           };
           openAlerts.push(alert);
+          maybeFailAfterAcceptance("create");
+          return { data: alert };
+        },
+        get: async (params: Record<string, unknown>) => {
+          record("get", params);
+          maybeFailTransiently("get");
+          const alert = openAlerts.find(
+            (candidate) => candidate.number === params.issue_number,
+          );
+          assert.ok(alert, `Alert not found: ${params.issue_number}`);
           return { data: alert };
         },
         update: async (params: Record<string, unknown>) => {
@@ -128,6 +159,7 @@ function createGitHubMock(
           if (params.state === "closed") {
             alert.state = "closed";
           }
+          maybeFailAfterAcceptance("update");
           return { data: alert };
         },
       },
@@ -142,8 +174,13 @@ async function runEmbeddedScript(
   env: Record<string, string>,
   openAlerts: Alert[],
   transientFailures: Partial<Record<string, number>> = {},
+  acceptedWriteThenErrors: Partial<Record<string, number>> = {},
 ) {
-  const { calls, github } = createGitHubMock(openAlerts, transientFailures);
+  const { calls, github } = createGitHubMock(
+    openAlerts,
+    transientFailures,
+    acceptedWriteThenErrors,
+  );
   const infoMessages: string[] = [];
   const warningMessages: string[] = [];
   const errorMessages: string[] = [];
@@ -232,6 +269,58 @@ test("failure alert retries a transient GitHub error without changing the failur
   );
 });
 
+test("failure alert reconciles an accepted issue when the create response is lost", async () => {
+  const alerts: Alert[] = [];
+
+  const { calls, infoMessages } = await runEmbeddedScript(
+    failureStep,
+    {
+      ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure",
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12349",
+      EVIDENCE_URL: "",
+    },
+    alerts,
+    {},
+    { create: 1 },
+  );
+
+  assert.equal(calls.filter((call) => call.method === "create").length, 1);
+  assert.equal(calls.filter((call) => call.method === "listForRepo").length, 2);
+  assert.equal(alerts.length, 1);
+  assert.ok(
+    infoMessages.some((message) =>
+      message.includes("Failure alert: create issue response was ambiguous; reconciled with GitHub"),
+    ),
+  );
+});
+
+test("failure alert does not duplicate an accepted comment when the response is lost", async () => {
+  const alerts: Alert[] = [
+    {
+      number: 9,
+      title: "[Maintainer alert] Scheduled public DNS smoke failure",
+      state: "open",
+      comments: [],
+    },
+  ];
+
+  const { calls } = await runEmbeddedScript(
+    failureStep,
+    {
+      ALERT_TITLE: alerts[0].title,
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12350",
+      EVIDENCE_URL: "",
+    },
+    alerts,
+    {},
+    { createComment: 1 },
+  );
+
+  assert.equal(calls.filter((call) => call.method === "createComment").length, 1);
+  assert.equal(calls.filter((call) => call.method === "listComments").length, 1);
+  assert.equal(alerts[0].comments.length, 1);
+});
+
 test("public recovery comments with the successful run URL before closing", async () => {
   const alerts: Alert[] = [
     {
@@ -302,6 +391,45 @@ test("recovery alert retries a transient GitHub error while preserving recovery 
       message.includes(
         "Recovery alert: comment on recovered alert succeeded after 2 attempts",
       ),
+    ),
+  );
+});
+
+test("recovery reconciles accepted comment and closure writes when responses are lost", async () => {
+  const alerts: Alert[] = [
+    {
+      number: 10,
+      title: "[Maintainer alert] Scheduled public DNS smoke failure",
+      state: "open",
+      comments: [],
+    },
+  ];
+
+  const { calls, infoMessages } = await runEmbeddedScript(
+    recoveryStep,
+    {
+      ALERT_TITLE: alerts[0].title,
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12351",
+    },
+    alerts,
+    {},
+    { createComment: 1, update: 1 },
+  );
+
+  assert.equal(calls.filter((call) => call.method === "createComment").length, 1);
+  assert.equal(calls.filter((call) => call.method === "listComments").length, 1);
+  assert.equal(calls.filter((call) => call.method === "update").length, 1);
+  assert.equal(calls.filter((call) => call.method === "get").length, 1);
+  assert.equal(alerts[0].comments.length, 1);
+  assert.equal(alerts[0].state, "closed");
+  assert.ok(
+    infoMessages.some((message) =>
+      message.includes("Recovery alert: comment on recovered alert response was ambiguous; reconciled with GitHub"),
+    ),
+  );
+  assert.ok(
+    infoMessages.some((message) =>
+      message.includes("Recovery alert: close recovered alert response was ambiguous; reconciled with GitHub"),
     ),
   );
 });

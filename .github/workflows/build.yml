@@ -181,7 +181,7 @@ jobs:
                 transientCodes.includes(error?.code) ||
                 (status === 403 && rateLimitRemaining === '0');
             };
-            const withGitHubRetry = async (operation, request) => {
+            const withGitHubRetry = async (operation, request, reconcile) => {
               for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
                 try {
                   const result = await request();
@@ -192,6 +192,17 @@ jobs:
                 } catch (error) {
                   if (!isTransientGitHubError(error)) {
                     throw error;
+                  }
+                  if (reconcile) {
+                    try {
+                      const reconciled = await reconcile();
+                      if (reconciled) {
+                        core.info(`${operation} response was ambiguous; reconciled with GitHub.`);
+                        return reconciled;
+                      }
+                    } catch {
+                      core.warning(`${operation} reconciliation check failed; retrying original request.`);
+                    }
                   }
                   if (attempt === maxAttempts) {
                     core.error(`${operation} failed after ${attempt} attempt(s).`);
@@ -227,7 +238,7 @@ jobs:
               );
             }
 
-            const { data: openAlerts } = await withGitHubRetry('Failure alert: list open maintainer alerts', () =>
+            const listOpenAlerts = () => withGitHubRetry('Failure alert: list open maintainer alerts', () =>
               github.rest.issues.listForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -236,27 +247,47 @@ jobs:
                 per_page: 100
               })
             );
+            const { data: openAlerts } = await listOpenAlerts();
             const alert = openAlerts.find((issue) => issue.title === title);
 
             if (alert) {
-              await withGitHubRetry('Failure alert: comment on existing alert', () =>
-                github.rest.issues.createComment({
+              await withGitHubRetry(
+                'Failure alert: comment on existing alert',
+                () => github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: alert.number,
                   body
-                })
+                }),
+                async () => {
+                  const { data: comments } = await withGitHubRetry('Failure alert: reconcile existing alert comment', () =>
+                    github.rest.issues.listComments({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: alert.number,
+                      per_page: 100
+                    })
+                  );
+                  const existingComment = comments.find((comment) => comment.body === body);
+                  return existingComment ? { data: existingComment } : undefined;
+                }
               );
               core.info(`Updated existing maintainer alert #${alert.number}.`);
             } else {
-              const { data: created } = await withGitHubRetry('Failure alert: create issue', () =>
-                github.rest.issues.create({
+              const { data: created } = await withGitHubRetry(
+                'Failure alert: create issue',
+                () => github.rest.issues.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   title,
                   body,
                   labels: [labelName]
-                })
+                }),
+                async () => {
+                  const { data: currentOpenAlerts } = await listOpenAlerts();
+                  const existingAlert = currentOpenAlerts.find((issue) => issue.title === title);
+                  return existingAlert ? { data: existingAlert } : undefined;
+                }
               );
               core.info(`Created maintainer alert #${created.number}.`);
             }
@@ -291,7 +322,7 @@ jobs:
                 transientCodes.includes(error?.code) ||
                 (status === 403 && rateLimitRemaining === '0');
             };
-            const withGitHubRetry = async (operation, request) => {
+            const withGitHubRetry = async (operation, request, reconcile) => {
               for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
                 try {
                   const result = await request();
@@ -302,6 +333,17 @@ jobs:
                 } catch (error) {
                   if (!isTransientGitHubError(error)) {
                     throw error;
+                  }
+                  if (reconcile) {
+                    try {
+                      const reconciled = await reconcile();
+                      if (reconciled) {
+                        core.info(`${operation} response was ambiguous; reconciled with GitHub.`);
+                        return reconciled;
+                      }
+                    } catch {
+                      core.warning(`${operation} reconciliation check failed; retrying original request.`);
+                    }
                   }
                   if (attempt === maxAttempts) {
                     core.error(`${operation} failed after ${attempt} attempt(s).`);
@@ -316,7 +358,7 @@ jobs:
               throw new Error(`${operation} exhausted its retry attempts.`);
             };
 
-            const { data: openAlerts } = await withGitHubRetry('Recovery alert: list open maintainer alerts', () =>
+            const listOpenAlerts = () => withGitHubRetry('Recovery alert: list open maintainer alerts', () =>
               github.rest.issues.listForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -325,6 +367,7 @@ jobs:
                 per_page: 100
               })
             );
+            const { data: openAlerts } = await listOpenAlerts();
             const alert = openAlerts.find((issue) => issue.title === title);
 
             if (!alert) {
@@ -332,22 +375,46 @@ jobs:
               return;
             }
 
-            await withGitHubRetry('Recovery alert: comment on recovered alert', () =>
-              github.rest.issues.createComment({
+            await withGitHubRetry(
+              'Recovery alert: comment on recovered alert',
+              () => github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: alert.number,
                 body
-              })
+              }),
+              async () => {
+                const { data: comments } = await withGitHubRetry('Recovery alert: reconcile recovered alert comment', () =>
+                  github.rest.issues.listComments({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: alert.number,
+                    per_page: 100
+                  })
+                );
+                const existingComment = comments.find((comment) => comment.body === body);
+                return existingComment ? { data: existingComment } : undefined;
+              }
             );
-            await withGitHubRetry('Recovery alert: close recovered alert', () =>
-              github.rest.issues.update({
+            await withGitHubRetry(
+              'Recovery alert: close recovered alert',
+              () => github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: alert.number,
                 state: 'closed',
                 state_reason: 'completed'
-              })
+              }),
+              async () => {
+                const { data: currentAlert } = await withGitHubRetry('Recovery alert: reconcile recovered alert closure', () =>
+                  github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: alert.number
+                  })
+                );
+                return currentAlert.state === 'closed' ? { data: currentAlert } : undefined;
+              }
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
