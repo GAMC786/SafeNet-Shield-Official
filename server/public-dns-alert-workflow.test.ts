@@ -440,6 +440,8 @@ test("controlled-fixture workflow runs skip public DNS alert actions", () => {
 
   assert.match(failureCondition, /github\.event_name == 'schedule'/);
   assert.match(recoveryCondition, /github\.event_name == 'schedule'/);
+  assert.match(failureCondition, /^always\(\) &&/);
+  assert.match(recoveryCondition, /^always\(\) &&/);
   assert.match(failureCondition, /DNS_ALERT_VALIDATION == 'lifecycle'/);
   assert.match(recoveryCondition, /DNS_ALERT_VALIDATION == 'lifecycle'/);
   assert.match(failureCondition, /ANDROID_SMOKE_COVERAGE == 'external-network'/);

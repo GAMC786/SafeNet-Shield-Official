@@ -158,12 +158,12 @@ jobs:
       - name: Alert maintainers about public DNS smoke failure
         # workflow_dispatch is only enabled for the explicit lifecycle choice.
         # Ordinary fixture dispatches retain the schedule-only production path.
-        if: (github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'failure') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle')
+        if: always() && ((github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'failure') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle'))
         uses: actions/github-script@v7
         env:
           ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          EVIDENCE_URL: ${{ steps.upload-android-dns-smoke-evidence.outputs.artifact-url }}
+          EVIDENCE_URL: ${{ steps.upload-android-dns-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -304,7 +304,7 @@ jobs:
             }
 
       - name: Close recovered public DNS smoke alert
-        if: (github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'success') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle')
+        if: always() && ((github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'success') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle'))
         uses: actions/github-script@v7
         env:
           ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure"
@@ -378,8 +378,14 @@ jobs:
                 per_page: 100
               })
             );
-            const { data: openAlerts } = await listOpenAlerts();
-            const alert = openAlerts.find((issue) => issue.title === title);
+            let alert;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              const { data: openAlerts } = await listOpenAlerts();
+              alert = openAlerts.find((issue) => issue.title === title);
+              if (alert || attempt === maxAttempts) break;
+              core.warning(`Recovery alert: no open alert found yet; retrying lookup (${attempt}/${maxAttempts}).`);
+              await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+            }
 
             if (!alert) {
               core.info('No open public DNS smoke alert found; nothing to close.');
