@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const tests = [];
 
@@ -25,21 +25,27 @@ if (tests.length === 0) {
   process.exit(1);
 }
 
-const testProcess = spawn(
-  process.execPath,
-  ["--import", "tsx", "--test", ...tests],
-  { stdio: "inherit", shell: false },
-);
+let exitCode = 0;
+for (const test of tests) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--test", test],
+    { stdio: "inherit", shell: false },
+  );
 
-testProcess.on("error", (error) => {
-  console.error(`Could not start test runner: ${error.message}`);
-  process.exit(1);
-});
-
-testProcess.on("exit", (code, signal) => {
-  if (signal) {
-    console.error(`Test runner terminated by ${signal}.`);
-    process.exit(1);
+  if (result.error) {
+    console.error(`Could not start test runner for ${test}: ${result.error.message}`);
+    exitCode = 1;
+    continue;
   }
-  process.exit(code ?? 1);
-});
+  if (result.signal) {
+    console.error(`Test runner for ${test} terminated by ${result.signal}.`);
+    exitCode = 1;
+    continue;
+  }
+  if (result.status !== 0) {
+    exitCode = result.status ?? 1;
+  }
+}
+
+process.exit(exitCode);
