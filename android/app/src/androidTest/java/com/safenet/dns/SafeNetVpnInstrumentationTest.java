@@ -44,6 +44,7 @@ import java.net.URL;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * End-to-end checks for the native SafeNet DNS VPN.
@@ -375,7 +376,7 @@ public class SafeNetVpnInstrumentationTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
             UiObject2 allow = device.findObject(
-                By.textMatches("(?i)(allow|ok|connect|i trust this application)")
+                By.text(Pattern.compile("(?i)(allow|ok|connect|i trust this application)"))
             );
             if (allow != null && allow.isEnabled()) {
                 allow.click();
