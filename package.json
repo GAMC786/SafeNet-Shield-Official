@@ -1,6 +1,6 @@
 {
   "name": "rest-express",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "license": "MIT",
   "author": "SafeNet Inc.",
@@ -10,7 +10,9 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",
-    "test": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
+    "android:setup": "./scripts/setup-android-sdk.sh",
+    "android:setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android-sdk.ps1",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
