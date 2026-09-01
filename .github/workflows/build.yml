@@ -215,6 +215,55 @@ jobs:
               core.info(`Created maintainer alert #${created.number}.`);
             }
 
+      - name: Close recovered public DNS smoke alert
+        if: github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const title = process.env.ALERT_TITLE;
+            const runUrl = process.env.RUN_URL;
+            const labelName = 'maintainer-alert';
+            const body = [
+              'The scheduled public-network Android DNS smoke check recovered successfully.',
+              '',
+              `Successful workflow run: [View run](${runUrl})`,
+              '',
+              'Closing this alert while preserving the previous failure history.'
+            ].join('\n');
+
+            const { data: openAlerts } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+            const alert = openAlerts.find((issue) => issue.title === title);
+
+            if (!alert) {
+              core.info('No open public DNS smoke alert found; nothing to close.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: alert.number,
+              body
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: alert.number,
+              state: 'closed',
+              state_reason: 'completed'
+            });
+            core.info(`Closed recovered maintainer alert #${alert.number}.`);
+
   build-windows:
     if: github.event_name != 'schedule'
     runs-on: windows-latest
