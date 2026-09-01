@@ -12,6 +12,7 @@
     "check": "tsc && tsc -p tsconfig.worker.json",
     "test": "node scripts/run-tests.mjs",
     "android:setup": "./scripts/setup-android-sdk.sh",
+    "android:setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android-sdk.ps1",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

@@ -32,6 +32,21 @@ run the shared setup command from the project root:
 ANDROID_SDK_ROOT="$HOME/Android/Sdk" npm run android:setup
 ```
 
+On Windows, run the native PowerShell setup command from the project root. For
+the default Android Studio SDK location:
+
+```powershell
+$env:ANDROID_SDK_ROOT = "$env:LOCALAPPDATA\Android\Sdk"
+npm run android:setup:windows
+```
+
+If Android Studio has already created `android\local.properties` with an
+`sdk.dir`, the environment variable can be omitted:
+
+```powershell
+npm run android:setup:windows
+```
+
 The command reads the compile SDK, target SDK, and build-tools versions from
 `android/variables.gradle`, accepts the SDK licenses, installs the required
 packages, and verifies that they are present. If Android Studio has already
