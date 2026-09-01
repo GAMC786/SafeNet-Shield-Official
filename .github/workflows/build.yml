@@ -130,7 +130,7 @@ jobs:
         # The application release was already built and signed above. The
         # instrumentation APK uses the test signing configuration, so do not
         # re-run the application release-signing guard for this task.
-        run: ./gradlew assembleReleaseAndroidTest -x verifyReleaseSigning
+        run: ./gradlew :app:assembleReleaseAndroidTest -x verifyReleaseSigning
         env:
           ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
