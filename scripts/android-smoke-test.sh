@@ -269,16 +269,25 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
+    adb_run reboot >> "$fixture_adb_log" 2>&1 || \
+        fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
+    if ! adb_run wait-for-device >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator did not return after installing the temporary TLS CA"
+    fi
+    for _ in {1..60}; do
+        if adb_run get-state 2>/dev/null | grep -qx "device"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! adb_run get-state 2>/dev/null | grep -qx "device"; then
+        fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
+    fi
     command -v timeout >/dev/null 2>&1 || \
         fixture_failure "timeout is required to bound Android readiness probes"
     package_service_ready=false
-    for _ in {1..120}; do
-        boot_completed="$(
-            timeout 15s adb "${adb_args[@]}" shell getprop sys.boot_completed 2>/dev/null |
-                tr -d '\r' || true
-        )"
-        if [[ "$boot_completed" == "1" ]] &&
-            timeout 15s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
+    for _ in {1..90}; do
+        if timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
             package_service_ready=true
             break
         fi
