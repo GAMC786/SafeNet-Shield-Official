@@ -21,7 +21,9 @@ function Invoke-Setup(
         "ANDROID_HOME",
         "SDKMANAGER",
         "MOCK_SDKMANAGER_LOG",
-        "MOCK_SDKMANAGER_MODE"
+        "MOCK_SDKMANAGER_MODE",
+        "MOCK_SDKMANAGER_SDK_ROOT",
+        "MOCK_SDKMANAGER_PACKAGES"
     )
     $savedEnvironment = @{}
 
@@ -113,7 +115,8 @@ param(
     [string[]]$Arguments
 )
 
-if ($Arguments -contains "--licenses") {
+$joinedArguments = ($Arguments -join " ").Trim()
+if ($joinedArguments -match '(^|\s)--licenses(\s|$)') {
     exit 0
 }
 
@@ -122,39 +125,40 @@ if ($env:MOCK_SDKMANAGER_MODE -eq "missing") {
     exit 0
 }
 
-$joinedArguments = ($Arguments -join " ").Trim()
-$sdkRootMatch = [regex]::Match(
-    $joinedArguments,
-    '--sdk_root=(.+?)(?=\s+--(?:licenses|install)|$)'
-)
-if (-not $sdkRootMatch.Success) {
+$sdkRoot = $env:MOCK_SDKMANAGER_SDK_ROOT
+$packages = @($env:MOCK_SDKMANAGER_PACKAGES -split '\|' | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_)
+})
+if ([string]::IsNullOrWhiteSpace($sdkRoot) -or $packages.Count -eq 0) {
+    [Console]::Error.WriteLine("mock sdkmanager test contract is incomplete")
+    exit 2
+}
+if (-not $joinedArguments.Contains("--sdk_root=$sdkRoot")) {
     [Console]::Error.WriteLine("mock sdkmanager did not receive --sdk_root")
     exit 2
 }
 
-$sdkRootArgument = "--sdk_root=$($sdkRootMatch.Groups[1].Value.Trim('"'))"
-$sdkRoot = $sdkRootArgument.Substring("--sdk_root=".Length)
-$installMatch = [regex]::Match($joinedArguments, '--install\s+(.+)$')
-if (-not $installMatch.Success) {
+$sdkRootArgument = "--sdk_root=$sdkRoot"
+if (-not $joinedArguments.Contains("--install")) {
     [Console]::Error.WriteLine("mock sdkmanager did not receive --install packages")
     exit 2
+}
+foreach ($package in $packages) {
+    if (-not $joinedArguments.Contains($package)) {
+        [Console]::Error.WriteLine("mock sdkmanager did not receive package $package")
+        exit 2
+    }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
     Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$sdkRootArgument]"
     Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[--install]"
-}
-
-$packages = [regex]::Matches(
-    $installMatch.Groups[1].Value,
-    'platform-tools|platforms;android-[0-9]+|build-tools;[0-9.]+'
-) | ForEach-Object { $_.Value }
-
-foreach ($package in $packages) {
-    if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
+    foreach ($package in $packages) {
         Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$package]"
     }
+}
 
+foreach ($package in $packages) {
     switch -Regex ($package) {
         "^platform-tools$" {
             New-Item -ItemType Directory -Path (Join-Path $sdkRoot "platform-tools") -Force | Out-Null
@@ -182,6 +186,8 @@ exit 0
         SDKMANAGER = $mockScript
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "success"
+        MOCK_SDKMANAGER_SDK_ROOT = $escapedSdkRoot
+        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion"
     }
     Assert-Condition ($success.ExitCode -eq 0) `
         "Expected the mocked SDK setup to succeed, but it exited $($success.ExitCode): $($success.Output)"
@@ -229,6 +235,8 @@ exit 0
         SDKMANAGER = $mockScript
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "missing"
+        MOCK_SDKMANAGER_SDK_ROOT = $unavailableSdk
+        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion"
     }
     Assert-Condition ($unavailablePackage.ExitCode -ne 0) `
         "Expected setup to fail when sdkmanager leaves pinned packages unavailable."
