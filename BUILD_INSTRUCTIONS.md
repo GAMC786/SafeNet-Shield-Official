@@ -64,7 +64,46 @@ keytool -genkey -v -keystore safenet-dns.keystore -alias safenet -keyalg RSA -ke
 ```bash
 cd android
 ./gradlew assembleRelease
+./gradlew assembleReleaseAndroidTest
 ```
+
+The release verification APK has an explicit, stable name:
+`android/app/build/outputs/apk/release/app-release.apk`. Do not point the
+smoke lane at a wildcard or at `app-debug.apk`.
+The instrumentation package is built separately as
+`android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk`.
+
+### Repeatable Android DNS smoke test
+
+Run the smoke lane on one attached Android device or emulator after building
+the signed release APK:
+
+```bash
+./scripts/android-smoke-test.sh \
+  --apk android/app/build/outputs/apk/release/app-release.apk \
+  --test-apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk \
+  --serial emulator-5554
+```
+
+The script uninstalls the previous app, installs exactly `app-release.apk`,
+records device and network details, and runs
+`SafeNetVpnInstrumentationTest`. The instrumentation covers the EULA gate,
+the Android VPN permission flow, the DNS-only `/32` route, ordinary HTTPS
+connectivity, DoH fallback, DoT fallback, and clean VPN shutdown. Resolver
+and ordinary connectivity endpoints can be changed with the
+`ANDROID_SMOKE_*` environment variables. The default DoT fallback is
+`cloudflare-dns.com` so TLS certificate hostname validation is exercised.
+
+Evidence is written to
+`android/app/build/reports/android-smoke/latest/`. A failed run is classified
+as `ENETUNREACH`, `UNRELATED_NETWORK_FAILURE`, or `NON_NETWORK_FAILURE` in
+`failure-category.txt`; `ENETUNREACH` is the original “network unreachable”
+regression and must not be treated as a generic resolver failure.
+
+The GitHub Actions release/manual lane runs the same script on a fresh API 35
+Google APIs emulator after creating the signed release APK. A local run needs
+an Android SDK, `adb`, and an attached target; a host DNS lookup is not a
+substitute for these VPN checks.
 
 ---
 
