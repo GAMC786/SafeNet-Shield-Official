@@ -185,7 +185,12 @@ if [[ -z "$serial" ]]; then
     adb_args=(-s "$serial")
 fi
 
-if ! adb_run get-state | grep -qx "device"; then
+command -v timeout >/dev/null 2>&1 || {
+    echo "ERROR: timeout is required to bound Android adb operations." >&2
+    exit 2
+}
+
+if ! timeout 30s adb "${adb_args[@]}" get-state | grep -qx "device"; then
     echo "ERROR: adb target '$serial' is not online." >&2
     exit 3
 fi
@@ -212,11 +217,43 @@ for signed_apk in "$apk_path" "$test_apk_path"; do
     fi
 done
 
+android_framework_ready=false
+for _ in {1..120}; do
+    if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
+        grep -q "found" &&
+        timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
+        android_framework_ready=true
+        break
+    fi
+    sleep 1
+done
+if [[ "$android_framework_ready" != true ]]; then
+    echo "ERROR: Android package and storage services did not become ready." >&2
+    exit 3
+fi
+
+install_release_apk() {
+    local install_path="$1"
+    for _ in {1..3}; do
+        if timeout 120s adb "${adb_args[@]}" install -r "$install_path"; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
+
 echo "Installing release APKs on Android target $serial before fixture setup..."
-adb_run uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run install "$apk_path"
-adb_run install "$test_apk_path"
+timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
+timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
+if ! install_release_apk "$apk_path"; then
+    echo "ERROR: Release APK could not be installed after bounded retries." >&2
+    exit 1
+fi
+if ! install_release_apk "$test_apk_path"; then
+    echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
+    exit 1
+fi
 
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(mktemp -d)"
