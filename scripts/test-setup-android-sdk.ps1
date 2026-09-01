@@ -118,10 +118,6 @@ param(
     [string[]]$Arguments
 )
 
-if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
-    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value (($Arguments | ForEach-Object { "[$_]" }) -join " ")
-}
-
 if ($Arguments -contains "--licenses") {
     exit 0
 }
@@ -131,20 +127,39 @@ if ($env:MOCK_SDKMANAGER_MODE -eq "missing") {
     exit 0
 }
 
-$sdkRootArgument = $Arguments | Where-Object { $_ -like "--sdk_root=*" } | Select-Object -First 1
-if ($null -eq $sdkRootArgument) {
+$joinedArguments = ($Arguments -join " ").Trim()
+$sdkRootMatch = [regex]::Match(
+    $joinedArguments,
+    '--sdk_root=(.+?)(?=\s+--(?:licenses|install)|$)'
+)
+if (-not $sdkRootMatch.Success) {
     [Console]::Error.WriteLine("mock sdkmanager did not receive --sdk_root")
     exit 2
 }
 
+$sdkRootArgument = "--sdk_root=$($sdkRootMatch.Groups[1].Value.Trim('"'))"
 $sdkRoot = $sdkRootArgument.Substring("--sdk_root=".Length)
-$installIndex = [Array]::IndexOf($Arguments, "--install")
-if ($installIndex -lt 0 -or $installIndex -ge ($Arguments.Count - 1)) {
+$installMatch = [regex]::Match($joinedArguments, '--install\s+(.+)$')
+if (-not $installMatch.Success) {
     [Console]::Error.WriteLine("mock sdkmanager did not receive --install packages")
     exit 2
 }
 
-foreach ($package in $Arguments[($installIndex + 1)..($Arguments.Count - 1)]) {
+if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
+    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$sdkRootArgument]"
+    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[--install]"
+}
+
+$packages = [regex]::Matches(
+    $installMatch.Groups[1].Value,
+    'platform-tools|platforms;android-[0-9]+|build-tools;[0-9.]+'
+) | ForEach-Object { $_.Value }
+
+foreach ($package in $packages) {
+    if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
+        Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$package]"
+    }
+
     switch -Regex ($package) {
         "^platform-tools$" {
             New-Item -ItemType Directory -Path (Join-Path $sdkRoot "platform-tools") -Force | Out-Null
