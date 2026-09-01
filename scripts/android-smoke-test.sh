@@ -241,9 +241,11 @@ EOF
     if ! adb_run remount >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the emulator could not remount its system partition for the temporary TLS CA"
     fi
-    adb_run reboot >> "$fixture_adb_log" 2>&1 || \
+    command -v timeout >/dev/null 2>&1 || \
+        fixture_failure "timeout is required to bound Android reboot waits"
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
         fixture_failure "the emulator could not reboot after remounting for the temporary TLS CA"
-    if ! adb_run wait-for-device >> "$fixture_adb_log" 2>&1; then
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the emulator did not return after remounting for the temporary TLS CA"
     fi
     for _ in {1..60}; do
@@ -255,10 +257,10 @@ EOF
     if ! adb_run get-state 2>/dev/null | grep -qx "device"; then
         fixture_failure "the emulator did not become ready after remounting for the temporary TLS CA"
     fi
-    if ! adb_run root >> "$fixture_adb_log" 2>&1; then
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$fixture_adb_log" 2>&1; then
         fixture_failure "adb root could not be re-enabled after remounting for the temporary TLS CA"
     fi
-    if ! adb_run remount >> "$fixture_adb_log" 2>&1; then
+    if ! timeout 60s adb "${adb_args[@]}" remount >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the emulator could not activate its writable system overlay for the temporary TLS CA"
     fi
     if ! adb_run push "$fixture_ca_store" "/system/etc/security/cacerts/$fixture_ca_hash.0" \
@@ -269,9 +271,9 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
-    adb_run reboot >> "$fixture_adb_log" 2>&1 || \
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
         fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
-    if ! adb_run wait-for-device >> "$fixture_adb_log" 2>&1; then
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the emulator did not return after installing the temporary TLS CA"
     fi
     for _ in {1..60}; do
@@ -283,8 +285,6 @@ EOF
     if ! adb_run get-state 2>/dev/null | grep -qx "device"; then
         fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
     fi
-    command -v timeout >/dev/null 2>&1 || \
-        fixture_failure "timeout is required to bound Android readiness probes"
     package_service_ready=false
     for _ in {1..90}; do
         if timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
