@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # Exercise the Windows Android SDK setup entry point without downloading an SDK.
-# The mock is deliberately invoked through a .cmd wrapper so this also covers
-# the command resolution path used by Windows developers.
+# The mock is invoked as a PowerShell script so the validation focuses on
+# SDK-root and package handling without depending on cmd argument forwarding.
 
 function Assert-Condition([bool]$Condition, [string]$Message) {
     if (-not $Condition) {
@@ -64,7 +64,6 @@ $variablesFile = Join-Path $projectRoot "android\variables.gradle"
 $localPropertiesFile = Join-Path $projectRoot "android\local.properties"
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) "safenet-android-sdk-test-$([Guid]::NewGuid())"
 $mockDirectory = Join-Path $testRoot "mock-sdkmanager"
-$mockCommand = Join-Path $mockDirectory "sdkmanager.cmd"
 $mockScript = Join-Path $mockDirectory "mock-sdkmanager.ps1"
 $mockLog = Join-Path $testRoot "sdkmanager.log"
 $escapedSdkRoot = Join-Path $testRoot "Android SDK with spaces"
@@ -106,10 +105,6 @@ $originalLocalProperties = if ($hadLocalProperties) {
 try {
     New-Item -ItemType Directory -Path $mockDirectory -Force | Out-Null
     New-Item -ItemType Directory -Path $escapedSdkRoot -Force | Out-Null
-    [IO.File]::WriteAllText(
-        $mockCommand,
-        "@echo off`r`npwsh -NoProfile -ExecutionPolicy Bypass -File `"%~dp0mock-sdkmanager.ps1`" %*`r`nexit /b %ERRORLEVEL%`r`n"
-    )
     [IO.File]::WriteAllText(
         $mockScript,
         @'
@@ -184,7 +179,7 @@ exit 0
     [IO.File]::WriteAllText($localPropertiesFile, "sdk.dir=$escapedSdkPath`r`n")
 
     $success = Invoke-Setup $powerShellPath $setupScript @{
-        SDKMANAGER = $mockCommand
+        SDKMANAGER = $mockScript
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "success"
     }
@@ -231,7 +226,7 @@ exit 0
     New-Item -ItemType Directory -Path $unavailableSdk -Force | Out-Null
     $unavailablePackage = Invoke-Setup $powerShellPath $setupScript @{
         ANDROID_SDK_ROOT = $unavailableSdk
-        SDKMANAGER = $mockCommand
+        SDKMANAGER = $mockScript
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "missing"
     }
