@@ -110,6 +110,7 @@ try {
     [IO.File]::WriteAllText(
         $mockScript,
         @'
+[CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Arguments,
