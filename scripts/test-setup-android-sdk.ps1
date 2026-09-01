@@ -117,6 +117,7 @@ param(
     [string]$LicenseInput
 )
 
+process {
 $joinedArguments = ($Arguments -join " ").Trim()
 if ($joinedArguments -match '(^|\s)--licenses(\s|$)') {
     exit 0
@@ -175,6 +176,7 @@ foreach ($package in $packages) {
 }
 
 exit 0
+}
 '@
     )
 
