@@ -59,10 +59,23 @@ function getEmbeddedScript(stepName: string) {
   return scriptLines.join("\n");
 }
 
-function createGitHubMock(openAlerts: Alert[]) {
+function createGitHubMock(
+  openAlerts: Alert[],
+  transientFailures: Partial<Record<string, number>> = {},
+) {
   const calls: GitHubCall[] = [];
+  const remainingTransientFailures = { ...transientFailures };
   const record = (method: string, params: Record<string, unknown>) => {
     calls.push({ method, params });
+  };
+  const maybeFailTransiently = (method: string) => {
+    const remaining = remainingTransientFailures[method] ?? 0;
+    if (remaining === 0) return;
+
+    remainingTransientFailures[method] = remaining - 1;
+    const error = new Error(`simulated transient failure for ${method}`);
+    Object.assign(error, { status: 503 });
+    throw error;
   };
 
   const github = {
@@ -70,18 +83,22 @@ function createGitHubMock(openAlerts: Alert[]) {
       issues: {
         getLabel: async (params: Record<string, unknown>) => {
           record("getLabel", params);
+          maybeFailTransiently("getLabel");
           return { data: { name: params.name } };
         },
         createLabel: async (params: Record<string, unknown>) => {
           record("createLabel", params);
+          maybeFailTransiently("createLabel");
           return { data: { name: params.name } };
         },
         listForRepo: async (params: Record<string, unknown>) => {
           record("listForRepo", params);
+          maybeFailTransiently("listForRepo");
           return { data: openAlerts.filter((alert) => alert.state === "open") };
         },
         createComment: async (params: Record<string, unknown>) => {
           record("createComment", params);
+          maybeFailTransiently("createComment");
           const alert = openAlerts.find(
             (candidate) => candidate.number === params.issue_number,
           );
@@ -91,6 +108,7 @@ function createGitHubMock(openAlerts: Alert[]) {
         },
         create: async (params: Record<string, unknown>) => {
           record("create", params);
+          maybeFailTransiently("create");
           const alert: Alert = {
             number: 42,
             title: String(params.title),
@@ -102,6 +120,7 @@ function createGitHubMock(openAlerts: Alert[]) {
         },
         update: async (params: Record<string, unknown>) => {
           record("update", params);
+          maybeFailTransiently("update");
           const alert = openAlerts.find(
             (candidate) => candidate.number === params.issue_number,
           );
@@ -122,9 +141,12 @@ async function runEmbeddedScript(
   stepName: string,
   env: Record<string, string>,
   openAlerts: Alert[],
+  transientFailures: Partial<Record<string, number>> = {},
 ) {
-  const { calls, github } = createGitHubMock(openAlerts);
+  const { calls, github } = createGitHubMock(openAlerts, transientFailures);
   const infoMessages: string[] = [];
+  const warningMessages: string[] = [];
+  const errorMessages: string[] = [];
   const script = new Script(
     `(async () => {\n${getEmbeddedScript(stepName)}\n})()`,
   );
@@ -133,10 +155,15 @@ async function runEmbeddedScript(
     process: { env },
     github,
     context: { repo: { owner: "SafeNetInc", repo: "SafeNet-DNS" } },
-    core: { info: (message: string) => infoMessages.push(message) },
+    core: {
+      info: (message: string) => infoMessages.push(message),
+      warning: (message: string) => warningMessages.push(message),
+      error: (message: string) => errorMessages.push(message),
+    },
+    setTimeout: (callback: () => void) => callback(),
   });
 
-  return { calls, infoMessages };
+  return { calls, infoMessages, warningMessages, errorMessages };
 }
 
 test("failure alert script creates a labeled alert with run and evidence links", async () => {
@@ -172,6 +199,39 @@ test("failure alert script creates a labeled alert with run and evidence links",
   assert.equal(alerts[0]?.state, "open");
 });
 
+test("failure alert retries a transient GitHub error without changing the failure notification", async () => {
+  const alerts: Alert[] = [];
+
+  const { calls, infoMessages, warningMessages } = await runEmbeddedScript(
+    failureStep,
+    {
+      ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure",
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12347",
+      EVIDENCE_URL: "",
+    },
+    alerts,
+    { create: 1 },
+  );
+
+  assert.equal(
+    calls.filter((call) => call.method === "create").length,
+    2,
+  );
+  assert.equal(alerts.length, 1);
+  assert.match(String(calls.at(-1)?.params.body), /failed/);
+  assert.doesNotMatch(String(calls.at(-1)?.params.body), /recovered/);
+  assert.ok(
+    warningMessages.some((message) =>
+      message.includes("Failure alert: create issue"),
+    ),
+  );
+  assert.ok(
+    infoMessages.some((message) =>
+      message.includes("Failure alert: create issue succeeded after 2 attempts"),
+    ),
+  );
+});
+
 test("public recovery comments with the successful run URL before closing", async () => {
   const alerts: Alert[] = [
     {
@@ -203,6 +263,47 @@ test("public recovery comments with the successful run URL before closing", asyn
     new RegExp(`Successful workflow run: \\[View run\\]\\(${runUrl}\\)`),
   );
   assert.equal(alerts[0].state, "closed");
+});
+
+test("recovery alert retries a transient GitHub error while preserving recovery semantics", async () => {
+  const alerts: Alert[] = [
+    {
+      number: 8,
+      title: "[Maintainer alert] Scheduled public DNS smoke failure",
+      state: "open",
+      comments: [],
+    },
+  ];
+
+  const { calls, infoMessages, warningMessages } = await runEmbeddedScript(
+    recoveryStep,
+    {
+      ALERT_TITLE: alerts[0].title,
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12348",
+    },
+    alerts,
+    { createComment: 1 },
+  );
+
+  assert.equal(
+    calls.filter((call) => call.method === "createComment").length,
+    2,
+  );
+  assert.equal(alerts[0].comments.length, 1);
+  assert.match(alerts[0].comments[0], /recovered successfully/);
+  assert.equal(alerts[0].state, "closed");
+  assert.ok(
+    warningMessages.some((message) =>
+      message.includes("Recovery alert: comment on recovered alert"),
+    ),
+  );
+  assert.ok(
+    infoMessages.some((message) =>
+      message.includes(
+        "Recovery alert: comment on recovered alert succeeded after 2 attempts",
+      ),
+    ),
+  );
 });
 
 test("controlled-fixture workflow runs skip public DNS alert actions", () => {

@@ -170,48 +170,94 @@ jobs:
 
             const labelName = 'maintainer-alert';
             const labelColor = 'b60205';
+            const maxAttempts = 3;
+            const isTransientGitHubError = (error) => {
+              const status = Number(error?.status);
+              const transientCodes = ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'];
+              const rateLimitRemaining = error?.response?.headers?.['x-ratelimit-remaining'];
+              return status === 408 ||
+                status === 429 ||
+                status >= 500 ||
+                transientCodes.includes(error?.code) ||
+                (status === 403 && rateLimitRemaining === '0');
+            };
+            const withGitHubRetry = async (operation, request) => {
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                try {
+                  const result = await request();
+                  if (attempt > 1) {
+                    core.info(`${operation} succeeded after ${attempt} attempts.`);
+                  }
+                  return result;
+                } catch (error) {
+                  if (!isTransientGitHubError(error)) {
+                    throw error;
+                  }
+                  if (attempt === maxAttempts) {
+                    core.error(`${operation} failed after ${attempt} attempt(s).`);
+                    throw error;
+                  }
+                  core.warning(
+                    `${operation} hit a transient GitHub API failure on attempt ${attempt}/${maxAttempts}; retrying.`,
+                  );
+                  await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
+                }
+              }
+              throw new Error(`${operation} exhausted its retry attempts.`);
+            };
+
             try {
-              await github.rest.issues.getLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: labelName
-              });
+              await withGitHubRetry('Failure alert: check maintainer-alert label', () =>
+                github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName
+                })
+              );
             } catch (error) {
               if (error.status !== 404) throw error;
-              await github.rest.issues.createLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: labelName,
-                color: labelColor,
-                description: 'Action required from maintainers'
-              });
+              await withGitHubRetry('Failure alert: create maintainer-alert label', () =>
+                github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                  color: labelColor,
+                  description: 'Action required from maintainers'
+                })
+              );
             }
 
-            const { data: openAlerts } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: labelName,
-              per_page: 100
-            });
+            const { data: openAlerts } = await withGitHubRetry('Failure alert: list open maintainer alerts', () =>
+              github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: labelName,
+                per_page: 100
+              })
+            );
             const alert = openAlerts.find((issue) => issue.title === title);
 
             if (alert) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: alert.number,
-                body
-              });
+              await withGitHubRetry('Failure alert: comment on existing alert', () =>
+                github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: alert.number,
+                  body
+                })
+              );
               core.info(`Updated existing maintainer alert #${alert.number}.`);
             } else {
-              const { data: created } = await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: [labelName]
-              });
+              const { data: created } = await withGitHubRetry('Failure alert: create issue', () =>
+                github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: [labelName]
+                })
+              );
               core.info(`Created maintainer alert #${created.number}.`);
             }
 
@@ -234,14 +280,51 @@ jobs:
               '',
               'Closing this alert while preserving the previous failure history.'
             ].join('\n');
+            const maxAttempts = 3;
+            const isTransientGitHubError = (error) => {
+              const status = Number(error?.status);
+              const transientCodes = ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'];
+              const rateLimitRemaining = error?.response?.headers?.['x-ratelimit-remaining'];
+              return status === 408 ||
+                status === 429 ||
+                status >= 500 ||
+                transientCodes.includes(error?.code) ||
+                (status === 403 && rateLimitRemaining === '0');
+            };
+            const withGitHubRetry = async (operation, request) => {
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                try {
+                  const result = await request();
+                  if (attempt > 1) {
+                    core.info(`${operation} succeeded after ${attempt} attempts.`);
+                  }
+                  return result;
+                } catch (error) {
+                  if (!isTransientGitHubError(error)) {
+                    throw error;
+                  }
+                  if (attempt === maxAttempts) {
+                    core.error(`${operation} failed after ${attempt} attempt(s).`);
+                    throw error;
+                  }
+                  core.warning(
+                    `${operation} hit a transient GitHub API failure on attempt ${attempt}/${maxAttempts}; retrying.`,
+                  );
+                  await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
+                }
+              }
+              throw new Error(`${operation} exhausted its retry attempts.`);
+            };
 
-            const { data: openAlerts } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: labelName,
-              per_page: 100
-            });
+            const { data: openAlerts } = await withGitHubRetry('Recovery alert: list open maintainer alerts', () =>
+              github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: labelName,
+                per_page: 100
+              })
+            );
             const alert = openAlerts.find((issue) => issue.title === title);
 
             if (!alert) {
@@ -249,19 +332,23 @@ jobs:
               return;
             }
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: alert.number,
-              body
-            });
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: alert.number,
-              state: 'closed',
-              state_reason: 'completed'
-            });
+            await withGitHubRetry('Recovery alert: comment on recovered alert', () =>
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: alert.number,
+                body
+              })
+            );
+            await withGitHubRetry('Recovery alert: close recovered alert', () =>
+              github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: alert.number,
+                state: 'closed',
+                state_reason: 'completed'
+              })
+            );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
   build-windows:
