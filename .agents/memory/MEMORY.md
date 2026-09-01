@@ -3,3 +3,4 @@
 - [Android release artifact integrity](android-release-artifact-integrity.md) — release jobs must require a signed release APK, not accept any APK produced by a generic build.
 - [Android device verification limits](android-device-verification-limits.md) — local VPN smoke tests need an attached target or emulator; host resolver checks are not runtime evidence.
 - [Embedded workflow script testing](embedded-workflow-script-testing.md) — test GitHub Actions scripts through extracted code and mocked APIs when behavior only exists inside workflow YAML.
+- [Scheduled GitHub run verification](scheduled-github-run-verification.md) — schedule-gated workflow steps require a post-merge default-branch run; manual dispatch is not equivalent.
