@@ -255,6 +255,12 @@ EOF
     if ! adb_run get-state 2>/dev/null | grep -qx "device"; then
         fixture_failure "the emulator did not become ready after remounting for the temporary TLS CA"
     fi
+    if ! adb_run root >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "adb root could not be re-enabled after remounting for the temporary TLS CA"
+    fi
+    if ! adb_run remount >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator could not activate its writable system overlay for the temporary TLS CA"
+    fi
     if ! adb_run push "$fixture_ca_store" "/system/etc/security/cacerts/$fixture_ca_hash.0" \
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA could not be installed in the emulator"
