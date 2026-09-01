@@ -190,6 +190,34 @@ if ! adb_run get-state | grep -qx "device"; then
     exit 3
 fi
 
+apksigner_bin="$(command -v apksigner || true)"
+if [[ -z "$apksigner_bin" ]]; then
+    sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+    if [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]; then
+        apksigner_bin="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x \
+            | sort -V | tail -n 1)"
+    fi
+fi
+if [[ -z "$apksigner_bin" ]]; then
+    echo "ERROR: apksigner is required to verify the release APK signature." >&2
+    echo "Use an Android SDK runner with build-tools installed." >&2
+    exit 2
+fi
+for signed_apk in "$apk_path" "$test_apk_path"; do
+    signature_report="$output_dir/$(basename "$signed_apk").signature.txt"
+    if ! "$apksigner_bin" verify --verbose "$signed_apk" > "$signature_report" 2>&1; then
+        echo "ERROR: $signed_apk is not a valid signed APK." >&2
+        cat "$signature_report" >&2
+        exit 2
+    fi
+done
+
+echo "Installing release APKs on Android target $serial before fixture setup..."
+adb_run uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
+adb_run uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
+adb_run install "$apk_path"
+adb_run install "$test_apk_path"
+
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(mktemp -d)"
     fixture_ready="$fixture_tmp/ready.json"
@@ -341,39 +369,11 @@ EOF
     ordinary_url="https://$fixture_host:$FIXTURE_HTTP_PORT/"
 fi
 
-apksigner_bin="$(command -v apksigner || true)"
-if [[ -z "$apksigner_bin" ]]; then
-    sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-    if [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]; then
-        apksigner_bin="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x \
-            | sort -V | tail -n 1)"
-    fi
-fi
-if [[ -z "$apksigner_bin" ]]; then
-    echo "ERROR: apksigner is required to verify the release APK signature." >&2
-    echo "Use an Android SDK runner with build-tools installed." >&2
-    exit 2
-fi
-for signed_apk in "$apk_path" "$test_apk_path"; do
-    signature_report="$output_dir/$(basename "$signed_apk").signature.txt"
-    if ! "$apksigner_bin" verify --verbose "$signed_apk" > "$signature_report" 2>&1; then
-        echo "ERROR: $signed_apk is not a valid signed APK." >&2
-        cat "$signature_report" >&2
-        exit 2
-    fi
-done
-
 capture device-details adb "${adb_args[@]}" shell sh -c \
     'echo "serial=$(getprop ro.serialno)"; echo "manufacturer=$(getprop ro.product.manufacturer)"; echo "model=$(getprop ro.product.model)"; echo "android=$(getprop ro.build.version.release)"; echo "sdk=$(getprop ro.build.version.sdk)"; echo "abi=$(getprop ro.product.cpu.abi)"'
 capture network-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture network-ip-route adb "${adb_args[@]}" shell sh -c 'ip addr; echo "--- routes ---"; ip route'
 capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
-
-echo "Installing $apk_path on Android target $serial..."
-adb_run uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run install "$apk_path"
-adb_run install "$test_apk_path"
 
 echo "Running SafeNet DNS instrumentation..."
 set +e
