@@ -440,11 +440,66 @@ test("controlled-fixture workflow runs skip public DNS alert actions", () => {
 
   assert.match(failureCondition, /github\.event_name == 'schedule'/);
   assert.match(recoveryCondition, /github\.event_name == 'schedule'/);
+  assert.match(failureCondition, /DNS_ALERT_VALIDATION == 'lifecycle'/);
+  assert.match(recoveryCondition, /DNS_ALERT_VALIDATION == 'lifecycle'/);
   assert.match(failureCondition, /ANDROID_SMOKE_COVERAGE == 'external-network'/);
   assert.match(recoveryCondition, /ANDROID_SMOKE_COVERAGE == 'external-network'/);
   assert.ok(
     workflow.includes(
       "ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}",
+    ),
+  );
+  assert.ok(
+    workflow.includes(
+      "DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}",
+    ),
+  );
+  assert.match(workflow, /dns_alert_validation:\n\s+description: "Maintainer-only DNS alert lifecycle validation"/);
+  assert.match(workflow, /default: none\n\s+type: choice\n\s+options:\n\s+- none\n\s+- lifecycle/);
+  assert.match(
+    workflow,
+    /continue-on-error: \$\{\{ github\.event_name == 'schedule' \|\| env\.DNS_ALERT_VALIDATION == 'lifecycle' \}\}/,
+  );
+});
+
+test("manual lifecycle validation runs failure and recovery against one GitHub alert", async () => {
+  const alerts: Alert[] = [];
+  const title = "[Maintainer alert] Scheduled public DNS smoke failure";
+
+  const failureResult = await runEmbeddedScript(
+    failureStep,
+    {
+      ALERT_TITLE: title,
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12352",
+      EVIDENCE_URL:
+        "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12352/artifacts/67891",
+    },
+    alerts,
+  );
+  const recoveryResult = await runEmbeddedScript(
+    recoveryStep,
+    {
+      ALERT_TITLE: title,
+      RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/12352",
+    },
+    alerts,
+  );
+
+  assert.equal(failureResult.calls.filter((call) => call.method === "create").length, 1);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0]?.state, "closed");
+  assert.equal(alerts[0]?.comments.length, 1);
+  assert.match(alerts[0]?.comments[0] ?? "", /recovered successfully/);
+  assert.ok(
+    recoveryResult.calls.find(
+      (call) =>
+        call.method === "createComment" &&
+        String(call.params.body).includes("Successful workflow run"),
+    ),
+  );
+  assert.ok(
+    recoveryResult.calls.find(
+      (call) => call.method === "update" && call.params.state === "closed",
     ),
   );
 });
