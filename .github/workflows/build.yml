@@ -563,9 +563,33 @@ jobs:
           Write-Host "Verified Windows Android debug APK: $apkPath ($($apk.Length) bytes)"
 
       - name: Build Windows installer
-        run: npx electron-builder --win --x64 --publish never
+        id: build-windows-installer
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP "electron-builder.log"
+
+          & npx electron-builder --win --x64 --publish never 2>&1 |
+            Tee-Object -FilePath $logPath
+          $exitCode = $LASTEXITCODE
+
+          if ($exitCode -ne 0) {
+            Write-Error "Electron builder failed with exit code $exitCode. See $logPath for captured output."
+            exit $exitCode
+          }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer build evidence
+        if: ${{ failure() && steps.build-windows-installer.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Windows-installer-build-evidence
+          path: |
+            ${{ runner.temp }}/electron-builder.log
+            dist-electron/**/*.log
+            dist-electron/*.msi
+          if-no-files-found: warn
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
