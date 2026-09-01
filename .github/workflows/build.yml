@@ -158,7 +158,7 @@ jobs:
       - name: Alert maintainers about public DNS smoke failure
         # workflow_dispatch is only enabled for the explicit lifecycle choice.
         # Ordinary fixture dispatches retain the schedule-only production path.
-        if: (github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'failure') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle')
+        if: always() && ((github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'failure') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle'))
         uses: actions/github-script@v7
         env:
           ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure"
@@ -304,7 +304,7 @@ jobs:
             }
 
       - name: Close recovered public DNS smoke alert
-        if: (github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'success') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle')
+        if: always() && ((github.event_name == 'schedule' && env.ANDROID_SMOKE_COVERAGE == 'external-network' && steps.android-dns-smoke.outcome == 'success') || (github.event_name == 'workflow_dispatch' && env.DNS_ALERT_VALIDATION == 'lifecycle'))
         uses: actions/github-script@v7
         env:
           ALERT_TITLE: "[Maintainer alert] Scheduled public DNS smoke failure"
