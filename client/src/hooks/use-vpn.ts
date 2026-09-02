@@ -62,6 +62,29 @@ export interface VpnStatus {
   eulaVersion: string;
   eulaAccepted: boolean;
   error?: string;
+  protection?: ProtectionStatus;
+}
+
+export type ProtectionState =
+  | "protected"
+  | "vpn_replaced"
+  | "proxy_uninspectable"
+  | "dns_bypass_possible"
+  | "capture_unavailable"
+  | "protection_unavailable";
+
+export interface ProtectionStatus {
+  state: ProtectionState;
+  timestamp: number;
+  safeNetVpnRunning: boolean;
+  safeNetOwnsActiveVpn: boolean;
+  otherVpnActive: boolean;
+  activeNetwork: boolean;
+  scope: string;
+  message: string;
+  proxyState: "proxy_uninspectable" | string;
+  proxyMessage: string;
+  limitations: string[];
 }
 
 export type AiShieldState =
@@ -99,6 +122,7 @@ interface SafeNetVpnPlugin {
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
+  getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
   startAiShieldScreen(): Promise<AiShieldResult>;

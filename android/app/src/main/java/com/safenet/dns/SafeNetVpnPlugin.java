@@ -64,7 +64,14 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        call.resolve(status());
+        JSObject result = status();
+        result.put("protection", toJsObject(SafeNetProtectionStatus.get(getContext())));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getProtectionStatus(PluginCall call) {
+        call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
     }
 
     @PluginMethod

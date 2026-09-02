@@ -65,6 +65,8 @@ export function AiShieldControls() {
   const { toast } = useToast();
   const presentation = statePresentation(shield.status);
   const monitoring = shield.status?.monitoring ?? false;
+  const protection = shield.protection;
+  const protectionIsVerified = protection?.state === "protected";
 
   const run = async (action: () => Promise<AiShieldResult>) => {
     try {
@@ -111,6 +113,45 @@ export function AiShieldControls() {
         </p>
       ) : (
         <>
+          <div
+            className={`rounded-md border p-3 ${
+              protectionIsVerified
+                ? "border-green-500/30 bg-green-500/10 text-green-100"
+                : "border-yellow-500/40 bg-yellow-500/10 text-yellow-100"
+            }`}
+            data-testid="android-protection-status"
+          >
+            <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              {protectionIsVerified
+                ? <CheckCircle2 className="h-4 w-4 text-green-400" />
+                : <AlertCircle className="h-4 w-4 text-yellow-400" />}
+              <span>
+                {protectionIsVerified
+                  ? "SafeNet owns the active VPN path"
+                  : protection?.state === "vpn_replaced"
+                    ? "Another VPN owns the active path"
+                    : protection?.state === "dns_bypass_possible"
+                      ? "DNS bypass is possible"
+                      : "Network protection unavailable"}
+              </span>
+              <Badge variant="outline" className="text-[10px] uppercase">
+                {protection?.state || "checking"}
+              </Badge>
+            </div>
+            <p className="mt-2 text-sm">
+              {protection?.message || "Checking whether Android has assigned the device VPN path to SafeNet."}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {protection?.scope || "DNS-only coverage is being verified."}
+            </p>
+            <p className="mt-2 text-xs text-yellow-100/80">
+              Private proxy browsers, encrypted DNS, HTTPS content, and another app&apos;s VPN tunnel remain outside SafeNet inspection. Reconnect SafeNet and use system DNS for the coverage above.
+            </p>
+            <p className="mt-1 text-xs text-yellow-100/80">
+              A high-confidence screen finding can raise the existing shield event, but it cannot block content inside another app&apos;s private network tunnel.
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => void run(shield.startCamera)}

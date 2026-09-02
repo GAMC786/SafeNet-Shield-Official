@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { AiShieldResult, SafeNetVpn } from "@/hooks/use-vpn";
+import { AiShieldResult, ProtectionStatus, SafeNetVpn } from "@/hooks/use-vpn";
 
 const idleResult: AiShieldResult = {
   state: "capture_unavailable",
@@ -15,6 +15,7 @@ const idleResult: AiShieldResult = {
 export function useAiShield() {
   const supported = Capacitor.getPlatform() === "android";
   const [status, setStatus] = useState<AiShieldResult | null>(supported ? null : idleResult);
+  const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,11 +37,44 @@ export function useAiShield() {
     }
   }, [supported]);
 
+  const refreshProtection = useCallback(async () => {
+    if (!supported) {
+      return null;
+    }
+    try {
+      const nextProtection = await SafeNetVpn.getProtectionStatus();
+      setProtection(nextProtection);
+      return nextProtection;
+    } catch (statusError) {
+      const message = statusError instanceof Error
+        ? statusError.message
+        : "Android could not read network protection status.";
+      setProtection({
+        state: "protection_unavailable",
+        timestamp: Date.now(),
+        safeNetVpnRunning: false,
+        safeNetOwnsActiveVpn: false,
+        otherVpnActive: false,
+        activeNetwork: false,
+        scope: "SafeNet protection status is unavailable.",
+        message,
+        proxyState: "proxy_uninspectable",
+        proxyMessage: "Private browser proxies cannot be inspected by SafeNet.",
+        limitations: ["Reconnect SafeNet protection before treating DNS filtering as active."],
+      });
+      return null;
+    }
+  }, [supported]);
+
   useEffect(() => {
     if (!supported) {
       return;
     }
     void refresh();
+    void refreshProtection();
+    const interval = window.setInterval(() => {
+      void refreshProtection();
+    }, 2000);
     let listener: { remove: () => Promise<void> } | null = null;
     let disposed = false;
     void SafeNetVpn.addListener("aiShieldResult", (result) => {
@@ -54,12 +88,13 @@ export function useAiShield() {
       }
     }).catch(() => undefined);
     return () => {
+      window.clearInterval(interval);
       disposed = true;
       if (listener) {
         void listener.remove();
       }
     };
-  }, [refresh, supported]);
+  }, [refresh, refreshProtection, supported]);
 
   const run = useCallback(async (
     action: () => Promise<AiShieldResult>,
@@ -100,6 +135,7 @@ export function useAiShield() {
   return {
     supported,
     status,
+    protection,
     isBusy,
     error,
     refresh,

@@ -139,6 +139,18 @@ public class SafeNetVpnInstrumentationTest {
     }
 
     @Test
+    public void bridgeReportsPrivateProxyAsUninspectable() throws Exception {
+        JSONObject result = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.getProtectionStatus()"
+        );
+        JSONObject protection = requireValue(result);
+
+        assertEquals("proxy_uninspectable", protection.getString("proxyState"));
+        assertTrue(protection.getString("proxyMessage").toLowerCase(Locale.US).contains("cannot"));
+        assertTrue(protection.getJSONArray("states").length() >= 2);
+    }
+
+    @Test
     public void dnsOnlyRoutingAndOrdinaryConnectivity() throws Exception {
         acceptEula();
         startVpnWithPermission("plain", plainPrimary(), plainSecondary());
