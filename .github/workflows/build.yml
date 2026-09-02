@@ -585,12 +585,50 @@ jobs:
           ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64
 
       - name: Upload release Android smoke evidence
+        id: upload-release-android-smoke-evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-DNS-Android-smoke-evidence-release
           path: android/app/build/reports/android-smoke/latest
           if-no-files-found: warn
+
+      - name: Publish release Android smoke summary
+        if: always()
+        shell: bash
+        env:
+          SMOKE_STEP_OUTCOME: ${{ steps.android-release-dns-smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVIDENCE_URL: ${{ steps.upload-release-android-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+          category_file="$evidence_dir/failure-category.txt"
+          category="EMULATOR_RUNNER_FAILURE"
+
+          # The emulator action can fail before its script starts. Keep the
+          # summary useful in that case, and only publish categories emitted
+          # by the smoke script rather than arbitrary evidence-file content.
+          if [[ -f "$category_file" ]]; then
+            candidate="$(head -n 1 "$category_file" | tr -d '\r')"
+            case "$candidate" in
+              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
+                category="$candidate"
+                ;;
+              *)
+                category="UNKNOWN_FAILURE"
+                ;;
+            esac
+          fi
+
+          {
+            echo "## Android release smoke"
+            echo
+            echo "- **Failure category:** \`$category\`"
+            echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build-windows:
     if: github.event_name != 'schedule'
