@@ -303,7 +303,13 @@ test("tagged releases require the dedicated writable Android runner", () => {
     workflow,
     /--test-apk "\$GITHUB_WORKSPACE\/artifacts\/android-test\/app-release-androidTest\.apk"/,
   );
-  assert.match(workflow, /needs: \[build-android, build-windows, android-release-smoke\]/);
+  assert.match(workflow, /needs: \[build-android, android-release-smoke\]/);
+  assert.match(
+    workflow,
+    /build-windows:\n\s+# Tagged releases.*\n\s+# Windows packaging lane.*\n\s+if: github\.event_name != 'schedule' && !startsWith\(github\.ref, 'refs\/tags\/v'\)/s,
+  );
+  assert.doesNotMatch(workflow, /name: Download Windows artifact/);
+  assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
   assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
