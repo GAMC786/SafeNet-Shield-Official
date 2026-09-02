@@ -176,7 +176,7 @@ test("runs a maintainer-triggered or monthly cross-platform installer matrix", (
   );
   assert.match(
     matrixJob,
-    /runner: macos-13[\s\S]*?platform: macOS[\s\S]*?architecture: x64/,
+    /runner: macos-15-intel[\s\S]*?platform: macOS[\s\S]*?architecture: x64/,
   );
   assert.match(
     matrixJob,
@@ -214,12 +214,16 @@ test("publishes independent monthly lint health and bounded failure details", ()
   const summaryJob = workflow.slice(summaryJobStart, summaryJobEnd);
 
   assert.match(summaryJob, /name: Monthly workflow lint health/);
-  assert.match(summaryJob, /needs: cross-platform-workflow-lint/);
+  assert.doesNotMatch(summaryJob, /needs: cross-platform-workflow-lint/);
+  assert.match(summaryJob, /timeout-minutes: 20/);
+  assert.match(summaryJob, /MATRIX_WAIT_SECONDS: 600/);
+  assert.match(summaryJob, /listJobsForWorkflowRun/);
+  assert.match(summaryJob, /runner allocation timeout/);
   assert.match(
     summaryJob,
     /if:[\s\S]*?always\(\)[\s\S]*?github\.event_name == 'workflow_dispatch' && inputs\.cross_platform_workflow_lint[\s\S]*?github\.event_name == 'schedule' && github\.event\.schedule == '47 4 1 \* \*'/,
   );
-  assert.match(summaryJob, /needs\.cross-platform-workflow-lint\.result/);
+  assert.match(summaryJob, /steps\.wait_for_matrix\.outputs\.matrix_result/);
   assert.match(summaryJob, /Android build and release health is reported separately/);
 
   const androidJobStart = summaryJobEnd;
@@ -273,7 +277,7 @@ test("records each hosted runner outcome in bounded machine-readable history", (
     /name: SafeNet-DNS-workflow-lint-outcome-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.architecture \}\}/,
   );
 
-  assert.match(summaryJob, /permissions:\s*\n\s+contents: write/);
+  assert.match(summaryJob, /permissions:[\s\S]*?actions: read[\s\S]*?contents: write/);
   assert.match(summaryJob, /group: workflow-lint-history/);
   assert.match(summaryJob, /name: Record workflow lint history[\s\S]*?if: always\(\)/);
   assert.match(

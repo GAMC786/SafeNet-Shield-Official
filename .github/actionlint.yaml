@@ -2,6 +2,10 @@
 # .github/workflows/build.yml. Local validation requires exact matches.
 # actionlint: 1.7.0
 # ShellCheck: 0.10.0
+# macos-15-intel is the supported Intel replacement for retired macos-13.
+# macos-14 remains the arm64 runner for the corresponding matrix entry.
 self-hosted-runner:
   labels:
     - android-writable-system
+    # actionlint 1.7.0 predates this GitHub-hosted Intel label.
+    - macos-15-intel

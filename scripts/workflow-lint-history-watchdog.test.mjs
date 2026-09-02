@@ -390,7 +390,7 @@ test("replaces rerun records without consuming retention slots", () => {
     {
       platform: "macOS",
       architecture: "x64",
-      runner: "macos-13",
+      runner: "macos-15-intel",
     },
     {
       platform: "macOS",
@@ -482,6 +482,125 @@ test("replaces rerun records without consuming retention slots", () => {
   }
 });
 
+test("synthesizes a failed outcome when a matrix runner never produces an artifact", () => {
+  const configuredHistory = JSON.parse(
+    readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
+  );
+  const workspace = mkdtempSync(join(tmpdir(), "workflow-lint-history-timeout-"));
+  const historyDirectory = join(workspace, ".github");
+  const resultsDirectory = join(workspace, "workflow-lint-results");
+  const runnerTemp = join(workspace, "runner-temp");
+  const writerScript = getHistoryWriterScript();
+
+  try {
+    mkdirSync(historyDirectory);
+    mkdirSync(resultsDirectory);
+    mkdirSync(runnerTemp);
+    writeFileSync(
+      join(historyDirectory, "workflow-lint-history.json"),
+      `${JSON.stringify(configuredHistory, null, 2)}\n`,
+    );
+    writeFileSync(
+      join(resultsDirectory, "workflow-lint-result-Windows-x64.json"),
+      `${JSON.stringify(
+        {
+          platform: "Windows",
+          architecture: "x64",
+          runner: "windows-latest",
+          stage: "completed",
+          outcome: "success",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      join(resultsDirectory, "workflow-lint-result-macOS-arm64.json"),
+      `${JSON.stringify(
+        {
+          platform: "macOS",
+          architecture: "arm64",
+          runner: "macos-14",
+          stage: "completed",
+          outcome: "success",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      join(runnerTemp, "workflow-lint-matrix-jobs.json"),
+      `${JSON.stringify(
+        [
+          {
+            name: "Workflow lint (Windows x64 on windows-latest)",
+            status: "completed",
+            conclusion: "success",
+          },
+          {
+            name: "Workflow lint (macOS x64 on macos-15-intel)",
+            status: "queued",
+            conclusion: null,
+          },
+          {
+            name: "Workflow lint (macOS arm64 on macos-14)",
+            status: "completed",
+            conclusion: "success",
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+    );
+
+    const writer = spawnSync(process.execPath, ["--input-type=module"], {
+      cwd: workspace,
+      encoding: "utf8",
+      input: writerScript,
+      env: {
+        ...process.env,
+        RESULTS_DIRECTORY: resultsDirectory,
+        RUNNER_TEMP: runnerTemp,
+        RUN_ID: "102",
+        RUN_ATTEMPT: "1",
+        EVENT_NAME: "schedule",
+        RECORDED_AT: "2026-09-01T04:47:00Z",
+        REF_NAME: "main",
+        COMMIT_SHA: "timed-out-matrix",
+      },
+    });
+    assert.equal(
+      writer.status,
+      0,
+      `history writer failed for timed-out matrix:\n${writer.stderr}`,
+    );
+
+    const history = JSON.parse(
+      readFileSync(join(historyDirectory, "workflow-lint-history.json"), "utf8"),
+    );
+    const timedOutResult = history.runs[0].results.find(
+      (result) => result.platform === "macOS" && result.architecture === "x64",
+    );
+    assert.deepEqual(timedOutResult, {
+      platform: "macOS",
+      architecture: "x64",
+      runner: "macos-15-intel",
+      stage: "runner allocation timeout",
+      outcome: "failure",
+    });
+    assert.deepEqual(
+      new Set(
+        history.runs[0].results.map(
+          (result) => `${result.platform}/${result.architecture}`,
+        ),
+      ),
+      new Set(["Windows/x64", "macOS/x64", "macOS/arm64"]),
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test("retains only the newest configured runs with every matrix outcome", () => {
   const configuredHistory = JSON.parse(
     readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
@@ -524,7 +643,7 @@ test("retains only the newest configured runs with every matrix outcome", () => 
         {
           platform: "macOS",
           architecture: "x64",
-          runner: "macos-13",
+          runner: "macos-15-intel",
         },
         {
           platform: "macOS",

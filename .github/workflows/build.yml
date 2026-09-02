@@ -114,7 +114,10 @@ jobs:
           - runner: windows-latest
             platform: Windows
             architecture: x64
-          - runner: macos-13
+          # macos-13 was retired for hosted Intel jobs. Keep this explicit
+          # replacement paired with the x64 contract instead of using the
+          # arm64 macos-14 label below.
+          - runner: macos-15-intel
             platform: macOS
             architecture: x64
           - runner: macos-14
@@ -293,13 +296,17 @@ jobs:
 
   cross-platform-workflow-lint-summary:
     name: Monthly workflow lint health
-    needs: cross-platform-workflow-lint
     if: >-
       always() &&
       ((github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
       (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
     runs-on: ubuntu-latest
+    # This coordinator must not wait on a matrix entry that is still queued.
+    # It polls for a bounded window and records a failure for any missing
+    # runner outcome so the monthly history can still be written.
+    timeout-minutes: 20
     permissions:
+      actions: read
       contents: write
     concurrency:
       group: workflow-lint-history
@@ -311,7 +318,100 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
+      - name: Wait for cross-platform workflow lint matrix
+        id: wait_for_matrix
+        uses: actions/github-script@v7
+        env:
+          MATRIX_WAIT_SECONDS: 600
+        with:
+          script: |
+            const { writeFileSync } = require('node:fs');
+            const { join } = require('node:path');
+
+            const expected = [
+              {
+                platform: 'Windows',
+                architecture: 'x64',
+                runner: 'windows-latest',
+                name: 'Workflow lint (Windows x64 on windows-latest)'
+              },
+              {
+                platform: 'macOS',
+                architecture: 'x64',
+                runner: 'macos-15-intel',
+                name: 'Workflow lint (macOS x64 on macos-15-intel)'
+              },
+              {
+                platform: 'macOS',
+                architecture: 'arm64',
+                runner: 'macos-14',
+                name: 'Workflow lint (macOS arm64 on macos-14)'
+              }
+            ];
+            const waitSeconds = Number(process.env.MATRIX_WAIT_SECONDS);
+            const deadline = Date.now() + waitSeconds * 1000;
+            let jobs = [];
+
+            while (true) {
+              try {
+                const response = await github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: context.runId,
+                  per_page: 100
+                });
+                jobs = response.data.jobs.filter((job) =>
+                  expected.some((entry) => entry.name === job.name)
+                );
+              } catch (error) {
+                core.warning(`Could not read matrix job status yet: ${error.message}`);
+              }
+
+              const complete = expected.every((entry) =>
+                jobs.some((job) => entry.name === job.name && job.status === 'completed')
+              );
+              if (complete || Date.now() >= deadline) {
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 30000));
+            }
+
+            const records = expected.map((entry) => {
+              const matchingJobs = jobs
+                .filter((job) => job.name === entry.name)
+                .sort((left, right) => Number(right.id) - Number(left.id));
+              const job = matchingJobs[0];
+              return {
+                ...entry,
+                job_id: job?.id ?? null,
+                status: job?.status ?? 'queued',
+                conclusion: job?.conclusion ?? null
+              };
+            });
+            const timedOut = records.some((record) => record.status !== 'completed');
+            if (timedOut) {
+              core.warning(
+                `Cross-platform workflow lint matrix did not complete within ${waitSeconds} seconds.`
+              );
+            }
+
+            writeFileSync(
+              join(process.env.RUNNER_TEMP, 'workflow-lint-matrix-jobs.json'),
+              `${JSON.stringify(records, null, 2)}\n`
+            );
+            core.setOutput(
+              'matrix_result',
+              records.every(
+                (record) =>
+                  record.status === 'completed' && record.conclusion === 'success'
+              )
+                ? 'success'
+                : 'failure'
+            );
+
       - name: Download workflow lint outcomes
+        if: always()
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: SafeNet-DNS-workflow-lint-outcome-*
@@ -321,7 +421,7 @@ jobs:
       - name: Publish monthly workflow lint health
         shell: bash
         env:
-          LINT_RESULT: ${{ needs.cross-platform-workflow-lint.result }}
+          LINT_RESULT: ${{ steps.wait_for_matrix.outputs.matrix_result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -370,6 +470,7 @@ jobs:
           node --input-type=module <<'NODE'
           import {
             existsSync,
+            mkdirSync,
             readdirSync,
             readFileSync,
             writeFileSync,
@@ -377,17 +478,88 @@ jobs:
 
           const historyPath = ".github/workflow-lint-history.json";
           const resultsDirectory = process.env.RESULTS_DIRECTORY;
+          const expected = [
+            {
+              platform: "Windows",
+              architecture: "x64",
+              runner: "windows-latest",
+              name: "Workflow lint (Windows x64 on windows-latest)",
+            },
+            {
+              platform: "macOS",
+              architecture: "x64",
+              runner: "macos-15-intel",
+              name: "Workflow lint (macOS x64 on macos-15-intel)",
+            },
+            {
+              platform: "macOS",
+              architecture: "arm64",
+              runner: "macos-14",
+              name: "Workflow lint (macOS arm64 on macos-14)",
+            },
+          ];
+          const expectedKeys = new Set(
+            expected.map(
+              (entry) => `${entry.platform}/${entry.architecture}`,
+            ),
+          );
+          const matrixJobsPath = `${process.env.RUNNER_TEMP}/workflow-lint-matrix-jobs.json`;
+          const matrixJobs = existsSync(matrixJobsPath)
+            ? JSON.parse(readFileSync(matrixJobsPath, "utf8"))
+            : [];
+          mkdirSync(resultsDirectory, { recursive: true });
+
           const resultFiles = readdirSync(resultsDirectory)
             .filter((file) => file.endsWith(".json"))
             .sort();
 
-          if (resultFiles.length !== 3) {
+          const resultByKey = new Map();
+          for (const file of resultFiles) {
+            const result = JSON.parse(
+              readFileSync(`${resultsDirectory}/${file}`, "utf8"),
+            );
+            const key = `${result.platform}/${result.architecture}`;
+            if (!expectedKeys.has(key) || resultByKey.has(key)) {
+              throw new Error(`Unexpected or duplicate workflow lint outcome ${file}.`);
+            }
+            resultByKey.set(key, result);
+          }
+
+          for (const entry of expected) {
+            const key = `${entry.platform}/${entry.architecture}`;
+            if (resultByKey.has(key)) {
+              continue;
+            }
+            const job = matrixJobs.find((candidate) => candidate.name === entry.name);
+            const runnerUnavailable = job?.status !== "completed";
+            const result = {
+              platform: entry.platform,
+              architecture: entry.architecture,
+              runner: entry.runner,
+              stage: runnerUnavailable
+                ? "runner allocation timeout"
+                : "matrix outcome unavailable",
+              outcome: "failure",
+            };
+            const filename =
+              `workflow-lint-result-${entry.platform}-${entry.architecture}.json`;
+            writeFileSync(
+              `${resultsDirectory}/${filename}`,
+              `${JSON.stringify(result, null, 2)}\n`,
+            );
+            resultByKey.set(key, result);
+          }
+
+          const normalizedResultFiles = readdirSync(resultsDirectory)
+            .filter((file) => file.endsWith(".json"))
+            .sort();
+          if (normalizedResultFiles.length !== expected.length) {
             throw new Error(
-              `Expected 3 workflow lint outcomes, found ${resultFiles.length}.`,
+              `Expected ${expected.length} workflow lint outcomes, found ${normalizedResultFiles.length}.`,
             );
           }
 
-          const results = resultFiles.map((file) => {
+          const results = normalizedResultFiles.map((file) => {
             const result = JSON.parse(
               readFileSync(`${resultsDirectory}/${file}`, "utf8"),
             );
@@ -401,6 +573,10 @@ jobs:
               if (typeof result[field] !== "string" || result[field].length === 0) {
                 throw new Error(`Workflow lint outcome ${file} is missing ${field}.`);
               }
+            }
+            const key = `${result.platform}/${result.architecture}`;
+            if (!expectedKeys.has(key)) {
+              throw new Error(`Workflow lint outcome ${file} has an unsupported matrix entry.`);
             }
             return result;
           });
