@@ -27,6 +27,11 @@ on:
         options:
           - none
           - lifecycle
+      cross_platform_workflow_lint:
+        description: "Run the pinned workflow lint installer on Windows and macOS"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -91,6 +96,98 @@ jobs:
         with:
           version: ${{ steps.workflow-lint-versions.outputs.actionlint_version }}
           files: .github/workflows/*.yml, .github/workflows/*.yaml
+
+  cross-platform-workflow-lint:
+    name: Workflow lint (${{ matrix.platform }} ${{ matrix.architecture }})
+    if: github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            platform: Windows
+            architecture: x64
+          - runner: macos-13
+            platform: macOS
+            architecture: x64
+          - runner: macos-14
+            platform: macOS
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      WORKFLOW_LINT_PLATFORM: ${{ matrix.platform }}
+      WORKFLOW_LINT_ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - name: Checkout disposable workflow lint workspace
+        id: checkout_workspace
+        uses: actions/checkout@v4
+        with:
+          path: workflow-lint-checkout
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned workflow lint tools
+        id: setup_workflow_lint
+        working-directory: workflow-lint-checkout
+        shell: bash
+        run: npm run setup:workflow-lint
+
+      - name: Lint workflows with installed tools
+        id: lint_workflows
+        working-directory: workflow-lint-checkout
+        shell: bash
+        run: npm run lint:workflows
+
+      - name: Report workflow lint failure stage
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout_workspace.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          SETUP_OUTCOME: ${{ steps.setup_workflow_lint.outcome }}
+          LINT_OUTCOME: ${{ steps.lint_workflows.outcome }}
+        run: |
+          set -u
+          stage="completed"
+          outcome="success"
+
+          if [[ "$CHECKOUT_OUTCOME" != "success" ]]; then
+            stage="checkout"
+            outcome="$CHECKOUT_OUTCOME"
+          elif [[ "$NODE_OUTCOME" != "success" ]]; then
+            stage="node setup"
+            outcome="$NODE_OUTCOME"
+          elif [[ "$SETUP_OUTCOME" != "success" ]]; then
+            stage="workflow lint setup"
+            outcome="$SETUP_OUTCOME"
+          elif [[ "$LINT_OUTCOME" != "success" ]]; then
+            stage="workflow lint"
+            outcome="$LINT_OUTCOME"
+          fi
+
+          if [[ "$stage" == "completed" ]]; then
+            echo "Workflow lint passed on ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE}."
+            exit 0
+          fi
+
+          message="Workflow lint failed on ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} during ${stage} (outcome: ${outcome})."
+          echo "::error title=${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} workflow lint failure::${message}"
+          {
+            echo "## Cross-platform workflow lint failure"
+            echo
+            echo "- **Platform:** ${WORKFLOW_LINT_PLATFORM}"
+            echo "- **Architecture:** ${WORKFLOW_LINT_ARCHITECTURE}"
+            echo "- **Failed stage:** ${stage}"
+            echo "- **Outcome:** ${outcome}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
   build-android:
     needs: validate-release-workflow

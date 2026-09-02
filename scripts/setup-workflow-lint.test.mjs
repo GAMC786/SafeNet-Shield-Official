@@ -147,6 +147,55 @@ test("sources CI workflow lint versions from package.json", () => {
   );
 });
 
+test("runs an opt-in cross-platform installer matrix in disposable workspaces", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/build.yml", import.meta.url),
+    "utf8",
+  );
+  const matrixJobStart = workflow.indexOf("  cross-platform-workflow-lint:");
+  const matrixJobEnd = workflow.indexOf("  build-android:", matrixJobStart);
+  assert.notEqual(matrixJobStart, -1);
+  assert.notEqual(matrixJobEnd, -1);
+  const matrixJob = workflow.slice(matrixJobStart, matrixJobEnd);
+
+  assert.match(
+    workflow,
+    /cross_platform_workflow_lint:[\s\S]*?type: boolean/,
+  );
+  assert.match(
+    matrixJob,
+    /if: github\.event_name == 'workflow_dispatch' && inputs\.cross_platform_workflow_lint/,
+  );
+  assert.match(
+    matrixJob,
+    /runner: windows-latest[\s\S]*?platform: Windows[\s\S]*?architecture: x64/,
+  );
+  assert.match(
+    matrixJob,
+    /runner: macos-13[\s\S]*?platform: macOS[\s\S]*?architecture: x64/,
+  );
+  assert.match(
+    matrixJob,
+    /runner: macos-14[\s\S]*?platform: macOS[\s\S]*?architecture: arm64/,
+  );
+  assert.match(
+    matrixJob,
+    /uses: actions\/checkout@v4[\s\S]*?path: workflow-lint-checkout/,
+  );
+  assert.match(
+    matrixJob,
+    /working-directory: workflow-lint-checkout[\s\S]*?run: npm run setup:workflow-lint/,
+  );
+  assert.match(
+    matrixJob,
+    /working-directory: workflow-lint-checkout[\s\S]*?run: npm run lint:workflows/,
+  );
+  assert.match(
+    matrixJob,
+    /Report workflow lint failure stage[\s\S]*?WORKFLOW_LINT_PLATFORM[\s\S]*?WORKFLOW_LINT_ARCHITECTURE[\s\S]*?Failed stage/,
+  );
+});
+
 test("rejects unsupported platforms with an actionable error", () => {
   assert.throws(
     () => getPlatformConfiguration("freebsd", "x64"),
