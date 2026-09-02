@@ -10,3 +10,4 @@
 - [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
 - [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
+- [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.
