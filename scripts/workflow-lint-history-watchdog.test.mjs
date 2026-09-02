@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Script } from "node:vm";
 import test from "node:test";
 
@@ -13,6 +22,11 @@ const jobEnd = workflow.indexOf("\n  android-release-smoke:", jobStart);
 assert.notEqual(jobStart, -1);
 assert.notEqual(jobEnd, -1);
 const watchdogJob = workflow.slice(jobStart, jobEnd);
+const summaryJobStart = workflow.indexOf("  cross-platform-workflow-lint-summary:");
+const summaryJobEnd = workflow.indexOf("\n  build-android:", summaryJobStart);
+assert.notEqual(summaryJobStart, -1);
+assert.notEqual(summaryJobEnd, -1);
+const summaryJob = workflow.slice(summaryJobStart, summaryJobEnd);
 
 function getEmbeddedScript() {
   const marker = "          script: |\n";
@@ -30,6 +44,21 @@ function getEmbeddedScript() {
     }
   }
   return scriptLines.join("\n");
+}
+
+function getHistoryWriterScript() {
+  const marker = "          node --input-type=module <<'NODE'\n";
+  const scriptStart = summaryJob.indexOf(marker);
+  assert.notEqual(scriptStart, -1);
+
+  const scriptEnd = summaryJob.indexOf("\n          NODE", scriptStart);
+  assert.notEqual(scriptEnd, -1);
+
+  return summaryJob
+    .slice(scriptStart + marker.length, scriptEnd)
+    .split("\n")
+    .map((line) => line.slice("          ".length))
+    .join("\n");
 }
 
 function createGitHubMock({
@@ -342,4 +371,117 @@ test("keeps the first-day watchdog run deferred until the monthly schedule can s
 
   assert.equal(result.calls.filter((call) => call.method === "listWorkflowRuns").length, 1);
   assert.equal(calls.length, 0);
+});
+
+test("retains only the newest configured runs with every matrix outcome", () => {
+  const configuredHistory = JSON.parse(
+    readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
+  );
+  const retentionRuns = configuredHistory.retention_runs;
+  const totalRuns = retentionRuns + 3;
+  const expectedOutcomes = new Set([
+    "Windows/x64",
+    "macOS/x64",
+    "macOS/arm64",
+  ]);
+  const workspace = mkdtempSync(join(tmpdir(), "workflow-lint-history-"));
+  const historyDirectory = join(workspace, ".github");
+  const resultsDirectory = join(workspace, "workflow-lint-results");
+  const writerScript = getHistoryWriterScript();
+
+  try {
+    mkdirSync(historyDirectory);
+    mkdirSync(resultsDirectory);
+    writeFileSync(
+      join(historyDirectory, "workflow-lint-history.json"),
+      `${JSON.stringify(configuredHistory, null, 2)}\n`,
+    );
+
+    for (let runNumber = 1; runNumber <= totalRuns; runNumber += 1) {
+      for (const file of [
+        "workflow-lint-result-Windows-x64.json",
+        "workflow-lint-result-macOS-x64.json",
+        "workflow-lint-result-macOS-arm64.json",
+      ]) {
+        rmSync(join(resultsDirectory, file), { force: true });
+      }
+
+      const results = [
+        {
+          platform: "Windows",
+          architecture: "x64",
+          runner: "windows-latest",
+        },
+        {
+          platform: "macOS",
+          architecture: "x64",
+          runner: "macos-13",
+        },
+        {
+          platform: "macOS",
+          architecture: "arm64",
+          runner: "macos-14",
+        },
+      ];
+      results.forEach((result) => {
+        writeFileSync(
+          join(
+            resultsDirectory,
+            `workflow-lint-result-${result.platform}-${result.architecture}.json`,
+          ),
+          `${JSON.stringify(
+            { ...result, stage: "completed", outcome: "success" },
+            null,
+            2,
+          )}\n`,
+        );
+      });
+
+      const writer = spawnSync(process.execPath, ["--input-type=module"], {
+        cwd: workspace,
+        encoding: "utf8",
+        input: writerScript,
+        env: {
+          ...process.env,
+          RESULTS_DIRECTORY: resultsDirectory,
+          RUN_ID: String(runNumber),
+          RUN_ATTEMPT: "1",
+          EVENT_NAME: "schedule",
+          RECORDED_AT: `2026-09-${String(runNumber).padStart(2, "0")}T04:47:00Z`,
+          REF_NAME: "main",
+          COMMIT_SHA: `commit-${runNumber}`,
+        },
+      });
+      assert.equal(
+        writer.status,
+        0,
+        `history writer failed for run ${runNumber}:\n${writer.stderr}`,
+      );
+    }
+
+    const history = JSON.parse(
+      readFileSync(join(historyDirectory, "workflow-lint-history.json"), "utf8"),
+    );
+    assert.equal(history.retention_runs, retentionRuns);
+    assert.equal(history.runs.length, retentionRuns);
+    assert.deepEqual(
+      history.runs.map((run) => run.run_id),
+      Array.from(
+        { length: retentionRuns },
+        (_, index) => String(totalRuns - index),
+      ),
+    );
+    for (const run of history.runs) {
+      assert.deepEqual(
+        new Set(
+          run.results.map(
+            (result) => `${result.platform}/${result.architecture}`,
+          ),
+        ),
+        expectedOutcomes,
+      );
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });
