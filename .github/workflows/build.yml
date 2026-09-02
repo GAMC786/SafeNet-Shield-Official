@@ -762,7 +762,7 @@ jobs:
           name: SafeNet-DNS-Android-instrumentation
           path: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
 
-      - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
+      - name: Run Android DNS and WebView UI checks on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
         if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
         continue-on-error: ${{ github.event_name == 'schedule' || env.DNS_ALERT_VALIDATION == 'lifecycle' }}

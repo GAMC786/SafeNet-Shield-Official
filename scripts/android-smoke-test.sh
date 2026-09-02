@@ -630,7 +630,7 @@ capture network-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture network-ip-route adb "${adb_args[@]}" shell sh -c 'ip addr; echo "--- routes ---"; ip route'
 capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 
-echo "Running SafeNet DNS instrumentation..."
+echo "Running SafeNet DNS instrumentation and WebView UI checks..."
 set +e
 adb_run shell am instrument -w -r \
     -e class com.safenet.dns.SafeNetVpnInstrumentationTest \
@@ -642,6 +642,14 @@ adb_run shell am instrument -w -r \
     -e resolver-mode "$resolver_mode" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
+
+# Keep the existing native VPN smoke suite as its own invocation. The focused
+# UI suite uses the same provisioned emulator but verifies the WebView
+# accessibility tree independently, including the no-resolver disabled state.
+adb_run shell am instrument -w -r \
+    -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee -a "$output_dir/instrumentation.log"
+ui_instrumentation_status="${PIPESTATUS[0]}"
 set -e
 
 # Capture the VPN and network state even after a failed test. This is the
@@ -652,6 +660,7 @@ capture post-test-logcat adb "${adb_args[@]}" shell logcat -d -t 400
 
 test_failed=0
 if [[ "$instrumentation_status" -ne 0 ]] ||
+    [[ "$ui_instrumentation_status" -ne 0 ]] ||
     grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
         "$output_dir/instrumentation.log"; then
     test_failed=1
@@ -679,11 +688,12 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
-    "$serial" "$apk_path" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nui_instrumentation_status=%s\nfailure_category=%s\n' \
+    "$serial" "$apk_path" "$resolver_mode" "$coverage_label" "$instrumentation_status" \
+    "$ui_instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
-    echo "Android DNS smoke tests failed ($failure_category)." >&2
+    echo "Android DNS and WebView UI checks failed ($failure_category)." >&2
     echo "Evidence: $output_dir" >&2
     if [[ "$instrumentation_status" -eq 0 ]]; then
         exit 1
@@ -691,4 +701,4 @@ if [[ "$test_failed" -ne 0 ]]; then
     exit "$instrumentation_status"
 fi
 
-echo "Android DNS smoke tests passed. Evidence: $output_dir"
+echo "Android DNS and WebView UI checks passed. Evidence: $output_dir"
