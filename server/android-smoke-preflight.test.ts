@@ -73,7 +73,12 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /cat "\$output_dir\/emulator-image\.txt"/);
 });
 
-test("early preflight failure preserves emulator metadata and logs", () => {
+type PreflightFailureMode = "root" | "remount" | "cleanup-remains";
+
+function assertMockedPreflightFailure(
+  failureMode: PreflightFailureMode,
+  expectedMessage: RegExp,
+) {
   const fixtureDir = mkdtempSync(path.join(tmpdir(), "android-smoke-preflight-"));
   const binDir = path.join(fixtureDir, "bin");
   const outputDir = path.join(fixtureDir, "evidence");
@@ -98,7 +103,30 @@ case " $* " in
     esac
     exit 0
     ;;
-  *" root "*) printf 'adbd cannot run as root in production builds\\n'; exit 0 ;;
+  *" root "*)
+    if [[ "\${MOCK_FAILURE_MODE:?}" == "root" ]]; then
+      printf 'adbd cannot run as root in production builds\\n'
+    fi
+    exit 0
+    ;;
+  *" remount "*)
+    if [[ "\${MOCK_FAILURE_MODE:?}" == "remount" ]]; then
+      printf 'remount failed\\n' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *" reboot "*|*" wait-for-device "*) exit 0 ;;
+  *" push "*) exit 0 ;;
+  *" shell chmod "*|*" shell test -s "*) exit 0 ;;
+  *" shell rm -f "*) exit 0 ;;
+  *" shell test -e "*)
+    if [[ "\${MOCK_FAILURE_MODE:?}" == "cleanup-remains" ]]; then
+      printf 'the temporary CA is still present\\n'
+      exit 0
+    fi
+    exit 1
+    ;;
 esac
 printf 'unexpected adb invocation: %s\\n' "$*" >&2
 exit 1
@@ -123,6 +151,7 @@ exit 1
           ...process.env,
           PATH: `${binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
           MOCK_ADB_LOG: adbLog,
+          MOCK_FAILURE_MODE: failureMode,
           ANDROID_EMULATOR_API_LEVEL: "35",
           ANDROID_EMULATOR_TARGET: "google_apis",
           ANDROID_EMULATOR_ARCH: "x86_64",
@@ -135,7 +164,7 @@ exit 1
     assert.equal(
       result.status,
       1,
-      `expected the mocked root failure to stop preflight:\n${result.stdout}\n${result.stderr}`,
+      `expected the mocked ${failureMode} failure to stop preflight:\n${result.stdout}\n${result.stderr}`,
     );
     assert.equal(result.signal, null);
 
@@ -160,13 +189,29 @@ exit 1
       assert.match(preflightLog, new RegExp(`^${evidence}$`, "m"));
       assert.match(failureResult, new RegExp(`^${evidence}$`, "m"));
     }
-    assert.match(
-      failureResult,
-      /failure_category=FIXTURE_FAILURE[\s\S]*adb root is unavailable/,
-    );
+    assert.match(failureResult, /failure_category=FIXTURE_FAILURE/);
+    assert.match(failureResult, expectedMessage);
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }
+}
+
+test("early root preflight failure preserves emulator metadata and logs", () => {
+  assertMockedPreflightFailure("root", /adb root is unavailable/);
+});
+
+test("remount preflight failure preserves emulator metadata and logs", () => {
+  assertMockedPreflightFailure(
+    "remount",
+    /the emulator could not remount its system partition/,
+  );
+});
+
+test("temporary-CA cleanup preflight failure preserves emulator metadata and logs", () => {
+  assertMockedPreflightFailure(
+    "cleanup-remains",
+    /the temporary preflight CA remained in the system trust store/,
+  );
 });
 
 test("tagged releases require the dedicated writable Android runner", () => {
