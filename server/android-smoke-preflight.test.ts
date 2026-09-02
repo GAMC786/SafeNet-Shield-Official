@@ -244,6 +244,33 @@ test("tagged releases require the dedicated writable Android runner", () => {
   assert.match(runnerScript, /\/dev\/kvm/);
 });
 
+test("emulator-runner wrapper failure still reaches release evidence upload", () => {
+  const smokeStep = getStepBlock(
+    "Run controlled-fixture smoke test on writable emulator",
+  );
+  const uploadStep = getStepBlock("Upload release Android smoke evidence");
+
+  // The action wrapper can fail while booting the emulator, before either
+  // command in its script exits normally. This is distinct from the mocked
+  // adb failures above, which exercise the preflight script itself.
+  assert.match(smokeStep, /uses: reactivecircus\/android-emulator-runner@v2/);
+  assert.match(smokeStep, /script: \|/);
+  assert.match(smokeStep, /--preflight/);
+  assert.match(
+    smokeStep,
+    /--output "\$GITHUB_WORKSPACE\/android\/app\/build\/reports\/android-smoke\/latest\/preflight"/,
+  );
+
+  // always() is required because an action-level wrapper failure prevents
+  // the smoke script from producing a normal exit status.
+  assert.match(uploadStep, /\n        if: always\(\)/);
+  assert.match(
+    uploadStep,
+    /path: android\/app\/build\/reports\/android-smoke\/latest/,
+  );
+  assert.match(uploadStep, /if-no-files-found: warn/);
+});
+
 test("scheduled and manual runs check the dedicated runner independently", () => {
   const healthStart = workflow.indexOf("  android-runner-health:");
   const releaseSmokeStart = workflow.indexOf("  android-release-smoke:", healthStart);
