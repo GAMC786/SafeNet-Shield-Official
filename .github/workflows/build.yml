@@ -76,6 +76,21 @@ jobs:
         shell: bash
         run: ./scripts/setup-android-sdk.sh
 
+      - name: Preflight Android emulator system trust
+        id: android-system-trust-preflight
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.ANDROID_SMOKE_RESOLVER_MODE == 'fixture'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # Qualify the writable-system emulator before spending time on the
+          # release APKs or the full controlled resolver fixture.
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          script: ./scripts/android-smoke-test.sh --preflight --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
+
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
         env:
