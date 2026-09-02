@@ -426,10 +426,29 @@ jobs:
             commit: process.env.COMMIT_SHA,
             results,
           };
+          const existingRuns = previous.runs.filter(
+            (previousRun) => String(previousRun.run_id) === run.run_id,
+          );
+          const latestExistingRun = existingRuns.reduce(
+            (latest, previousRun) =>
+              !latest ||
+              Number(previousRun.run_attempt) > Number(latest.run_attempt)
+                ? previousRun
+                : latest,
+            undefined,
+          );
+          const authoritativeRun =
+            latestExistingRun &&
+            Number(latestExistingRun.run_attempt) > run.run_attempt
+              ? latestExistingRun
+              : run;
+          const independentRuns = previous.runs.filter(
+            (previousRun) => String(previousRun.run_id) !== run.run_id,
+          );
           const history = {
             schema_version: 1,
             retention_runs: previous.retention_runs,
-            runs: [run, ...previous.runs].slice(0, previous.retention_runs),
+            runs: [authoritativeRun, ...independentRuns].slice(0, previous.retention_runs),
           };
           writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
           NODE

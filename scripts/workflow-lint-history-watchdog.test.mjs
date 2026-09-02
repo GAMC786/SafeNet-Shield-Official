@@ -373,6 +373,115 @@ test("keeps the first-day watchdog run deferred until the monthly schedule can s
   assert.equal(calls.length, 0);
 });
 
+test("replaces rerun records without consuming retention slots", () => {
+  const configuredHistory = JSON.parse(
+    readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
+  );
+  const workspace = mkdtempSync(join(tmpdir(), "workflow-lint-history-rerun-"));
+  const historyDirectory = join(workspace, ".github");
+  const resultsDirectory = join(workspace, "workflow-lint-results");
+  const writerScript = getHistoryWriterScript();
+  const results = [
+    {
+      platform: "Windows",
+      architecture: "x64",
+      runner: "windows-latest",
+    },
+    {
+      platform: "macOS",
+      architecture: "x64",
+      runner: "macos-13",
+    },
+    {
+      platform: "macOS",
+      architecture: "arm64",
+      runner: "macos-14",
+    },
+  ];
+
+  function writeHistory({ runId, runAttempt, recordedAt, commit }) {
+    for (const result of results) {
+      writeFileSync(
+        join(
+          resultsDirectory,
+          `workflow-lint-result-${result.platform}-${result.architecture}.json`,
+        ),
+        `${JSON.stringify(
+          { ...result, stage: "completed", outcome: "success" },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+
+    const writer = spawnSync(process.execPath, ["--input-type=module"], {
+      cwd: workspace,
+      encoding: "utf8",
+      input: writerScript,
+      env: {
+        ...process.env,
+        RESULTS_DIRECTORY: resultsDirectory,
+        RUN_ID: String(runId),
+        RUN_ATTEMPT: String(runAttempt),
+        EVENT_NAME: "schedule",
+        RECORDED_AT: recordedAt,
+        REF_NAME: "main",
+        COMMIT_SHA: commit,
+      },
+    });
+    assert.equal(
+      writer.status,
+      0,
+      `history writer failed for run ${runId}, attempt ${runAttempt}:\n${writer.stderr}`,
+    );
+  }
+
+  try {
+    mkdirSync(historyDirectory);
+    mkdirSync(resultsDirectory);
+    writeFileSync(
+      join(historyDirectory, "workflow-lint-history.json"),
+      `${JSON.stringify(configuredHistory, null, 2)}\n`,
+    );
+
+    writeHistory({
+      runId: 101,
+      runAttempt: 1,
+      recordedAt: "2026-09-01T04:47:00Z",
+      commit: "first-attempt",
+    });
+    writeHistory({
+      runId: 100,
+      runAttempt: 1,
+      recordedAt: "2026-08-01T04:47:00Z",
+      commit: "previous-month",
+    });
+    writeHistory({
+      runId: 101,
+      runAttempt: 2,
+      recordedAt: "2026-09-01T05:12:00Z",
+      commit: "second-attempt",
+    });
+
+    const history = JSON.parse(
+      readFileSync(join(historyDirectory, "workflow-lint-history.json"), "utf8"),
+    );
+    assert.deepEqual(
+      history.runs.map((run) => run.run_id),
+      ["101", "100"],
+    );
+    assert.equal(history.runs[0].run_attempt, 2);
+    assert.equal(history.runs[0].recorded_at, "2026-09-01T05:12:00Z");
+    assert.equal(history.runs[0].commit, "second-attempt");
+    assert.equal(
+      history.runs.filter((run) => run.run_id === "101").length,
+      1,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test("retains only the newest configured runs with every matrix outcome", () => {
   const configuredHistory = JSON.parse(
     readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
