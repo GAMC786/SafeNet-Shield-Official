@@ -329,10 +329,27 @@ EOF
     if ! remount_system "$fixture_adb_log"; then
         fixture_failure "the emulator could not remount its system partition for the temporary TLS CA"
     fi
-    if ! timeout 30s adb "${adb_args[@]}" shell test -w \
-        /system/etc/security/cacerts \
-        >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the system CA directory was not writable after remount"
+    command -v timeout >/dev/null 2>&1 || \
+        fixture_failure "timeout is required to bound Android reboot waits"
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
+        fixture_failure "the emulator could not reboot after remounting for the temporary TLS CA"
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator did not return after remounting for the temporary TLS CA"
+    fi
+    for _ in {1..60}; do
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+        fixture_failure "the emulator did not become ready after remounting for the temporary TLS CA"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "adb root could not be re-enabled after remounting for the temporary TLS CA"
+    fi
+    if ! remount_system "$fixture_adb_log"; then
+        fixture_failure "the emulator could not activate its writable system overlay for the temporary TLS CA"
     fi
     if ! timeout 60s adb "${adb_args[@]}" push "$fixture_ca_store" \
         "/system/etc/security/cacerts/$fixture_ca_hash.0" \
@@ -344,14 +361,20 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
-    if ! timeout 30s adb "${adb_args[@]}" shell test -r \
-        "/system/etc/security/cacerts/$fixture_ca_hash.0" \
-        >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the temporary TLS CA was not readable after installation"
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
+        fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator did not return after installing the temporary TLS CA"
     fi
-    # The instrumentation process has not started yet, so it will load the
-    # installed system CA on first use. Avoid a second reboot: writable-system
-    # API 28 images can fail to return after rebooting with a new CA present.
+    for _ in {1..60}; do
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+        fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
+    fi
     package_service_ready=false
     package_service_ready_streak=0
     for _ in {1..90}; do
@@ -422,7 +445,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 
 echo "Running SafeNet DNS instrumentation..."
 set +e
-timeout 300s adb "${adb_args[@]}" shell am instrument -w -r \
+adb_run shell am instrument -w -r \
     -e class com.safenet.dns.SafeNetVpnInstrumentationTest \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
