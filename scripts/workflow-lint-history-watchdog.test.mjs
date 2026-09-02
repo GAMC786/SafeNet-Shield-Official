@@ -32,7 +32,13 @@ function getEmbeddedScript() {
   return scriptLines.join("\n");
 }
 
-function createGitHubMock({ runs, jobsByRun, history }) {
+function createGitHubMock({
+  runs,
+  jobsByRun,
+  history,
+  openAlerts = [],
+  comments = [],
+}) {
   const calls = [];
   const github = {
     rest: {
@@ -68,11 +74,23 @@ function createGitHubMock({ runs, jobsByRun, history }) {
         },
         listForRepo: async (params) => {
           calls.push({ method: "listForRepo", params });
-          return { data: [] };
+          return { data: openAlerts };
+        },
+        listComments: async (params) => {
+          calls.push({ method: "listComments", params });
+          return { data: comments };
         },
         create: async (params) => {
           calls.push({ method: "create", params });
           return { data: { number: 1 } };
+        },
+        createComment: async (params) => {
+          calls.push({ method: "createComment", params });
+          return { data: { id: 1, body: params.body } };
+        },
+        update: async (params) => {
+          calls.push({ method: "update", params });
+          return { data: { number: params.issue_number, state: params.state } };
         },
       },
     },
@@ -80,8 +98,20 @@ function createGitHubMock({ runs, jobsByRun, history }) {
   return { calls, github };
 }
 
-async function runWatchdog({ runs, jobsByRun, history }) {
-  const { calls, github } = createGitHubMock({ runs, jobsByRun, history });
+async function runWatchdog({
+  runs,
+  jobsByRun,
+  history,
+  openAlerts,
+  comments,
+}) {
+  const { calls, github } = createGitHubMock({
+    runs,
+    jobsByRun,
+    history,
+    openAlerts,
+    comments,
+  });
   const infoMessages = [];
   const warningMessages = [];
   await new Script(`(async () => {\n${getEmbeddedScript()}\n})()`).runInNewContext({
@@ -117,6 +147,22 @@ const monthlyJobs = {
   101: [{ name: "Workflow lint (Windows x64 on windows-latest)" }],
 };
 
+const recoveredAlert = {
+  number: 42,
+  title: "[Maintainer alert] Monthly workflow lint record missing",
+};
+
+function expectedRecoveryComment() {
+  return [
+    "The monthly hosted-runner workflow lint record recovered successfully.",
+    "",
+    "Successful workflow run: [101](https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/101)",
+    "History file: [Open .github/workflow-lint-history.json](https://github.com/SafeNetInc/SafeNet-DNS/blob/main/.github/workflow-lint-history.json)",
+    "",
+    "Closing this alert while preserving the previous finding history.",
+  ].join("\n");
+}
+
 test("does not alert or write when the monthly run has all three history outcomes", async () => {
   const result = await runWatchdog({
     runs: [monthlyRun],
@@ -140,6 +186,69 @@ test("does not alert or write when the monthly run has all three history outcome
   assert.equal(result.calls.filter((call) => call.method === "create").length, 0);
   assert.equal(result.calls.filter((call) => call.method === "createComment").length, 0);
   assert.ok(result.infoMessages.some((message) => message.includes("all three history outcomes")));
+});
+
+test("comments with the recovered run and history file before closing an open alert", async () => {
+  const result = await runWatchdog({
+    runs: [monthlyRun],
+    jobsByRun: monthlyJobs,
+    history: {
+      schema_version: 1,
+      retention_runs: 24,
+      runs: [
+        {
+          run_id: "101",
+          results: [
+            { platform: "Windows", architecture: "x64" },
+            { platform: "macOS", architecture: "x64" },
+            { platform: "macOS", architecture: "arm64" },
+          ],
+        },
+      ],
+    },
+    openAlerts: [recoveredAlert],
+  });
+
+  const commentIndex = result.calls.findIndex((call) => call.method === "createComment");
+  const updateIndex = result.calls.findIndex((call) => call.method === "update");
+  assert.notEqual(commentIndex, -1);
+  assert.notEqual(updateIndex, -1);
+  assert.ok(commentIndex < updateIndex);
+  assert.equal(result.calls[commentIndex].params.issue_number, recoveredAlert.number);
+  assert.equal(result.calls[commentIndex].params.body, expectedRecoveryComment());
+  assert.equal(result.calls[updateIndex].params.owner, "SafeNetInc");
+  assert.equal(result.calls[updateIndex].params.repo, "SafeNet-DNS");
+  assert.equal(result.calls[updateIndex].params.issue_number, recoveredAlert.number);
+  assert.equal(result.calls[updateIndex].params.state, "closed");
+  assert.equal(result.calls[updateIndex].params.state_reason, "completed");
+  assert.equal(result.calls.filter((call) => call.method === "create").length, 0);
+});
+
+test("does not duplicate the recovery comment when the alert already contains it", async () => {
+  const result = await runWatchdog({
+    runs: [monthlyRun],
+    jobsByRun: monthlyJobs,
+    history: {
+      schema_version: 1,
+      retention_runs: 24,
+      runs: [
+        {
+          run_id: "101",
+          results: [
+            { platform: "Windows", architecture: "x64" },
+            { platform: "macOS", architecture: "x64" },
+            { platform: "macOS", architecture: "arm64" },
+          ],
+        },
+      ],
+    },
+    openAlerts: [recoveredAlert],
+    comments: [{ body: expectedRecoveryComment() }],
+  });
+
+  assert.equal(result.calls.filter((call) => call.method === "createComment").length, 0);
+  assert.equal(result.calls.filter((call) => call.method === "create").length, 0);
+  assert.equal(result.calls.filter((call) => call.method === "update").length, 1);
 });
 
 test("alerts with the affected run and history file when the monthly run is absent", async () => {

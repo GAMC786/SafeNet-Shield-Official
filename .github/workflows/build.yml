@@ -1073,8 +1073,54 @@ jobs:
               }
             }
 
+            const labelName = 'maintainer-alert';
             if (findings.length === 0) {
               core.info(`Monthly workflow lint run ${monthlyRun.id} and all three history outcomes are present.`);
+
+              const { data: openAlerts } = await github.rest.issues.listForRepo({
+                owner,
+                repo,
+                state: 'open',
+                labels: labelName,
+                per_page: 100
+              });
+              const alert = openAlerts.find((issue) => issue.title === process.env.ALERT_TITLE);
+
+              if (!alert) {
+                core.info('No open monthly workflow lint history alert found; nothing to close.');
+                return;
+              }
+
+              const recoveryBody = [
+                'The monthly hosted-runner workflow lint record recovered successfully.',
+                '',
+                `Successful workflow run: [${monthlyRun.id}](${monthlyRun.html_url || currentRunUrl})`,
+                `History file: [Open ${process.env.HISTORY_PATH}](${historyUrl})`,
+                '',
+                'Closing this alert while preserving the previous finding history.'
+              ].join('\n');
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: alert.number,
+                per_page: 100
+              });
+              if (!comments.some((comment) => comment.body === recoveryBody)) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: alert.number,
+                  body: recoveryBody
+                });
+              }
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: alert.number,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+              core.info(`Closed recovered monthly workflow lint history alert #${alert.number}.`);
               return;
             }
 
@@ -1095,7 +1141,6 @@ jobs:
               'No synthetic history entry was created. Rerun or repair the monthly schedule and verify the Windows/x64, macOS/x64, and macOS/arm64 outcome records.'
             ].join('\n');
 
-            const labelName = 'maintainer-alert';
             try {
               await github.rest.issues.getLabel({
                 owner,
