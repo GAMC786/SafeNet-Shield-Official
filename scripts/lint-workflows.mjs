@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowDirectory = join(repositoryRoot, ".github", "workflows");
 const configFile = join(".github", "actionlint.yaml");
+const localToolDirectory = join(repositoryRoot, ".tools", "workflow-lint");
 const packageManifest = JSON.parse(
   readFileSync(join(repositoryRoot, "package.json"), "utf8"),
 );
@@ -22,8 +23,14 @@ if (
   process.exit(1);
 }
 
+function resolveTool(command) {
+  const localCommand = process.platform === "win32" ? `${command}.exe` : command;
+  const localPath = join(localToolDirectory, localCommand);
+  return existsSync(localPath) ? localPath : command;
+}
+
 function readToolVersion(command, args, label) {
-  const result = spawnSync(command, args, {
+  const result = spawnSync(resolveTool(command), args, {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
@@ -106,11 +113,11 @@ for (const workflowFile of workflowFiles) {
   console.log(`  ${workflowFile}`);
 }
 
-const result = spawnSync("actionlint", [
+const result = spawnSync(resolveTool("actionlint"), [
   "-config-file",
   configFile,
   "-shellcheck",
-  "shellcheck",
+  resolveTool("shellcheck"),
   ...workflowFiles,
 ], {
   cwd: repositoryRoot,

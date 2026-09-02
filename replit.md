@@ -81,11 +81,20 @@ Preferred communication style: Simple, everyday language.
 
 #### GitHub Actions workflow linting
 
-Before running `npm run lint:workflows`, install these exact tool versions:
+Install the pinned workflow lint tools in one command:
 
-- actionlint `1.7.0`
-- ShellCheck `0.10.0`
+```sh
+npm run setup:workflow-lint
+```
 
-Check the installed versions with `actionlint -version` and
-`shellcheck --version`. The GitHub Actions gate pins actionlint to `1.7.0` and
-downloads ShellCheck `0.10.0`, so local results use the same tool versions.
+The setup reads the exact actionlint and ShellCheck versions from the
+`workflowLint` section of `package.json`, downloads matching releases, and
+stores them in the repo-local `.tools/workflow-lint` directory. It supports
+Linux x64/arm64, macOS x64/arm64, and Windows x64. Run the lint command after
+setup to confirm both installed versions and lint every workflow:
+
+```sh
+npm run lint:workflows
+```
+
+The GitHub Actions gate uses the same versions, so local results match CI.
