@@ -155,10 +155,12 @@ jobs:
         continue-on-error: ${{ github.event_name == 'schedule' || env.DNS_ALERT_VALIDATION == 'lifecycle' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # API 34 avoids the hosted API 35 image's intermittent offline boot
-          # and storage-service failures while still exercising the minSdk 24 app.
-          api-level: 34
-          target: google_apis
+          # The API 34 google_apis image can boot and install APKs but has
+          # repeatedly reported an unavailable gsiservice during adb remount.
+          # API 33's AOSP default image is a userdebug image that supports the
+          # root/remount flow required to install the temporary fixture CA.
+          api-level: 33
+          target: default
           arch: x86_64
           profile: pixel_2
           emulator-boot-timeout: 1200
