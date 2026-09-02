@@ -157,9 +157,9 @@ jobs:
         with:
           # The API 34 google_apis image can boot and install APKs but has
           # repeatedly reported an unavailable gsiservice during adb remount.
-          # API 33's AOSP default image is a userdebug image that supports the
+          # API 30's AOSP default image is a userdebug image that supports the
           # root/remount flow required to install the temporary fixture CA.
-          api-level: 33
+          api-level: 30
           target: default
           arch: x86_64
           profile: pixel_2
