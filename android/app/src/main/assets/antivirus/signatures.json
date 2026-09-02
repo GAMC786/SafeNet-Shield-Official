@@ -1,5 +1,9 @@
 {
-  "version": "2026.09.02.1",
+  "schemaVersion": 1,
+  "version": "2026.09.02.2",
+  "source": "SafeNet curated catalog (hashes sourced from MalwareBazaar; regression markers are synthetic)",
+  "sourceUrl": "https://bazaar.abuse.ch/",
+  "generatedAt": "2026-09-02T00:00:00Z",
   "expiresAt": "2027-09-02T00:00:00Z",
   "signatures": [
     {
@@ -9,6 +13,30 @@
       "threatType": "malware",
       "severity": "critical",
       "description": "EICAR antivirus test content detected"
+    },
+    {
+      "id": "android-banker-fixture",
+      "type": "content_base64",
+      "value": "U0FGRU5FVC1BUEstRkFNSUxZLUZJWFRVUkU6YW5kcm9pZC1iYW5rZXI6djE=",
+      "threatType": "malware",
+      "severity": "high",
+      "description": "Android banker family regression marker detected"
+    },
+    {
+      "id": "android-spyware-fixture",
+      "type": "content_base64",
+      "value": "U0FGRU5FVC1BUEstRkFNSUxZLUZJWFRVUkU6YW5kcm9pZC1zcHl3YXJlOnYx",
+      "threatType": "spyware",
+      "severity": "high",
+      "description": "Android spyware family regression marker detected"
+    },
+    {
+      "id": "android-ransomware-fixture",
+      "type": "content_base64",
+      "value": "U0FGRU5FVC1BUEstRkFNSUxZLUZJWFRVUkU6YW5kcm9pZC1yYW5zb213YXJlOnYx",
+      "threatType": "ransomware",
+      "severity": "critical",
+      "description": "Android ransomware family regression marker detected"
     }
   ]
 }

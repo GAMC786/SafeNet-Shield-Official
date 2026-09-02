@@ -86,6 +86,28 @@ export function useApkScanner() {
     }
   }, [refresh, supported]);
 
+  const updateSignatures = useCallback(async (signedUpdate: string) => {
+    if (!supported) {
+      throw new Error("APK signature updates are available in the Android APK.");
+    }
+    setIsManaging(true);
+    setError(null);
+    try {
+      const nextStatus = await SafeNetVpn.updateApkSignatures({ signedUpdate });
+      setStatus(nextStatus);
+      setLastResult(nextStatus.lastScan ?? null);
+      return nextStatus;
+    } catch (updateError) {
+      const message = updateError instanceof Error
+        ? updateError.message
+        : "The APK signature update could not be installed.";
+      setError(message);
+      throw updateError;
+    } finally {
+      setIsManaging(false);
+    }
+  }, [supported]);
+
   const deleteQuarantinedApk = useCallback(async (sha256: string) => {
     if (!supported) {
       throw new Error("Quarantine management is available in the Android APK.");
@@ -144,6 +166,7 @@ export function useApkScanner() {
     refresh,
     scanApk,
     scanInstalledApks,
+    updateSignatures,
     deleteQuarantinedApk,
     clearScanHistory,
   };

@@ -52,6 +52,14 @@ export default function Antivirus() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatDatabaseDate = (value?: string | null) => {
+    if (!value) {
+      return "Unavailable";
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Unavailable" : format(date, "MMM d, yyyy · HH:mm");
+  };
+
   const handleDeleteQuarantine = (item: ApkQuarantineFile) => {
     if (!window.confirm(`Delete the quarantined copy of ${item.displayName || item.packageName || item.fileName}?`)) {
       return;
@@ -232,9 +240,31 @@ export default function Antivirus() {
               {apkScanner.scannerMessage || "The offline signature database is unavailable. Scanning is disabled."}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Scanner ready · signature database {apkScanner.signatureVersion}
-            </p>
+            <div className="space-y-2" data-testid="apk-signature-health">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex h-2 w-2 rounded-full bg-green-400" />
+                <span className="font-medium text-foreground">
+                  Scanner ready · database {apkScanner.signatureVersion}
+                </span>
+                <Badge variant="outline" className="text-[10px] uppercase">
+                  {apkScanner.status?.signatureUpdateStatus || "bundled"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Source: {apkScanner.status?.signatureSource || "SafeNet offline catalog"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Valid until {formatDatabaseDate(apkScanner.status?.signatureExpiresAt)}
+                {apkScanner.status?.signatureLastUpdateAt
+                  ? ` · Last authenticated update ${formatScanTime(apkScanner.status.signatureLastUpdateAt)}`
+                  : " · No downloaded update installed"}
+              </p>
+              {apkScanner.status?.signatureUpdateMessage && (
+                <p className="text-xs text-muted-foreground">
+                  Update health: {apkScanner.status.signatureUpdateMessage}
+                </p>
+              )}
+            </div>
           )}
 
           {apkScanner.error && (

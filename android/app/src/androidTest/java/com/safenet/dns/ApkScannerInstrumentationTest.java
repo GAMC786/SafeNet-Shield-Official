@@ -20,9 +20,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
+import java.security.Signature;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
+import org.json.JSONObject;
 
 @RunWith(AndroidJUnit4.class)
 public class ApkScannerInstrumentationTest {
@@ -43,6 +48,7 @@ public class ApkScannerInstrumentationTest {
         }
         quarantine.delete();
         new ApkScanner(context).clearScanHistory();
+        new ApkScanner(context).clearSignatureUpdateForTesting();
     }
 
     @Test
@@ -50,7 +56,7 @@ public class ApkScannerInstrumentationTest {
         ApkScanner scanner = new ApkScanner(context);
 
         assertTrue(scanner.isAvailable());
-        assertEquals("2026.09.02.1", scanner.getDatabaseVersion());
+        assertEquals("2026.09.02.2", scanner.getDatabaseVersion());
 
         ApkScanner.ScanResult result = scanner.scanFileForTesting(
             new File(context.getApplicationInfo().sourceDir)
@@ -77,6 +83,51 @@ public class ApkScannerInstrumentationTest {
         );
         assertTrue("Malicious APK should be kept in private quarantine", quarantineCopy.isFile());
         fixture.delete();
+    }
+
+    @Test
+    public void representativeFamilyFixturesAreDetected() throws Exception {
+        ApkScanner scanner = new ApkScanner(context);
+        String[][] fixtures = {
+            {"android-banker-fixture", "SAFENET-APK-FAMILY-FIXTURE:android-banker:v1"},
+            {"android-spyware-fixture", "SAFENET-APK-FAMILY-FIXTURE:android-spyware:v1"},
+            {"android-ransomware-fixture", "SAFENET-APK-FAMILY-FIXTURE:android-ransomware:v1"}
+        };
+
+        for (String[] fixtureDefinition : fixtures) {
+            File fixture = createFixtureWithContent(
+                fixtureDefinition[0] + ".apk",
+                fixtureDefinition[1]
+            );
+            ApkScanner.ScanResult result = scanner.scanFileForTesting(fixture);
+            assertEquals(ApkScanner.VERDICT_MALICIOUS, result.verdict);
+            assertEquals(fixtureDefinition[0], result.threatName);
+            fixture.delete();
+        }
+    }
+
+    @Test
+    public void sha256FixtureIsDetectedAndNearMatchIsSafe() throws Exception {
+        File source = new File(context.getApplicationInfo().sourceDir);
+        String sourceDigest = sha256(source);
+        String database = "{\"version\":\"hash-fixture\",\"generatedAt\":\"2026-09-03T00:00:00Z\"," +
+            "\"expiresAt\":\"2027-09-03T00:00:00Z\",\"signatures\":[{" +
+            "\"id\":\"hash-fixture\",\"type\":\"sha256\",\"value\":\"" + sourceDigest +
+            "\",\"threatType\":\"malware\",\"severity\":\"high\"," +
+            "\"description\":\"Synthetic SHA-256 regression fixture\"}]}";
+        ApkScanner hashScanner = new ApkScanner(context, database);
+
+        ApkScanner.ScanResult hashResult = hashScanner.scanFileForTesting(source);
+        assertEquals(ApkScanner.VERDICT_MALICIOUS, hashResult.verdict);
+        assertEquals("hash-fixture", hashResult.threatName);
+
+        File nearMatch = createFixtureWithContent(
+            "benign-lookalike.apk",
+            "SAFENET-APK-FAMILY-FIXTURE:android-banker:v2"
+        );
+        ApkScanner.ScanResult safeResult = new ApkScanner(context).scanFileForTesting(nearMatch);
+        assertEquals(ApkScanner.VERDICT_SAFE, safeResult.verdict);
+        nearMatch.delete();
     }
 
     @Test
@@ -150,9 +201,49 @@ public class ApkScannerInstrumentationTest {
         );
     }
 
+    @Test
+    public void signedUpdatesRequireAuthenticationAndExpireSafely() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        String publicKey = android.util.Base64.encodeToString(
+            keyPair.getPublic().getEncoded(),
+            android.util.Base64.NO_WRAP
+        );
+        String bundled = "{\"version\":\"base\",\"generatedAt\":\"2026-09-02T00:00:00Z\"," +
+            "\"expiresAt\":\"2027-09-02T00:00:00Z\",\"signatures\":[{" +
+            "\"id\":\"base\",\"type\":\"content\",\"value\":\"base-marker\"}]}";
+        ApkScanner scanner = new ApkScanner(context, bundled, publicKey);
+
+        String payload = "{\"version\":\"signed\",\"generatedAt\":\"2026-09-03T00:00:00Z\"," +
+            "\"expiresAt\":\"2027-09-03T00:00:00Z\",\"signatures\":[{" +
+            "\"id\":\"signed\",\"type\":\"content\",\"value\":\"signed-marker\"}]}";
+        String signedUpdate = signedEnvelope(payload, keyPair);
+        assertTrue(scanner.installSignedUpdate(signedUpdate));
+        assertEquals("signed", scanner.getDatabaseVersion());
+        assertEquals("current", scanner.getUpdateStatus());
+
+        JSONObject tampered = new JSONObject(signedUpdate);
+        tampered.put("payload", payload.replace("signed-marker", "tampered-marker"));
+        assertFalse(scanner.installSignedUpdate(tampered.toString()));
+        assertEquals("signed", scanner.getDatabaseVersion());
+        assertEquals("rejected", scanner.getUpdateStatus());
+
+        String expiredPayload = "{\"version\":\"expired\",\"generatedAt\":\"2026-09-04T00:00:00Z\"," +
+            "\"expiresAt\":\"2020-01-01T00:00:00Z\",\"signatures\":[{" +
+            "\"id\":\"expired\",\"type\":\"content\",\"value\":\"expired-marker\"}]}";
+        assertFalse(scanner.installSignedUpdate(signedEnvelope(expiredPayload, keyPair)));
+        assertEquals("expired", scanner.getUpdateStatus());
+        assertEquals("signed", scanner.getDatabaseVersion());
+    }
+
     private File createFixtureWithEicar() throws IOException {
+        return createFixtureWithContent("eicar-fixture.apk", EICAR);
+    }
+
+    private File createFixtureWithContent(String fileName, String content) throws IOException {
         File source = new File(context.getApplicationInfo().sourceDir);
-        File fixture = new File(context.getCacheDir(), "eicar-fixture.apk");
+        File fixture = new File(context.getCacheDir(), fileName);
         try (ZipFile input = new ZipFile(source);
              ZipOutputStream output = new ZipOutputStream(new FileOutputStream(fixture))) {
             java.util.Enumeration<? extends ZipEntry> entries = input.entries();
@@ -171,10 +262,40 @@ public class ApkScannerInstrumentationTest {
                 }
                 output.closeEntry();
             }
-            output.putNextEntry(new ZipEntry("assets/eicar-test.txt"));
-            output.write(EICAR.getBytes("UTF-8"));
+            output.putNextEntry(new ZipEntry("assets/safenet-regression-fixture.txt"));
+            output.write(content.getBytes("UTF-8"));
             output.closeEntry();
         }
         return fixture;
+    }
+
+    private String sha256(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream input = new java.io.FileInputStream(file)) {
+            byte[] buffer = new byte[32 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        StringBuilder result = new StringBuilder();
+        for (byte value : digest.digest()) {
+            result.append(String.format("%02x", value & 0xff));
+        }
+        return result.toString();
+    }
+
+    private String signedEnvelope(String payload, KeyPair keyPair) throws Exception {
+        Signature signer = Signature.getInstance("SHA256withRSA");
+        signer.initSign(keyPair.getPrivate());
+        signer.update(payload.getBytes("UTF-8"));
+        JSONObject envelope = new JSONObject();
+        envelope.put("algorithm", "SHA256withRSA");
+        envelope.put("payload", payload);
+        envelope.put(
+            "signature",
+            android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP)
+        );
+        return envelope.toString();
     }
 }

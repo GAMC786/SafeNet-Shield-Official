@@ -18,6 +18,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -39,33 +42,41 @@ final class ApkScanner {
     private static final String PREFS_NAME = "safenet_apk_scanner";
     private static final String PREF_LAST_SCAN = "last_scan";
     private static final String PREF_SCAN_HISTORY = "scan_history";
+    private static final String PREF_SIGNED_UPDATE = "signed_signature_update";
+    private static final String PREF_UPDATE_STATUS = "signature_update_status";
+    private static final String PREF_UPDATE_MESSAGE = "signature_update_message";
+    private static final String PREF_LAST_UPDATE_AT = "signature_last_update_at";
     private static final int MAX_SCAN_HISTORY = 100;
     private static final long MAX_APK_BYTES = 256L * 1024L * 1024L;
     private static final long MAX_ENTRY_BYTES_TO_INSPECT = 8L * 1024L * 1024L;
     private static final long MAX_TOTAL_BYTES_TO_INSPECT = 64L * 1024L * 1024L;
+    private static final int MAX_SIGNED_UPDATE_BYTES = 4 * 1024 * 1024;
     private static final int BUFFER_SIZE = 32 * 1024;
+    private static final String TRUSTED_UPDATE_PUBLIC_KEY =
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsAwWgg4tziUr0PIWHLxBRl/dbG1fhR1DEKOdqEBlrkLyEjIds17X62uyu4DhmRF9BFPqEe41uoFB0UeJLTHSbZSFXFFgKMuwMPw+4hz3g3VCeLiFAQUPBvsL8m+yLWMzgSLTUnEC+XuG/WlSqXUt0CZU8HSFobl3L8fSJ7UU3om749/5x/L6eaTPTICjCdYQ6kUuHmpISIlPxqz3VXBioOL7hIWnlazgNnvT5XifPNAmGkP5xkVOXxbSG+D6hfLiWWc1naZuCyAtb4xBqdp4nTf1FqBzj2jtW+Mf0GStpmeDLaO4brKQb4tDTPP4UflABS886hy2JK1HC/PsQ8FvlQIDAQAB";
 
     private final Context context;
-    private final SignatureDatabase database;
-    private final String databaseError;
+    private final String trustedUpdatePublicKey;
+    private volatile SignatureDatabase database;
+    private volatile String databaseError;
+    private volatile String updateStatus = "bundled";
+    private volatile String updateMessage = "Using the bundled signature catalog.";
 
     ApkScanner(Context context) {
         this.context = context.getApplicationContext();
-        SignatureDatabase loadedDatabase = null;
-        String loadError = null;
-        try {
-            loadedDatabase = SignatureDatabase.load(this.context);
-        } catch (IOException | JSONException | ParseException error) {
-            loadError = error.getMessage() == null
-                ? "The bundled signature database could not be loaded."
-                : error.getMessage();
-        }
-        database = loadedDatabase;
-        databaseError = loadError;
+        this.trustedUpdatePublicKey = TRUSTED_UPDATE_PUBLIC_KEY;
+        loadActiveDatabase();
     }
 
     ApkScanner(Context context, String databaseJson) {
+        this(context, databaseJson, null);
+    }
+
+    ApkScanner(Context context, String databaseJson, String updatePublicKey) {
         this.context = context.getApplicationContext();
+        this.trustedUpdatePublicKey = updatePublicKey == null
+            ? TRUSTED_UPDATE_PUBLIC_KEY
+            : updatePublicKey;
         SignatureDatabase loadedDatabase = null;
         String loadError = null;
         try {
@@ -77,10 +88,75 @@ final class ApkScanner {
         }
         database = loadedDatabase;
         databaseError = loadError;
+        updateStatus = "test";
+        updateMessage = "Using an explicitly supplied signature catalog.";
+    }
+
+    private void loadActiveDatabase() {
+        SignatureDatabase bundled = null;
+        String loadError = null;
+        android.content.SharedPreferences preferences =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        try {
+            bundled = SignatureDatabase.load(this.context);
+        } catch (IOException | JSONException | ParseException error) {
+            loadError = error.getMessage() == null
+                ? "The bundled signature database could not be loaded."
+                : error.getMessage();
+        }
+
+        database = bundled;
+        databaseError = loadError;
+
+        String storedUpdate = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_SIGNED_UPDATE, null);
+        if (storedUpdate == null) {
+            String previousStatus = preferences.getString(PREF_UPDATE_STATUS, null);
+            String previousMessage = preferences.getString(PREF_UPDATE_MESSAGE, null);
+            updateStatus = bundled == null
+                ? "unavailable"
+                : (previousStatus == null ? "bundled" : previousStatus);
+            updateMessage = bundled == null
+                ? "No valid signature catalog is available."
+                : (previousMessage == null
+                    ? "Using the bundled signature catalog."
+                    : previousMessage);
+            return;
+        }
+
+        try {
+            SignatureDatabase updated = SignatureDatabase.fromSignedJson(
+                storedUpdate,
+                trustedUpdatePublicKey
+            );
+            if (bundled != null && updated.generatedAtMillis <= bundled.generatedAtMillis) {
+                throw new SecurityException("The installed signature update is older than the bundled catalog.");
+            }
+            database = updated;
+            databaseError = null;
+            updateStatus = "current";
+            updateMessage = "Authenticated signature update active.";
+        } catch (Exception error) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .remove(PREF_SIGNED_UPDATE)
+                .putString(PREF_UPDATE_STATUS, error instanceof ParseException ? "expired" : "rejected")
+                .putString(
+                    PREF_UPDATE_MESSAGE,
+                    error.getMessage() == null
+                        ? "The installed signature update was rejected."
+                        : error.getMessage()
+                )
+                .apply();
+            updateStatus = error instanceof ParseException ? "expired" : "rejected";
+            updateMessage = error.getMessage() == null
+                ? "The installed signature update was rejected; using the bundled catalog."
+                : error.getMessage() + " Using the bundled catalog.";
+        }
     }
 
     boolean isAvailable() {
-        return database != null;
+        return database != null && !database.isExpired();
     }
 
     String getDatabaseVersion() {
@@ -88,7 +164,90 @@ final class ApkScanner {
     }
 
     String getDatabaseError() {
+        if (database != null && database.isExpired()) {
+            return "The active signature database has expired. Scanning is disabled.";
+        }
         return databaseError;
+    }
+
+    String getDatabaseSource() {
+        return database == null ? null : database.source;
+    }
+
+    String getDatabaseExpiresAt() {
+        return database == null ? null : database.expiresAt;
+    }
+
+    String getDatabaseGeneratedAt() {
+        return database == null ? null : database.generatedAt;
+    }
+
+    String getUpdateStatus() {
+        return updateStatus;
+    }
+
+    String getUpdateMessage() {
+        return updateMessage;
+    }
+
+    long getLastUpdateAt() {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(PREF_LAST_UPDATE_AT, 0L);
+    }
+
+    boolean installSignedUpdate(String signedUpdate) {
+        if (signedUpdate == null ||
+            signedUpdate.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_SIGNED_UPDATE_BYTES) {
+            updateStatus = "rejected";
+            updateMessage = "The signature update is larger than the 4 MB limit.";
+            return false;
+        }
+        try {
+            SignatureDatabase candidate = SignatureDatabase.fromSignedJson(
+                signedUpdate,
+                trustedUpdatePublicKey
+            );
+            if (database != null && candidate.generatedAtMillis <= database.generatedAtMillis) {
+                throw new SecurityException("The signature update is not newer than the active catalog.");
+            }
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_SIGNED_UPDATE, signedUpdate)
+                .putString(PREF_UPDATE_STATUS, "current")
+                .putString(PREF_UPDATE_MESSAGE, "Authenticated signature update active.")
+                .putLong(PREF_LAST_UPDATE_AT, System.currentTimeMillis())
+                .apply();
+            database = candidate;
+            databaseError = null;
+            updateStatus = "current";
+            updateMessage = "Authenticated signature update active.";
+            return true;
+        } catch (Exception error) {
+            updateStatus = error instanceof ParseException ? "expired" : "rejected";
+            updateMessage = error.getMessage() == null
+                ? "The signature update was rejected."
+                : error.getMessage();
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_UPDATE_STATUS, updateStatus)
+                .putString(PREF_UPDATE_MESSAGE, updateMessage)
+                .apply();
+            return false;
+        }
+    }
+
+    String getUpdateFailureMessage() {
+        return updateMessage;
+    }
+
+    void clearSignatureUpdateForTesting() {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PREF_SIGNED_UPDATE)
+            .remove(PREF_UPDATE_STATUS)
+            .remove(PREF_UPDATE_MESSAGE)
+            .remove(PREF_LAST_UPDATE_AT)
+            .commit();
     }
 
     ScanResult scanUri(Uri uri, String displayName) {
@@ -711,11 +870,36 @@ final class ApkScanner {
 
     private static final class SignatureDatabase {
         final String version;
-        final List<Signature> signatures;
+        final String source;
+        final String sourceUrl;
+        final String generatedAt;
+        final long generatedAtMillis;
+        final String expiresAt;
+        final long expiresAtMillis;
+        final List<SignatureEntry> signatures;
 
-        private SignatureDatabase(String version, List<Signature> signatures) {
+        private SignatureDatabase(
+            String version,
+            String source,
+            String sourceUrl,
+            String generatedAt,
+            long generatedAtMillis,
+            String expiresAt,
+            long expiresAtMillis,
+            List<SignatureEntry> signatures
+        ) {
             this.version = version;
+            this.source = source;
+            this.sourceUrl = sourceUrl;
+            this.generatedAt = generatedAt;
+            this.generatedAtMillis = generatedAtMillis;
+            this.expiresAt = expiresAt;
+            this.expiresAtMillis = expiresAtMillis;
             this.signatures = signatures;
+        }
+
+        boolean isExpired() {
+            return expiresAtMillis <= System.currentTimeMillis();
         }
 
         static SignatureDatabase load(Context context)
@@ -736,13 +920,21 @@ final class ApkScanner {
         static SignatureDatabase fromJson(String json)
             throws JSONException, ParseException {
             JSONObject root = new JSONObject(json);
+            int schemaVersion = root.optInt("schemaVersion", 1);
             String version = root.optString("version", "").trim();
+            String source = root.optString("source", "SafeNet offline signature catalog").trim();
+            String sourceUrl = root.optString("sourceUrl", "").trim();
+            String generatedAt = root.optString("generatedAt", "").trim();
             String expiresAt = root.optString("expiresAt", "").trim();
-            if (version.isEmpty() || expiresAt.isEmpty()) {
+            if (schemaVersion != 1 || version.isEmpty() || expiresAt.isEmpty()) {
                 throw new JSONException("The signature database has no version or expiry.");
             }
-            if (parseDate(expiresAt) <= System.currentTimeMillis()) {
-                throw new ParseException("The bundled signature database is expired.", 0);
+            long generatedAtMillis = generatedAt.isEmpty()
+                ? 0L
+                : parseDate(generatedAt);
+            long expiresAtMillis = parseDate(expiresAt);
+            if (expiresAtMillis <= System.currentTimeMillis()) {
+                throw new ParseException("The signature database is expired.", 0);
             }
 
             JSONArray entries = root.optJSONArray("signatures");
@@ -750,7 +942,7 @@ final class ApkScanner {
                 throw new JSONException("The signature database contains no signatures.");
             }
 
-            List<Signature> signatures = new ArrayList<>();
+            List<SignatureEntry> signatures = new ArrayList<>();
             for (int index = 0; index < entries.length(); index++) {
                 JSONObject entry = entries.getJSONObject(index);
                 String id = entry.optString("id", "").trim();
@@ -760,7 +952,16 @@ final class ApkScanner {
                     (!"sha256".equals(type) && !"content".equals(type) && !"content_base64".equals(type))) {
                     throw new JSONException("The signature database contains an invalid entry.");
                 }
-                signatures.add(new Signature(
+                if ("content_base64".equals(type)) {
+                    try {
+                        if (android.util.Base64.decode(value, android.util.Base64.DEFAULT).length == 0) {
+                            throw new JSONException("The signature database contains an invalid entry.");
+                        }
+                    } catch (IllegalArgumentException error) {
+                        throw new JSONException("The signature database contains an invalid entry.");
+                    }
+                }
+                signatures.add(new SignatureEntry(
                     id,
                     type,
                     value,
@@ -769,12 +970,56 @@ final class ApkScanner {
                     entry.optString("description", "A known threat signature matched.")
                 ));
             }
-            return new SignatureDatabase(version, signatures);
+            return new SignatureDatabase(
+                version,
+                source.isEmpty() ? "SafeNet offline signature catalog" : source,
+                sourceUrl,
+                generatedAt,
+                generatedAtMillis,
+                expiresAt,
+                expiresAtMillis,
+                signatures
+            );
+        }
+
+        static SignatureDatabase fromSignedJson(String signedJson, String publicKey)
+            throws JSONException, ParseException {
+            JSONObject envelope = new JSONObject(signedJson);
+            String payload = envelope.optString("payload", "");
+            String signature = envelope.optString("signature", "");
+            String algorithm = envelope.optString("algorithm", "SHA256withRSA");
+            if (payload.isEmpty() || signature.isEmpty() || !"SHA256withRSA".equals(algorithm)) {
+                throw new SecurityException("The signature update envelope is incomplete.");
+            }
+            if (!verify(payload, signature, publicKey)) {
+                throw new SecurityException("The signature update could not be authenticated.");
+            }
+            SignatureDatabase database = fromJson(payload);
+            if (database.generatedAtMillis <= 0L) {
+                throw new JSONException("The signed signature database has no generation time.");
+            }
+            return database;
+        }
+
+        private static boolean verify(String payload, String encodedSignature, String encodedKey) {
+            try {
+                byte[] keyBytes = android.util.Base64.decode(encodedKey, android.util.Base64.DEFAULT);
+                PublicKey publicKey = KeyFactory.getInstance("RSA")
+                    .generatePublic(new X509EncodedKeySpec(keyBytes));
+                java.security.Signature verifier = java.security.Signature.getInstance("SHA256withRSA");
+                verifier.initVerify(publicKey);
+                verifier.update(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return verifier.verify(
+                    android.util.Base64.decode(encodedSignature, android.util.Base64.DEFAULT)
+                );
+            } catch (Exception error) {
+                return false;
+            }
         }
 
         SignatureMatch findMatch(String sha256, byte[] inspectedContent) {
             String content = new String(inspectedContent, java.nio.charset.StandardCharsets.ISO_8859_1);
-            for (Signature signature : signatures) {
+            for (SignatureEntry signature : signatures) {
                 String pattern = signature.value;
                 if ("content_base64".equals(signature.type)) {
                     try {
@@ -804,12 +1049,13 @@ final class ApkScanner {
         private static long parseDate(String value) throws ParseException {
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
             format.setTimeZone(TimeZone.getTimeZone("UTC"));
+            format.setLenient(false);
             Date date = format.parse(value);
             return date.getTime();
         }
     }
 
-    private static final class Signature {
+    private static final class SignatureEntry {
         final String id;
         final String type;
         final String value;
@@ -817,7 +1063,7 @@ final class ApkScanner {
         final String severity;
         final String description;
 
-        Signature(
+        SignatureEntry(
             String id,
             String type,
             String value,

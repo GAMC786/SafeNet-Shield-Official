@@ -41,6 +41,12 @@ export interface ApkScanStatus {
   supported: boolean;
   scannerAvailable: boolean;
   signatureVersion?: string | null;
+  signatureSource?: string | null;
+  signatureGeneratedAt?: string | null;
+  signatureExpiresAt?: string | null;
+  signatureUpdateStatus?: "bundled" | "current" | "expired" | "rejected" | "unavailable" | "test" | string | null;
+  signatureUpdateMessage?: string | null;
+  signatureLastUpdateAt?: number;
   scannerMessage?: string | null;
   lastScan?: ApkScanResult | null;
   scanHistory?: ApkScanResult[];
@@ -60,6 +66,7 @@ export interface VpnStatus {
 interface SafeNetVpnPlugin {
   getStatus(): Promise<VpnStatus>;
   getApkScanStatus(): Promise<ApkScanStatus>;
+  updateApkSignatures(options: { signedUpdate: string }): Promise<ApkScanStatus>;
   scanApk(): Promise<ApkScanResult>;
   scanInstalledApks(): Promise<ApkScanResult[]>;
   deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;

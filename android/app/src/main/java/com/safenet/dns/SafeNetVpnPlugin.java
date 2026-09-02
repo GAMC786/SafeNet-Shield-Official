@@ -125,6 +125,23 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void updateApkSignatures(PluginCall call) {
+        String signedUpdate = call.getString("signedUpdate", "");
+        if (signedUpdate == null || signedUpdate.trim().isEmpty()) {
+            call.reject("A signed APK signature update is required.", "SIGNATURE_UPDATE_REQUIRED");
+            return;
+        }
+        scanExecutor().execute(() -> {
+            ApkScanner scanner = apkScanner();
+            if (!scanner.installSignedUpdate(signedUpdate)) {
+                call.reject(scanner.getUpdateFailureMessage(), "SIGNATURE_UPDATE_REJECTED");
+                return;
+            }
+            call.resolve(apkScanStatus());
+        });
+    }
+
+    @PluginMethod
     public void scanApk(PluginCall call) {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT)
             .setType("application/vnd.android.package-archive")
@@ -198,6 +215,12 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("supported", true);
         result.put("scannerAvailable", scanner.isAvailable());
         result.put("signatureVersion", scanner.getDatabaseVersion());
+        result.put("signatureSource", scanner.getDatabaseSource());
+        result.put("signatureGeneratedAt", scanner.getDatabaseGeneratedAt());
+        result.put("signatureExpiresAt", scanner.getDatabaseExpiresAt());
+        result.put("signatureUpdateStatus", scanner.getUpdateStatus());
+        result.put("signatureUpdateMessage", scanner.getUpdateMessage());
+        result.put("signatureLastUpdateAt", scanner.getLastUpdateAt());
         result.put(
             "scannerMessage",
             scanner.isAvailable() ? "Offline APK scanner ready." : scanner.getDatabaseError()
