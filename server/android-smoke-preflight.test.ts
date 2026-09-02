@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 
+const smokeScriptPath = path.resolve(process.cwd(), "scripts/android-smoke-test.sh");
 const workflow = readFileSync(
   path.resolve(process.cwd(), ".github/workflows/build.yml"),
   "utf8",
 ).replace(/\r\n/g, "\n");
-const smokeScript = readFileSync(
-  path.resolve(process.cwd(), "scripts/android-smoke-test.sh"),
-  "utf8",
-);
+const smokeScript = readFileSync(smokeScriptPath, "utf8");
 const runnerScript = readFileSync(
   path.resolve(process.cwd(), "scripts/provision-android-runner.sh"),
   "utf8",
@@ -63,6 +71,102 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /system_image=\$emulator_system_image/);
   assert.match(smokeScript, /build_fingerprint=\$build_fingerprint/);
   assert.match(smokeScript, /cat "\$output_dir\/emulator-image\.txt"/);
+});
+
+test("early preflight failure preserves emulator metadata and logs", () => {
+  const fixtureDir = mkdtempSync(path.join(tmpdir(), "android-smoke-preflight-"));
+  const binDir = path.join(fixtureDir, "bin");
+  const outputDir = path.join(fixtureDir, "evidence");
+  const adbLog = path.join(fixtureDir, "adb.log");
+  const mockAdbPath = path.join(binDir, "adb");
+
+  try {
+    mkdirSync(binDir);
+    writeFileSync(
+      mockAdbPath,
+      `#!/usr/bin/env bash
+set -u
+printf '%s\\n' "$*" >> "\${MOCK_ADB_LOG:?}"
+case " $* " in
+  *" get-state "*) printf 'device\\n'; exit 0 ;;
+  *" getprop "*)
+    case "\${!#}" in
+      ro.build.version.sdk) printf '35\\n' ;;
+      ro.product.cpu.abilist) printf 'x86_64\\n' ;;
+      ro.build.fingerprint) printf 'google/aosp_atd/emu_x86_64:35/AB123/1234567:userdebug/test-keys\\n' ;;
+      *) printf '\\n' ;;
+    esac
+    exit 0
+    ;;
+  *" root "*) printf 'adbd cannot run as root in production builds\\n'; exit 0 ;;
+esac
+printf 'unexpected adb invocation: %s\\n' "$*" >&2
+exit 1
+`,
+    );
+    chmodSync(mockAdbPath, 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        smokeScriptPath,
+        "--preflight",
+        "--serial",
+        "emulator-5554",
+        "--output",
+        outputDir,
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+          MOCK_ADB_LOG: adbLog,
+          ANDROID_EMULATOR_API_LEVEL: "35",
+          ANDROID_EMULATOR_TARGET: "google_apis",
+          ANDROID_EMULATOR_ARCH: "x86_64",
+          ANDROID_EMULATOR_SYSTEM_IMAGE:
+            "system-images;android-35;google_apis;x86_64",
+        },
+      },
+    );
+
+    assert.equal(
+      result.status,
+      1,
+      `expected the mocked root failure to stop preflight:\n${result.stdout}\n${result.stderr}`,
+    );
+    assert.equal(result.signal, null);
+
+    const metadataPath = path.join(outputDir, "emulator-image.txt");
+    const preflightLogPath = path.join(outputDir, "preflight.log");
+    const resultPath = path.join(outputDir, "result.txt");
+    assert.ok(existsSync(metadataPath), "emulator metadata should remain uploadable");
+    assert.ok(existsSync(preflightLogPath), "preflight log should remain uploadable");
+    assert.ok(existsSync(resultPath), "failure result should remain uploadable");
+
+    const metadata = readFileSync(metadataPath, "utf8");
+    const preflightLog = readFileSync(preflightLogPath, "utf8");
+    const failureResult = readFileSync(resultPath, "utf8");
+    for (const evidence of [
+      "api_level=35",
+      "target=google_apis",
+      "architecture=x86_64",
+      "system_image=system-images;android-35;google_apis;x86_64",
+      "build_fingerprint=google/aosp_atd/emu_x86_64:35/AB123/1234567:userdebug/test-keys",
+    ]) {
+      assert.match(metadata, new RegExp(`^${evidence}$`, "m"));
+      assert.match(preflightLog, new RegExp(`^${evidence}$`, "m"));
+      assert.match(failureResult, new RegExp(`^${evidence}$`, "m"));
+    }
+    assert.match(
+      failureResult,
+      /failure_category=FIXTURE_FAILURE[\s\S]*adb root is unavailable/,
+    );
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
 });
 
 test("tagged releases require the dedicated writable Android runner", () => {
