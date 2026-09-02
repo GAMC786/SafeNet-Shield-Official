@@ -90,6 +90,11 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
           script: ./scripts/android-smoke-test.sh --preflight --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
@@ -189,6 +194,11 @@ jobs:
           # public resolver outage cannot fail the release lane. Scheduled
           # checks intentionally use public resolvers and are non-blocking.
           script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Upload Android DNS smoke evidence
         id: upload-android-dns-smoke-evidence
@@ -546,6 +556,11 @@ jobs:
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
               --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
               --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 35
+          ANDROID_EMULATOR_TARGET: aosp_atd
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64
 
       - name: Upload release Android smoke evidence
         if: always()

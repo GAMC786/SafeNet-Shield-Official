@@ -39,6 +39,11 @@ test("non-tag fixture validation preflights system trust before Android builds",
   assert.match(preflightStep, /ANDROID_SMOKE_RESOLVER_MODE == 'fixture'/);
   assert.match(preflightStep, /android-smoke-test\.sh --preflight/);
   assert.match(preflightStep, /android-smoke\/latest\/preflight/);
+  assert.match(preflightStep, /ANDROID_EMULATOR_TARGET: google_apis/);
+  assert.match(
+    preflightStep,
+    /ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64/,
+  );
 });
 
 test("system trust preflight records strict write and cleanup checks", () => {
@@ -50,6 +55,14 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /temporary preflight CA remained/);
   assert.match(smokeScript, /failure_category=FIXTURE_FAILURE/);
   assert.match(smokeScript, /preflight-result\.txt/);
+  assert.match(smokeScript, /emulator-image\.txt/);
+  assert.match(smokeScript, /api_level=\$api_level/);
+  assert.match(smokeScript, /configured_api_level=\$emulator_api_level/);
+  assert.match(smokeScript, /target=\$emulator_target/);
+  assert.match(smokeScript, /architecture=\$emulator_arch/);
+  assert.match(smokeScript, /system_image=\$emulator_system_image/);
+  assert.match(smokeScript, /build_fingerprint=\$build_fingerprint/);
+  assert.match(smokeScript, /cat "\$output_dir\/emulator-image\.txt"/);
 });
 
 test("tagged releases require the dedicated writable Android runner", () => {
@@ -62,6 +75,12 @@ test("tagged releases require the dedicated writable Android runner", () => {
     /runs-on: \[self-hosted, linux, x64, android-writable-system\]/,
   );
   assert.match(workflow, /target: aosp_atd/);
+  const releaseSmokeStep = getStepBlock("Run controlled-fixture smoke test on writable emulator");
+  assert.match(releaseSmokeStep, /ANDROID_EMULATOR_TARGET: aosp_atd/);
+  assert.match(
+    releaseSmokeStep,
+    /ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64/,
+  );
   assert.match(
     workflow,
     /--apk "\$GITHUB_WORKSPACE\/artifacts\/android\/app-release\.apk"/,

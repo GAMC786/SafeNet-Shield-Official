@@ -12,6 +12,7 @@ readonly FIXTURE_DOH_PORT=443
 readonly FIXTURE_DOT_PORT=853
 readonly FIXTURE_HTTP_PORT=18080
 readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
+readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -25,6 +26,10 @@ plain_secondary="${ANDROID_SMOKE_PLAIN_SECONDARY:-8.8.8.8}"
 doh_secondary="${ANDROID_SMOKE_DOH_SECONDARY:-https://cloudflare-dns.com/dns-query}"
 dot_secondary="${ANDROID_SMOKE_DOT_SECONDARY:-cloudflare-dns.com}"
 ordinary_url="${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}"
+emulator_api_level="${ANDROID_EMULATOR_API_LEVEL:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_target="${ANDROID_EMULATOR_TARGET:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_arch="${ANDROID_EMULATOR_ARCH:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
@@ -157,7 +162,7 @@ command -v adb >/dev/null 2>&1 || {
 mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
-    "$output_dir"/preflight-result.txt
+    "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt
 printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode" > "$output_dir/coverage.txt"
 
 adb_args=()
@@ -179,9 +184,44 @@ capture() {
 fixture_failure() {
     local message="$1"
     echo "FIXTURE_FAILURE: $message" | tee "$output_dir/failure-category.txt" >&2
-    printf 'target=%s\nresolver_mode=%s\ncoverage=%s\nfailure_category=FIXTURE_FAILURE\nmessage=%s\n' \
-        "$serial" "$resolver_mode" "$coverage_label" "$message" | tee "$output_dir/result.txt" >&2
+    {
+        printf 'target=%s\nresolver_mode=%s\ncoverage=%s\n' \
+            "$serial" "$resolver_mode" "$coverage_label"
+        if [[ -f "$output_dir/emulator-image.txt" ]]; then
+            cat "$output_dir/emulator-image.txt"
+        fi
+        printf 'failure_category=FIXTURE_FAILURE\nmessage=%s\n' "$message"
+    } | tee "$output_dir/result.txt" >&2
     exit 1
+}
+
+read_android_property() {
+    local property="$1"
+    local value
+    value="$(timeout 10s adb "${adb_args[@]}" shell getprop "$property" 2>/dev/null | tr -d '\r' || true)"
+    if [[ -z "$value" ]]; then
+        value="$DEFAULT_EMULATOR_METADATA_VALUE"
+    fi
+    printf '%s' "$value"
+}
+
+record_emulator_image_metadata() {
+    local api_level
+    local build_fingerprint
+    local device_arch
+
+    api_level="$(read_android_property ro.build.version.sdk)"
+    device_arch="$(read_android_property ro.product.cpu.abilist)"
+    build_fingerprint="$(read_android_property ro.build.fingerprint)"
+    cat > "$output_dir/emulator-image.txt" <<EOF
+api_level=$api_level
+configured_api_level=$emulator_api_level
+target=$emulator_target
+architecture=$emulator_arch
+device_abis=$device_arch
+system_image=$emulator_system_image
+build_fingerprint=$build_fingerprint
+EOF
 }
 
 run_system_trust_preflight() {
@@ -196,6 +236,8 @@ run_system_trust_preflight() {
         echo "Android system trust capability preflight"
         echo "target=$serial"
         echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "--- emulator image ---"
+        cat "$output_dir/emulator-image.txt"
     } >> "$preflight_log"
 
     if ! timeout 30s adb "${adb_args[@]}" root >> "$preflight_log" 2>&1 ||
@@ -279,6 +321,7 @@ run_system_trust_preflight() {
 
     cat > "$output_dir/preflight-result.txt" <<EOF
 target=$serial
+$(cat "$output_dir/emulator-image.txt")
 adb_root=PASS
 system_remount=PASS
 ca_storage_write=PASS
@@ -313,6 +356,8 @@ if ! timeout 30s adb "${adb_args[@]}" get-state | grep -qx "device"; then
     echo "ERROR: adb target '$serial' is not online." >&2
     exit 3
 fi
+
+record_emulator_image_metadata
 
 if [[ "$preflight_only" == true ]]; then
     run_system_trust_preflight
