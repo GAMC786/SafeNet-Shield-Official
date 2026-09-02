@@ -78,3 +78,23 @@ Preferred communication style: Simple, everyday language.
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
 - p-limit and p-retry for batch processing rate limiting
+
+#### GitHub Actions workflow linting
+
+Install the pinned workflow lint tools in one command:
+
+```sh
+npm run setup:workflow-lint
+```
+
+The setup reads the exact actionlint and ShellCheck versions from the
+`workflowLint` section of `package.json`, downloads matching releases, and
+stores them in the repo-local `.tools/workflow-lint` directory. It supports
+Linux x64/arm64, macOS x64/arm64, and Windows x64. Run the lint command after
+setup to confirm both installed versions and lint every workflow:
+
+```sh
+npm run lint:workflows
+```
+
+The GitHub Actions gate uses the same versions, so local results match CI.

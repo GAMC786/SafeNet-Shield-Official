@@ -9,6 +9,9 @@ on:
     branches: [main]
   schedule:
     - cron: '17 4 * * 1-5'
+    # Keep hosted Windows and macOS workflow-lint installers exercised without
+    # adding the matrix to every weekday release smoke run.
+    - cron: '47 4 1 * *'
   workflow_dispatch:
     inputs:
       android_resolver_mode:
@@ -27,12 +30,589 @@ on:
         options:
           - none
           - lifecycle
+      cross_platform_workflow_lint:
+        description: "Run the pinned workflow lint installer on Windows and macOS"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
+  validate-release-workflow:
+    runs-on: ubuntu-latest
+    outputs:
+      workflow_lint_matrix: ${{ steps.workflow-lint-matrix.outputs.matrix }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read workflow lint versions from package.json
+        id: workflow-lint-versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from "node:fs";
+          import { getRequiredVersions } from "./scripts/setup-workflow-lint.mjs";
+
+          try {
+            const manifest = JSON.parse(readFileSync("package.json", "utf8"));
+            const versions = getRequiredVersions(manifest);
+            for (const [tool, version] of Object.entries(versions)) {
+              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+                throw new Error(
+                  `package.json workflowLint.${tool} must be a complete semantic version; received "${version}".`,
+                );
+              }
+              console.error(`Using workflowLint.${tool} ${version}.`);
+              console.log(`${tool}_version=${version}`);
+            }
+          } catch (error) {
+            console.error(
+              `Workflow lint version check failed: ${error.message}`,
+            );
+            process.exit(1);
+          }
+          NODE
+
+      - name: Install pinned ShellCheck
+        shell: bash
+        env:
+          SHELLCHECK_VERSION: ${{ steps.workflow-lint-versions.outputs.shellcheck_version }}
+        run: |
+          set -euo pipefail
+          archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          tar -xJf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}"
+          install -m 0755 \
+            "${RUNNER_TEMP}/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" \
+            "${RUNNER_TEMP}/shellcheck"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/shellcheck" --version
+
+      - name: Lint GitHub Actions workflows
+        uses: raven-actions/actionlint@v2
+        with:
+          version: ${{ steps.workflow-lint-versions.outputs.actionlint_version }}
+          files: .github/workflows/*.yml, .github/workflows/*.yaml
+
+      - name: Validate workflow lint matrix contract
+        id: workflow-lint-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { getWorkflowLintMatrix } from "./scripts/workflow-lint-matrix.mjs";
+
+          const matrix = getWorkflowLintMatrix();
+          console.error(`Validated ${matrix.length} workflow lint matrix entries.`);
+          console.log(`matrix=${JSON.stringify(matrix)}`);
+          NODE
+
+  cross-platform-workflow-lint:
+    needs: validate-release-workflow
+    name: Workflow lint (${{ matrix.platform }} ${{ matrix.architecture }} on ${{ matrix.runner }})
+    if: >-
+      needs.validate-release-workflow.result == 'success' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.validate-release-workflow.outputs.workflow_lint_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      WORKFLOW_LINT_PLATFORM: ${{ matrix.platform }}
+      WORKFLOW_LINT_ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - name: Checkout disposable workflow lint workspace
+        id: checkout_workspace
+        uses: actions/checkout@v4
+        with:
+          path: workflow-lint-checkout
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned workflow lint tools
+        id: setup_workflow_lint
+        working-directory: workflow-lint-checkout
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run setup:workflow-lint 2>&1 | tee "$RUNNER_TEMP/workflow-lint.log"
+
+      - name: Lint workflows with installed tools
+        id: lint_workflows
+        working-directory: workflow-lint-checkout
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint:workflows 2>&1 | tee -a "$RUNNER_TEMP/workflow-lint.log"
+
+      - name: Report workflow lint failure stage
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout_workspace.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          SETUP_OUTCOME: ${{ steps.setup_workflow_lint.outcome }}
+          LINT_OUTCOME: ${{ steps.lint_workflows.outcome }}
+        run: |
+          set -u
+          stage="completed"
+          outcome="success"
+
+          if [[ "$CHECKOUT_OUTCOME" != "success" ]]; then
+            stage="checkout"
+            outcome="$CHECKOUT_OUTCOME"
+          elif [[ "$NODE_OUTCOME" != "success" ]]; then
+            stage="node setup"
+            outcome="$NODE_OUTCOME"
+          elif [[ "$SETUP_OUTCOME" != "success" ]]; then
+            stage="workflow lint setup"
+            outcome="$SETUP_OUTCOME"
+          elif [[ "$LINT_OUTCOME" != "success" ]]; then
+            stage="workflow lint"
+            outcome="$LINT_OUTCOME"
+          fi
+
+          if [[ "$stage" == "completed" ]]; then
+            echo "Workflow lint passed on ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE}."
+            exit 0
+          fi
+
+          message="Workflow lint failed on ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} during ${stage} (outcome: ${outcome})."
+          echo "::error title=${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} workflow lint failure::${message}"
+          {
+            echo "## Cross-platform workflow lint failure"
+            echo
+            echo "- **Platform:** ${WORKFLOW_LINT_PLATFORM}"
+            echo "- **Architecture:** ${WORKFLOW_LINT_ARCHITECTURE}"
+            echo "- **Failed stage:** ${stage}"
+            echo "- **Outcome:** ${outcome}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Cross-platform workflow lint failure"
+            echo
+            echo "- **Platform:** ${WORKFLOW_LINT_PLATFORM}"
+            echo "- **Architecture:** ${WORKFLOW_LINT_ARCHITECTURE}"
+            echo "- **Failed stage:** ${stage}"
+            echo "- **Outcome:** ${outcome}"
+            if [[ -f "$RUNNER_TEMP/workflow-lint.log" ]]; then
+              echo
+              echo "### Recent captured output (bounded)"
+              echo '```text'
+              tail -n 120 "$RUNNER_TEMP/workflow-lint.log" | head -c 16000
+              echo
+              echo '```'
+            fi
+          } > "$RUNNER_TEMP/workflow-lint-failure-summary.md"
+          exit 1
+
+      - name: Record workflow lint outcome
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout_workspace.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          SETUP_OUTCOME: ${{ steps.setup_workflow_lint.outcome }}
+          LINT_OUTCOME: ${{ steps.lint_workflows.outcome }}
+          WORKFLOW_LINT_RUNNER: ${{ matrix.runner }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { join } from "node:path";
+
+          const steps = [
+            ["checkout", process.env.CHECKOUT_OUTCOME],
+            ["node setup", process.env.NODE_OUTCOME],
+            ["workflow lint setup", process.env.SETUP_OUTCOME],
+            ["workflow lint", process.env.LINT_OUTCOME],
+          ];
+          const failedStep = steps.find(([, outcome]) => outcome !== "success");
+          const result = {
+            platform: process.env.WORKFLOW_LINT_PLATFORM,
+            architecture: process.env.WORKFLOW_LINT_ARCHITECTURE,
+            runner: process.env.WORKFLOW_LINT_RUNNER,
+            stage: failedStep?.[0] ?? "completed",
+            outcome: failedStep?.[1] ?? "success",
+          };
+          const filename =
+            `workflow-lint-result-${result.platform}-${result.architecture}.json`;
+          writeFileSync(
+            join(process.env.RUNNER_TEMP, filename),
+            `${JSON.stringify(result, null, 2)}\n`,
+          );
+          NODE
+
+      - name: Upload workflow lint outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-workflow-lint-outcome-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/workflow-lint-result-*.json
+          if-no-files-found: error
+
+      - name: Upload workflow lint failure details
+        id: upload_workflow_lint_failure_details
+        if: >-
+          always() &&
+          (steps.checkout_workspace.outcome == 'failure' ||
+          steps.setup_node.outcome == 'failure' ||
+          steps.setup_workflow_lint.outcome == 'failure' ||
+          steps.lint_workflows.outcome == 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-workflow-lint-failure-details-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/workflow-lint-failure-summary.md
+          if-no-files-found: warn
+
+      - name: Link workflow lint failure details
+        if: >-
+          always() &&
+          (steps.checkout_workspace.outcome == 'failure' ||
+          steps.setup_node.outcome == 'failure' ||
+          steps.setup_workflow_lint.outcome == 'failure' ||
+          steps.lint_workflows.outcome == 'failure')
+        shell: bash
+        env:
+          EVIDENCE_URL: ${{ steps.upload_workflow_lint_failure_details.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -u
+          echo "- **Bounded failure details:** [Download the ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} summary]($EVIDENCE_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Failure details: $EVIDENCE_URL"
+
+  cross-platform-workflow-lint-summary:
+    name: Monthly workflow lint health
+    if: >-
+      always() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
+    runs-on: ubuntu-latest
+    # This coordinator must not wait on a matrix entry that is still queued.
+    # It polls for a bounded window and records a failure for any missing
+    # runner outcome so the monthly history can still be written.
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: workflow-lint-history
+      cancel-in-progress: false
+    steps:
+      - name: Checkout default branch for lint history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Wait for cross-platform workflow lint matrix
+        id: wait_for_matrix
+        uses: actions/github-script@v7
+        env:
+          MATRIX_WAIT_SECONDS: 600
+        with:
+          script: |
+            const { writeFileSync } = require('node:fs');
+            const { readFileSync } = require('node:fs');
+            const { join } = require('node:path');
+
+            const matrixContractPath = `${process.env.GITHUB_WORKSPACE}/.github/workflow-lint-matrix.json`;
+            const expected = JSON.parse(readFileSync(matrixContractPath, 'utf8'));
+            if (!Array.isArray(expected) || expected.length === 0) {
+              throw new Error(`Workflow lint matrix contract ${matrixContractPath} is empty or invalid.`);
+            }
+            const waitSeconds = Number(process.env.MATRIX_WAIT_SECONDS);
+            const deadline = Date.now() + waitSeconds * 1000;
+            let jobs = [];
+
+            while (true) {
+              try {
+                const response = await github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: context.runId,
+                  per_page: 100
+                });
+                jobs = response.data.jobs.filter((job) =>
+                  expected.some((entry) => entry.name === job.name)
+                );
+              } catch (error) {
+                core.warning(`Could not read matrix job status yet: ${error.message}`);
+              }
+
+              const complete = expected.every((entry) =>
+                jobs.some((job) => entry.name === job.name && job.status === 'completed')
+              );
+              if (complete || Date.now() >= deadline) {
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 30000));
+            }
+
+            const records = expected.map((entry) => {
+              const matchingJobs = jobs
+                .filter((job) => job.name === entry.name)
+                .sort((left, right) => Number(right.id) - Number(left.id));
+              const job = matchingJobs[0];
+              return {
+                ...entry,
+                job_id: job?.id ?? null,
+                status: job?.status ?? 'queued',
+                conclusion: job?.conclusion ?? null
+              };
+            });
+            const timedOut = records.some((record) => record.status !== 'completed');
+            if (timedOut) {
+              core.warning(
+                `Cross-platform workflow lint matrix did not complete within ${waitSeconds} seconds.`
+              );
+            }
+
+            writeFileSync(
+              join(process.env.RUNNER_TEMP, 'workflow-lint-matrix-jobs.json'),
+              `${JSON.stringify(records, null, 2)}\n`
+            );
+            core.setOutput(
+              'matrix_result',
+              records.every(
+                (record) =>
+                  record.status === 'completed' && record.conclusion === 'success'
+              )
+                ? 'success'
+                : 'failure'
+            );
+
+      - name: Download workflow lint outcomes
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SafeNet-DNS-workflow-lint-outcome-*
+          path: ${{ runner.temp }}/workflow-lint-results
+          merge-multiple: true
+
+      - name: Publish monthly workflow lint health
+        shell: bash
+        env:
+          LINT_RESULT: ${{ steps.wait_for_matrix.outputs.matrix_result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$LINT_RESULT" == "success" ]]; then
+            health="passed"
+            message="Windows and macOS workflow lint installers completed successfully."
+          else
+            health="failed"
+            message="At least one Windows or macOS workflow lint installer failed; inspect that matrix job's bounded details."
+          fi
+
+          {
+            echo "## Monthly cross-platform workflow lint"
+            echo
+            echo "- **Health:** ${health}"
+            echo "- **Matrix result:** \`${LINT_RESULT}\`"
+            echo "- **Workflow run:** [Open run](${RUN_URL})"
+            echo
+            echo "$message"
+            echo
+            echo "Android build and release health is reported separately."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$LINT_RESULT" != "success" ]]; then
+            echo "::error title=Monthly cross-platform workflow lint failed::${message}"
+            exit 1
+          fi
+
+      - name: Record workflow lint history
+        if: always()
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RESULTS_DIRECTORY: ${{ runner.temp }}/workflow-lint-results
+        run: |
+          set -euo pipefail
+          RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export RECORDED_AT
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          node --input-type=module <<'NODE'
+          import {
+            existsSync,
+            mkdirSync,
+            readdirSync,
+            readFileSync,
+            writeFileSync,
+          } from "node:fs";
+
+          const historyPath = ".github/workflow-lint-history.json";
+          const resultsDirectory = process.env.RESULTS_DIRECTORY;
+           const { getWorkflowLintMatrix } = await import(
+             "./scripts/workflow-lint-matrix.mjs"
+           );
+           const expected = getWorkflowLintMatrix();
+          const expectedKeys = new Set(
+            expected.map(
+              (entry) => `${entry.platform}/${entry.architecture}`,
+            ),
+          );
+          const matrixJobsPath = `${process.env.RUNNER_TEMP}/workflow-lint-matrix-jobs.json`;
+          const matrixJobs = existsSync(matrixJobsPath)
+            ? JSON.parse(readFileSync(matrixJobsPath, "utf8"))
+            : [];
+          mkdirSync(resultsDirectory, { recursive: true });
+
+          const resultFiles = readdirSync(resultsDirectory)
+            .filter((file) => file.endsWith(".json"))
+            .sort();
+
+          const resultByKey = new Map();
+          for (const file of resultFiles) {
+            const result = JSON.parse(
+              readFileSync(`${resultsDirectory}/${file}`, "utf8"),
+            );
+            const key = `${result.platform}/${result.architecture}`;
+            if (!expectedKeys.has(key) || resultByKey.has(key)) {
+              throw new Error(`Unexpected or duplicate workflow lint outcome ${file}.`);
+            }
+            resultByKey.set(key, result);
+          }
+
+          for (const entry of expected) {
+            const key = `${entry.platform}/${entry.architecture}`;
+            if (resultByKey.has(key)) {
+              continue;
+            }
+            const job = matrixJobs.find((candidate) => candidate.name === entry.name);
+            const runnerUnavailable = job?.status !== "completed";
+            const result = {
+              platform: entry.platform,
+              architecture: entry.architecture,
+              runner: entry.runner,
+              stage: runnerUnavailable
+                ? "runner allocation timeout"
+                : "matrix outcome unavailable",
+              outcome: "failure",
+            };
+            const filename =
+              `workflow-lint-result-${entry.platform}-${entry.architecture}.json`;
+            writeFileSync(
+              `${resultsDirectory}/${filename}`,
+              `${JSON.stringify(result, null, 2)}\n`,
+            );
+            resultByKey.set(key, result);
+          }
+
+          const normalizedResultFiles = readdirSync(resultsDirectory)
+            .filter((file) => file.endsWith(".json"))
+            .sort();
+          if (normalizedResultFiles.length !== expected.length) {
+            throw new Error(
+              `Expected ${expected.length} workflow lint outcomes, found ${normalizedResultFiles.length}.`,
+            );
+          }
+
+          const results = normalizedResultFiles.map((file) => {
+            const result = JSON.parse(
+              readFileSync(`${resultsDirectory}/${file}`, "utf8"),
+            );
+            for (const field of [
+              "platform",
+              "architecture",
+              "runner",
+              "stage",
+              "outcome",
+            ]) {
+              if (typeof result[field] !== "string" || result[field].length === 0) {
+                throw new Error(`Workflow lint outcome ${file} is missing ${field}.`);
+              }
+            }
+            const key = `${result.platform}/${result.architecture}`;
+            if (!expectedKeys.has(key)) {
+              throw new Error(`Workflow lint outcome ${file} has an unsupported matrix entry.`);
+            }
+            return result;
+          });
+
+          const previous = existsSync(historyPath)
+            ? JSON.parse(readFileSync(historyPath, "utf8"))
+            : { schema_version: 1, retention_runs: 24, runs: [] };
+          if (
+            previous.schema_version !== 1 ||
+            !Number.isInteger(previous.retention_runs) ||
+            previous.retention_runs < 1 ||
+            !Array.isArray(previous.runs)
+          ) {
+            throw new Error(`${historyPath} has an unsupported schema.`);
+          }
+
+          const run = {
+            run_id: String(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            event: process.env.EVENT_NAME,
+            recorded_at: process.env.RECORDED_AT,
+            ref: process.env.REF_NAME,
+            commit: process.env.COMMIT_SHA,
+            results,
+          };
+          const existingRuns = previous.runs.filter(
+            (previousRun) => String(previousRun.run_id) === run.run_id,
+          );
+          const latestExistingRun = existingRuns.reduce(
+            (latest, previousRun) =>
+              !latest ||
+              Number(previousRun.run_attempt) > Number(latest.run_attempt)
+                ? previousRun
+                : latest,
+            undefined,
+          );
+          const authoritativeRun =
+            latestExistingRun &&
+            Number(latestExistingRun.run_attempt) > run.run_attempt
+              ? latestExistingRun
+              : run;
+          const independentRuns = previous.runs.filter(
+            (previousRun) => String(previousRun.run_id) !== run.run_id,
+          );
+          const history = {
+            schema_version: 1,
+            retention_runs: previous.retention_runs,
+            runs: [authoritativeRun, ...independentRuns].slice(0, previous.retention_runs),
+          };
+          writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflow-lint-history.json
+          if git diff --cached --quiet; then
+            echo "Workflow lint history is already current."
+            exit 0
+          fi
+          git commit -m "Record hosted-runner workflow lint health"
+          git push origin "HEAD:$DEFAULT_BRANCH"
+
   build-android:
+    needs: validate-release-workflow
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -75,6 +655,26 @@ jobs:
       - name: Install and verify Android toolchain from Gradle pins
         shell: bash
         run: ./scripts/setup-android-sdk.sh
+
+      - name: Preflight Android emulator system trust
+        id: android-system-trust-preflight
+        if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.ANDROID_SMOKE_RESOLVER_MODE == 'fixture'"
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # Manual and scheduled checks retain the hosted preflight. Tagged
+          # releases use the dedicated writable-system runner below.
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          script: ./scripts/android-smoke-test.sh --preflight --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
@@ -149,9 +749,16 @@ jobs:
           fi
           echo "Verified release instrumentation APK: $test_apk"
 
+      - name: Upload release instrumentation APK
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+
       - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
         continue-on-error: ${{ github.event_name == 'schedule' || env.DNS_ALERT_VALIDATION == 'lifecycle' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -167,6 +774,11 @@ jobs:
           # public resolver outage cannot fail the release lane. Scheduled
           # checks intentionally use public resolvers and are non-blocking.
           script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Upload Android DNS smoke evidence
         id: upload-android-dns-smoke-evidence
@@ -457,6 +1069,450 @@ jobs:
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
+  android-runner-health:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Keep this independent from the build and release jobs so a broken
+    # runner is visible even when no release is waiting for it.
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ANDROID_EMULATOR_API_LEVEL: 35
+      ANDROID_AVD_NAME: safenet-writable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check dedicated Android release runner
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/provision-android-runner.sh --check 2>&1 |
+            tee "$RUNNER_TEMP/android-runner-health.log"
+
+  workflow-lint-history-watchdog:
+    name: Verify monthly workflow lint record
+    # The weekday schedule gives this check a chance to notice that the
+    # first-of-month schedule was skipped, while keeping it independent from
+    # both the matrix and the history commit job.
+    if: github.event_name == 'schedule' && github.event.schedule == '17 4 * * 1-5'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Capture watchdog timestamp
+        id: watchdog-time
+        shell: bash
+        run: echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Alert when the monthly workflow lint record is missing
+        uses: actions/github-script@v7
+        env:
+          ALERT_TITLE: "[Maintainer alert] Monthly workflow lint record missing"
+          CHECKED_AT: ${{ steps.watchdog-time.outputs.checked_at }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HISTORY_PATH: ".github/workflow-lint-history.json"
+          MATRIX_CONTRACT_PATH: ".github/workflow-lint-matrix.json"
+          HISTORY_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/.github/workflow-lint-history.json
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW_FILE: "build.yml"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const checkedAt = new Date(process.env.CHECKED_AT);
+            if (Number.isNaN(checkedAt.getTime())) {
+              throw new Error(`Invalid watchdog timestamp: ${process.env.CHECKED_AT}`);
+            }
+
+            // The daily schedule runs before the monthly schedule on the
+            // first day. Defer until the next weekday so that the expected
+            // monthly run has had time to start and publish its artifacts.
+            if (checkedAt.getUTCDate() === 1) {
+              core.info('Deferring monthly workflow lint verification until after the first day of the month.');
+              return;
+            }
+
+            const month = checkedAt.toISOString().slice(0, 7);
+            const boundedScheduleWindow = `${month}-03`;
+            const currentRunUrl = process.env.RUN_URL;
+            const historyUrl = process.env.HISTORY_URL;
+            const { owner, repo } = context.repo;
+             let expected;
+             const contractPath = process.env.MATRIX_CONTRACT_PATH;
+             try {
+               const { data: matrixFile } = await github.rest.repos.getContent({
+                 owner,
+                 repo,
+                 path: contractPath,
+                 ref: process.env.DEFAULT_BRANCH
+               });
+               if (Array.isArray(matrixFile) || !matrixFile.content) {
+                 throw new Error('matrix contract path did not return a file');
+               }
+               expected = JSON.parse(
+                 Buffer.from(matrixFile.content, matrixFile.encoding || 'base64').toString('utf8'),
+               );
+               if (!Array.isArray(expected) || expected.length === 0 || expected.some((entry) =>
+                 !entry || typeof entry.platform !== 'string' ||
+                 typeof entry.architecture !== 'string' ||
+                 typeof entry.runner !== 'string' ||
+                 typeof entry.name !== 'string'
+               )) {
+                 throw new Error('matrix contract has an invalid entry');
+               }
+             } catch (error) {
+               throw new Error(`The workflow lint matrix contract ${contractPath} could not be read or parsed: ${error.message}`);
+             }
+             const expectedOutcomes = expected.map(
+               (entry) => `${entry.platform}/${entry.architecture}`,
+             );
+
+            const { data: runList } = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: process.env.WORKFLOW_FILE,
+              event: 'schedule',
+              branch: process.env.DEFAULT_BRANCH,
+              per_page: 100
+            });
+
+            // A monthly run is distinguished from the weekday schedule by
+            // the presence of the conditional cross-platform lint matrix.
+            // Only inspect the first three UTC days, keeping API work bounded
+            // even if the workflow runs frequently for other reasons.
+            const candidateRuns = runList.workflow_runs
+              .filter((run) => {
+                const createdDate = String(run.created_at).slice(0, 10);
+                return createdDate >= `${month}-01` && createdDate <= boundedScheduleWindow;
+              })
+              .sort((left, right) =>
+                String(right.created_at).localeCompare(String(left.created_at)),
+              )
+              .slice(0, 10);
+
+            let monthlyRun;
+            for (const candidate of candidateRuns) {
+              const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+                owner,
+                repo,
+                run_id: candidate.id,
+                per_page: 100
+              });
+               if (jobs.jobs.some((job) =>
+                 expected.some((entry) => entry.name === job.name)
+               )) {
+                monthlyRun = candidate;
+                break;
+              }
+            }
+
+            const findings = [];
+            if (!monthlyRun) {
+              const nearestRun = candidateRuns[0];
+              findings.push(
+                `No scheduled workflow run containing the cross-platform lint matrix was found for ${month}.`,
+              );
+              if (nearestRun?.html_url) {
+                findings.push(`The nearest scheduled run was [${nearestRun.id}](${nearestRun.html_url}); inspect why the monthly matrix was skipped.`);
+              }
+            }
+
+            let history;
+            try {
+              const { data: historyFile } = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: process.env.HISTORY_PATH,
+                ref: process.env.DEFAULT_BRANCH
+              });
+              if (Array.isArray(historyFile) || !historyFile.content) {
+                throw new Error('history path did not return a file');
+              }
+              history = JSON.parse(
+                Buffer.from(historyFile.content, historyFile.encoding || 'base64').toString('utf8'),
+              );
+            } catch (error) {
+              const reason = error.status === 404
+                ? 'the file was not found'
+                : 'the file could not be read or parsed';
+              findings.push(`The history file ${process.env.HISTORY_PATH} ${reason}.`);
+            }
+
+            if (monthlyRun && history) {
+              const historyRun = Array.isArray(history.runs)
+                ? history.runs.find((run) => String(run.run_id) === String(monthlyRun.id))
+                : undefined;
+              if (!historyRun) {
+                findings.push(`The history file has no record for monthly workflow run ${monthlyRun.id}.`);
+              } else if (!Array.isArray(historyRun.results)) {
+                findings.push(`Monthly workflow run ${monthlyRun.id} has no outcome records in the history file.`);
+              } else {
+                const recordedOutcomes = new Set(
+                  historyRun.results.map((result) =>
+                    `${result?.platform}/${result?.architecture}`,
+                  ),
+                );
+                const missingOutcomes = expectedOutcomes.filter(
+                  (outcome) => !recordedOutcomes.has(outcome),
+                );
+                if (historyRun.results.length !== expectedOutcomes.length || missingOutcomes.length > 0) {
+                  findings.push(
+                    `Monthly workflow run ${monthlyRun.id} is missing outcome records: ${
+                      missingOutcomes.length > 0
+                        ? missingOutcomes.join(', ')
+                        : `the expected ${expectedOutcomes.length}-record set`
+                    }.`,
+                  );
+                }
+              }
+            }
+
+            const labelName = 'maintainer-alert';
+            if (findings.length === 0) {
+              core.info(`Monthly workflow lint run ${monthlyRun.id} and all ${expectedOutcomes.length} history outcomes are present.`);
+
+              const { data: openAlerts } = await github.rest.issues.listForRepo({
+                owner,
+                repo,
+                state: 'open',
+                labels: labelName,
+                per_page: 100
+              });
+              const alert = openAlerts.find((issue) => issue.title === process.env.ALERT_TITLE);
+
+              if (!alert) {
+                core.info('No open monthly workflow lint history alert found; nothing to close.');
+                return;
+              }
+
+              const recoveryBody = [
+                'The monthly hosted-runner workflow lint record recovered successfully.',
+                '',
+                `Successful workflow run: [${monthlyRun.id}](${monthlyRun.html_url || currentRunUrl})`,
+                `History file: [Open ${process.env.HISTORY_PATH}](${historyUrl})`,
+                '',
+                'Closing this alert while preserving the previous finding history.'
+              ].join('\n');
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: alert.number,
+                per_page: 100
+              });
+              if (!comments.some((comment) => comment.body === recoveryBody)) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: alert.number,
+                  body: recoveryBody
+                });
+              }
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: alert.number,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+              core.info(`Closed recovered monthly workflow lint history alert #${alert.number}.`);
+              return;
+            }
+
+            const affectedRun = monthlyRun || candidateRuns[0];
+            const affectedRunLink = affectedRun?.html_url
+              ? `[View affected workflow run](${affectedRun.html_url})`
+              : `No monthly run was found; [view the watchdog run](${currentRunUrl})`;
+            const body = [
+              'The monthly hosted-runner workflow lint record is missing or incomplete.',
+              '',
+              `Affected workflow run: ${affectedRunLink}`,
+              `Watchdog run: [View check run](${currentRunUrl})`,
+              `History file: [Open ${process.env.HISTORY_PATH}](${historyUrl})`,
+              '',
+              '**Findings:**',
+              ...findings.map((finding) => `- ${finding}`),
+              '',
+              `No synthetic history entry was created. Rerun or repair the monthly schedule and verify the ${expectedOutcomes.join(', ')} outcome records.`
+            ].join('\n');
+
+            try {
+              await github.rest.issues.getLabel({
+                owner,
+                repo,
+                name: labelName
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: labelName,
+                color: 'b60205',
+                description: 'Action required from maintainers'
+              });
+            }
+
+            const { data: openAlerts } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+            const alert = openAlerts.find((issue) => issue.title === process.env.ALERT_TITLE);
+
+            if (!alert) {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title: process.env.ALERT_TITLE,
+                body,
+                labels: [labelName]
+              });
+              core.warning(`Created monthly workflow lint history alert for ${month}.`);
+              return;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: alert.number,
+              per_page: 100
+            });
+            if (comments.some((comment) => comment.body === body)) {
+              core.info(`Monthly workflow lint history alert #${alert.number} already contains this finding.`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: alert.number,
+              body
+            });
+            core.warning(`Updated monthly workflow lint history alert #${alert.number}.`);
+
+  android-release-smoke:
+    needs: build-android
+    if: startsWith(github.ref, 'refs/tags/v')
+    # This label is intentionally exclusive to a runner with KVM, adb root,
+    # writable system overlays, and a disposable Android system image. A
+    # hosted runner must not silently replace it for a signed release.
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    permissions:
+      contents: read
+    env:
+      ANDROID_SMOKE_RESOLVER_MODE: fixture
+      ANDROID_SMOKE_COVERAGE: controlled-fixture
+      ANDROID_AVD_NAME: safenet-writable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify writable Android runner
+        shell: bash
+        run: ./scripts/provision-android-runner.sh --check
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Verify release APK inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/artifacts/android/app-release.apk"
+          test_apk="$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk"
+          test -s "$apk" || { echo "::error::Signed release APK is missing: $apk"; exit 1; }
+          test -s "$test_apk" || { echo "::error::Release instrumentation APK is missing: $test_apk"; exit 1; }
+          echo "Verified release APK inputs."
+
+      - name: Run controlled-fixture smoke test on writable emulator
+        id: android-release-dns-smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # AOSP ATD is a userdebug test image intended for instrumentation.
+          # Unlike the hosted Google APIs image, the dedicated runner is
+          # qualified for adb root and writable-system CA installation.
+          api-level: 35
+          target: aosp_atd
+          arch: x86_64
+          profile: pixel_2
+          avd-name: ${{ env.ANDROID_AVD_NAME }}
+          force-avd-creation: false
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          script: |
+            set -euo pipefail
+            ./scripts/android-smoke-test.sh \
+              --preflight \
+              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
+            ./scripts/android-smoke-test.sh \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+        env:
+          ANDROID_EMULATOR_API_LEVEL: 35
+          ANDROID_EMULATOR_TARGET: aosp_atd
+          ANDROID_EMULATOR_ARCH: x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64
+
+      - name: Upload release Android smoke evidence
+        id: upload-release-android-smoke-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-smoke-evidence-release
+          path: android/app/build/reports/android-smoke/latest
+          if-no-files-found: warn
+
+      - name: Publish release Android smoke summary
+        if: always()
+        shell: bash
+        env:
+          SMOKE_STEP_OUTCOME: ${{ steps.android-release-dns-smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVIDENCE_URL: ${{ steps.upload-release-android-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+          category_file="$evidence_dir/failure-category.txt"
+          category="EMULATOR_RUNNER_FAILURE"
+
+          # The emulator action can fail before its script starts. Keep the
+          # summary useful in that case, and only publish categories emitted
+          # by the smoke script rather than arbitrary evidence-file content.
+          if [[ -f "$category_file" ]]; then
+            candidate="$(head -n 1 "$category_file" | tr -d '\r')"
+            case "$candidate" in
+              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
+                category="$candidate"
+                ;;
+              *)
+                category="UNKNOWN_FAILURE"
+                ;;
+            esac
+          fi
+
+          {
+            echo "## Android release smoke"
+            echo
+            echo "- **Failure category:** \`$category\`"
+            echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-windows:
     if: github.event_name != 'schedule'
     runs-on: windows-latest
@@ -604,7 +1660,7 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, build-windows]
+    needs: [build-android, build-windows, android-release-smoke]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -643,7 +1699,7 @@ jobs:
           echo "Verified $apk_count APK installer(s) and $msi_count MSI installer(s)."
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/android/*.apk

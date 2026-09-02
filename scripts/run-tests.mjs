@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const tests = [];
+const testDirectories = ["server", "scripts"];
 
 function encodeAnnotation(value) {
   return value
@@ -21,16 +22,21 @@ async function collectTests(directory) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       await collectTests(entryPath);
-    } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".test.ts") || entry.name.endsWith(".test.mjs"))
+    ) {
       tests.push(entryPath.replaceAll("\\", "/"));
     }
   }
 }
 
-await collectTests("server");
+for (const directory of testDirectories) {
+  await collectTests(directory);
+}
 
 if (tests.length === 0) {
-  console.error("No TypeScript test files were found under server.");
+  console.error("No test files were found under the configured test directories.");
   process.exit(1);
 }
 

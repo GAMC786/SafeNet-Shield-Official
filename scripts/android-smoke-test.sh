@@ -11,11 +11,14 @@ readonly FIXTURE_PLAIN_PORT=53
 readonly FIXTURE_DOH_PORT=443
 readonly FIXTURE_DOT_PORT=853
 readonly FIXTURE_HTTP_PORT=18080
+readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
+readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
 serial="${ANDROID_SERIAL:-}"
 output_dir="${ANDROID_SMOKE_OUTPUT_DIR:-android/app/build/reports/android-smoke/latest}"
+preflight_only=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
 fixture_host="${ANDROID_SMOKE_FIXTURE_HOST:-10.0.2.2}"
 plain_primary="${ANDROID_SMOKE_PLAIN_PRIMARY:-1.1.1.1}"
@@ -23,8 +26,13 @@ plain_secondary="${ANDROID_SMOKE_PLAIN_SECONDARY:-8.8.8.8}"
 doh_secondary="${ANDROID_SMOKE_DOH_SECONDARY:-https://cloudflare-dns.com/dns-query}"
 dot_secondary="${ANDROID_SMOKE_DOT_SECONDARY:-cloudflare-dns.com}"
 ordinary_url="${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}"
+emulator_api_level="${ANDROID_EMULATOR_API_LEVEL:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_target="${ANDROID_EMULATOR_TARGET:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_arch="${ANDROID_EMULATOR_ARCH:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 fixture_tmp=""
 fixture_pid=""
+preflight_remote_ca=""
 coverage_label="controlled-fixture"
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
@@ -34,6 +42,11 @@ cleanup_fixture() {
     if [[ -n "$fixture_pid" ]] && kill -0 "$fixture_pid" 2>/dev/null; then
         kill "$fixture_pid" 2>/dev/null || true
         wait "$fixture_pid" 2>/dev/null || true
+    fi
+    if [[ -n "$preflight_remote_ca" ]] &&
+        command -v adb >/dev/null 2>&1 &&
+        command -v timeout >/dev/null 2>&1; then
+        timeout 30s adb "${adb_args[@]}" shell rm -f "$preflight_remote_ca" >/dev/null 2>&1 || true
     fi
     if [[ -n "$fixture_tmp" ]]; then
         rm -rf "$fixture_tmp"
@@ -53,6 +66,7 @@ Options:
   --test-apk PATH  Must be app-release-androidTest.apk (default: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk)
   --serial ID      adb device/emulator serial (or set ANDROID_SERIAL)
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
+  --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
 
@@ -87,6 +101,10 @@ while [[ $# -gt 0 ]]; do
             output_dir="$2"
             shift 2
             ;;
+        --preflight)
+            preflight_only=true
+            shift
+            ;;
         --resolver-mode)
             [[ $# -ge 2 ]] || { echo "ERROR: --resolver-mode requires fixture or public." >&2; exit 2; }
             resolver_mode="$2"
@@ -113,25 +131,25 @@ if [[ "$resolver_mode" == "fixture" ]] &&
     echo "ERROR: ANDROID_SMOKE_FIXTURE_HOST must be an IPv4 address; got: $fixture_host" >&2
     exit 2
 fi
-if [[ "$resolver_mode" == "fixture" && ! -f "$FIXTURE_SCRIPT" ]]; then
+if [[ "$resolver_mode" == "fixture" && ! -f "$FIXTURE_SCRIPT" && "$preflight_only" != true ]]; then
     echo "ERROR: Android DNS fixture script not found: $FIXTURE_SCRIPT" >&2
     exit 2
 fi
 
-if [[ "$(basename "$apk_path")" != "app-release.apk" ]]; then
+if [[ "$preflight_only" != true && "$(basename "$apk_path")" != "app-release.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release.apk; got: $apk_path" >&2
     exit 2
 fi
-if [[ "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
+if [[ "$preflight_only" != true && "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release-androidTest.apk; got: $test_apk_path" >&2
     exit 2
 fi
-if [[ ! -f "$apk_path" ]]; then
+if [[ "$preflight_only" != true && ! -f "$apk_path" ]]; then
     echo "ERROR: Release APK not found: $apk_path" >&2
     echo "Build android/app/build/outputs/apk/release/app-release.apk first." >&2
     exit 2
 fi
-if [[ ! -f "$test_apk_path" ]]; then
+if [[ "$preflight_only" != true && ! -f "$test_apk_path" ]]; then
     echo "ERROR: Release instrumentation APK not found: $test_apk_path" >&2
     echo "Build app-release-androidTest.apk with assembleReleaseAndroidTest first." >&2
     exit 2
@@ -142,7 +160,9 @@ command -v adb >/dev/null 2>&1 || {
 }
 
 mkdir -p "$output_dir"
-rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt "$output_dir"/failure-category.txt
+rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
+    "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
+    "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt
 printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode" > "$output_dir/coverage.txt"
 
 adb_args=()
@@ -164,9 +184,151 @@ capture() {
 fixture_failure() {
     local message="$1"
     echo "FIXTURE_FAILURE: $message" | tee "$output_dir/failure-category.txt" >&2
-    printf 'target=%s\nresolver_mode=%s\ncoverage=%s\nfailure_category=FIXTURE_FAILURE\nmessage=%s\n' \
-        "$serial" "$resolver_mode" "$coverage_label" "$message" | tee "$output_dir/result.txt" >&2
+    {
+        printf 'target=%s\nresolver_mode=%s\ncoverage=%s\n' \
+            "$serial" "$resolver_mode" "$coverage_label"
+        if [[ -f "$output_dir/emulator-image.txt" ]]; then
+            cat "$output_dir/emulator-image.txt"
+        fi
+        printf 'failure_category=FIXTURE_FAILURE\nmessage=%s\n' "$message"
+    } | tee "$output_dir/result.txt" >&2
     exit 1
+}
+
+read_android_property() {
+    local property="$1"
+    local value
+    value="$(timeout 10s adb "${adb_args[@]}" shell getprop "$property" 2>/dev/null | tr -d '\r' || true)"
+    if [[ -z "$value" ]]; then
+        value="$DEFAULT_EMULATOR_METADATA_VALUE"
+    fi
+    printf '%s' "$value"
+}
+
+record_emulator_image_metadata() {
+    local api_level
+    local build_fingerprint
+    local device_arch
+
+    api_level="$(read_android_property ro.build.version.sdk)"
+    device_arch="$(read_android_property ro.product.cpu.abilist)"
+    build_fingerprint="$(read_android_property ro.build.fingerprint)"
+    cat > "$output_dir/emulator-image.txt" <<EOF
+api_level=$api_level
+configured_api_level=$emulator_api_level
+target=$emulator_target
+architecture=$emulator_arch
+device_abis=$device_arch
+system_image=$emulator_system_image
+build_fingerprint=$build_fingerprint
+EOF
+}
+
+run_system_trust_preflight() {
+    local preflight_log="$output_dir/preflight.log"
+    local preflight_ca
+    local preflight_hash
+    local preflight_state
+    local cleanup_status
+
+    : > "$preflight_log"
+    {
+        echo "Android system trust capability preflight"
+        echo "target=$serial"
+        echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "--- emulator image ---"
+        cat "$output_dir/emulator-image.txt"
+    } >> "$preflight_log"
+
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$preflight_log" 2>&1 ||
+        grep -Eiq 'cannot run as root|production builds' "$preflight_log"; then
+        fixture_failure "adb root is unavailable on this emulator; system trust cannot be probed (see $preflight_log)"
+    fi
+
+    if ! timeout 45s adb "${adb_args[@]}" remount >> "$preflight_log" 2>&1; then
+        fixture_failure "the emulator could not remount its system partition (see $preflight_log)"
+    fi
+
+    if ! timeout 30s adb "${adb_args[@]}" reboot >> "$preflight_log" 2>&1; then
+        fixture_failure "the emulator could not reboot after the system remount (see $preflight_log)"
+    fi
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$preflight_log" 2>&1; then
+        fixture_failure "the emulator did not return after the system remount (see $preflight_log)"
+    fi
+    for _ in {1..60}; do
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+            break
+        fi
+        sleep 1
+    done
+    preflight_state="$(timeout 5s adb "${adb_args[@]}" get-state 2>&1 | tee -a "$preflight_log" || true)"
+    if [[ "$preflight_state" != "device" ]]; then
+        fixture_failure "the emulator did not become ready after the system remount (see $preflight_log)"
+    fi
+
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$preflight_log" 2>&1 ||
+        grep -Eiq 'cannot run as root|production builds' "$preflight_log"; then
+        fixture_failure "adb root could not be re-enabled after the system remount (see $preflight_log)"
+    fi
+    if ! timeout 45s adb "${adb_args[@]}" remount >> "$preflight_log" 2>&1; then
+        fixture_failure "the emulator could not activate its writable system overlay (see $preflight_log)"
+    fi
+
+    command -v openssl >/dev/null 2>&1 || \
+        fixture_failure "openssl is required to probe temporary system trust storage (see $preflight_log)"
+    fixture_tmp="$(mktemp -d)"
+    preflight_ca="$fixture_tmp/preflight-ca.crt"
+    if ! openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
+        -subj "/CN=SafeNet Android trust preflight $$" \
+        -addext "basicConstraints=critical,CA:true,pathlen:1" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" \
+        -keyout "$fixture_tmp/preflight-ca.key" -out "$preflight_ca" \
+        >> "$preflight_log" 2>&1; then
+        fixture_failure "could not create the temporary preflight CA (see $preflight_log)"
+    fi
+    if ! preflight_hash="$(openssl x509 -subject_hash_old -in "$preflight_ca" -noout 2>>"$preflight_log")" ||
+        [[ ! "$preflight_hash" =~ ^[[:xdigit:]]+$ ]]; then
+        fixture_failure "could not calculate the temporary preflight CA name (see $preflight_log)"
+    fi
+    preflight_remote_ca="${PREFLIGHT_REMOTE_CA_PREFIX}${preflight_hash}.0"
+
+    if ! timeout 60s adb "${adb_args[@]}" push "$preflight_ca" "$preflight_remote_ca" \
+        >> "$preflight_log" 2>&1; then
+        fixture_failure "the Android system CA directory is not writable (see $preflight_log)"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" shell chmod 0644 "$preflight_remote_ca" \
+        >> "$preflight_log" 2>&1; then
+        fixture_failure "the temporary preflight CA permissions could not be set (see $preflight_log)"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" shell test -s "$preflight_remote_ca" \
+        >> "$preflight_log" 2>&1; then
+        fixture_failure "the temporary preflight CA could not be read back (see $preflight_log)"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" shell rm -f "$preflight_remote_ca" \
+        >> "$preflight_log" 2>&1; then
+        fixture_failure "the temporary preflight CA could not be removed (see $preflight_log)"
+    fi
+    cleanup_status=0
+    timeout 30s adb "${adb_args[@]}" shell test -e "$PREFLIGHT_REMOTE_CA_PREFIX${preflight_hash}.0" \
+        >> "$preflight_log" 2>&1 || cleanup_status=$?
+    if [[ "$cleanup_status" -eq 0 ]]; then
+        fixture_failure "the temporary preflight CA remained in the system trust store (see $preflight_log)"
+    fi
+    if [[ "$cleanup_status" -ne 1 ]]; then
+        fixture_failure "the temporary preflight CA cleanup could not be verified (see $preflight_log)"
+    fi
+    preflight_remote_ca=""
+
+    cat > "$output_dir/preflight-result.txt" <<EOF
+target=$serial
+$(cat "$output_dir/emulator-image.txt")
+adb_root=PASS
+system_remount=PASS
+ca_storage_write=PASS
+temporary_ca_cleanup=PASS
+result=PASS
+EOF
+    echo "Android system trust capability preflight passed. Evidence: $output_dir" | tee -a "$preflight_log"
 }
 
 if [[ -z "$serial" ]]; then
@@ -193,6 +355,13 @@ command -v timeout >/dev/null 2>&1 || {
 if ! timeout 30s adb "${adb_args[@]}" get-state | grep -qx "device"; then
     echo "ERROR: adb target '$serial' is not online." >&2
     exit 3
+fi
+
+record_emulator_image_metadata
+
+if [[ "$preflight_only" == true ]]; then
+    run_system_trust_preflight
+    exit 0
 fi
 
 apksigner_bin="$(command -v apksigner || true)"

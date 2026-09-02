@@ -1,6 +1,13 @@
 - [Release API DNS validation](release-api-dns-validation.md) — tag builds validate the deployed API through public DNS; transient resolver failures should be rerun before changing code.
 - [Android VPN smoke evidence](android-vpn-smoke-evidence.md) — install instrumentation before enabling the VPN so test setup cannot tear down the service under test.
 - [Android release artifact integrity](android-release-artifact-integrity.md) — release jobs must require a signed release APK, not accept any APK produced by a generic build.
-- [Android device verification limits](android-device-verification-limits.md) — local VPN smoke tests need an attached target or emulator; host resolver checks are not runtime evidence.
+- [Android device verification limits](android-device-verification-limits.md) — local VPN smoke tests need an attached target or emulator; hosted writable-system emulators may still block CA installation.
 - [Embedded workflow script testing](embedded-workflow-script-testing.md) — test GitHub Actions scripts through extracted code and mocked APIs when behavior only exists inside workflow YAML.
 - [Scheduled GitHub run verification](scheduled-github-run-verification.md) — schedule-gated workflow steps require a post-merge default-branch run; manual dispatch is not equivalent.
+- [Cross-platform Node test discovery](cross-platform-node-tests.md) — discover test files in Node instead of depending on shell wildcard expansion.
+- [Cross-platform CI diagnostics](ci-cross-platform-diagnostics.md) — emit bounded failure details as annotations when hosted runner logs are unavailable.
+- [GitHub artifact downloads](github-artifact-downloads.md) — the GitHub connector can list Actions artifacts but may forbid archive/log downloads; use the opaque CLI credential path for verification.
+- [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
+- [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
+- [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
+- [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.

@@ -6,7 +6,7 @@ This document provides instructions for building native installers for Android (
 
 ### For Android APK:
 - Android Studio installed
-- Android SDK (API level 33+)
+- Android SDK Command-line Tools
 - Java JDK 17+
 - Gradle
 
@@ -22,6 +22,55 @@ This document provides instructions for building native installers for Android (
 The APK packages the SafeNet DNS frontend only. It must connect to a separately
 running SafeNet DNS backend over HTTPS. The backend must be publicly reachable
 from the Android device.
+
+### Step 0: Prepare the Android SDK
+
+Set `ANDROID_SDK_ROOT` (or `ANDROID_HOME`) to the Android SDK directory, then
+run the shared setup command from the project root:
+
+```bash
+ANDROID_SDK_ROOT="$HOME/Android/Sdk" npm run android:setup
+```
+
+On Windows, run the native PowerShell setup command from the project root. For
+the default Android Studio SDK location:
+
+```powershell
+$env:ANDROID_SDK_ROOT = "$env:LOCALAPPDATA\Android\Sdk"
+npm run android:setup:windows
+```
+
+If Android Studio has already created `android\local.properties` with an
+`sdk.dir`, the environment variable can be omitted:
+
+```powershell
+npm run android:setup:windows
+```
+
+The command reads the compile SDK, target SDK, and build-tools versions from
+`android/variables.gradle`, accepts the SDK licenses, installs the required
+packages, and verifies that they are present. If Android Studio has already
+created `android/local.properties` with an `sdk.dir`, the environment variable
+can be omitted:
+
+```bash
+npm run android:setup
+```
+
+If a pinned package is unavailable, setup stops and names the missing package;
+do not change a version in the setup command. Update `android/variables.gradle`
+when intentionally changing the Android toolchain.
+
+The Windows CI lane runs `scripts/test-setup-android-sdk.ps1` on
+`windows-latest` with a mocked `sdkmanager`. It verifies that the pins from
+`android/variables.gradle` reach the command, including SDK paths escaped in
+`android/local.properties`, and checks the remediation shown for missing
+`sdkmanager` and unavailable packages. To run the same check locally on
+Windows:
+
+```powershell
+pwsh -NoProfile -File scripts/test-setup-android-sdk.ps1
+```
 
 ### Step 1: Build the web application
 ```bash
@@ -100,10 +149,22 @@ as `ENETUNREACH`, `UNRELATED_NETWORK_FAILURE`, or `NON_NETWORK_FAILURE` in
 `failure-category.txt`; `ENETUNREACH` is the original “network unreachable”
 regression and must not be treated as a generic resolver failure.
 
-The GitHub Actions release/manual lane runs the same script on a fresh API 35
-Google APIs emulator after creating the signed release APK. A local run needs
-an Android SDK, `adb`, and an attached target; a host DNS lookup is not a
-substitute for these VPN checks.
+Tagged releases run the same script on a dedicated self-hosted Linux runner
+with the `android-writable-system` label. That runner uses an AOSP ATD API 35
+image with KVM, `adb root`, writable system overlays, and passwordless `sudo`
+for the controlled resolver fixture. Provision it once with:
+
+```bash
+ANDROID_SDK_ROOT="$HOME/Android/Sdk" ./scripts/provision-android-runner.sh
+```
+
+Run `./scripts/provision-android-runner.sh --check` from the registered
+GitHub Actions runner account to verify its capabilities. The release job will
+wait for, and then require, this labeled runner; it will not substitute a
+hosted image that cannot install the temporary system CA. Manual and scheduled
+non-tag checks retain the hosted validation lane. A local run needs an Android
+SDK, `adb`, and an attached target; a host DNS lookup is not a substitute for
+these VPN checks.
 
 ---
 
