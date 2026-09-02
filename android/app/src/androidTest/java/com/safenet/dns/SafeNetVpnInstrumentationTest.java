@@ -99,10 +99,12 @@ public class SafeNetVpnInstrumentationTest {
 
     @After
     public void tearDown() throws Exception {
-        context.stopService(new Intent(context, SafeNetVpnService.class));
         if (activity != null && !activity.isFinishing()) {
+            callVpn("window.Capacitor.Plugins.SafeNetVpn.stop()");
             waitForVpnState(false, 5);
             InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
+        } else {
+            context.stopService(new Intent(context, SafeNetVpnService.class));
         }
     }
 

@@ -215,11 +215,13 @@ export default function Settings() {
                   <Activity className="h-4 w-4 text-primary" />
                 )}
                 <span>
-                  {vpn.status?.running
-                    ? "Protected and connected"
-                    : activeDnsServer
-                      ? "Ready to protect DNS"
-                      : "Select an active DNS server to continue"}
+                  {vpn.status?.error
+                    ? "DNS protection stopped"
+                    : vpn.status?.running
+                      ? "Protected and connected"
+                      : activeDnsServer
+                        ? "Ready to protect DNS"
+                        : "Select an active DNS server to continue"}
                 </span>
               </div>
               {activeDnsServer && (
@@ -228,7 +230,12 @@ export default function Settings() {
                 </p>
               )}
               {vpn.status?.error && (
-                <p className="mt-2 text-xs text-destructive">{vpn.status.error}</p>
+                <>
+                  <p role="alert" className="mt-2 text-xs text-destructive">{vpn.status.error}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Turn the switch on to reconnect DNS protection.
+                  </p>
+                </>
               )}
               <p className="mt-3 text-xs text-muted-foreground">
                 DNS-only protection. Regular web traffic is not routed through this VPN.

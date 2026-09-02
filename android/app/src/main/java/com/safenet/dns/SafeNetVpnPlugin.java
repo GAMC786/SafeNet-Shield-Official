@@ -103,6 +103,7 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
+        SafeNetVpnService.requestStop();
         getContext().stopService(new Intent(getContext(), SafeNetVpnService.class));
         call.resolve(status());
     }

@@ -194,6 +194,57 @@ public class SafeNetVpnUiInstrumentationTest {
             accessibleSwitch.isChecked());
     }
 
+    @Test
+    public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
+        openSettingsWithActiveResolver();
+        waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
+
+        clickVpnSwitch();
+        waitForWebView("Boolean(document.querySelector('[role=\"dialog\"]'))");
+        clickEulaAgreement();
+        clickEulaAccept();
+
+        if (VpnService.prepare(context) != null) {
+            grantVpnPermissionDialog();
+        }
+        waitForVpnState(true);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
+
+        context.stopService(new Intent(context, SafeNetVpnService.class));
+
+        waitForVpnState(false);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
+        JSONObject stoppedState = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
+                    VPN_SWITCH_LABEL +
+                    "\"]');" +
+                "const text = document.body.innerText;" +
+                "return {" +
+                    "label: toggle?.getAttribute('aria-label')," +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "stopped: text.includes('DNS protection stopped')," +
+                    "actionable: text.includes('Turn the switch on to reconnect DNS protection.')" +
+                "};" +
+            "})()"
+        );
+
+        assertEquals(VPN_SWITCH_LABEL, stoppedState.getString("label"));
+        assertEquals("false", stoppedState.getString("checked"));
+        assertTrue("Settings must explain that externally stopped protection needs attention",
+            stoppedState.getBoolean("stopped"));
+        assertTrue("Settings must tell users how to recover stopped protection",
+            stoppedState.getBoolean("actionable"));
+
+        UiObject2 accessibleSwitch = findAccessibleVpnSwitch();
+        assertEquals(VPN_SWITCH_LABEL, accessibleSwitch.getContentDescription());
+        assertTrue("The stopped VPN must retain switch semantics", accessibleSwitch.isCheckable());
+        assertFalse("The switch must be unchecked after Android stops the service",
+            accessibleSwitch.isChecked());
+        assertTrue("The switch must remain enabled so users can restart protection",
+            accessibleSwitch.isEnabled());
+    }
+
     private void clearTargetAppData() throws Exception {
         ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation()

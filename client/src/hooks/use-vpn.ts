@@ -34,17 +34,30 @@ export function useSafeNetVpn() {
     if (!supported) {
       return null;
     }
-    const nextStatus = await SafeNetVpn.getStatus();
-    setStatus(nextStatus);
-    return nextStatus;
+    try {
+      const nextStatus = await SafeNetVpn.getStatus();
+      setStatus(nextStatus);
+      return nextStatus;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Android could not read VPN status.";
+      setStatus((previous) => ({
+        supported: true,
+        running: false,
+        permissionGranted: previous?.permissionGranted ?? false,
+        eulaVersion: previous?.eulaVersion ?? SAFE_NET_VPN_EULA_VERSION,
+        eulaAccepted: previous?.eulaAccepted ?? false,
+        error: `DNS protection status is unavailable. ${message}`,
+      }));
+      throw error;
+    }
   }, [supported]);
 
   useEffect(() => {
     if (!supported) {
       return;
     }
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 2000);
+    void refresh().catch(() => undefined);
+    const interval = window.setInterval(() => void refresh().catch(() => undefined), 2000);
     return () => window.clearInterval(interval);
   }, [refresh, supported]);
 

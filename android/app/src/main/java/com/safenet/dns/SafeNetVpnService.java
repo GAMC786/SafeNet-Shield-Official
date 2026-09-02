@@ -66,6 +66,7 @@ public class SafeNetVpnService extends VpnService {
 
     private final Object lifecycleLock = new Object();
     private volatile boolean running;
+    private volatile boolean stopRequested;
     private ParcelFileDescriptor vpnInterface;
     private ExecutorService worker;
     private ResolverConfig resolver;
@@ -80,6 +81,15 @@ public class SafeNetVpnService extends VpnService {
         return lastError;
     }
 
+    public static void requestStop() {
+        SafeNetVpnService service = instance;
+        lastError = null;
+        if (service == null) {
+            return;
+        }
+        service.stopRequested = true;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -90,6 +100,7 @@ public class SafeNetVpnService extends VpnService {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         stopVpn(false);
+        stopRequested = false;
         if (intent == null) {
             lastError = "VPN configuration was lost. Start protection again.";
             stopSelf(startId);
@@ -132,7 +143,14 @@ public class SafeNetVpnService extends VpnService {
 
     @Override
     public void onDestroy() {
-        stopVpn(false);
+        boolean intentionalStop = stopRequested;
+        String existingError = lastError;
+        stopVpn(true);
+        if (intentionalStop) {
+            lastError = null;
+        } else if (existingError == null) {
+            lastError = "DNS protection stopped unexpectedly. Turn the switch on to reconnect.";
+        }
         if (instance == this) {
             instance = null;
         }
@@ -141,7 +159,9 @@ public class SafeNetVpnService extends VpnService {
 
     @Override
     public void onRevoke() {
-        stopVpn(false);
+        stopVpn(true);
+        stopRequested = false;
+        lastError = "Android revoked VPN access. Turn the switch on to reconnect.";
         stopSelf();
         super.onRevoke();
     }
