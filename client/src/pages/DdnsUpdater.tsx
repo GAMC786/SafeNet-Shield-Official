@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
@@ -206,10 +207,15 @@ export default function DdnsUpdater() {
 
               <div className="flex gap-2">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={() => updateUpdater.mutate({ id: updater.id, data: { isEnabled: !updater.isEnabled } })}
-                  className="flex-1"
+                  className={cn(
+                    "min-h-10 flex-1 border-2 font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                    updater.isEnabled
+                      ? "border-amber-400/60 bg-amber-500/15 text-amber-200 hover:border-amber-300 hover:bg-amber-500/25"
+                      : "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/25"
+                  )}
                 >
                   {updater.isEnabled ? "Disable" : "Enable"}
                 </Button>
