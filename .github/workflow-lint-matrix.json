@@ -1,0 +1,20 @@
+[
+  {
+    "platform": "Windows",
+    "architecture": "x64",
+    "runner": "windows-latest",
+    "name": "Workflow lint (Windows x64 on windows-latest)"
+  },
+  {
+    "platform": "macOS",
+    "architecture": "x64",
+    "runner": "macos-15-intel",
+    "name": "Workflow lint (macOS x64 on macos-15-intel)"
+  },
+  {
+    "platform": "macOS",
+    "architecture": "arm64",
+    "runner": "macos-14",
+    "name": "Workflow lint (macOS arm64 on macos-14)"
+  }
+]

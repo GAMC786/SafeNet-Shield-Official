@@ -16,6 +16,18 @@ const workflow = readFileSync(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
 ).replace(/\r\n/g, "\n");
+const matrixContract = JSON.parse(
+  readFileSync(new URL("../.github/workflow-lint-matrix.json", import.meta.url), "utf8"),
+);
+const matrixByKey = new Map(
+  matrixContract.map((entry) => [
+    `${entry.platform}/${entry.architecture}`,
+    entry,
+  ]),
+);
+const expectedOutcomes = new Set(
+  matrixContract.map((entry) => `${entry.platform}/${entry.architecture}`),
+);
 
 const jobStart = workflow.indexOf("  workflow-lint-history-watchdog:");
 const jobEnd = workflow.indexOf("\n  android-release-smoke:", jobStart);
@@ -65,6 +77,7 @@ function createGitHubMock({
   runs,
   jobsByRun,
   history,
+  matrix = matrixContract,
   openAlerts = [],
   comments = [],
 }) {
@@ -84,9 +97,12 @@ function createGitHubMock({
       repos: {
         getContent: async (params) => {
           calls.push({ method: "getContent", params });
+          const content = params.path === ".github/workflow-lint-matrix.json"
+            ? matrix
+            : history;
           return {
             data: {
-              content: Buffer.from(JSON.stringify(history)).toString("base64"),
+              content: Buffer.from(JSON.stringify(content)).toString("base64"),
               encoding: "base64",
             },
           };
@@ -151,6 +167,7 @@ async function runWatchdog({
         CHECKED_AT: "2026-09-02T05:00:00Z",
         DEFAULT_BRANCH: "main",
         HISTORY_PATH: ".github/workflow-lint-history.json",
+        MATRIX_CONTRACT_PATH: ".github/workflow-lint-matrix.json",
         HISTORY_URL:
           "https://github.com/SafeNetInc/SafeNet-DNS/blob/main/.github/workflow-lint-history.json",
         RUN_URL: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/900",
@@ -173,7 +190,7 @@ const monthlyRun = {
   html_url: "https://github.com/SafeNetInc/SafeNet-DNS/actions/runs/101",
 };
 const monthlyJobs = {
-  101: [{ name: "Workflow lint (Windows x64 on windows-latest)" }],
+  101: [{ name: matrixByKey.get("Windows/x64").name }],
 };
 
 const recoveredAlert = {
@@ -192,7 +209,7 @@ function expectedRecoveryComment() {
   ].join("\n");
 }
 
-test("does not alert or write when the monthly run has all three history outcomes", async () => {
+test("does not alert or write when the monthly run has every history outcome", async () => {
   const result = await runWatchdog({
     runs: [monthlyRun],
     jobsByRun: monthlyJobs,
@@ -214,7 +231,11 @@ test("does not alert or write when the monthly run has all three history outcome
 
   assert.equal(result.calls.filter((call) => call.method === "create").length, 0);
   assert.equal(result.calls.filter((call) => call.method === "createComment").length, 0);
-  assert.ok(result.infoMessages.some((message) => message.includes("all three history outcomes")));
+  assert.ok(
+    result.infoMessages.some((message) =>
+      message.includes(`all ${matrixContract.length} history outcomes`),
+    ),
+  );
 });
 
 test("comments with the recovered run and history file before closing an open alert", async () => {
@@ -300,7 +321,7 @@ test("alerts with the affected run and history file when the monthly run is abse
   assert.match(String(createCall.params.body), /No synthetic history entry was created/);
   assert.equal(
     result.calls.filter((call) => call.method === "getContent").length,
-    1,
+    2,
   );
   assert.equal(
     result.calls.some((call) =>
@@ -359,6 +380,7 @@ test("keeps the first-day watchdog run deferred until the monthly schedule can s
         CHECKED_AT: "2026-09-01T04:17:00Z",
         DEFAULT_BRANCH: "main",
         HISTORY_PATH: ".github/workflow-lint-history.json",
+        MATRIX_CONTRACT_PATH: ".github/workflow-lint-matrix.json",
         HISTORY_URL: "https://example.test/history",
         RUN_URL: "https://example.test/run",
         WORKFLOW_FILE: "build.yml",
@@ -381,23 +403,11 @@ test("replaces rerun records without consuming retention slots", () => {
   const historyDirectory = join(workspace, ".github");
   const resultsDirectory = join(workspace, "workflow-lint-results");
   const writerScript = getHistoryWriterScript();
-  const results = [
-    {
-      platform: "Windows",
-      architecture: "x64",
-      runner: "windows-latest",
-    },
-    {
-      platform: "macOS",
-      architecture: "x64",
-      runner: "macos-15-intel",
-    },
-    {
-      platform: "macOS",
-      architecture: "arm64",
-      runner: "macos-14",
-    },
-  ];
+  const results = matrixContract.map(({ platform, architecture, runner }) => ({
+    platform,
+    architecture,
+    runner,
+  }));
 
   function writeHistory({ runId, runAttempt, recordedAt, commit }) {
     for (const result of results) {
@@ -439,6 +449,15 @@ test("replaces rerun records without consuming retention slots", () => {
   try {
     mkdirSync(historyDirectory);
     mkdirSync(resultsDirectory);
+    mkdirSync(join(workspace, "scripts"));
+    writeFileSync(
+      join(workspace, "scripts/workflow-lint-matrix.mjs"),
+      readFileSync(new URL("./workflow-lint-matrix.mjs", import.meta.url), "utf8"),
+    );
+    writeFileSync(
+      join(workspace, ".github/workflow-lint-matrix.json"),
+      `${JSON.stringify(matrixContract, null, 2)}\n`,
+    );
     writeFileSync(
       join(historyDirectory, "workflow-lint-history.json"),
       `${JSON.stringify(configuredHistory, null, 2)}\n`,
@@ -496,6 +515,15 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
     mkdirSync(historyDirectory);
     mkdirSync(resultsDirectory);
     mkdirSync(runnerTemp);
+    mkdirSync(join(workspace, "scripts"));
+    writeFileSync(
+      join(workspace, "scripts/workflow-lint-matrix.mjs"),
+      readFileSync(new URL("./workflow-lint-matrix.mjs", import.meta.url), "utf8"),
+    );
+    writeFileSync(
+      join(workspace, ".github/workflow-lint-matrix.json"),
+      `${JSON.stringify(matrixContract, null, 2)}\n`,
+    );
     writeFileSync(
       join(historyDirectory, "workflow-lint-history.json"),
       `${JSON.stringify(configuredHistory, null, 2)}\n`,
@@ -504,9 +532,7 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
       join(resultsDirectory, "workflow-lint-result-Windows-x64.json"),
       `${JSON.stringify(
         {
-          platform: "Windows",
-          architecture: "x64",
-          runner: "windows-latest",
+          ...matrixByKey.get("Windows/x64"),
           stage: "completed",
           outcome: "success",
         },
@@ -518,9 +544,7 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
       join(resultsDirectory, "workflow-lint-result-macOS-arm64.json"),
       `${JSON.stringify(
         {
-          platform: "macOS",
-          architecture: "arm64",
-          runner: "macos-14",
+          ...matrixByKey.get("macOS/arm64"),
           stage: "completed",
           outcome: "success",
         },
@@ -533,17 +557,17 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
       `${JSON.stringify(
         [
           {
-            name: "Workflow lint (Windows x64 on windows-latest)",
+            name: matrixByKey.get("Windows/x64").name,
             status: "completed",
             conclusion: "success",
           },
           {
-            name: "Workflow lint (macOS x64 on macos-15-intel)",
+            name: matrixByKey.get("macOS/x64").name,
             status: "queued",
             conclusion: null,
           },
           {
-            name: "Workflow lint (macOS arm64 on macos-14)",
+            name: matrixByKey.get("macOS/arm64").name,
             status: "completed",
             conclusion: "success",
           },
@@ -581,10 +605,11 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
     const timedOutResult = history.runs[0].results.find(
       (result) => result.platform === "macOS" && result.architecture === "x64",
     );
+    const macX64 = matrixByKey.get("macOS/x64");
     assert.deepEqual(timedOutResult, {
-      platform: "macOS",
-      architecture: "x64",
-      runner: "macos-15-intel",
+      platform: macX64.platform,
+      architecture: macX64.architecture,
+      runner: macX64.runner,
       stage: "runner allocation timeout",
       outcome: "failure",
     });
@@ -594,7 +619,7 @@ test("synthesizes a failed outcome when a matrix runner never produces an artifa
           (result) => `${result.platform}/${result.architecture}`,
         ),
       ),
-      new Set(["Windows/x64", "macOS/x64", "macOS/arm64"]),
+      expectedOutcomes,
     );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
@@ -607,11 +632,6 @@ test("retains only the newest configured runs with every matrix outcome", () => 
   );
   const retentionRuns = configuredHistory.retention_runs;
   const totalRuns = retentionRuns + 3;
-  const expectedOutcomes = new Set([
-    "Windows/x64",
-    "macOS/x64",
-    "macOS/arm64",
-  ]);
   const workspace = mkdtempSync(join(tmpdir(), "workflow-lint-history-"));
   const historyDirectory = join(workspace, ".github");
   const resultsDirectory = join(workspace, "workflow-lint-results");
@@ -620,37 +640,31 @@ test("retains only the newest configured runs with every matrix outcome", () => 
   try {
     mkdirSync(historyDirectory);
     mkdirSync(resultsDirectory);
+    mkdirSync(join(workspace, "scripts"));
+    writeFileSync(
+      join(workspace, "scripts/workflow-lint-matrix.mjs"),
+      readFileSync(new URL("./workflow-lint-matrix.mjs", import.meta.url), "utf8"),
+    );
+    writeFileSync(
+      join(workspace, ".github/workflow-lint-matrix.json"),
+      `${JSON.stringify(matrixContract, null, 2)}\n`,
+    );
     writeFileSync(
       join(historyDirectory, "workflow-lint-history.json"),
       `${JSON.stringify(configuredHistory, null, 2)}\n`,
     );
 
     for (let runNumber = 1; runNumber <= totalRuns; runNumber += 1) {
-      for (const file of [
-        "workflow-lint-result-Windows-x64.json",
-        "workflow-lint-result-macOS-x64.json",
-        "workflow-lint-result-macOS-arm64.json",
-      ]) {
+      for (const entry of matrixContract) {
+        const file = `workflow-lint-result-${entry.platform}-${entry.architecture}.json`;
         rmSync(join(resultsDirectory, file), { force: true });
       }
 
-      const results = [
-        {
-          platform: "Windows",
-          architecture: "x64",
-          runner: "windows-latest",
-        },
-        {
-          platform: "macOS",
-          architecture: "x64",
-          runner: "macos-15-intel",
-        },
-        {
-          platform: "macOS",
-          architecture: "arm64",
-          runner: "macos-14",
-        },
-      ];
+      const results = matrixContract.map(({ platform, architecture, runner }) => ({
+        platform,
+        architecture,
+        runner,
+      }));
       results.forEach((result) => {
         writeFileSync(
           join(

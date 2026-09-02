@@ -19,6 +19,10 @@ import {
   resolveTool,
   validateToolVersions,
 } from "./lint-workflows.mjs";
+import {
+  getWorkflowLintMatrix,
+  validateWorkflowLintMatrix,
+} from "./workflow-lint-matrix.mjs";
 
 const packageManifest = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -172,16 +176,9 @@ test("runs a maintainer-triggered or monthly cross-platform installer matrix", (
   );
   assert.match(
     matrixJob,
-    /runner: windows-latest[\s\S]*?platform: Windows[\s\S]*?architecture: x64/,
+    /needs: validate-release-workflow[\s\S]*?fromJSON\(needs\.validate-release-workflow\.outputs\.workflow_lint_matrix\)/,
   );
-  assert.match(
-    matrixJob,
-    /runner: macos-15-intel[\s\S]*?platform: macOS[\s\S]*?architecture: x64/,
-  );
-  assert.match(
-    matrixJob,
-    /runner: macos-14[\s\S]*?platform: macOS[\s\S]*?architecture: arm64/,
-  );
+  assert.doesNotMatch(matrixJob, /runner: (?:windows-latest|macos-15-intel|macos-14)/);
   assert.match(
     matrixJob,
     /uses: actions\/checkout@v4[\s\S]*?path: workflow-lint-checkout/,
@@ -197,6 +194,69 @@ test("runs a maintainer-triggered or monthly cross-platform installer matrix", (
   assert.match(
     matrixJob,
     /Report workflow lint failure stage[\s\S]*?WORKFLOW_LINT_PLATFORM[\s\S]*?WORKFLOW_LINT_ARCHITECTURE[\s\S]*?Failed stage/,
+  );
+});
+
+test("validates and shares the hosted-runner matrix contract", () => {
+  const matrix = getWorkflowLintMatrix();
+  assert.deepEqual(
+    matrix.map(({ platform, architecture, runner, name }) => ({
+      platform,
+      architecture,
+      runner,
+      name,
+    })),
+    matrix,
+  );
+
+  const workflow = readFileSync(
+    new URL("../.github/workflows/build.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /workflow-lint-matrix\.json/);
+  assert.match(workflow, /getWorkflowLintMatrix\(\)/);
+  assert.match(
+    workflow,
+    /const expected = JSON\.parse\(readFileSync\(matrixContractPath, 'utf8'\)\)/,
+  );
+  assert.match(workflow, /const expected = getWorkflowLintMatrix\(\)/);
+  assert.match(
+    workflow,
+    /MATRIX_CONTRACT_PATH: "\.github\/workflow-lint-matrix\.json"/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /const expected = \[\s*\{\s*platform:\s*["']Windows/s,
+  );
+  assert.throws(
+    () =>
+      validateWorkflowLintMatrix([
+        {
+          platform: "Windows",
+          architecture: "x64",
+          runner: "windows-latest",
+          name: "Workflow lint (Windows x64 on a-different-runner)",
+        },
+      ]),
+    /entry 0 has job identity/,
+  );
+  assert.throws(
+    () =>
+      validateWorkflowLintMatrix([
+        {
+          platform: "Windows",
+          architecture: "x64",
+          runner: "windows-latest",
+          name: "Workflow lint (Windows x64 on windows-latest)",
+        },
+        {
+          platform: "Windows",
+          architecture: "x64",
+          runner: "windows-latest",
+          name: "Workflow lint (Windows x64 on windows-latest)",
+        },
+      ]),
+    /duplicate entry Windows\/x64/,
   );
 });
 

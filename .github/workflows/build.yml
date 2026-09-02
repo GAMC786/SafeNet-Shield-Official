@@ -42,6 +42,8 @@ permissions:
 jobs:
   validate-release-workflow:
     runs-on: ubuntu-latest
+    outputs:
+      workflow_lint_matrix: ${{ steps.workflow-lint-matrix.outputs.matrix }}
     permissions:
       contents: read
     steps:
@@ -100,29 +102,30 @@ jobs:
           version: ${{ steps.workflow-lint-versions.outputs.actionlint_version }}
           files: .github/workflows/*.yml, .github/workflows/*.yaml
 
+      - name: Validate workflow lint matrix contract
+        id: workflow-lint-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { getWorkflowLintMatrix } from "./scripts/workflow-lint-matrix.mjs";
+
+          const matrix = getWorkflowLintMatrix();
+          console.error(`Validated ${matrix.length} workflow lint matrix entries.`);
+          console.log(`matrix=${JSON.stringify(matrix)}`);
+          NODE
+
   cross-platform-workflow-lint:
+    needs: validate-release-workflow
     name: Workflow lint (${{ matrix.platform }} ${{ matrix.architecture }} on ${{ matrix.runner }})
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
-      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *')
+      needs.validate-release-workflow.result == 'success' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Keep the hosted runner label, platform, and architecture together.
-          # Update the entry as a unit when GitHub retires or replaces an image.
-          - runner: windows-latest
-            platform: Windows
-            architecture: x64
-          # macos-13 was retired for hosted Intel jobs. Keep this explicit
-          # replacement paired with the x64 contract instead of using the
-          # arm64 macos-14 label below.
-          - runner: macos-15-intel
-            platform: macOS
-            architecture: x64
-          - runner: macos-14
-            platform: macOS
-            architecture: arm64
+        include: ${{ fromJSON(needs.validate-release-workflow.outputs.workflow_lint_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     permissions:
@@ -326,28 +329,14 @@ jobs:
         with:
           script: |
             const { writeFileSync } = require('node:fs');
+            const { readFileSync } = require('node:fs');
             const { join } = require('node:path');
 
-            const expected = [
-              {
-                platform: 'Windows',
-                architecture: 'x64',
-                runner: 'windows-latest',
-                name: 'Workflow lint (Windows x64 on windows-latest)'
-              },
-              {
-                platform: 'macOS',
-                architecture: 'x64',
-                runner: 'macos-15-intel',
-                name: 'Workflow lint (macOS x64 on macos-15-intel)'
-              },
-              {
-                platform: 'macOS',
-                architecture: 'arm64',
-                runner: 'macos-14',
-                name: 'Workflow lint (macOS arm64 on macos-14)'
-              }
-            ];
+            const matrixContractPath = `${process.env.GITHUB_WORKSPACE}/.github/workflow-lint-matrix.json`;
+            const expected = JSON.parse(readFileSync(matrixContractPath, 'utf8'));
+            if (!Array.isArray(expected) || expected.length === 0) {
+              throw new Error(`Workflow lint matrix contract ${matrixContractPath} is empty or invalid.`);
+            }
             const waitSeconds = Number(process.env.MATRIX_WAIT_SECONDS);
             const deadline = Date.now() + waitSeconds * 1000;
             let jobs = [];
@@ -478,26 +467,10 @@ jobs:
 
           const historyPath = ".github/workflow-lint-history.json";
           const resultsDirectory = process.env.RESULTS_DIRECTORY;
-          const expected = [
-            {
-              platform: "Windows",
-              architecture: "x64",
-              runner: "windows-latest",
-              name: "Workflow lint (Windows x64 on windows-latest)",
-            },
-            {
-              platform: "macOS",
-              architecture: "x64",
-              runner: "macos-15-intel",
-              name: "Workflow lint (macOS x64 on macos-15-intel)",
-            },
-            {
-              platform: "macOS",
-              architecture: "arm64",
-              runner: "macos-14",
-              name: "Workflow lint (macOS arm64 on macos-14)",
-            },
-          ];
+           const { getWorkflowLintMatrix } = await import(
+             "./scripts/workflow-lint-matrix.mjs"
+           );
+           const expected = getWorkflowLintMatrix();
           const expectedKeys = new Set(
             expected.map(
               (entry) => `${entry.platform}/${entry.architecture}`,
@@ -1142,6 +1115,7 @@ jobs:
           CHECKED_AT: ${{ steps.watchdog-time.outputs.checked_at }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HISTORY_PATH: ".github/workflow-lint-history.json"
+          MATRIX_CONTRACT_PATH: ".github/workflow-lint-matrix.json"
           HISTORY_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/.github/workflow-lint-history.json
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKFLOW_FILE: "build.yml"
@@ -1163,14 +1137,38 @@ jobs:
 
             const month = checkedAt.toISOString().slice(0, 7);
             const boundedScheduleWindow = `${month}-03`;
-            const expectedOutcomes = [
-              'Windows/x64',
-              'macOS/x64',
-              'macOS/arm64'
-            ];
             const currentRunUrl = process.env.RUN_URL;
             const historyUrl = process.env.HISTORY_URL;
             const { owner, repo } = context.repo;
+             let expected;
+             const contractPath = process.env.MATRIX_CONTRACT_PATH;
+             try {
+               const { data: matrixFile } = await github.rest.repos.getContent({
+                 owner,
+                 repo,
+                 path: contractPath,
+                 ref: process.env.DEFAULT_BRANCH
+               });
+               if (Array.isArray(matrixFile) || !matrixFile.content) {
+                 throw new Error('matrix contract path did not return a file');
+               }
+               expected = JSON.parse(
+                 Buffer.from(matrixFile.content, matrixFile.encoding || 'base64').toString('utf8'),
+               );
+               if (!Array.isArray(expected) || expected.length === 0 || expected.some((entry) =>
+                 !entry || typeof entry.platform !== 'string' ||
+                 typeof entry.architecture !== 'string' ||
+                 typeof entry.runner !== 'string' ||
+                 typeof entry.name !== 'string'
+               )) {
+                 throw new Error('matrix contract has an invalid entry');
+               }
+             } catch (error) {
+               throw new Error(`The workflow lint matrix contract ${contractPath} could not be read or parsed: ${error.message}`);
+             }
+             const expectedOutcomes = expected.map(
+               (entry) => `${entry.platform}/${entry.architecture}`,
+             );
 
             const { data: runList } = await github.rest.actions.listWorkflowRuns({
               owner,
@@ -1203,7 +1201,9 @@ jobs:
                 run_id: candidate.id,
                 per_page: 100
               });
-              if (jobs.jobs.some((job) => String(job.name).startsWith('Workflow lint ('))) {
+               if (jobs.jobs.some((job) =>
+                 expected.some((entry) => entry.name === job.name)
+               )) {
                 monthlyRun = candidate;
                 break;
               }
@@ -1261,7 +1261,9 @@ jobs:
                 if (historyRun.results.length !== expectedOutcomes.length || missingOutcomes.length > 0) {
                   findings.push(
                     `Monthly workflow run ${monthlyRun.id} is missing outcome records: ${
-                      missingOutcomes.length > 0 ? missingOutcomes.join(', ') : 'the expected three-record set'
+                      missingOutcomes.length > 0
+                        ? missingOutcomes.join(', ')
+                        : `the expected ${expectedOutcomes.length}-record set`
                     }.`,
                   );
                 }
@@ -1270,7 +1272,7 @@ jobs:
 
             const labelName = 'maintainer-alert';
             if (findings.length === 0) {
-              core.info(`Monthly workflow lint run ${monthlyRun.id} and all three history outcomes are present.`);
+              core.info(`Monthly workflow lint run ${monthlyRun.id} and all ${expectedOutcomes.length} history outcomes are present.`);
 
               const { data: openAlerts } = await github.rest.issues.listForRepo({
                 owner,
@@ -1333,7 +1335,7 @@ jobs:
               '**Findings:**',
               ...findings.map((finding) => `- ${finding}`),
               '',
-              'No synthetic history entry was created. Rerun or repair the monthly schedule and verify the Windows/x64, macOS/x64, and macOS/arm64 outcome records.'
+              `No synthetic history entry was created. Rerun or repair the monthly schedule and verify the ${expectedOutcomes.join(', ')} outcome records.`
             ].join('\n');
 
             try {
