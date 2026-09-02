@@ -1,0 +1,15 @@
+{
+  "modelVersion": "safenet-nudity-engine-1.0.0",
+  "engine": "calibrated_skin_region",
+  "license": "Apache-2.0",
+  "safeThreshold": 0.18,
+  "nudityThreshold": 0.64,
+  "uncertainBand": "0.18..0.64",
+  "sampleIntervalMs": 750,
+  "maxFrameDimension": 256,
+  "limitations": [
+    "This is a local calibrated baseline engine, not a promise of perfect nudity detection.",
+    "It can only classify pixels Android makes available through Camera2 or MediaProjection.",
+    "Secure, DRM, revoked, or unavailable surfaces are reported as unavailable."
+  ]
+}
