@@ -94,3 +94,35 @@ test("tagged releases require the dedicated writable Android runner", () => {
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
 });
+
+test("scheduled and manual runs check the dedicated runner independently", () => {
+  const healthStart = workflow.indexOf("  android-runner-health:");
+  const releaseSmokeStart = workflow.indexOf("  android-release-smoke:", healthStart);
+
+  assert.ok(healthStart >= 0);
+  assert.ok(releaseSmokeStart > healthStart);
+
+  const healthJob = workflow.slice(healthStart, releaseSmokeStart);
+  assert.match(
+    healthJob,
+    /if: github\.event_name == 'schedule' \|\| github\.event_name == 'workflow_dispatch'/,
+  );
+  assert.match(
+    healthJob,
+    /runs-on: \[self-hosted, linux, x64, android-writable-system\]/,
+  );
+  assert.match(healthJob, /ANDROID_EMULATOR_API_LEVEL: 35/);
+  assert.match(healthJob, /ANDROID_AVD_NAME: safenet-writable/);
+  assert.match(healthJob, /provision-android-runner\.sh --check/);
+  assert.match(healthJob, /android-runner-health\.log/);
+  assert.doesNotMatch(healthJob, /actions\/upload-artifact/);
+  assert.doesNotMatch(healthJob, /needs:/);
+});
+
+test("runner health validation explains each required host capability", () => {
+  assert.match(runnerScript, /system image is missing/);
+  assert.match(runnerScript, /build-tools are missing/);
+  assert.match(runnerScript, /Required AVD is missing/);
+  assert.match(runnerScript, /\/dev\/kvm is required/);
+  assert.match(runnerScript, /passwordless sudo for the fixture's resolver ports/);
+});

@@ -489,6 +489,28 @@ jobs:
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
+  android-runner-health:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Keep this independent from the build and release jobs so a broken
+    # runner is visible even when no release is waiting for it.
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ANDROID_EMULATOR_API_LEVEL: 35
+      ANDROID_AVD_NAME: safenet-writable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check dedicated Android release runner
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/provision-android-runner.sh --check 2>&1 |
+            tee "$RUNNER_TEMP/android-runner-health.log"
+
   android-release-smoke:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
