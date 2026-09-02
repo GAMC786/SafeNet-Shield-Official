@@ -243,6 +243,17 @@ install_release_apk() {
     return 1
 }
 
+remount_system() {
+    local log_path="$1"
+    for _ in {1..3}; do
+        if timeout 60s adb "${adb_args[@]}" remount >> "$log_path" 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    return 1
+}
+
 echo "Installing release APKs on Android target $serial before fixture setup..."
 timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
 timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
@@ -303,7 +314,7 @@ EOF
         grep -Eiq 'cannot run as root|production builds' "$fixture_adb_log"; then
         fixture_failure "the emulator must allow adb root to trust the temporary TLS CA"
     fi
-    if ! timeout 60s adb "${adb_args[@]}" remount >> "$fixture_adb_log" 2>&1; then
+    if ! remount_system "$fixture_adb_log"; then
         fixture_failure "the emulator could not remount its system partition for the temporary TLS CA"
     fi
     command -v timeout >/dev/null 2>&1 || \
@@ -325,7 +336,7 @@ EOF
     if ! timeout 30s adb "${adb_args[@]}" root >> "$fixture_adb_log" 2>&1; then
         fixture_failure "adb root could not be re-enabled after remounting for the temporary TLS CA"
     fi
-    if ! timeout 60s adb "${adb_args[@]}" remount >> "$fixture_adb_log" 2>&1; then
+    if ! remount_system "$fixture_adb_log"; then
         fixture_failure "the emulator could not activate its writable system overlay for the temporary TLS CA"
     fi
     if ! timeout 60s adb "${adb_args[@]}" push "$fixture_ca_store" \
