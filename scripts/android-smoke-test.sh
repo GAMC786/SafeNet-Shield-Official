@@ -266,7 +266,7 @@ run_system_trust_preflight() {
     fi
     for _ in {1..60}; do
         if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null |
-            tr -d '\r' | grep -qx "device"; then
+            tr -d '\r' | grep -qE '(^|[[:space:]])device([[:space:]]|$)'; then
             break
         fi
         sleep 1
@@ -275,7 +275,7 @@ run_system_trust_preflight() {
         timeout 5s adb "${adb_args[@]}" get-state 2>&1 |
             tr -d '\r' | tee -a "$preflight_log" || true
     )"
-    if [[ "$preflight_state" != "device" ]]; then
+    if ! grep -qE '(^|[[:space:]])device([[:space:]]|$)' <<<"$preflight_state"; then
         fixture_failure "the emulator did not become ready after the system remount (see $preflight_log)"
     fi
 
