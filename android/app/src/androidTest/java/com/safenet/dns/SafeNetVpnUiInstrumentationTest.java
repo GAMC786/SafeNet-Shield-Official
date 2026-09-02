@@ -245,6 +245,67 @@ public class SafeNetVpnUiInstrumentationTest {
             accessibleSwitch.isEnabled());
     }
 
+    @Test
+    public void vpnSwitchRecoversWhenAndroidRevokesVpnAccess() throws Exception {
+        openSettingsWithActiveResolver();
+        waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
+
+        clickVpnSwitch();
+        waitForWebView("Boolean(document.querySelector('[role=\"dialog\"]'))");
+        clickEulaAgreement();
+        clickEulaAccept();
+
+        if (VpnService.prepare(context) != null) {
+            grantVpnPermissionDialog();
+        }
+        waitForVpnState(true);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
+
+        SafeNetVpnService.invokeOnRevokeForTesting();
+
+        JSONObject revokedState = waitForRevokedVpnStatus();
+        assertFalse("The bridge must report the VPN stopped after Android revokes access",
+            revokedState.getBoolean("running"));
+        assertEquals(
+            "Android revoked VPN access. Turn the switch on to reconnect.",
+            revokedState.getString("error")
+        );
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
+
+        JSONObject domState = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
+                    VPN_SWITCH_LABEL +
+                    "\"]');" +
+                "return {" +
+                    "label: toggle?.getAttribute('aria-label')," +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "enabled: toggle && !toggle.disabled," +
+                    "revoked: document.body.innerText.includes('Android revoked VPN access')," +
+                    "actionable: document.body.innerText.includes(" +
+                        "'Turn the switch on to reconnect DNS protection.')" +
+                "};" +
+            "})()"
+        );
+
+        assertEquals(VPN_SWITCH_LABEL, domState.getString("label"));
+        assertEquals("false", domState.getString("checked"));
+        assertTrue("The revoked VPN switch must remain enabled for recovery",
+            domState.getBoolean("enabled"));
+        assertTrue("Settings must display the Android VPN revocation error",
+            domState.getBoolean("revoked"));
+        assertTrue("Settings must tell users how to recover revoked protection",
+            domState.getBoolean("actionable"));
+
+        UiObject2 accessibleSwitch = findAccessibleVpnSwitch();
+        assertEquals(VPN_SWITCH_LABEL, accessibleSwitch.getContentDescription());
+        assertTrue("The revoked VPN must retain switch semantics", accessibleSwitch.isCheckable());
+        assertFalse("The switch must be unchecked after Android revokes access",
+            accessibleSwitch.isChecked());
+        assertTrue("The switch must remain enabled so users can restart protection",
+            accessibleSwitch.isEnabled());
+    }
+
     private void clearTargetAppData() throws Exception {
         ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation()
@@ -400,6 +461,25 @@ public class SafeNetVpnUiInstrumentationTest {
             Thread.sleep(250);
         }
         throw new AssertionError("Native SafeNetVpn service did not become running=" + expected);
+    }
+
+    private JSONObject waitForRevokedVpnStatus() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            );
+            JSONObject value = result.optJSONObject("value");
+            if (result.optBoolean("ok", false) &&
+                value != null &&
+                !value.optBoolean("running", true) &&
+                "Android revoked VPN access. Turn the switch on to reconnect."
+                    .equals(value.optString("error"))) {
+                return value;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native SafeNetVpn service did not report Android VPN revocation");
     }
 
     private void grantVpnPermissionDialog() throws Exception {

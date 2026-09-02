@@ -81,6 +81,18 @@ public class SafeNetVpnService extends VpnService {
         return lastError;
     }
 
+    /**
+     * Lets same-package instrumentation exercise Android's revocation callback
+     * against the live service instance while Settings remains open.
+     */
+    static void invokeOnRevokeForTesting() {
+        SafeNetVpnService service = instance;
+        if (service == null) {
+            throw new IllegalStateException("SafeNet VPN service is not running.");
+        }
+        service.onRevoke();
+    }
+
     public static void requestStop() {
         SafeNetVpnService service = instance;
         lastError = null;
