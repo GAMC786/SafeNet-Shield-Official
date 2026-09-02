@@ -1,6 +1,7 @@
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { AiShieldControls } from "@/components/AiShieldControls";
 import { EulaDialog } from "@/components/EulaDialog";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
@@ -127,7 +128,7 @@ export default function Settings() {
               <Label className="text-base text-white font-medium flex items-center gap-2">
                 <Eye className="w-4 h-4 text-primary" /> AI Shield
               </Label>
-              <p className="text-xs text-muted-foreground max-w-[200px]">Active content analysis for nudity and threats</p>
+              <p className="text-xs text-muted-foreground max-w-[200px]">Server-side DNS threat labels only; camera and screen analysis is Android-only</p>
             </div>
             <Switch 
               checked={settings?.aiShieldEnabled ?? false} 
@@ -252,6 +253,10 @@ export default function Settings() {
             </Button>
           </CyberCard>
         )}
+
+        <div className="md:col-span-2">
+          <AiShieldControls />
+        </div>
 
         {/* Access Control */}
         <CyberCard className="md:col-span-2 space-y-6">

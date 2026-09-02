@@ -1,5 +1,6 @@
 package com.safenet.dns;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,20 +16,29 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PermissionState;
 import org.json.JSONObject;
 import java.util.List;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@CapacitorPlugin(name = "SafeNetVpn")
+@CapacitorPlugin(
+    name = "SafeNetVpn",
+    permissions = {
+        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA })
+    }
+)
 public class SafeNetVpnPlugin extends Plugin {
     public static final String EULA_VERSION = "1.0";
     private static final String PREFS_NAME = "safenet_vpn";
     private static final String PREF_EULA_VERSION = "accepted_eula_version";
     private ExecutorService apkScannerExecutor;
     private ApkScanner apkScanner;
+    private AiShieldManager aiShieldManager;
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
@@ -195,6 +205,83 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getAiShieldStatus(PluginCall call) {
+        call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PluginMethod
+    public void startAiShieldCamera(PluginCall call) {
+        if (!aiShield().isModelAvailable()) {
+            call.resolve(toJsObject(aiShield().getStatus()));
+            return;
+        }
+        if (getPermissionState("camera") != PermissionState.GRANTED) {
+            requestPermissionForAlias("camera", call, "aiShieldCameraPermissionResult");
+            return;
+        }
+        aiShield().startCamera();
+        call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PermissionCallback
+    private void aiShieldCameraPermissionResult(PluginCall call) {
+        if (call == null) {
+            return;
+        }
+        if (getPermissionState("camera") != PermissionState.GRANTED) {
+            AiShieldClassifier.Analysis denied = aiShield().permissionDenied(
+                "camera",
+                "Camera permission was denied. AI Shield did not access the camera."
+            );
+            call.resolve(toJsObject(denied.toJson()));
+            return;
+        }
+        aiShield().startCamera();
+        call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PluginMethod
+    public void startAiShieldScreen(PluginCall call) {
+        if (!aiShield().isModelAvailable()) {
+            call.resolve(toJsObject(aiShield().getStatus()));
+            return;
+        }
+        android.media.projection.MediaProjectionManager projectionManager =
+            (android.media.projection.MediaProjectionManager) getContext()
+                .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
+        if (projectionManager == null) {
+            AiShieldClassifier.Analysis unavailable = AiShieldClassifier.captureUnavailable(
+                "screen",
+                "Android MediaProjection is not available on this device."
+            );
+            call.resolve(toJsObject(unavailable.toJson()));
+            return;
+        }
+        startActivityForResult(
+            call,
+            projectionManager.createScreenCaptureIntent(),
+            "aiShieldProjectionResult"
+        );
+    }
+
+    @ActivityCallback
+    private void aiShieldProjectionResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
+        Intent data = result == null ? null : result.getData();
+        aiShield().startScreen(resultCode, data);
+        call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PluginMethod
+    public void stopAiShield(PluginCall call) {
+        aiShield().stop();
+        call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PluginMethod
     public void scanInstalledApks(PluginCall call) {
         scanExecutor().execute(() -> {
             List<ApkScanner.ScanResult> results = apkScanner().scanInstalledApplications();
@@ -252,6 +339,16 @@ public class SafeNetVpnPlugin extends Plugin {
             apkScanner = new ApkScanner(getContext());
         }
         return apkScanner;
+    }
+
+    private synchronized AiShieldManager aiShield() {
+        if (aiShieldManager == null) {
+            aiShieldManager = new AiShieldManager(
+                getContext(),
+                analysis -> notifyListeners("aiShieldResult", toJsObject(analysis.toJson()))
+            );
+        }
+        return aiShieldManager;
     }
 
     private ExecutorService scanExecutor() {
@@ -316,5 +413,25 @@ public class SafeNetVpnPlugin extends Plugin {
         } else {
             getContext().startService(intent);
         }
+    }
+
+    @Override
+    protected void handleOnPause() {
+        if (aiShieldManager != null) {
+            aiShieldManager.handlePause();
+        }
+        super.handleOnPause();
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (aiShieldManager != null) {
+            aiShieldManager.handleDestroy();
+        }
+        if (apkScannerExecutor != null) {
+            apkScannerExecutor.shutdownNow();
+            apkScannerExecutor = null;
+        }
+        super.handleOnDestroy();
     }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import type { PluginListenerHandle } from "@capacitor/core";
 
 export const SAFE_NET_VPN_EULA_VERSION = "1.0";
 
@@ -63,6 +64,26 @@ export interface VpnStatus {
   error?: string;
 }
 
+export type AiShieldState =
+  | "safe"
+  | "nudity_detected"
+  | "uncertain"
+  | "permission_denied"
+  | "capture_unavailable"
+  | "model_unavailable";
+
+export interface AiShieldResult {
+  state: AiShieldState;
+  source: "camera" | "screen" | "none" | string;
+  confidence?: number | null;
+  modelVersion: string;
+  timestamp: number;
+  message: string;
+  monitoring?: boolean;
+  privacy?: string;
+  limitations?: string;
+}
+
 interface SafeNetVpnPlugin {
   getStatus(): Promise<VpnStatus>;
   getApkScanStatus(): Promise<ApkScanStatus>;
@@ -78,6 +99,14 @@ interface SafeNetVpnPlugin {
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
+  getAiShieldStatus(): Promise<AiShieldResult>;
+  startAiShieldCamera(): Promise<AiShieldResult>;
+  startAiShieldScreen(): Promise<AiShieldResult>;
+  stopAiShield(): Promise<AiShieldResult>;
+  addListener(
+    eventName: "aiShieldResult",
+    listenerFunc: (result: AiShieldResult) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");

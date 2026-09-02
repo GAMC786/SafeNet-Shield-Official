@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AiShieldControls } from "@/components/AiShieldControls";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -92,14 +93,17 @@ export default function Firewall() {
         status="active"
       />
 
+      <AiShieldControls />
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
         <div className="flex items-center gap-4">
           <div className="p-4 bg-destructive/20 rounded-full shadow-[0_0_20px_var(--destructive)]">
             <Ban className="w-8 h-8 text-destructive" />
           </div>
           <div>
-            <h2 className="text-xl font-display font-bold text-white">AI Shield Active</h2>
-            <p className="text-muted-foreground">Real-time content analysis and blocking is enabled. {blocklists?.length || 0} active custom rules.</p>
+            <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
+            <p className="text-muted-foreground">
+              Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.length || 0} active custom rules.
+            </p>
           </div>
         </div>
       </CyberCard>

@@ -434,19 +434,27 @@ public final class AiShieldManager {
         @Override
         public void onDisconnected(CameraDevice disconnectedCamera) {
             disconnectedCamera.close();
-            emit(AiShieldClassifier.captureUnavailable(
-                "camera",
-                "The camera became unavailable."
-            ));
+            synchronized (lock) {
+                stopLocked(false);
+                source = "camera";
+                emitLocked(AiShieldClassifier.captureUnavailable(
+                    "camera",
+                    "The camera became unavailable."
+                ));
+            }
         }
 
         @Override
         public void onError(CameraDevice erroredCamera, int error) {
             erroredCamera.close();
-            emit(AiShieldClassifier.captureUnavailable(
-                "camera",
-                "Android reported a camera capture error."
-            ));
+            synchronized (lock) {
+                stopLocked(false);
+                source = "camera";
+                emitLocked(AiShieldClassifier.captureUnavailable(
+                    "camera",
+                    "Android reported a camera capture error."
+                ));
+            }
         }
     };
 

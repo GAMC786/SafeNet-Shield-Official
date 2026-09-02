@@ -5,6 +5,7 @@ import {
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
+import { AiShieldControls } from "@/components/AiShieldControls";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
@@ -443,6 +444,10 @@ export default function Antivirus() {
           </div>
         </div>
       </CyberCard>
+
+      <div className="md:col-span-3">
+        <AiShieldControls />
+      </div>
 
       <Tabs defaultValue="dashboard" className="w-full" orientation="vertical">
         <div className="flex flex-col md:flex-row gap-6">
