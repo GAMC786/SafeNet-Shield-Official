@@ -243,6 +243,61 @@ test("publishes independent monthly lint health and bounded failure details", ()
   assert.match(workflow, /Bounded failure details:/);
 });
 
+test("records each hosted runner outcome in bounded machine-readable history", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/build.yml", import.meta.url),
+    "utf8",
+  );
+  const matrixJobStart = workflow.indexOf("  cross-platform-workflow-lint:");
+  const summaryJobStart = workflow.indexOf(
+    "  cross-platform-workflow-lint-summary:",
+  );
+  assert.notEqual(matrixJobStart, -1);
+  assert.notEqual(summaryJobStart, -1);
+
+  const matrixJob = workflow.slice(matrixJobStart, summaryJobStart);
+  const summaryJobEnd = workflow.indexOf("  build-android:", summaryJobStart);
+  const summaryJob = workflow.slice(summaryJobStart, summaryJobEnd);
+
+  assert.match(matrixJob, /name: Record workflow lint outcome/);
+  assert.match(
+    matrixJob,
+    /if: always\(\)[\s\S]*?WORKFLOW_LINT_RUNNER: \$\{\{ matrix\.runner \}\}/,
+  );
+  assert.match(
+    matrixJob,
+    /workflow-lint-result-\$\{result\.platform\}-\$\{result\.architecture\}\.json[\s\S]*?writeFileSync\(/,
+  );
+  assert.match(
+    matrixJob,
+    /name: SafeNet-DNS-workflow-lint-outcome-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.architecture \}\}/,
+  );
+
+  assert.match(summaryJob, /permissions:\s*\n\s+contents: write/);
+  assert.match(summaryJob, /group: workflow-lint-history/);
+  assert.match(summaryJob, /name: Record workflow lint history[\s\S]*?if: always\(\)/);
+  assert.match(
+    summaryJob,
+    /uses: actions\/download-artifact@v4[\s\S]*?pattern: SafeNet-DNS-workflow-lint-outcome-\*[\s\S]*?merge-multiple: true/,
+  );
+  assert.match(summaryJob, /\.github\/workflow-lint-history\.json/);
+  assert.match(summaryJob, /retention_runs/);
+  assert.match(summaryJob, /slice\(0, previous\.retention_runs\)/);
+  assert.match(summaryJob, /git push origin "HEAD:\$DEFAULT_BRANCH"/);
+
+  const history = JSON.parse(
+    readFileSync(
+      new URL("../.github/workflow-lint-history.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(history, {
+    schema_version: 1,
+    retention_runs: 24,
+    runs: [],
+  });
+});
+
 test("rejects unsupported platforms with an actionable error", () => {
   assert.throws(
     () => getPlatformConfiguration("freebsd", "x64"),

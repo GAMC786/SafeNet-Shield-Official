@@ -216,6 +216,51 @@ jobs:
           } > "$RUNNER_TEMP/workflow-lint-failure-summary.md"
           exit 1
 
+      - name: Record workflow lint outcome
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout_workspace.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          SETUP_OUTCOME: ${{ steps.setup_workflow_lint.outcome }}
+          LINT_OUTCOME: ${{ steps.lint_workflows.outcome }}
+          WORKFLOW_LINT_RUNNER: ${{ matrix.runner }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { join } from "node:path";
+
+          const steps = [
+            ["checkout", process.env.CHECKOUT_OUTCOME],
+            ["node setup", process.env.NODE_OUTCOME],
+            ["workflow lint setup", process.env.SETUP_OUTCOME],
+            ["workflow lint", process.env.LINT_OUTCOME],
+          ];
+          const failedStep = steps.find(([, outcome]) => outcome !== "success");
+          const result = {
+            platform: process.env.WORKFLOW_LINT_PLATFORM,
+            architecture: process.env.WORKFLOW_LINT_ARCHITECTURE,
+            runner: process.env.WORKFLOW_LINT_RUNNER,
+            stage: failedStep?.[0] ?? "completed",
+            outcome: failedStep?.[1] ?? "success",
+          };
+          const filename =
+            `workflow-lint-result-${result.platform}-${result.architecture}.json`;
+          writeFileSync(
+            join(process.env.RUNNER_TEMP, filename),
+            `${JSON.stringify(result, null, 2)}\n`,
+          );
+          NODE
+
+      - name: Upload workflow lint outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-workflow-lint-outcome-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/workflow-lint-result-*.json
+          if-no-files-found: error
+
       - name: Upload workflow lint failure details
         id: upload_workflow_lint_failure_details
         if: >-
@@ -255,8 +300,24 @@ jobs:
       (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+    concurrency:
+      group: workflow-lint-history
+      cancel-in-progress: false
     steps:
+      - name: Checkout default branch for lint history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Download workflow lint outcomes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SafeNet-DNS-workflow-lint-outcome-*
+          path: ${{ runner.temp }}/workflow-lint-results
+          merge-multiple: true
+
       - name: Publish monthly workflow lint health
         shell: bash
         env:
@@ -288,6 +349,99 @@ jobs:
             echo "::error title=Monthly cross-platform workflow lint failed::${message}"
             exit 1
           fi
+
+      - name: Record workflow lint history
+        if: always()
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RESULTS_DIRECTORY: ${{ runner.temp }}/workflow-lint-results
+        run: |
+          set -euo pipefail
+          RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export RECORDED_AT
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          node --input-type=module <<'NODE'
+          import {
+            existsSync,
+            readdirSync,
+            readFileSync,
+            writeFileSync,
+          } from "node:fs";
+
+          const historyPath = ".github/workflow-lint-history.json";
+          const resultsDirectory = process.env.RESULTS_DIRECTORY;
+          const resultFiles = readdirSync(resultsDirectory)
+            .filter((file) => file.endsWith(".json"))
+            .sort();
+
+          if (resultFiles.length !== 3) {
+            throw new Error(
+              `Expected 3 workflow lint outcomes, found ${resultFiles.length}.`,
+            );
+          }
+
+          const results = resultFiles.map((file) => {
+            const result = JSON.parse(
+              readFileSync(`${resultsDirectory}/${file}`, "utf8"),
+            );
+            for (const field of [
+              "platform",
+              "architecture",
+              "runner",
+              "stage",
+              "outcome",
+            ]) {
+              if (typeof result[field] !== "string" || result[field].length === 0) {
+                throw new Error(`Workflow lint outcome ${file} is missing ${field}.`);
+              }
+            }
+            return result;
+          });
+
+          const previous = existsSync(historyPath)
+            ? JSON.parse(readFileSync(historyPath, "utf8"))
+            : { schema_version: 1, retention_runs: 24, runs: [] };
+          if (
+            previous.schema_version !== 1 ||
+            !Number.isInteger(previous.retention_runs) ||
+            previous.retention_runs < 1 ||
+            !Array.isArray(previous.runs)
+          ) {
+            throw new Error(`${historyPath} has an unsupported schema.`);
+          }
+
+          const run = {
+            run_id: String(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            event: process.env.EVENT_NAME,
+            recorded_at: process.env.RECORDED_AT,
+            ref: process.env.REF_NAME,
+            commit: process.env.COMMIT_SHA,
+            results,
+          };
+          const history = {
+            schema_version: 1,
+            retention_runs: previous.retention_runs,
+            runs: [run, ...previous.runs].slice(0, previous.retention_runs),
+          };
+          writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflow-lint-history.json
+          if git diff --cached --quiet; then
+            echo "Workflow lint history is already current."
+            exit 0
+          fi
+          git commit -m "Record hosted-runner workflow lint health"
+          git push origin "HEAD:$DEFAULT_BRANCH"
 
   build-android:
     needs: validate-release-workflow

@@ -8,3 +8,4 @@
 - [Cross-platform CI diagnostics](ci-cross-platform-diagnostics.md) — emit bounded failure details as annotations when hosted runner logs are unavailable.
 - [GitHub artifact downloads](github-artifact-downloads.md) — the GitHub connector can list Actions artifacts but may forbid archive/log downloads; use the opaque CLI credential path for verification.
 - [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
+- [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
