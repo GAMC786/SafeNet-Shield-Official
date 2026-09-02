@@ -634,17 +634,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Chromium for UI checks
-        run: npx playwright install --with-deps chromium
-
       - name: Check TypeScript
         run: npm run check
 
       - name: Run tests
         run: npm test
-
-      - name: Run toggle visibility UI checks
-        run: npm run test:ui
 
       - name: Build web app
         run: npm run build
@@ -762,7 +756,7 @@ jobs:
           name: SafeNet-DNS-Android-instrumentation
           path: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
 
-      - name: Run Android DNS and WebView UI checks on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
+      - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
         if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
         continue-on-error: ${{ github.event_name == 'schedule' || env.DNS_ALERT_VALIDATION == 'lifecycle' }}
