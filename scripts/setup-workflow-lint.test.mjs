@@ -121,6 +121,32 @@ test("uses the versions checked by npm run lint:workflows", () => {
   );
 });
 
+test("sources CI workflow lint versions from package.json", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/build.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(workflow, /id: workflow-lint-versions/);
+  assert.match(
+    workflow,
+    /SHELLCHECK_VERSION: \$\{\{ steps\.workflow-lint-versions\.outputs\.shellcheck_version \}\}/,
+  );
+  assert.match(
+    workflow,
+    /version: \$\{\{ steps\.workflow-lint-versions\.outputs\.actionlint_version \}\}/,
+  );
+  assert.match(
+    workflow,
+    /getRequiredVersions\(manifest\)/,
+  );
+  assert.doesNotMatch(workflow, /SHELLCHECK_VERSION:\s*['"]\d+\.\d+\.\d+['"]/);
+  assert.doesNotMatch(
+    workflow,
+    /version:\s*['"]\d+\.\d+\.\d+['"]/,
+  );
+});
+
 test("rejects unsupported platforms with an actionable error", () => {
   assert.throws(
     () => getPlatformConfiguration("freebsd", "x64"),

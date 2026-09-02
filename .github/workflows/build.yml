@@ -40,10 +40,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Read workflow lint versions from package.json
+        id: workflow-lint-versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from "node:fs";
+          import { getRequiredVersions } from "./scripts/setup-workflow-lint.mjs";
+
+          try {
+            const manifest = JSON.parse(readFileSync("package.json", "utf8"));
+            const versions = getRequiredVersions(manifest);
+            for (const [tool, version] of Object.entries(versions)) {
+              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+                throw new Error(
+                  `package.json workflowLint.${tool} must be a complete semantic version; received "${version}".`,
+                );
+              }
+              console.error(`Using workflowLint.${tool} ${version}.`);
+              console.log(`${tool}_version=${version}`);
+            }
+          } catch (error) {
+            console.error(
+              `Workflow lint version check failed: ${error.message}`,
+            );
+            process.exit(1);
+          }
+          NODE
+
       - name: Install pinned ShellCheck
         shell: bash
         env:
-          SHELLCHECK_VERSION: '0.10.0'
+          SHELLCHECK_VERSION: ${{ steps.workflow-lint-versions.outputs.shellcheck_version }}
         run: |
           set -euo pipefail
           archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
@@ -60,7 +89,7 @@ jobs:
       - name: Lint GitHub Actions workflows
         uses: raven-actions/actionlint@v2
         with:
-          version: '1.7.0'
+          version: ${{ steps.workflow-lint-versions.outputs.actionlint_version }}
           files: .github/workflows/*.yml, .github/workflows/*.yaml
 
   build-android:
