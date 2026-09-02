@@ -12,21 +12,47 @@ const packageManifest = JSON.parse(
 );
 const requiredVersions = packageManifest.workflowLint;
 
-if (
-  !requiredVersions ||
-  typeof requiredVersions.actionlint !== "string" ||
-  typeof requiredVersions.shellcheck !== "string"
-) {
-  console.error(
-    "package.json must define workflowLint.actionlint and workflowLint.shellcheck versions.",
-  );
-  process.exit(1);
+export function validateRequiredVersions(versions) {
+  if (
+    !versions ||
+    typeof versions.actionlint !== "string" ||
+    typeof versions.shellcheck !== "string"
+  ) {
+    throw new Error(
+      "package.json must define workflowLint.actionlint and workflowLint.shellcheck versions.",
+    );
+  }
+  return versions;
 }
 
-function resolveTool(command) {
-  const localCommand = process.platform === "win32" ? `${command}.exe` : command;
-  const localPath = join(localToolDirectory, localCommand);
+validateRequiredVersions(requiredVersions);
+
+export function resolveTool(
+  command,
+  { platformName = process.platform, toolDirectory = localToolDirectory } = {},
+) {
+  const localCommand = platformName === "win32" ? `${command}.exe` : command;
+  const localPath = join(toolDirectory, localCommand);
   return existsSync(localPath) ? localPath : command;
+}
+
+export function parseToolVersion(command, output) {
+  if (command === "shellcheck") {
+    return output.match(/(?:^|\n)version:\s*(\d+\.\d+\.\d+)\b/)?.[1];
+  }
+  return output.match(/\b\d+\.\d+\.\d+\b/)?.[0];
+}
+
+export function validateToolVersions(installedVersions, versions = requiredVersions) {
+  validateRequiredVersions(versions);
+  for (const [tool, installedVersion] of Object.entries(installedVersions)) {
+    const requiredVersion = versions[tool];
+    if (installedVersion !== requiredVersion) {
+      throw new Error(
+        `${tool} ${requiredVersion} is required, but ${installedVersion ?? "an unrecognized version"} was found. See the workflow linting instructions in replit.md.`,
+      );
+    }
+  }
 }
 
 function readToolVersion(command, args, label) {
@@ -37,107 +63,99 @@ function readToolVersion(command, args, label) {
 
   if (result.error) {
     if (result.error.code === "ENOENT") {
-      console.error(
-        `${label} was not found. Install ${label} ${requiredVersions[label.toLowerCase()]} and rerun npm run lint:workflows.`,
+      throw new Error(
+        `${label} was not found. Install ${requiredVersions[label.toLowerCase()]} and rerun npm run lint:workflows.`,
       );
-    } else {
-      console.error(`Could not check ${label}: ${result.error.message}`);
     }
-    process.exit(1);
+    throw new Error(`Could not check ${label}: ${result.error.message}`);
   }
 
   if (result.status !== 0) {
     const details = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    console.error(
+    throw new Error(
       `Could not check ${label}${details ? `:\n${details}` : "."}`,
     );
-    process.exit(1);
   }
 
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
-const actionlintOutput = readToolVersion(
-  "actionlint",
-  ["-version"],
-  "actionlint",
-);
-const shellcheckOutput = readToolVersion(
-  "shellcheck",
-  ["--version"],
-  "shellcheck",
-);
-const actionlintVersion = actionlintOutput.match(/\b\d+\.\d+\.\d+\b/)?.[0];
-const shellcheckVersion = shellcheckOutput.match(
-  /(?:^|\n)version:\s*(\d+\.\d+\.\d+)\b/,
-)?.[1];
-
-const installedVersions = {
-  actionlint: actionlintVersion,
-  shellcheck: shellcheckVersion,
-};
-for (const [tool, installedVersion] of Object.entries(installedVersions)) {
-  const requiredVersion = requiredVersions[tool];
-  if (installedVersion !== requiredVersion) {
-    console.error(
-      `${tool} ${requiredVersion} is required, but ${installedVersion ?? "an unrecognized version"} was found. See the workflow linting instructions in replit.md.`,
-    );
-    process.exit(1);
-  }
-}
-
-console.log(
-  `Using actionlint ${installedVersions.actionlint} and ShellCheck ${installedVersions.shellcheck}.`,
-);
-
-const workflowFiles = readdirSync(workflowDirectory, { withFileTypes: true })
-  .filter(
-    (entry) =>
-      entry.isFile() &&
-      (entry.name.endsWith(".yml") || entry.name.endsWith(".yaml")),
-  )
-  .map((entry) => join(".github", "workflows", entry.name))
-  .sort();
-
-if (workflowFiles.length === 0) {
-  console.error(
-    "No top-level .yml or .yaml workflow files were found under .github/workflows.",
+async function main() {
+  const actionlintOutput = readToolVersion(
+    "actionlint",
+    ["-version"],
+    "actionlint",
   );
-  process.exit(1);
-}
+  const shellcheckOutput = readToolVersion(
+    "shellcheck",
+    ["--version"],
+    "shellcheck",
+  );
+  const installedVersions = {
+    actionlint: parseToolVersion("actionlint", actionlintOutput),
+    shellcheck: parseToolVersion("shellcheck", shellcheckOutput),
+  };
+  validateToolVersions(installedVersions);
 
-console.log(
-  `Linting ${workflowFiles.length} GitHub Actions workflow(s) with ${configFile}:`,
-);
-for (const workflowFile of workflowFiles) {
-  console.log(`  ${workflowFile}`);
-}
+  console.log(
+    `Using actionlint ${installedVersions.actionlint} and ShellCheck ${installedVersions.shellcheck}.`,
+  );
 
-const result = spawnSync(resolveTool("actionlint"), [
-  "-config-file",
-  configFile,
-  "-shellcheck",
-  resolveTool("shellcheck"),
-  ...workflowFiles,
-], {
-  cwd: repositoryRoot,
-  stdio: "inherit",
-});
+  const workflowFiles = readdirSync(workflowDirectory, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        (entry.name.endsWith(".yml") || entry.name.endsWith(".yaml")),
+    )
+    .map((entry) => join(".github", "workflows", entry.name))
+    .sort();
 
-if (result.error) {
-  if (result.error.code === "ENOENT") {
-    console.error(
-      "actionlint was not found. See the workflow linting instructions in replit.md, then rerun npm run lint:workflows.",
+  if (workflowFiles.length === 0) {
+    throw new Error(
+      "No top-level .yml or .yaml workflow files were found under .github/workflows.",
     );
-  } else {
-    console.error(`Could not run actionlint: ${result.error.message}`);
   }
-  process.exit(1);
+
+  console.log(
+    `Linting ${workflowFiles.length} GitHub Actions workflow(s) with ${configFile}:`,
+  );
+  for (const workflowFile of workflowFiles) {
+    console.log(`  ${workflowFile}`);
+  }
+
+  const result = spawnSync(resolveTool("actionlint"), [
+    "-config-file",
+    configFile,
+    "-shellcheck",
+    resolveTool("shellcheck"),
+    ...workflowFiles,
+  ], {
+    cwd: repositoryRoot,
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    if (result.error.code === "ENOENT") {
+      throw new Error(
+        "actionlint was not found. See the workflow linting instructions in replit.md, then rerun npm run lint:workflows.",
+      );
+    }
+    throw new Error(`Could not run actionlint: ${result.error.message}`);
+  }
+
+  if (result.signal) {
+    throw new Error(`actionlint terminated by signal ${result.signal}.`);
+  }
+
+  process.exitCode = result.status ?? 1;
 }
 
-if (result.signal) {
-  console.error(`actionlint terminated by signal ${result.signal}.`);
-  process.exit(1);
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
 }
-
-process.exit(result.status ?? 1);
