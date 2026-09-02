@@ -78,3 +78,14 @@ Preferred communication style: Simple, everyday language.
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
 - p-limit and p-retry for batch processing rate limiting
+
+#### GitHub Actions workflow linting
+
+Before running `npm run lint:workflows`, install these exact tool versions:
+
+- actionlint `1.7.0`
+- ShellCheck `0.10.0`
+
+Check the installed versions with `actionlint -version` and
+`shellcheck --version`. The GitHub Actions gate pins actionlint to `1.7.0` and
+downloads ShellCheck `0.10.0`, so local results use the same tool versions.

@@ -40,9 +40,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install pinned ShellCheck
+        shell: bash
+        env:
+          SHELLCHECK_VERSION: '0.10.0'
+        run: |
+          set -euo pipefail
+          archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          tar -xJf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}"
+          install -m 0755 \
+            "${RUNNER_TEMP}/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" \
+            "${RUNNER_TEMP}/shellcheck"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/shellcheck" --version
+
       - name: Lint GitHub Actions workflows
         uses: raven-actions/actionlint@v2
         with:
+          version: '1.7.0'
           files: .github/workflows/*.yml, .github/workflows/*.yaml
 
   build-android:

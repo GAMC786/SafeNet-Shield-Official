@@ -1,3 +1,7 @@
+# Keep these versions aligned with package.json and the workflow lint setup in
+# .github/workflows/build.yml. Local validation requires exact matches.
+# actionlint: 1.7.0
+# ShellCheck: 0.10.0
 self-hosted-runner:
   labels:
     - android-writable-system
