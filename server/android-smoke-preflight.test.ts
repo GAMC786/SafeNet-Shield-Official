@@ -90,6 +90,7 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /failure_category=FIXTURE_FAILURE/);
   assert.match(smokeScript, /preflight-result\.txt/);
   assert.match(smokeScript, /emulator-image\.txt/);
+  assert.match(smokeScript, /cygpath -u "\$temp_dir"/);
   assert.match(smokeScript, /api_level=\$api_level/);
   assert.match(smokeScript, /configured_api_level=\$emulator_api_level/);
   assert.match(smokeScript, /target=\$emulator_target/);

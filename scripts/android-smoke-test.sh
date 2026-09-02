@@ -54,6 +54,15 @@ cleanup_fixture() {
 }
 trap cleanup_fixture EXIT
 
+make_temp_dir() {
+    local temp_dir
+    temp_dir="$(mktemp -d)"
+    if command -v cygpath >/dev/null 2>&1; then
+        temp_dir="$(cygpath -u "$temp_dir")"
+    fi
+    printf '%s\n' "$temp_dir"
+}
+
 usage() {
     cat <<'EOF'
 Usage: scripts/android-smoke-test.sh [options]
@@ -276,7 +285,7 @@ run_system_trust_preflight() {
 
     command -v openssl >/dev/null 2>&1 || \
         fixture_failure "openssl is required to probe temporary system trust storage (see $preflight_log)"
-    fixture_tmp="$(mktemp -d)"
+    fixture_tmp="$(make_temp_dir)"
     preflight_ca="$fixture_tmp/preflight-ca.crt"
     if ! openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
         -subj "/CN=SafeNet Android trust preflight $$" \
@@ -448,7 +457,7 @@ if ! install_release_apk "$test_apk_path"; then
 fi
 
 if [[ "$resolver_mode" == "fixture" ]]; then
-    fixture_tmp="$(mktemp -d)"
+    fixture_tmp="$(make_temp_dir)"
     fixture_ready="$fixture_tmp/ready.json"
     fixture_ca="$fixture_tmp/fixture-ca.crt"
     fixture_ca_key="$fixture_tmp/fixture-ca.key"
