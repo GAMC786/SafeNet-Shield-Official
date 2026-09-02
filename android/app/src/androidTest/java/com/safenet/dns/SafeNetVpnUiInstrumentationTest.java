@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.KeyEvent;
@@ -29,6 +30,7 @@ import org.junit.runner.RunWith;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Accessibility checks for the VPN switch rendered by the Android WebView.
@@ -53,6 +55,7 @@ public class SafeNetVpnUiInstrumentationTest {
     @Before
     public void setUp() throws Exception {
         assertEquals(PACKAGE_NAME, context.getPackageName());
+        context.stopService(new Intent(context, SafeNetVpnService.class));
         clearTargetAppData();
 
         Intent launchIntent = new Intent(context, MainActivity.class)
@@ -153,6 +156,44 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    @Test
+    public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
+        openSettingsWithActiveResolver();
+        waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
+
+        clickVpnSwitch();
+        waitForWebView("Boolean(document.querySelector('[role=\"dialog\"]'))");
+        clickEulaAgreement();
+        clickEulaAccept();
+
+        if (VpnService.prepare(context) != null) {
+            grantVpnPermissionDialog();
+        }
+        waitForVpnState(true);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
+
+        UiObject2 accessibleSwitch = findAccessibleVpnSwitch();
+        assertEquals(VPN_SWITCH_LABEL, accessibleSwitch.getContentDescription());
+        assertTrue("The running VPN must expose switch semantics", accessibleSwitch.isCheckable());
+        assertTrue("The VPN switch must be checked while protection is running",
+            accessibleSwitch.isChecked());
+        assertTrue("The running VPN switch must be enabled", accessibleSwitch.isEnabled());
+
+        clickVpnSwitch();
+        waitForVpnState(false);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
+
+        accessibleSwitch = findAccessibleVpnSwitch();
+        assertEquals(
+            "Stopping protection must not remove the VPN switch accessible name",
+            VPN_SWITCH_LABEL,
+            accessibleSwitch.getContentDescription()
+        );
+        assertTrue("The stopped VPN must retain switch semantics", accessibleSwitch.isCheckable());
+        assertFalse("The VPN switch must be unchecked after protection stops",
+            accessibleSwitch.isChecked());
+    }
+
     private void clearTargetAppData() throws Exception {
         ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation()
@@ -191,6 +232,138 @@ public class SafeNetVpnUiInstrumentationTest {
             "})()"
         );
         assertTrue("Could not navigate to Settings in the WebView", result.getBoolean("ok"));
+    }
+
+    private void openSettingsWithActiveResolver() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const originalFetch = window.fetch;" +
+                "window.fetch = function(input, init) {" +
+                    "const url = typeof input === 'string' ? input : ((input && input.url) || '');" +
+                    "if (url.includes('/api/dns')) {" +
+                        "return Promise.resolve(new Response(JSON.stringify([{" +
+                            "id: 1," +
+                            "name: 'SafeNet Test Resolver'," +
+                            "type: 'plain'," +
+                            "primaryAddress: '1.1.1.1'," +
+                            "secondaryAddress: '8.8.8.8'," +
+                            "isActive: true" +
+                        "}]), {" +
+                            "status: 200," +
+                            "headers: {'Content-Type': 'application/json'}" +
+                        "}));" +
+                    "}" +
+                    "return originalFetch.call(this, input, init);" +
+                "};" +
+                "history.pushState({}, '', '/settings');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to Settings with an active resolver", result.getBoolean("ok"));
+    }
+
+    private String vpnSwitchExpression(String condition) {
+        return "(() => {" +
+            "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
+                VPN_SWITCH_LABEL +
+                "\"]');" +
+            "return toggle !== null && (" + condition + ");" +
+        "})()";
+    }
+
+    private void clickVpnSwitch() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
+                    VPN_SWITCH_LABEL +
+                    "\"]');" +
+                "if (!toggle) return false;" +
+                "toggle.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue(
+            "Could not click the VPN switch in the WebView",
+            result.getBoolean("ok") && result.getBoolean("value")
+        );
+    }
+
+    private void clickEulaAgreement() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const agreement = document.querySelector('#safenet-vpn-eula-agreement');" +
+                "if (!agreement) return false;" +
+                "agreement.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The DNS VPN EULA agreement checkbox was not rendered",
+            result.getBoolean("value"));
+        waitForWebView(
+            "document.querySelector('#safenet-vpn-eula-agreement')?.getAttribute('aria-checked') === " +
+                "'true'"
+        );
+    }
+
+    private void clickEulaAccept() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const dialog = document.querySelector('[role=\"dialog\"]');" +
+                "if (!dialog) return false;" +
+                "const button = Array.from(dialog.querySelectorAll('button')).find((item) => " +
+                    "item.textContent.includes('Accept and continue'));" +
+                "if (!button) return false;" +
+                "button.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The DNS VPN EULA accept button was not rendered",
+            result.getBoolean("value"));
+    }
+
+    private UiObject2 findAccessibleVpnSwitch() {
+        UiObject2 accessibleSwitch = device.wait(
+            Until.findObject(By.desc(VPN_SWITCH_LABEL)),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull(
+            "The Android accessibility tree must expose the VPN switch label",
+            accessibleSwitch
+        );
+        return accessibleSwitch;
+    }
+
+    private void waitForVpnState(boolean expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            );
+            JSONObject value = result.optJSONObject("value");
+            if (result.optBoolean("ok", false) &&
+                value != null &&
+                expected == value.optBoolean("running", false)) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native SafeNetVpn service did not become running=" + expected);
+    }
+
+    private void grantVpnPermissionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(allow|ok|connect|i trust this application)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                allow.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android VPN permission dialog did not appear");
     }
 
     private void waitForCapacitorBridge() throws Exception {
