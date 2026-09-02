@@ -29,8 +29,34 @@ function getStepBlock(stepName: string) {
   assert.notEqual(stepStart, -1, `Workflow step not found: ${stepName}`);
 
   const nextStep = workflow.indexOf("\n      - name:", stepStart + 1);
-  return workflow.slice(stepStart, nextStep === -1 ? undefined : nextStep);
+  const nextJobMatch = /\n  \S/.exec(workflow.slice(stepStart + 1));
+  const nextJob =
+    nextJobMatch === null ? -1 : stepStart + 1 + nextJobMatch.index;
+  const blockEnd = [nextStep, nextJob]
+    .filter((index) => index >= 0)
+    .reduce((earliest, index) => Math.min(earliest, index), workflow.length);
+
+  return workflow.slice(stepStart, blockEnd);
 }
+
+function getRunScript(stepName: string) {
+  const stepBlock = getStepBlock(stepName);
+  const runMarker = "\n        run: |\n";
+  const runStart = stepBlock.indexOf(runMarker);
+  assert.notEqual(runStart, -1, `Multiline run block not found: ${stepName}`);
+
+  const script = stepBlock
+    .slice(runStart + runMarker.length)
+    .split("\n")
+    .map((line) => (line.startsWith("          ") ? line.slice(10) : line))
+    .join("\n");
+  assert.ok(script.trim().length > 0, `Empty multiline run block: ${stepName}`);
+  return script;
+}
+
+const releaseSmokeSummaryScript = getRunScript(
+  "Publish release Android smoke summary",
+);
 
 test("non-tag fixture validation preflights system trust before Android builds", () => {
   const preflightStart = workflow.indexOf(
@@ -269,6 +295,86 @@ test("emulator-runner wrapper failure still reaches release evidence upload", ()
     /path: android\/app\/build\/reports\/android-smoke\/latest/,
   );
   assert.match(uploadStep, /if-no-files-found: warn/);
+});
+
+test("release smoke summary script is extracted and passes Bash syntax validation", () => {
+  const result = spawnSync("bash", ["-n"], {
+    input: releaseSmokeSummaryScript,
+    encoding: "utf8",
+  });
+
+  assert.equal(
+    result.status,
+    0,
+    `release smoke summary script failed Bash syntax validation:\n${result.stdout}\n${result.stderr}`,
+  );
+  assert.equal(result.signal, null);
+});
+
+function runReleaseSmokeSummary(category?: string) {
+  const fixtureDir = mkdtempSync(path.join(tmpdir(), "android-release-summary-"));
+  const workspaceDir = path.join(fixtureDir, "workspace");
+  const evidenceDir = path.join(
+    workspaceDir,
+    "android/app/build/reports/android-smoke/latest",
+  );
+  const summaryPath = path.join(fixtureDir, "github-step-summary.md");
+
+  try {
+    mkdirSync(workspaceDir, { recursive: true });
+    if (category) {
+      mkdirSync(evidenceDir, { recursive: true });
+      writeFileSync(path.join(evidenceDir, "failure-category.txt"), `${category}\n`);
+    }
+
+    const result = spawnSync("bash", ["-c", releaseSmokeSummaryScript], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_WORKSPACE: workspaceDir,
+        GITHUB_STEP_SUMMARY: summaryPath,
+        SMOKE_STEP_OUTCOME: "failure",
+        RUN_URL: "https://github.com/SafeNetInc/safenet/actions/runs/123",
+        EVIDENCE_URL: "https://github.com/SafeNetInc/safenet/actions/runs/123#artifacts",
+      },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `release smoke summary failed for ${category ?? "missing evidence"}:\n${result.stdout}\n${result.stderr}`,
+    );
+    assert.equal(result.signal, null);
+    return readFileSync(summaryPath, "utf8");
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+}
+
+test("release smoke summary reports wrapper failure when no evidence exists", () => {
+  const summary = runReleaseSmokeSummary();
+
+  assert.match(summary, /- \*\*Failure category:\*\* `EMULATOR_RUNNER_FAILURE`/);
+  assert.match(summary, /- \*\*Smoke step:\*\* `failure`/);
+});
+
+test("release smoke summary preserves each recorded failure category", () => {
+  const recordedCategories = [
+    "PASS",
+    "FIXTURE_FAILURE",
+    "ENETUNREACH",
+    "UNRELATED_NETWORK_FAILURE",
+    "NON_NETWORK_FAILURE",
+  ];
+
+  for (const category of recordedCategories) {
+    const summary = runReleaseSmokeSummary(category);
+    assert.match(
+      summary,
+      new RegExp(`- \\*\\*Failure category:\\*\\* \`${category}\``),
+    );
+  }
 });
 
 test("scheduled and manual runs check the dedicated runner independently", () => {

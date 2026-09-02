@@ -32,7 +32,21 @@ permissions:
   contents: read
 
 jobs:
+  validate-release-workflow:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint GitHub Actions workflows
+        uses: raven-actions/actionlint@v2
+        with:
+          files: .github/workflows/build.yml
+
   build-android:
+    needs: validate-release-workflow
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -816,7 +830,7 @@ jobs:
           echo "Verified $apk_count APK installer(s) and $msi_count MSI installer(s)."
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/android/*.apk

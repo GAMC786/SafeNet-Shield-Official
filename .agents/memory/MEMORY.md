@@ -7,3 +7,4 @@
 - [Cross-platform Node test discovery](cross-platform-node-tests.md) — discover test files in Node instead of depending on shell wildcard expansion.
 - [Cross-platform CI diagnostics](ci-cross-platform-diagnostics.md) — emit bounded failure details as annotations when hosted runner logs are unavailable.
 - [GitHub artifact downloads](github-artifact-downloads.md) — the GitHub connector can list Actions artifacts but may forbid archive/log downloads; use the opaque CLI credential path for verification.
+- [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
