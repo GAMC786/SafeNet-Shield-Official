@@ -3,6 +3,31 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export const SAFE_NET_VPN_EULA_VERSION = "1.0";
 
+export type ApkScanVerdict = "safe" | "malicious" | "unsupported" | "scanner_unavailable";
+
+export interface ApkScanResult {
+  verdict: ApkScanVerdict;
+  displayName?: string | null;
+  source?: "selected" | "installed" | null;
+  packageName?: string | null;
+  versionName?: string | null;
+  sha256?: string | null;
+  signatureVersion?: string | null;
+  threatType?: string | null;
+  severity?: string | null;
+  threatName?: string | null;
+  details?: string | null;
+  scannedAt?: number;
+}
+
+export interface ApkScanStatus {
+  supported: boolean;
+  scannerAvailable: boolean;
+  signatureVersion?: string | null;
+  scannerMessage?: string | null;
+  lastScan?: ApkScanResult | null;
+}
+
 export interface VpnStatus {
   supported: boolean;
   running: boolean;
@@ -14,6 +39,9 @@ export interface VpnStatus {
 
 interface SafeNetVpnPlugin {
   getStatus(): Promise<VpnStatus>;
+  getApkScanStatus(): Promise<ApkScanStatus>;
+  scanApk(): Promise<ApkScanResult>;
+  scanInstalledApks(): Promise<ApkScanResult[]>;
   acceptEula(options: { version: string }): Promise<VpnStatus>;
   start(options: {
     type: string;
@@ -23,7 +51,7 @@ interface SafeNetVpnPlugin {
   stop(): Promise<VpnStatus>;
 }
 
-const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
+export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
 
 export function useSafeNetVpn() {
   const supported = Capacitor.getPlatform() === "android";

@@ -1,0 +1,14 @@
+{
+  "version": "2026.09.02.1",
+  "expiresAt": "2027-09-02T00:00:00Z",
+  "signatures": [
+    {
+      "id": "eicar-test-file",
+      "type": "content_base64",
+      "value": "WDVPIVAlQEFQWzRcUFpYNTQoUF4pN0NDKTd9JEVJQ0FSLVNUQU5EQVJELUFOVElWSVJVUy1URVNULUZJTEUhJEgrSCo=",
+      "threatType": "malware",
+      "severity": "critical",
+      "description": "EICAR antivirus test content detected"
+    }
+  ]
+}

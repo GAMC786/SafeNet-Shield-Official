@@ -4,9 +4,11 @@ import {
   useThreatFeeds, useCreateThreatFeed, useUpdateThreatFeed, useDeleteThreatFeed,
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
+import { useApkScanner } from "@/hooks/use-apk-scanner";
+import type { ApkScanResult } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Bug, AlertTriangle, Database, Plus, Trash2, Check, RefreshCw, Settings, Activity } from "lucide-react";
+import { Shield, Bug, AlertTriangle, Database, Plus, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ export default function Antivirus() {
   const { data: events } = useAntivirusEvents();
   const resolveEvent = useResolveAntivirusEvent();
   const { data: stats } = useAntivirusStats();
+  const apkScanner = useApkScanner();
 
   const [isFeedDialogOpen, setIsFeedDialogOpen] = useState(false);
   const [newFeed, setNewFeed] = useState({
@@ -66,11 +69,40 @@ export default function Antivirus() {
     }
   };
 
+  const getApkResultStyles = (result: ApkScanResult) => {
+    switch (result.verdict) {
+      case "safe":
+        return {
+          icon: <CheckCircle2 className="h-5 w-5 text-green-400" />,
+          label: "No known threats found",
+          className: "border-green-500/30 bg-green-500/10",
+        };
+      case "malicious":
+        return {
+          icon: <XCircle className="h-5 w-5 text-destructive" />,
+          label: "Threat detected — do not install",
+          className: "border-destructive/40 bg-destructive/10",
+        };
+      case "scanner_unavailable":
+        return {
+          icon: <AlertCircle className="h-5 w-5 text-yellow-400" />,
+          label: "Scanner unavailable",
+          className: "border-yellow-500/40 bg-yellow-500/10",
+        };
+      default:
+        return {
+          icon: <AlertCircle className="h-5 w-5 text-yellow-400" />,
+          label: "File could not be scanned",
+          className: "border-yellow-500/40 bg-yellow-500/10",
+        };
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Header 
         title="Built-In Antivirus" 
-        subtitle="DNS-Aware Threat Protection" 
+        subtitle="On-Device APK & DNS Threat Protection"
         status={settings?.isEnabled ? "active" : "inactive"}
       />
 
@@ -117,6 +149,107 @@ export default function Antivirus() {
           </div>
         </CyberCard>
       </div>
+
+      <CyberCard className="border-primary/20 md:col-span-3">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="rounded-lg bg-primary/15 p-3">
+              <FileSearch className="h-6 w-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="font-display text-lg tracking-wider">APK Endpoint Protection</h2>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                Inspect APK files locally before you install them. Files stay on this device and are checked against
+                the bundled offline signature database.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This protects APK scan flows only and does not replace Google Play Protect or scan arbitrary downloads.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Button
+              onClick={() => void apkScanner.scanApk().catch(() => undefined)}
+              disabled={!apkScanner.supported || !apkScanner.scannerAvailable || apkScanner.isScanning}
+              data-testid="button-scan-apk"
+            >
+              {apkScanner.isScanning ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileSearch className="mr-2 h-4 w-4" />
+              )}
+              Scan APK
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void apkScanner.scanInstalledApks().catch(() => undefined)}
+              disabled={!apkScanner.supported || !apkScanner.scannerAvailable || apkScanner.isScanning}
+              data-testid="button-scan-installed-apks"
+            >
+              <Smartphone className="mr-2 h-4 w-4" />
+              Scan installed APKs
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-md border border-white/10 bg-background/40 p-4">
+          {!apkScanner.supported ? (
+            <p className="text-sm text-muted-foreground">
+              APK scanning is available in the SafeNet Android APK.
+            </p>
+          ) : !apkScanner.scannerAvailable ? (
+            <p className="text-sm text-yellow-300">
+              {apkScanner.scannerMessage || "The offline signature database is unavailable. Scanning is disabled."}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Scanner ready · signature database {apkScanner.signatureVersion}
+            </p>
+          )}
+
+          {apkScanner.error && (
+            <p className="mt-2 text-sm text-destructive">{apkScanner.error}</p>
+          )}
+
+          {apkScanner.lastResult && (() => {
+            const result = apkScanner.lastResult;
+            const styles = getApkResultStyles(result);
+            return (
+              <div className={`mt-3 rounded-md border p-3 ${styles.className}`} data-testid="apk-scan-result">
+                <div className="flex items-start gap-3">
+                  {styles.icon}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{styles.label}</p>
+                    <p className="truncate text-sm text-foreground">
+                      {result.displayName || result.packageName || "Selected APK"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{result.details}</p>
+                    {result.verdict === "malicious" && result.threatName && (
+                      <p className="mt-1 text-xs font-medium text-destructive">
+                        Signature: {result.threatName}
+                      </p>
+                    )}
+                    {result.sha256 && (
+                      <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                        SHA-256: {result.sha256}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {apkScanner.installedResults && (
+            <p className="mt-3 text-xs text-muted-foreground" data-testid="installed-apk-scan-summary">
+              Scanned {apkScanner.installedResults.length} installed APK
+              {apkScanner.installedResults.length === 1 ? "" : "s"} ·{" "}
+              {apkScanner.installedResults.filter((result) => result.verdict === "malicious").length} threat
+              {apkScanner.installedResults.filter((result) => result.verdict === "malicious").length === 1 ? "" : "s"} detected
+            </p>
+          )}
+        </div>
+      </CyberCard>
 
       <Tabs defaultValue="dashboard" className="w-full" orientation="vertical">
         <div className="flex flex-col md:flex-row gap-6">
