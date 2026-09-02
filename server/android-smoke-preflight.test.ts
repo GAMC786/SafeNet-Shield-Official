@@ -205,6 +205,9 @@ exit 1
         env: {
           ...process.env,
           PATH: `${binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+          TMPDIR: "/tmp",
+          TEMP: "/tmp",
+          TMP: "/tmp",
           MOCK_ADB_LOG: adbLog,
           MOCK_FAILURE_MODE: failureMode,
           ANDROID_EMULATOR_API_LEVEL: "35",
