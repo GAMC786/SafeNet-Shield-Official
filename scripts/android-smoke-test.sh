@@ -217,14 +217,25 @@ for signed_apk in "$apk_path" "$test_apk_path"; do
     fi
 done
 
+android_package_available() {
+    local package_path
+    package_path="$(timeout 5s adb "${adb_args[@]}" shell cmd package path android 2>&1 || true)"
+    [[ "$package_path" == package:* ]]
+}
+
 android_framework_ready=false
+android_framework_ready_streak=0
 for _ in {1..120}; do
     if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
         grep -q "found" &&
-        timeout 5s adb "${adb_args[@]}" shell service check package 2>&1 |
-        grep -q "found"; then
-        android_framework_ready=true
-        break
+        android_package_available; then
+        ((android_framework_ready_streak += 1))
+        if ((android_framework_ready_streak >= 5)); then
+            android_framework_ready=true
+            break
+        fi
+    else
+        android_framework_ready_streak=0
     fi
     sleep 1
 done
@@ -365,13 +376,18 @@ EOF
         fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
     fi
     package_service_ready=false
+    package_service_ready_streak=0
     for _ in {1..90}; do
         if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
             grep -q "found" &&
-            timeout 5s adb "${adb_args[@]}" shell service check package 2>&1 |
-            grep -q "found"; then
-            package_service_ready=true
-            break
+            android_package_available; then
+            ((package_service_ready_streak += 1))
+            if ((package_service_ready_streak >= 5)); then
+                package_service_ready=true
+                break
+            fi
+        else
+            package_service_ready_streak=0
         fi
         sleep 1
     done
