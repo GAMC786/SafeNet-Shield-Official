@@ -33,6 +33,7 @@ emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADA
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
+openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
@@ -287,11 +288,11 @@ run_system_trust_preflight() {
         fixture_failure "the emulator could not activate its writable system overlay (see $preflight_log)"
     fi
 
-    command -v openssl >/dev/null 2>&1 || \
+    command -v "$openssl_bin" >/dev/null 2>&1 || \
         fixture_failure "openssl is required to probe temporary system trust storage (see $preflight_log)"
     fixture_tmp="$(make_temp_dir)"
     preflight_ca="$fixture_tmp/preflight-ca.crt"
-    if ! openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
+    if ! "$openssl_bin" req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
         -subj "/CN=SafeNet Android trust preflight $$" \
         -addext "basicConstraints=critical,CA:true,pathlen:1" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
@@ -299,7 +300,7 @@ run_system_trust_preflight() {
         >> "$preflight_log" 2>&1; then
         fixture_failure "could not create the temporary preflight CA (see $preflight_log)"
     fi
-    if ! preflight_hash="$(openssl x509 -subject_hash_old -in "$preflight_ca" -noout 2>>"$preflight_log")" ||
+    if ! preflight_hash="$("$openssl_bin" x509 -subject_hash_old -in "$preflight_ca" -noout 2>>"$preflight_log")" ||
         [[ ! "$preflight_hash" =~ ^[[:xdigit:]]+$ ]]; then
         fixture_failure "could not calculate the temporary preflight CA name (see $preflight_log)"
     fi
@@ -472,18 +473,18 @@ if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_adb_log="$output_dir/fixture-adb.log"
     fixture_log="$output_dir/fixture.log"
 
-    command -v openssl >/dev/null 2>&1 || \
+    command -v "$openssl_bin" >/dev/null 2>&1 || \
         fixture_failure "openssl is required to create the temporary fixture certificate"
     command -v python3 >/dev/null 2>&1 || \
         fixture_failure "python3 is required to run the resolver fixture"
 
-    openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
+    "$openssl_bin" req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
         -subj "/CN=SafeNet Android DNS fixture CA" \
         -addext "basicConstraints=critical,CA:true,pathlen:1" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -keyout "$fixture_ca_key" -out "$fixture_ca" >/dev/null 2>&1 || \
         fixture_failure "could not create the temporary fixture CA"
-    openssl req -new -newkey rsa:2048 -nodes \
+    "$openssl_bin" req -new -newkey rsa:2048 -nodes \
         -subj "/CN=$fixture_host" \
         -keyout "$fixture_server_key" -out "$fixture_server_csr" >/dev/null 2>&1 || \
         fixture_failure "could not create the temporary fixture server key"
@@ -493,11 +494,11 @@ keyUsage = critical,digitalSignature,keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = IP:$fixture_host
 EOF
-    openssl x509 -req -sha256 -days 2 \
+    "$openssl_bin" x509 -req -sha256 -days 2 \
         -in "$fixture_server_csr" -CA "$fixture_ca" -CAkey "$fixture_ca_key" \
         -CAcreateserial -out "$fixture_server_cert" -extfile "$fixture_tmp/server.ext" \
         >/dev/null 2>&1 || fixture_failure "could not sign the temporary fixture certificate"
-    openssl x509 -subject_hash_old -in "$fixture_ca" -noout > "$fixture_ca_hash_file" || \
+    "$openssl_bin" x509 -subject_hash_old -in "$fixture_ca" -noout > "$fixture_ca_hash_file" || \
         fixture_failure "could not calculate the fixture CA trust-store name"
     fixture_ca_hash="$(head -n 1 "$fixture_ca_hash_file")"
     fixture_ca_store="$fixture_tmp/$fixture_ca_hash.0"

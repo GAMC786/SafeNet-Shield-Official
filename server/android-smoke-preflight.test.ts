@@ -112,7 +112,8 @@ function assertMockedPreflightFailure(
   const outputDir = path.join(fixtureDir, "evidence");
   const adbLog = path.join(fixtureDir, "adb.log");
   const mockAdbPath = path.join(binDir, "adb");
-  const mockOpenSslPath = path.join(binDir, "openssl");
+  const mockOpenSslCommand = "safenet-test-openssl";
+  const mockOpenSslPath = path.join(binDir, mockOpenSslCommand);
 
   try {
     mkdirSync(binDir);
@@ -211,6 +212,7 @@ exit 1
           TMP: ".",
           MOCK_ADB_LOG: adbLog,
           MOCK_FAILURE_MODE: failureMode,
+          OPENSSL_BIN: mockOpenSslCommand,
           ANDROID_EMULATOR_API_LEVEL: "35",
           ANDROID_EMULATOR_TARGET: "google_apis",
           ANDROID_EMULATOR_ARCH: "x86_64",
