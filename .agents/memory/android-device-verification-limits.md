@@ -14,3 +14,9 @@ GitHub-hosted `google_apis` emulator jobs can boot, install signed APKs, and pas
 **Why:** The controlled fixture needs its temporary CA in the Android system trust store, and the hosted API 34 runner can fail that system-overlay operation independently of the application or APK.
 
 **How to apply:** Preserve the explicit `FIXTURE_FAILURE` result and evidence, do not treat APK installation or host-side fixture health as runtime proof, and prefer a fresh runner/known-good emulator image over weakening release validation.
+
+Hosted API 34 `google_apis`, API 30 `default`, API 29 `default`, and API 28 `google_apis` images were not interchangeable substitutes: failures ranged from unavailable `gsiservice`, post-remount reboot loss, failed system remount, and release-APK installation failure.
+
+**Why:** A writable-system smoke test depends on the complete emulator image/runtime combination, not only the API level or the fact that the emulator boots and accepts an APK.
+
+**How to apply:** Treat a hosted image as unqualified until the exact image passes `adb root`, system remount, temporary CA installation, and the controlled-fixture instrumentation test; do not publish a release from build-only evidence.
