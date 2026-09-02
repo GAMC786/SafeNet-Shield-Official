@@ -110,6 +110,7 @@ function assertMockedPreflightFailure(
   const outputDir = path.join(fixtureDir, "evidence");
   const adbLog = path.join(fixtureDir, "adb.log");
   const mockAdbPath = path.join(binDir, "adb");
+  const mockOpenSslPath = path.join(binDir, "openssl");
 
   try {
     mkdirSync(binDir);
@@ -159,6 +160,33 @@ exit 1
 `,
     );
     chmodSync(mockAdbPath, 0o755);
+    writeFileSync(
+      mockOpenSslPath,
+      `#!/usr/bin/env bash
+set -u
+if [[ "\${1:-}" == "req" ]]; then
+  key_path=""
+  cert_path=""
+  while [[ "\${#}" -gt 0 ]]; do
+    case "\$1" in
+      -keyout) key_path="\$2"; shift 2 ;;
+      -out) cert_path="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "\$key_path" && -n "\$cert_path" ]] || exit 1
+  printf 'mock-key\\n' > "\$key_path"
+  printf 'mock-cert\\n' > "\$cert_path"
+  exit 0
+fi
+if [[ "\${1:-}" == "x509" ]]; then
+  printf 'abcdef12\\n'
+  exit 0
+fi
+exit 1
+`,
+    );
+    chmodSync(mockOpenSslPath, 0o755);
 
     const result = spawnSync(
       "bash",
