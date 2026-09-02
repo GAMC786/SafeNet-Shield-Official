@@ -264,7 +264,9 @@ test("failure alert retries a transient GitHub error without changing the failur
   );
   assert.ok(
     infoMessages.some((message) =>
-      message.includes("Failure alert: create issue succeeded after 2 attempts"),
+      message.includes(
+        "Failure alert: create issue succeeded after 2 attempts",
+      ),
     ),
   );
 });
