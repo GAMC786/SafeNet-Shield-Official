@@ -12,3 +12,4 @@
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
 - [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.
 - [Windows Bash preflight compatibility](windows-bash-preflight-compatibility.md) — Git Bash can rewrite paths and add warnings; isolate tool commands and parse readiness output defensively.
+- [Playwright UI test setup](playwright-ui-test-setup.md) — browser checks need an installed Chromium binary plus Linux runtime libraries; mock complete API schemas, not just fields the page reads.

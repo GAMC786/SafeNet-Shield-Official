@@ -210,6 +210,8 @@ export default function DdnsUpdater() {
                   variant="outline"
                   size="sm"
                   onClick={() => updateUpdater.mutate({ id: updater.id, data: { isEnabled: !updater.isEnabled } })}
+                  aria-label={`${updater.isEnabled ? "Disable" : "Enable"} ${updater.hostname}`}
+                  aria-pressed={updater.isEnabled ?? false}
                   className={cn(
                     "min-h-10 flex-1 border-2 font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                     updater.isEnabled

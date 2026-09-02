@@ -132,6 +132,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.aiShieldEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("aiShieldEnabled", c)}
+              aria-label="AI Shield"
             />
           </div>
 
@@ -145,6 +146,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.firewallEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("firewallEnabled", c)}
+              aria-label="App Firewall"
             />
           </div>
         </CyberCard>
@@ -166,6 +168,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.alwaysOnEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("alwaysOnEnabled", c)}
+              aria-label="Always-On VPN"
             />
           </div>
 
@@ -179,6 +182,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.deviceAdminEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
+              aria-label="Device Admin"
             />
           </div>
         </CyberCard>
@@ -258,6 +262,7 @@ export default function Settings() {
               <Switch 
                 checked={settings?.isPinEnabled ?? false} 
                 onCheckedChange={(c) => handleToggle("isPinEnabled", c)}
+                aria-label="PIN Protection"
               />
             </div>
 

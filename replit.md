@@ -98,3 +98,14 @@ npm run lint:workflows
 ```
 
 The GitHub Actions gate uses the same versions, so local results match CI.
+
+#### Browser UI checks
+
+The toggle visibility checks use Playwright and run against a local Vite client
+with API responses mocked in the browser. Install the Chromium binary once, then
+run:
+
+```sh
+npx playwright install chromium
+npm run test:ui
+```
