@@ -78,11 +78,11 @@ jobs:
 
       - name: Preflight Android emulator system trust
         id: android-system-trust-preflight
-        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.ANDROID_SMOKE_RESOLVER_MODE == 'fixture'
+        if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.ANDROID_SMOKE_RESOLVER_MODE == 'fixture'"
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # Qualify the writable-system emulator before spending time on the
-          # release APKs or the full controlled resolver fixture.
+          # Manual and scheduled checks retain the hosted preflight. Tagged
+          # releases use the dedicated writable-system runner below.
           api-level: 34
           target: google_apis
           arch: x86_64
@@ -164,9 +164,16 @@ jobs:
           fi
           echo "Verified release instrumentation APK: $test_apk"
 
+      - name: Upload release instrumentation APK
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+
       - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        if: "!startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
         continue-on-error: ${{ github.event_name == 'schedule' || env.DNS_ALERT_VALIDATION == 'lifecycle' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -472,6 +479,82 @@ jobs:
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
+  android-release-smoke:
+    needs: build-android
+    if: startsWith(github.ref, 'refs/tags/v')
+    # This label is intentionally exclusive to a runner with KVM, adb root,
+    # writable system overlays, and a disposable Android system image. A
+    # hosted runner must not silently replace it for a signed release.
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    permissions:
+      contents: read
+    env:
+      ANDROID_SMOKE_RESOLVER_MODE: fixture
+      ANDROID_SMOKE_COVERAGE: controlled-fixture
+      ANDROID_AVD_NAME: safenet-writable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify writable Android runner
+        shell: bash
+        run: ./scripts/provision-android-runner.sh --check
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Verify release APK inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/artifacts/android/app-release.apk"
+          test_apk="$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk"
+          test -s "$apk" || { echo "::error::Signed release APK is missing: $apk"; exit 1; }
+          test -s "$test_apk" || { echo "::error::Release instrumentation APK is missing: $test_apk"; exit 1; }
+          echo "Verified release APK inputs."
+
+      - name: Run controlled-fixture smoke test on writable emulator
+        id: android-release-dns-smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # AOSP ATD is a userdebug test image intended for instrumentation.
+          # Unlike the hosted Google APIs image, the dedicated runner is
+          # qualified for adb root and writable-system CA installation.
+          api-level: 35
+          target: aosp_atd
+          arch: x86_64
+          profile: pixel_2
+          avd-name: ${{ env.ANDROID_AVD_NAME }}
+          force-avd-creation: false
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          script: |
+            set -euo pipefail
+            ./scripts/android-smoke-test.sh \
+              --preflight \
+              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
+            ./scripts/android-smoke-test.sh \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+
+      - name: Upload release Android smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-smoke-evidence-release
+          path: android/app/build/reports/android-smoke/latest
+          if-no-files-found: warn
+
   build-windows:
     if: github.event_name != 'schedule'
     runs-on: windows-latest
@@ -619,7 +702,7 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, build-windows]
+    needs: [build-android, build-windows, android-release-smoke]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

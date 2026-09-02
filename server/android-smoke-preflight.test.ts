@@ -11,6 +11,10 @@ const smokeScript = readFileSync(
   path.resolve(process.cwd(), "scripts/android-smoke-test.sh"),
   "utf8",
 );
+const runnerScript = readFileSync(
+  path.resolve(process.cwd(), "scripts/provision-android-runner.sh"),
+  "utf8",
+);
 
 function getStepBlock(stepName: string) {
   const stepStart = workflow.indexOf(`      - name: ${stepName}`);
@@ -20,7 +24,7 @@ function getStepBlock(stepName: string) {
   return workflow.slice(stepStart, nextStep === -1 ? undefined : nextStep);
 }
 
-test("fixture release validation preflights system trust before Android builds", () => {
+test("non-tag fixture validation preflights system trust before Android builds", () => {
   const preflightStart = workflow.indexOf(
     "      - name: Preflight Android emulator system trust",
   );
@@ -46,4 +50,28 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /temporary preflight CA remained/);
   assert.match(smokeScript, /failure_category=FIXTURE_FAILURE/);
   assert.match(smokeScript, /preflight-result\.txt/);
+});
+
+test("tagged releases require the dedicated writable Android runner", () => {
+  assert.match(
+    workflow,
+    /android-release-smoke:\n\s+needs: build-android\n\s+if: startsWith\(github\.ref, 'refs\/tags\/v'\)/,
+  );
+  assert.match(
+    workflow,
+    /runs-on: \[self-hosted, linux, x64, android-writable-system\]/,
+  );
+  assert.match(workflow, /target: aosp_atd/);
+  assert.match(
+    workflow,
+    /--apk "\$GITHUB_WORKSPACE\/artifacts\/android\/app-release\.apk"/,
+  );
+  assert.match(
+    workflow,
+    /--test-apk "\$GITHUB_WORKSPACE\/artifacts\/android-test\/app-release-androidTest\.apk"/,
+  );
+  assert.match(workflow, /needs: \[build-android, build-windows, android-release-smoke\]/);
+  assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
+  assert.match(runnerScript, /build-tools;\$build_tools_version/);
+  assert.match(runnerScript, /\/dev\/kvm/);
 });

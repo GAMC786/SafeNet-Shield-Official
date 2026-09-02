@@ -149,10 +149,22 @@ as `ENETUNREACH`, `UNRELATED_NETWORK_FAILURE`, or `NON_NETWORK_FAILURE` in
 `failure-category.txt`; `ENETUNREACH` is the original “network unreachable”
 regression and must not be treated as a generic resolver failure.
 
-The GitHub Actions release/manual lane runs the same script on a fresh API 35
-Google APIs emulator after creating the signed release APK. A local run needs
-an Android SDK, `adb`, and an attached target; a host DNS lookup is not a
-substitute for these VPN checks.
+Tagged releases run the same script on a dedicated self-hosted Linux runner
+with the `android-writable-system` label. That runner uses an AOSP ATD API 35
+image with KVM, `adb root`, writable system overlays, and passwordless `sudo`
+for the controlled resolver fixture. Provision it once with:
+
+```bash
+ANDROID_SDK_ROOT="$HOME/Android/Sdk" ./scripts/provision-android-runner.sh
+```
+
+Run `./scripts/provision-android-runner.sh --check` from the registered
+GitHub Actions runner account to verify its capabilities. The release job will
+wait for, and then require, this labeled runner; it will not substitute a
+hosted image that cannot install the temporary system CA. Manual and scheduled
+non-tag checks retain the hosted validation lane. A local run needs an Android
+SDK, `adb`, and an attached target; a host DNS lookup is not a substitute for
+these VPN checks.
 
 ---
 
