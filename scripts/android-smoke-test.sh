@@ -439,7 +439,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 
 echo "Running SafeNet DNS instrumentation..."
 set +e
-adb_run shell am instrument -w -r \
+timeout 300s adb "${adb_args[@]}" shell am instrument -w -r \
     -e class com.safenet.dns.SafeNetVpnInstrumentationTest \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
