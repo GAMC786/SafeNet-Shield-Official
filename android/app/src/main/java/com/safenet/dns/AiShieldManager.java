@@ -383,7 +383,7 @@ public final class AiShieldManager {
                 }
                 camera = openedCamera;
                 try {
-                    cameraSession = openedCamera.createCaptureSession(
+                    openedCamera.createCaptureSession(
                         java.util.Collections.singletonList(cameraReader.getSurface()),
                         new CameraCaptureSession.StateCallback() {
                             @Override

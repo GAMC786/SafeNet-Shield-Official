@@ -112,7 +112,7 @@ interface SafeNetVpnPlugin {
   getApkScanStatus(): Promise<ApkScanStatus>;
   updateApkSignatures(options: { signedUpdate: string }): Promise<ApkScanStatus>;
   scanApk(): Promise<ApkScanResult>;
-  scanInstalledApks(): Promise<ApkScanResult[]>;
+  scanInstalledApks(): Promise<{ results: ApkScanResult[] }>;
   deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;
   clearApkScanHistory(): Promise<ApkScanStatus>;
   acceptEula(options: { version: string }): Promise<VpnStatus>;

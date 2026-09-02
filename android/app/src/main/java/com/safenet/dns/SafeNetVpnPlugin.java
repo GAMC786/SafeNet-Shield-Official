@@ -299,7 +299,9 @@ public class SafeNetVpnPlugin extends Plugin {
             for (ApkScanner.ScanResult result : results) {
                 apkScanner().remember(result);
             }
-            call.resolve(response);
+            JSObject payload = new JSObject();
+            payload.put("results", response);
+            call.resolve(payload);
         });
     }
 

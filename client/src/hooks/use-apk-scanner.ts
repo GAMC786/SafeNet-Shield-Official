@@ -67,7 +67,8 @@ export function useApkScanner() {
     setIsScanning(true);
     setError(null);
     try {
-      const results = await SafeNetVpn.scanInstalledApks();
+      const response = await SafeNetVpn.scanInstalledApks();
+      const results = response.results;
       setInstalledResults(results);
       const finding = results.find((result) => result.verdict !== "safe");
       if (finding) {
