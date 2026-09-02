@@ -265,12 +265,16 @@ run_system_trust_preflight() {
         fixture_failure "the emulator did not return after the system remount (see $preflight_log)"
     fi
     for _ in {1..60}; do
-        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null |
+            tr -d '\r' | grep -qx "device"; then
             break
         fi
         sleep 1
     done
-    preflight_state="$(timeout 5s adb "${adb_args[@]}" get-state 2>&1 | tee -a "$preflight_log" || true)"
+    preflight_state="$(
+        timeout 5s adb "${adb_args[@]}" get-state 2>&1 |
+            tr -d '\r' | tee -a "$preflight_log" || true
+    )"
     if [[ "$preflight_state" != "device" ]]; then
         fixture_failure "the emulator did not become ready after the system remount (see $preflight_log)"
     fi
