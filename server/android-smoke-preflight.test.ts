@@ -249,7 +249,11 @@ exit 1
       assert.match(failureResult, new RegExp(`^${evidence}$`, "m"));
     }
     assert.match(failureResult, /failure_category=FIXTURE_FAILURE/);
-    assert.match(failureResult, expectedMessage);
+  assert.match(
+    failureResult,
+    expectedMessage,
+    `unexpected preflight failure result:\n${failureResult}\nadb log:\n${readFileSync(adbLog, "utf8")}\npreflight log:\n${preflightLog}`,
+  );
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }
