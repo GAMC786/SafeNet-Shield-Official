@@ -185,9 +185,97 @@ if [[ -z "$serial" ]]; then
     adb_args=(-s "$serial")
 fi
 
-if ! adb_run get-state | grep -qx "device"; then
+command -v timeout >/dev/null 2>&1 || {
+    echo "ERROR: timeout is required to bound Android adb operations." >&2
+    exit 2
+}
+
+if ! timeout 30s adb "${adb_args[@]}" get-state | grep -qx "device"; then
     echo "ERROR: adb target '$serial' is not online." >&2
     exit 3
+fi
+
+apksigner_bin="$(command -v apksigner || true)"
+if [[ -z "$apksigner_bin" ]]; then
+    sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+    if [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]; then
+        apksigner_bin="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x \
+            | sort -V | tail -n 1)"
+    fi
+fi
+if [[ -z "$apksigner_bin" ]]; then
+    echo "ERROR: apksigner is required to verify the release APK signature." >&2
+    echo "Use an Android SDK runner with build-tools installed." >&2
+    exit 2
+fi
+for signed_apk in "$apk_path" "$test_apk_path"; do
+    signature_report="$output_dir/$(basename "$signed_apk").signature.txt"
+    if ! "$apksigner_bin" verify --verbose "$signed_apk" > "$signature_report" 2>&1; then
+        echo "ERROR: $signed_apk is not a valid signed APK." >&2
+        cat "$signature_report" >&2
+        exit 2
+    fi
+done
+
+android_package_available() {
+    local package_path
+    package_path="$(timeout 5s adb "${adb_args[@]}" shell cmd package path android 2>&1 || true)"
+    [[ "$package_path" == package:* ]]
+}
+
+android_framework_ready=false
+android_framework_ready_streak=0
+for _ in {1..120}; do
+    if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
+        grep -q "found" &&
+        android_package_available; then
+        ((android_framework_ready_streak += 1))
+        if ((android_framework_ready_streak >= 5)); then
+            android_framework_ready=true
+            break
+        fi
+    else
+        android_framework_ready_streak=0
+    fi
+    sleep 1
+done
+if [[ "$android_framework_ready" != true ]]; then
+    echo "ERROR: Android package and storage services did not become ready." >&2
+    exit 3
+fi
+
+install_release_apk() {
+    local install_path="$1"
+    for _ in {1..3}; do
+        if timeout 120s adb "${adb_args[@]}" install -r "$install_path"; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
+
+remount_system() {
+    local log_path="$1"
+    for _ in {1..3}; do
+        if timeout 60s adb "${adb_args[@]}" remount >> "$log_path" 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    return 1
+}
+
+echo "Installing release APKs on Android target $serial before fixture setup..."
+timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
+timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
+if ! install_release_apk "$apk_path"; then
+    echo "ERROR: Release APK could not be installed after bounded retries." >&2
+    exit 1
+fi
+if ! install_release_apk "$test_apk_path"; then
+    echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
+    exit 1
 fi
 
 if [[ "$resolver_mode" == "fixture" ]]; then
@@ -234,34 +322,77 @@ EOF
     cp "$fixture_ca" "$fixture_ca_store"
 
     : > "$fixture_adb_log"
-    if ! adb_run root >> "$fixture_adb_log" 2>&1 ||
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$fixture_adb_log" 2>&1 ||
         grep -Eiq 'cannot run as root|production builds' "$fixture_adb_log"; then
         fixture_failure "the emulator must allow adb root to trust the temporary TLS CA"
     fi
-    if ! adb_run remount >> "$fixture_adb_log" 2>&1; then
+    if ! remount_system "$fixture_adb_log"; then
         fixture_failure "the emulator could not remount its system partition for the temporary TLS CA"
     fi
-    if ! adb_run push "$fixture_ca_store" "/system/etc/security/cacerts/$fixture_ca_hash.0" \
-        >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the temporary TLS CA could not be installed in the emulator"
-    fi
-    if ! adb_run shell chmod 0644 "/system/etc/security/cacerts/$fixture_ca_hash.0" \
-        >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the temporary TLS CA permissions could not be set"
-    fi
-    adb_run reboot >> "$fixture_adb_log" 2>&1 || \
-        fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
-    if ! adb_run wait-for-device >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the emulator did not return after installing the temporary TLS CA"
+    command -v timeout >/dev/null 2>&1 || \
+        fixture_failure "timeout is required to bound Android reboot waits"
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
+        fixture_failure "the emulator could not reboot after remounting for the temporary TLS CA"
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator did not return after remounting for the temporary TLS CA"
     fi
     for _ in {1..60}; do
-        if adb_run get-state 2>/dev/null | grep -qx "device"; then
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
             break
         fi
         sleep 1
     done
-    if ! adb_run get-state 2>/dev/null | grep -qx "device"; then
+    if ! timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+        fixture_failure "the emulator did not become ready after remounting for the temporary TLS CA"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" root >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "adb root could not be re-enabled after remounting for the temporary TLS CA"
+    fi
+    if ! remount_system "$fixture_adb_log"; then
+        fixture_failure "the emulator could not activate its writable system overlay for the temporary TLS CA"
+    fi
+    if ! timeout 60s adb "${adb_args[@]}" push "$fixture_ca_store" \
+        "/system/etc/security/cacerts/$fixture_ca_hash.0" \
+        >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the temporary TLS CA could not be installed in the emulator"
+    fi
+    if ! timeout 30s adb "${adb_args[@]}" shell chmod 0644 \
+        "/system/etc/security/cacerts/$fixture_ca_hash.0" \
+        >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the temporary TLS CA permissions could not be set"
+    fi
+    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
+        fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
+    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the emulator did not return after installing the temporary TLS CA"
+    fi
+    for _ in {1..60}; do
+        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
         fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
+    fi
+    package_service_ready=false
+    package_service_ready_streak=0
+    for _ in {1..90}; do
+        if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
+            grep -q "found" &&
+            android_package_available; then
+            ((package_service_ready_streak += 1))
+            if ((package_service_ready_streak >= 5)); then
+                package_service_ready=true
+                break
+            fi
+        else
+            package_service_ready_streak=0
+        fi
+        sleep 1
+    done
+    if [[ "$package_service_ready" != true ]]; then
+        fixture_failure "the Android package service did not become ready after installing the temporary TLS CA"
     fi
 
     fixture_privilege=()
@@ -306,39 +437,11 @@ EOF
     ordinary_url="https://$fixture_host:$FIXTURE_HTTP_PORT/"
 fi
 
-apksigner_bin="$(command -v apksigner || true)"
-if [[ -z "$apksigner_bin" ]]; then
-    sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-    if [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]; then
-        apksigner_bin="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x \
-            | sort -V | tail -n 1)"
-    fi
-fi
-if [[ -z "$apksigner_bin" ]]; then
-    echo "ERROR: apksigner is required to verify the release APK signature." >&2
-    echo "Use an Android SDK runner with build-tools installed." >&2
-    exit 2
-fi
-for signed_apk in "$apk_path" "$test_apk_path"; do
-    signature_report="$output_dir/$(basename "$signed_apk").signature.txt"
-    if ! "$apksigner_bin" verify --verbose "$signed_apk" > "$signature_report" 2>&1; then
-        echo "ERROR: $signed_apk is not a valid signed APK." >&2
-        cat "$signature_report" >&2
-        exit 2
-    fi
-done
-
 capture device-details adb "${adb_args[@]}" shell sh -c \
     'echo "serial=$(getprop ro.serialno)"; echo "manufacturer=$(getprop ro.product.manufacturer)"; echo "model=$(getprop ro.product.model)"; echo "android=$(getprop ro.build.version.release)"; echo "sdk=$(getprop ro.build.version.sdk)"; echo "abi=$(getprop ro.product.cpu.abi)"'
 capture network-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture network-ip-route adb "${adb_args[@]}" shell sh -c 'ip addr; echo "--- routes ---"; ip route'
 capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
-
-echo "Installing $apk_path on Android target $serial..."
-adb_run uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
-adb_run install "$apk_path"
-adb_run install "$test_apk_path"
 
 echo "Running SafeNet DNS instrumentation..."
 set +e

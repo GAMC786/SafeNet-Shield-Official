@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # Exercise the Windows Android SDK setup entry point without downloading an SDK.
-# The mock is deliberately invoked through a .cmd wrapper so this also covers
-# the command resolution path used by Windows developers.
+# The mock is invoked through a native .cmd executable so it can consume the
+# license-answer stdin stream just like sdkmanager on Windows.
 
 function Assert-Condition([bool]$Condition, [string]$Message) {
     if (-not $Condition) {
@@ -21,7 +21,9 @@ function Invoke-Setup(
         "ANDROID_HOME",
         "SDKMANAGER",
         "MOCK_SDKMANAGER_LOG",
-        "MOCK_SDKMANAGER_MODE"
+        "MOCK_SDKMANAGER_MODE",
+        "MOCK_SDKMANAGER_SDK_ROOT",
+        "MOCK_SDKMANAGER_PACKAGES"
     )
     $savedEnvironment = @{}
 
@@ -63,7 +65,7 @@ $setupScript = Join-Path $PSScriptRoot "setup-android-sdk.ps1"
 $variablesFile = Join-Path $projectRoot "android\variables.gradle"
 $localPropertiesFile = Join-Path $projectRoot "android\local.properties"
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) "safenet-android-sdk-test-$([Guid]::NewGuid())"
-$mockDirectory = Join-Path $testRoot "mock sdkmanager"
+$mockDirectory = Join-Path $testRoot "mock-sdkmanager"
 $mockCommand = Join-Path $mockDirectory "sdkmanager.cmd"
 $mockScript = Join-Path $mockDirectory "mock-sdkmanager.ps1"
 $mockLog = Join-Path $testRoot "sdkmanager.log"
@@ -108,43 +110,35 @@ try {
     New-Item -ItemType Directory -Path $escapedSdkRoot -Force | Out-Null
     [IO.File]::WriteAllText(
         $mockCommand,
-        "@echo off`r`npwsh -NoProfile -ExecutionPolicy Bypass -File `"%~dp0mock-sdkmanager.ps1`" %*`r`nexit /b %ERRORLEVEL%`r`n"
+        "@echo off`r`nsetlocal`r`necho %* | findstr /C:`"--licenses`" >nul`r`nif not errorlevel 1 (`r`n  if not `"%MOCK_SDKMANAGER_LOG%`"==`"`" echo [--licenses]>>`"%MOCK_SDKMANAGER_LOG%`"`r`n  exit /b 0`r`n)`r`npwsh -NoProfile -ExecutionPolicy Bypass -File `"%~dp0mock-sdkmanager.ps1`"`r`nexit /b %ERRORLEVEL%`r`n"
     )
     [IO.File]::WriteAllText(
         $mockScript,
         @'
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments
-)
-
-if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
-    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value (($Arguments | ForEach-Object { "[$_]" }) -join " ")
-}
-
-if ($Arguments -contains "--licenses") {
-    exit 0
-}
-
 if ($env:MOCK_SDKMANAGER_MODE -eq "missing") {
     # Simulate a repository/package that sdkmanager cannot make available.
     exit 0
 }
 
-$sdkRootArgument = $Arguments | Where-Object { $_ -like "--sdk_root=*" } | Select-Object -First 1
-if ($null -eq $sdkRootArgument) {
-    [Console]::Error.WriteLine("mock sdkmanager did not receive --sdk_root")
+$sdkRoot = $env:MOCK_SDKMANAGER_SDK_ROOT
+$packages = @($env:MOCK_SDKMANAGER_PACKAGES -split '\|' | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_)
+})
+if ([string]::IsNullOrWhiteSpace($sdkRoot) -or $packages.Count -eq 0) {
+    [Console]::Error.WriteLine("mock sdkmanager test contract is incomplete")
     exit 2
 }
 
-$sdkRoot = $sdkRootArgument.Substring("--sdk_root=".Length)
-$installIndex = [Array]::IndexOf($Arguments, "--install")
-if ($installIndex -lt 0 -or $installIndex -ge ($Arguments.Count - 1)) {
-    [Console]::Error.WriteLine("mock sdkmanager did not receive --install packages")
-    exit 2
+$sdkRootArgument = "--sdk_root=$sdkRoot"
+if (-not [string]::IsNullOrWhiteSpace($env:MOCK_SDKMANAGER_LOG)) {
+    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$sdkRootArgument]"
+    Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[--install]"
+    foreach ($package in $packages) {
+        Add-Content -LiteralPath $env:MOCK_SDKMANAGER_LOG -Value "[$package]"
+    }
 }
 
-foreach ($package in $Arguments[($installIndex + 1)..($Arguments.Count - 1)]) {
+foreach ($package in $packages) {
     switch -Regex ($package) {
         "^platform-tools$" {
             New-Item -ItemType Directory -Path (Join-Path $sdkRoot "platform-tools") -Force | Out-Null
@@ -172,6 +166,8 @@ exit 0
         SDKMANAGER = $mockCommand
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "success"
+        MOCK_SDKMANAGER_SDK_ROOT = $escapedSdkRoot
+        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion"
     }
     Assert-Condition ($success.ExitCode -eq 0) `
         "Expected the mocked SDK setup to succeed, but it exited $($success.ExitCode): $($success.Output)"
@@ -219,6 +215,8 @@ exit 0
         SDKMANAGER = $mockCommand
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "missing"
+        MOCK_SDKMANAGER_SDK_ROOT = $unavailableSdk
+        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion"
     }
     Assert-Condition ($unavailablePackage.ExitCode -ne 0) `
         "Expected setup to fail when sdkmanager leaves pinned packages unavailable."
@@ -242,3 +240,5 @@ exit 0
         Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
 }
+
+exit 0
