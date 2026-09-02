@@ -923,6 +923,235 @@ jobs:
           ./scripts/provision-android-runner.sh --check 2>&1 |
             tee "$RUNNER_TEMP/android-runner-health.log"
 
+  workflow-lint-history-watchdog:
+    name: Verify monthly workflow lint record
+    # The weekday schedule gives this check a chance to notice that the
+    # first-of-month schedule was skipped, while keeping it independent from
+    # both the matrix and the history commit job.
+    if: github.event_name == 'schedule' && github.event.schedule == '17 4 * * 1-5'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Capture watchdog timestamp
+        id: watchdog-time
+        shell: bash
+        run: echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Alert when the monthly workflow lint record is missing
+        uses: actions/github-script@v7
+        env:
+          ALERT_TITLE: "[Maintainer alert] Monthly workflow lint record missing"
+          CHECKED_AT: ${{ steps.watchdog-time.outputs.checked_at }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HISTORY_PATH: ".github/workflow-lint-history.json"
+          HISTORY_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/.github/workflow-lint-history.json
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW_FILE: "build.yml"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const checkedAt = new Date(process.env.CHECKED_AT);
+            if (Number.isNaN(checkedAt.getTime())) {
+              throw new Error(`Invalid watchdog timestamp: ${process.env.CHECKED_AT}`);
+            }
+
+            // The daily schedule runs before the monthly schedule on the
+            // first day. Defer until the next weekday so that the expected
+            // monthly run has had time to start and publish its artifacts.
+            if (checkedAt.getUTCDate() === 1) {
+              core.info('Deferring monthly workflow lint verification until after the first day of the month.');
+              return;
+            }
+
+            const month = checkedAt.toISOString().slice(0, 7);
+            const boundedScheduleWindow = `${month}-03`;
+            const expectedOutcomes = [
+              'Windows/x64',
+              'macOS/x64',
+              'macOS/arm64'
+            ];
+            const currentRunUrl = process.env.RUN_URL;
+            const historyUrl = process.env.HISTORY_URL;
+            const { owner, repo } = context.repo;
+
+            const { data: runList } = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: process.env.WORKFLOW_FILE,
+              event: 'schedule',
+              branch: process.env.DEFAULT_BRANCH,
+              per_page: 100
+            });
+
+            // A monthly run is distinguished from the weekday schedule by
+            // the presence of the conditional cross-platform lint matrix.
+            // Only inspect the first three UTC days, keeping API work bounded
+            // even if the workflow runs frequently for other reasons.
+            const candidateRuns = runList.workflow_runs
+              .filter((run) => {
+                const createdDate = String(run.created_at).slice(0, 10);
+                return createdDate >= `${month}-01` && createdDate <= boundedScheduleWindow;
+              })
+              .sort((left, right) =>
+                String(right.created_at).localeCompare(String(left.created_at)),
+              )
+              .slice(0, 10);
+
+            let monthlyRun;
+            for (const candidate of candidateRuns) {
+              const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+                owner,
+                repo,
+                run_id: candidate.id,
+                per_page: 100
+              });
+              if (jobs.jobs.some((job) => String(job.name).startsWith('Workflow lint ('))) {
+                monthlyRun = candidate;
+                break;
+              }
+            }
+
+            const findings = [];
+            if (!monthlyRun) {
+              const nearestRun = candidateRuns[0];
+              findings.push(
+                `No scheduled workflow run containing the cross-platform lint matrix was found for ${month}.`,
+              );
+              if (nearestRun?.html_url) {
+                findings.push(`The nearest scheduled run was [${nearestRun.id}](${nearestRun.html_url}); inspect why the monthly matrix was skipped.`);
+              }
+            }
+
+            let history;
+            try {
+              const { data: historyFile } = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: process.env.HISTORY_PATH,
+                ref: process.env.DEFAULT_BRANCH
+              });
+              if (Array.isArray(historyFile) || !historyFile.content) {
+                throw new Error('history path did not return a file');
+              }
+              history = JSON.parse(
+                Buffer.from(historyFile.content, historyFile.encoding || 'base64').toString('utf8'),
+              );
+            } catch (error) {
+              const reason = error.status === 404
+                ? 'the file was not found'
+                : 'the file could not be read or parsed';
+              findings.push(`The history file ${process.env.HISTORY_PATH} ${reason}.`);
+            }
+
+            if (monthlyRun && history) {
+              const historyRun = Array.isArray(history.runs)
+                ? history.runs.find((run) => String(run.run_id) === String(monthlyRun.id))
+                : undefined;
+              if (!historyRun) {
+                findings.push(`The history file has no record for monthly workflow run ${monthlyRun.id}.`);
+              } else if (!Array.isArray(historyRun.results)) {
+                findings.push(`Monthly workflow run ${monthlyRun.id} has no outcome records in the history file.`);
+              } else {
+                const recordedOutcomes = new Set(
+                  historyRun.results.map((result) =>
+                    `${result?.platform}/${result?.architecture}`,
+                  ),
+                );
+                const missingOutcomes = expectedOutcomes.filter(
+                  (outcome) => !recordedOutcomes.has(outcome),
+                );
+                if (historyRun.results.length !== expectedOutcomes.length || missingOutcomes.length > 0) {
+                  findings.push(
+                    `Monthly workflow run ${monthlyRun.id} is missing outcome records: ${
+                      missingOutcomes.length > 0 ? missingOutcomes.join(', ') : 'the expected three-record set'
+                    }.`,
+                  );
+                }
+              }
+            }
+
+            if (findings.length === 0) {
+              core.info(`Monthly workflow lint run ${monthlyRun.id} and all three history outcomes are present.`);
+              return;
+            }
+
+            const affectedRun = monthlyRun || candidateRuns[0];
+            const affectedRunLink = affectedRun?.html_url
+              ? `[View affected workflow run](${affectedRun.html_url})`
+              : `No monthly run was found; [view the watchdog run](${currentRunUrl})`;
+            const body = [
+              'The monthly hosted-runner workflow lint record is missing or incomplete.',
+              '',
+              `Affected workflow run: ${affectedRunLink}`,
+              `Watchdog run: [View check run](${currentRunUrl})`,
+              `History file: [Open ${process.env.HISTORY_PATH}](${historyUrl})`,
+              '',
+              '**Findings:**',
+              ...findings.map((finding) => `- ${finding}`),
+              '',
+              'No synthetic history entry was created. Rerun or repair the monthly schedule and verify the Windows/x64, macOS/x64, and macOS/arm64 outcome records.'
+            ].join('\n');
+
+            const labelName = 'maintainer-alert';
+            try {
+              await github.rest.issues.getLabel({
+                owner,
+                repo,
+                name: labelName
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: labelName,
+                color: 'b60205',
+                description: 'Action required from maintainers'
+              });
+            }
+
+            const { data: openAlerts } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+            const alert = openAlerts.find((issue) => issue.title === process.env.ALERT_TITLE);
+
+            if (!alert) {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title: process.env.ALERT_TITLE,
+                body,
+                labels: [labelName]
+              });
+              core.warning(`Created monthly workflow lint history alert for ${month}.`);
+              return;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: alert.number,
+              per_page: 100
+            });
+            if (comments.some((comment) => comment.body === body)) {
+              core.info(`Monthly workflow lint history alert #${alert.number} already contains this finding.`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: alert.number,
+              body
+            });
+            core.warning(`Updated monthly workflow lint history alert #${alert.number}.`);
+
   android-release-smoke:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
