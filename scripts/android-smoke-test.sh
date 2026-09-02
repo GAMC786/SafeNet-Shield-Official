@@ -361,20 +361,14 @@ EOF
         >> "$fixture_adb_log" 2>&1; then
         fixture_failure "the temporary TLS CA permissions could not be set"
     fi
-    timeout 30s adb "${adb_args[@]}" reboot >> "$fixture_adb_log" 2>&1 || \
-        fixture_failure "the emulator could not reboot after installing the temporary TLS CA"
-    if ! timeout 180s adb "${adb_args[@]}" wait-for-device >> "$fixture_adb_log" 2>&1; then
-        fixture_failure "the emulator did not return after installing the temporary TLS CA"
+    if ! timeout 30s adb "${adb_args[@]}" shell test -r \
+        "/system/etc/security/cacerts/$fixture_ca_hash.0" \
+        >> "$fixture_adb_log" 2>&1; then
+        fixture_failure "the temporary TLS CA was not readable after installation"
     fi
-    for _ in {1..60}; do
-        if timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
-            break
-        fi
-        sleep 1
-    done
-    if ! timeout 5s adb "${adb_args[@]}" get-state 2>/dev/null | grep -qx "device"; then
-        fixture_failure "the emulator did not become ready after installing the temporary TLS CA"
-    fi
+    # The instrumentation process has not started yet, so it will load the
+    # installed system CA on first use. Avoid a second reboot: writable-system
+    # API 28 images can fail to return after rebooting with a new CA present.
     package_service_ready=false
     package_service_ready_streak=0
     for _ in {1..90}; do
