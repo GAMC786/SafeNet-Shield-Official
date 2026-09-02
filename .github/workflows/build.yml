@@ -157,11 +157,11 @@ jobs:
         with:
           # The API 34 google_apis image can boot and install APKs but has
           # repeatedly reported an unavailable gsiservice during adb remount.
-          # The API 29 AOSP default image retains the userdebug root/remount
-          # flow required for the temporary fixture CA without relying on a
-          # Google APIs image's unavailable gsiservice.
-          api-level: 29
-          target: default
+          # API 28's legacy Google APIs image retains the userdebug
+          # root/remount flow required for the temporary fixture CA while
+          # providing the WebView/runtime stack used by instrumentation.
+          api-level: 28
+          target: google_apis
           arch: x86_64
           profile: pixel_2
           emulator-boot-timeout: 1200
