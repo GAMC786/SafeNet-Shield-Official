@@ -9,6 +9,9 @@ on:
     branches: [main]
   schedule:
     - cron: '17 4 * * 1-5'
+    # Keep hosted Windows and macOS workflow-lint installers exercised without
+    # adding the matrix to every weekday release smoke run.
+    - cron: '47 4 1 * *'
   workflow_dispatch:
     inputs:
       android_resolver_mode:
@@ -98,12 +101,16 @@ jobs:
           files: .github/workflows/*.yml, .github/workflows/*.yaml
 
   cross-platform-workflow-lint:
-    name: Workflow lint (${{ matrix.platform }} ${{ matrix.architecture }})
-    if: github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint
+    name: Workflow lint (${{ matrix.platform }} ${{ matrix.architecture }} on ${{ matrix.runner }})
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *')
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Keep the hosted runner label, platform, and architecture together.
+          # Update the entry as a unit when GitHub retires or replaces an image.
           - runner: windows-latest
             platform: Windows
             architecture: x64

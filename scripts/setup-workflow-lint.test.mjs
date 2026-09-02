@@ -147,7 +147,7 @@ test("sources CI workflow lint versions from package.json", () => {
   );
 });
 
-test("runs an opt-in cross-platform installer matrix in disposable workspaces", () => {
+test("runs a maintainer-triggered or monthly cross-platform installer matrix", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/build.yml", import.meta.url),
     "utf8",
@@ -163,8 +163,12 @@ test("runs an opt-in cross-platform installer matrix in disposable workspaces", 
     /cross_platform_workflow_lint:[\s\S]*?type: boolean/,
   );
   assert.match(
+    workflow,
+    /schedule:[\s\S]*?- cron: '47 4 1 \* \*'/,
+  );
+  assert.match(
     matrixJob,
-    /if: github\.event_name == 'workflow_dispatch' && inputs\.cross_platform_workflow_lint/,
+    /if:[\s\S]*?github\.event_name == 'workflow_dispatch' && inputs\.cross_platform_workflow_lint[\s\S]*?github\.event_name == 'schedule' && github\.event\.schedule == '47 4 1 \* \*'/,
   );
   assert.match(
     matrixJob,
