@@ -221,7 +221,8 @@ android_framework_ready=false
 for _ in {1..120}; do
     if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
         grep -q "found" &&
-        timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
+        timeout 5s adb "${adb_args[@]}" shell service check package 2>&1 |
+        grep -q "found"; then
         android_framework_ready=true
         break
     fi
@@ -367,7 +368,8 @@ EOF
     for _ in {1..90}; do
         if timeout 5s adb "${adb_args[@]}" shell service check mount 2>&1 |
             grep -q "found" &&
-            timeout 5s adb "${adb_args[@]}" shell cmd package path android >/dev/null 2>&1; then
+            timeout 5s adb "${adb_args[@]}" shell service check package 2>&1 |
+            grep -q "found"; then
             package_service_ready=true
             break
         fi
