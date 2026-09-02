@@ -188,16 +188,59 @@ test("runs a maintainer-triggered or monthly cross-platform installer matrix", (
   );
   assert.match(
     matrixJob,
-    /working-directory: workflow-lint-checkout[\s\S]*?run: npm run setup:workflow-lint/,
+    /working-directory: workflow-lint-checkout[\s\S]*?run: \|[\s\S]*?npm run setup:workflow-lint/,
   );
   assert.match(
     matrixJob,
-    /working-directory: workflow-lint-checkout[\s\S]*?run: npm run lint:workflows/,
+    /working-directory: workflow-lint-checkout[\s\S]*?run: \|[\s\S]*?npm run lint:workflows/,
   );
   assert.match(
     matrixJob,
     /Report workflow lint failure stage[\s\S]*?WORKFLOW_LINT_PLATFORM[\s\S]*?WORKFLOW_LINT_ARCHITECTURE[\s\S]*?Failed stage/,
   );
+});
+
+test("publishes independent monthly lint health and bounded failure details", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/build.yml", import.meta.url),
+    "utf8",
+  );
+  const summaryJobStart = workflow.indexOf(
+    "  cross-platform-workflow-lint-summary:",
+  );
+  const summaryJobEnd = workflow.indexOf("  build-android:", summaryJobStart);
+  assert.notEqual(summaryJobStart, -1);
+  assert.notEqual(summaryJobEnd, -1);
+  const summaryJob = workflow.slice(summaryJobStart, summaryJobEnd);
+
+  assert.match(summaryJob, /name: Monthly workflow lint health/);
+  assert.match(summaryJob, /needs: cross-platform-workflow-lint/);
+  assert.match(
+    summaryJob,
+    /if:[\s\S]*?always\(\)[\s\S]*?github\.event_name == 'workflow_dispatch' && inputs\.cross_platform_workflow_lint[\s\S]*?github\.event_name == 'schedule' && github\.event\.schedule == '47 4 1 \* \*'/,
+  );
+  assert.match(summaryJob, /needs\.cross-platform-workflow-lint\.result/);
+  assert.match(summaryJob, /Android build and release health is reported separately/);
+
+  const androidJobStart = summaryJobEnd;
+  const androidJobEnd = workflow.indexOf("  android-runner-health:", androidJobStart);
+  const androidJob = workflow.slice(androidJobStart, androidJobEnd);
+  assert.match(androidJob, /needs: validate-release-workflow/);
+  assert.doesNotMatch(androidJob, /cross-platform-workflow-lint/);
+
+  assert.match(
+    workflow,
+    /tail -n 120 "\$RUNNER_TEMP\/workflow-lint\.log" \| head -c 16000/,
+  );
+  assert.match(
+    workflow,
+    /uses: actions\/upload-artifact@v4[\s\S]*?name: SafeNet-DNS-workflow-lint-failure-details-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.architecture \}\}[\s\S]*?workflow-lint-failure-summary\.md/,
+  );
+  assert.match(
+    workflow,
+    /EVIDENCE_URL: \$\{\{ steps\.upload_workflow_lint_failure_details\.outputs\.artifact-url/,
+  );
+  assert.match(workflow, /Bounded failure details:/);
 });
 
 test("rejects unsupported platforms with an actionable error", () => {

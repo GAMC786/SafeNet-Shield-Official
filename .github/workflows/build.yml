@@ -144,13 +144,17 @@ jobs:
         id: setup_workflow_lint
         working-directory: workflow-lint-checkout
         shell: bash
-        run: npm run setup:workflow-lint
+        run: |
+          set -o pipefail
+          npm run setup:workflow-lint 2>&1 | tee "$RUNNER_TEMP/workflow-lint.log"
 
       - name: Lint workflows with installed tools
         id: lint_workflows
         working-directory: workflow-lint-checkout
         shell: bash
-        run: npm run lint:workflows
+        run: |
+          set -o pipefail
+          npm run lint:workflows 2>&1 | tee -a "$RUNNER_TEMP/workflow-lint.log"
 
       - name: Report workflow lint failure stage
         if: always()
@@ -194,7 +198,96 @@ jobs:
             echo "- **Failed stage:** ${stage}"
             echo "- **Outcome:** ${outcome}"
           } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Cross-platform workflow lint failure"
+            echo
+            echo "- **Platform:** ${WORKFLOW_LINT_PLATFORM}"
+            echo "- **Architecture:** ${WORKFLOW_LINT_ARCHITECTURE}"
+            echo "- **Failed stage:** ${stage}"
+            echo "- **Outcome:** ${outcome}"
+            if [[ -f "$RUNNER_TEMP/workflow-lint.log" ]]; then
+              echo
+              echo "### Recent captured output (bounded)"
+              echo '```text'
+              tail -n 120 "$RUNNER_TEMP/workflow-lint.log" | head -c 16000
+              echo
+              echo '```'
+            fi
+          } > "$RUNNER_TEMP/workflow-lint-failure-summary.md"
           exit 1
+
+      - name: Upload workflow lint failure details
+        id: upload_workflow_lint_failure_details
+        if: >-
+          always() &&
+          (steps.checkout_workspace.outcome == 'failure' ||
+          steps.setup_node.outcome == 'failure' ||
+          steps.setup_workflow_lint.outcome == 'failure' ||
+          steps.lint_workflows.outcome == 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-workflow-lint-failure-details-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/workflow-lint-failure-summary.md
+          if-no-files-found: warn
+
+      - name: Link workflow lint failure details
+        if: >-
+          always() &&
+          (steps.checkout_workspace.outcome == 'failure' ||
+          steps.setup_node.outcome == 'failure' ||
+          steps.setup_workflow_lint.outcome == 'failure' ||
+          steps.lint_workflows.outcome == 'failure')
+        shell: bash
+        env:
+          EVIDENCE_URL: ${{ steps.upload_workflow_lint_failure_details.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -u
+          echo "- **Bounded failure details:** [Download the ${WORKFLOW_LINT_PLATFORM}/${WORKFLOW_LINT_ARCHITECTURE} summary]($EVIDENCE_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Failure details: $EVIDENCE_URL"
+
+  cross-platform-workflow-lint-summary:
+    name: Monthly workflow lint health
+    needs: cross-platform-workflow-lint
+    if: >-
+      always() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.cross_platform_workflow_lint) ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 4 1 * *'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Publish monthly workflow lint health
+        shell: bash
+        env:
+          LINT_RESULT: ${{ needs.cross-platform-workflow-lint.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$LINT_RESULT" == "success" ]]; then
+            health="passed"
+            message="Windows and macOS workflow lint installers completed successfully."
+          else
+            health="failed"
+            message="At least one Windows or macOS workflow lint installer failed; inspect that matrix job's bounded details."
+          fi
+
+          {
+            echo "## Monthly cross-platform workflow lint"
+            echo
+            echo "- **Health:** ${health}"
+            echo "- **Matrix result:** \`${LINT_RESULT}\`"
+            echo "- **Workflow run:** [Open run](${RUN_URL})"
+            echo
+            echo "$message"
+            echo
+            echo "Android build and release health is reported separately."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$LINT_RESULT" != "success" ]]; then
+            echo "::error title=Monthly cross-platform workflow lint failed::${message}"
+            exit 1
+          fi
 
   build-android:
     needs: validate-release-workflow
