@@ -121,21 +121,7 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void getApkScanStatus(PluginCall call) {
-        ApkScanner scanner = apkScanner();
-        JSObject result = new JSObject();
-        result.put("supported", true);
-        result.put("scannerAvailable", scanner.isAvailable());
-        result.put("signatureVersion", scanner.getDatabaseVersion());
-        result.put(
-            "scannerMessage",
-            scanner.isAvailable() ? "Offline APK scanner ready." : scanner.getDatabaseError()
-        );
-
-        JSONObject lastScan = scanner.getLastScan();
-        if (lastScan != null) {
-            result.put("lastScan", toJsObject(lastScan));
-        }
-        call.resolve(result);
+        call.resolve(apkScanStatus());
     }
 
     @PluginMethod
@@ -168,6 +154,30 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void deleteQuarantinedApk(PluginCall call) {
+        String sha256 = call.getString("sha256", "");
+        if (sha256 == null || !sha256.matches("^[0-9a-fA-F]{64}$")) {
+            call.reject("The quarantine item could not be identified.", "INVALID_QUARANTINE_ITEM");
+            return;
+        }
+        scanExecutor().execute(() -> {
+            if (!apkScanner().deleteQuarantinedFile(sha256)) {
+                call.reject("The quarantine item was not found or could not be deleted.", "QUARANTINE_DELETE_FAILED");
+                return;
+            }
+            call.resolve(apkScanStatus());
+        });
+    }
+
+    @PluginMethod
+    public void clearApkScanHistory(PluginCall call) {
+        scanExecutor().execute(() -> {
+            apkScanner().clearScanHistory();
+            call.resolve(apkScanStatus());
+        });
+    }
+
+    @PluginMethod
     public void scanInstalledApks(PluginCall call) {
         scanExecutor().execute(() -> {
             List<ApkScanner.ScanResult> results = apkScanner().scanInstalledApplications();
@@ -176,13 +186,42 @@ public class SafeNetVpnPlugin extends Plugin {
                 response.put(toJsObject(result.toJson()));
             }
             for (ApkScanner.ScanResult result : results) {
-                if (!ApkScanner.VERDICT_SAFE.equals(result.verdict)) {
-                    apkScanner().remember(result);
-                    break;
-                }
+                apkScanner().remember(result);
             }
             call.resolve(response);
         });
+    }
+
+    private JSObject apkScanStatus() {
+        ApkScanner scanner = apkScanner();
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        result.put("scannerAvailable", scanner.isAvailable());
+        result.put("signatureVersion", scanner.getDatabaseVersion());
+        result.put(
+            "scannerMessage",
+            scanner.isAvailable() ? "Offline APK scanner ready." : scanner.getDatabaseError()
+        );
+        result.put("scanHistory", toJsArray(scanner.getScanHistory()));
+        result.put("quarantine", toJsArray(scanner.getQuarantineMetadata()));
+        result.put("quarantineBytes", scanner.getQuarantineBytes());
+
+        JSONObject lastScan = scanner.getLastScan();
+        if (lastScan != null) {
+            result.put("lastScan", toJsObject(lastScan));
+        }
+        return result;
+    }
+
+    private JSArray toJsArray(org.json.JSONArray json) {
+        JSArray result = new JSArray();
+        for (int index = 0; index < json.length(); index++) {
+            JSONObject entry = json.optJSONObject(index);
+            if (entry != null) {
+                result.put(toJsObject(entry));
+            }
+        }
+        return result;
     }
 
     private synchronized ApkScanner apkScanner() {

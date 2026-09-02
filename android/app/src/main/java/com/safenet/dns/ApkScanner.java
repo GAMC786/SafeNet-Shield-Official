@@ -38,6 +38,8 @@ final class ApkScanner {
     private static final String SIGNATURE_ASSET = "antivirus/signatures.json";
     private static final String PREFS_NAME = "safenet_apk_scanner";
     private static final String PREF_LAST_SCAN = "last_scan";
+    private static final String PREF_SCAN_HISTORY = "scan_history";
+    private static final int MAX_SCAN_HISTORY = 100;
     private static final long MAX_APK_BYTES = 256L * 1024L * 1024L;
     private static final long MAX_ENTRY_BYTES_TO_INSPECT = 8L * 1024L * 1024L;
     private static final long MAX_TOTAL_BYTES_TO_INSPECT = 64L * 1024L * 1024L;
@@ -161,15 +163,31 @@ final class ApkScanner {
         if (result == null) {
             return;
         }
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
+        android.content.SharedPreferences preferences =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        JSONArray previous = readScanHistory(preferences);
+        JSONArray history = new JSONArray();
+        history.put(result.toJson());
+        for (int index = 0; index < previous.length() && index < MAX_SCAN_HISTORY - 1; index++) {
+            Object entry = previous.opt(index);
+            if (entry instanceof JSONObject) {
+                history.put(entry);
+            }
+        }
+        preferences.edit()
+            .putString(PREF_SCAN_HISTORY, history.toString())
             .putString(PREF_LAST_SCAN, result.toJson().toString())
             .apply();
     }
 
     JSONObject getLastScan() {
-        String stored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(PREF_LAST_SCAN, null);
+        android.content.SharedPreferences preferences =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        JSONArray history = readScanHistory(preferences);
+        if (history.length() > 0 && history.opt(0) instanceof JSONObject) {
+            return history.optJSONObject(0);
+        }
+        String stored = preferences.getString(PREF_LAST_SCAN, null);
         if (stored == null) {
             return null;
         }
@@ -177,6 +195,157 @@ final class ApkScanner {
             return new JSONObject(stored);
         } catch (JSONException error) {
             return null;
+        }
+    }
+
+    JSONArray getScanHistory() {
+        return readScanHistory(
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        );
+    }
+
+    void clearScanHistory() {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PREF_SCAN_HISTORY)
+            .remove(PREF_LAST_SCAN)
+            .commit();
+    }
+
+    long getQuarantineBytes() {
+        long total = 0;
+        for (File file : quarantineFiles()) {
+            total += file.length();
+        }
+        return total;
+    }
+
+    JSONArray getQuarantineMetadata() {
+        JSONArray result = new JSONArray();
+        JSONArray history = getScanHistory();
+        for (File file : quarantineFiles()) {
+            String digest = file.getName().substring(0, file.getName().length() - 4);
+            JSONObject metadata = new JSONObject();
+            JSONObject matchingScan = findHistoryEntry(history, digest);
+            try {
+                metadata.put("sha256", digest);
+                metadata.put("fileName", file.getName());
+                metadata.put("sizeBytes", file.length());
+                metadata.put("quarantinedAt", file.lastModified());
+                if (matchingScan != null) {
+                    copyJsonValue(matchingScan, metadata, "verdict");
+                    copyJsonValue(matchingScan, metadata, "displayName");
+                    copyJsonValue(matchingScan, metadata, "packageName");
+                    copyJsonValue(matchingScan, metadata, "versionName");
+                    copyJsonValue(matchingScan, metadata, "signatureVersion");
+                    copyJsonValue(matchingScan, metadata, "threatType");
+                    copyJsonValue(matchingScan, metadata, "severity");
+                    copyJsonValue(matchingScan, metadata, "threatName");
+                    copyJsonValue(matchingScan, metadata, "details");
+                    copyJsonValue(matchingScan, metadata, "scannedAt");
+                } else {
+                    metadata.put("verdict", VERDICT_MALICIOUS);
+                }
+                result.put(metadata);
+            } catch (JSONException ignored) {
+                // Skip only malformed metadata; the quarantine file remains private.
+            }
+        }
+        return result;
+    }
+
+    boolean deleteQuarantinedFile(String sha256) {
+        if (!isValidDigest(sha256)) {
+            return false;
+        }
+        try {
+            File directory = quarantineDirectory().getCanonicalFile();
+            File candidate = new File(directory, sha256.toLowerCase(Locale.US) + ".apk")
+                .getCanonicalFile();
+            if (!directory.equals(candidate.getParentFile()) || !candidate.isFile()) {
+                return false;
+            }
+            return candidate.delete();
+        } catch (IOException error) {
+            return false;
+        }
+    }
+
+    private JSONArray readScanHistory(android.content.SharedPreferences preferences) {
+        JSONArray history = new JSONArray();
+        String stored = preferences.getString(PREF_SCAN_HISTORY, null);
+        if (stored != null) {
+            try {
+                JSONArray parsed = new JSONArray(stored);
+                for (int index = 0; index < parsed.length() && index < MAX_SCAN_HISTORY; index++) {
+                    Object entry = parsed.opt(index);
+                    if (entry instanceof JSONObject) {
+                        history.put(entry);
+                    }
+                }
+                return history;
+            } catch (JSONException ignored) {
+                // Fall through to the legacy last-scan value.
+            }
+        }
+        String legacy = preferences.getString(PREF_LAST_SCAN, null);
+        if (legacy != null) {
+            try {
+                history.put(new JSONObject(legacy));
+            } catch (JSONException ignored) {
+                // Corrupt local history is treated as empty and can be replaced by the next scan.
+            }
+        }
+        return history;
+    }
+
+    private File[] quarantineFiles() {
+        File directory = quarantineDirectory();
+        final File canonicalDirectory;
+        try {
+            canonicalDirectory = directory.getCanonicalFile();
+        } catch (IOException error) {
+            return new File[0];
+        }
+        File[] files = directory.listFiles((file, name) ->
+            name != null &&
+            name.endsWith(".apk") &&
+            isValidDigest(name.substring(0, name.length() - 4)) &&
+            isInsideQuarantine(file, name, canonicalDirectory)
+        );
+        return files == null ? new File[0] : files;
+    }
+
+    private boolean isInsideQuarantine(File directory, String name, File canonicalDirectory) {
+        try {
+            return canonicalDirectory.equals(new File(directory, name).getCanonicalFile().getParentFile());
+        } catch (IOException error) {
+            return false;
+        }
+    }
+
+    private File quarantineDirectory() {
+        return new File(context.getFilesDir(), "quarantine");
+    }
+
+    private boolean isValidDigest(String digest) {
+        return digest != null && digest.matches("^[0-9a-fA-F]{64}$");
+    }
+
+    private JSONObject findHistoryEntry(JSONArray history, String digest) {
+        for (int index = 0; index < history.length(); index++) {
+            JSONObject entry = history.optJSONObject(index);
+            if (entry != null && digest.equalsIgnoreCase(entry.optString("sha256", null))) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private void copyJsonValue(JSONObject source, JSONObject destination, String key)
+        throws JSONException {
+        if (source.has(key)) {
+            destination.put(key, source.opt(key));
         }
     }
 
@@ -278,11 +447,14 @@ final class ApkScanner {
     }
 
     private void quarantine(File source, String sha256) {
-        File quarantineDirectory = new File(context.getFilesDir(), "quarantine");
+        File quarantineDirectory = quarantineDirectory();
         if (!quarantineDirectory.isDirectory() && !quarantineDirectory.mkdirs()) {
             return;
         }
-        File destination = new File(quarantineDirectory, sha256 + ".apk");
+        if (!isValidDigest(sha256)) {
+            return;
+        }
+        File destination = new File(quarantineDirectory, sha256.toLowerCase(Locale.US) + ".apk");
         try (InputStream input = new FileInputStream(source);
              FileOutputStream output = new FileOutputStream(destination)) {
             byte[] buffer = new byte[BUFFER_SIZE];

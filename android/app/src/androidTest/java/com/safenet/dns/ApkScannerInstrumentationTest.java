@@ -11,6 +11,7 @@ import android.net.Uri;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.json.JSONArray;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,6 +42,7 @@ public class ApkScannerInstrumentationTest {
             }
         }
         quarantine.delete();
+        new ApkScanner(context).clearScanHistory();
     }
 
     @Test
@@ -74,6 +76,38 @@ public class ApkScannerInstrumentationTest {
             result.sha256 + ".apk"
         );
         assertTrue("Malicious APK should be kept in private quarantine", quarantineCopy.isFile());
+        fixture.delete();
+    }
+
+    @Test
+    public void scanHistoryAndQuarantineMetadataCanBeClearedAndDeleted() throws Exception {
+        ApkScanner scanner = new ApkScanner(context);
+        File fixture = createFixtureWithEicar();
+
+        ApkScanner.ScanResult result = scanner.scanFileForTesting(fixture);
+        scanner.remember(result);
+
+        JSONArray history = scanner.getScanHistory();
+        assertEquals(1, history.length());
+        assertEquals(ApkScanner.VERDICT_MALICIOUS, history.getJSONObject(0).getString("verdict"));
+        assertEquals(result.packageName, history.getJSONObject(0).getString("packageName"));
+        assertEquals(result.sha256, history.getJSONObject(0).getString("sha256"));
+        assertEquals(result.signatureVersion, history.getJSONObject(0).getString("signatureVersion"));
+        assertTrue(history.getJSONObject(0).getLong("scannedAt") > 0);
+
+        JSONArray quarantine = scanner.getQuarantineMetadata();
+        assertEquals(1, quarantine.length());
+        assertEquals(result.sha256, quarantine.getJSONObject(0).getString("sha256"));
+        assertEquals(result.sha256 + ".apk", quarantine.getJSONObject(0).getString("fileName"));
+        assertTrue(quarantine.getJSONObject(0).getLong("sizeBytes") > 0);
+
+        scanner.clearScanHistory();
+        assertEquals(0, scanner.getScanHistory().length());
+        assertEquals("Quarantine remains until explicitly deleted", 1,
+            scanner.getQuarantineMetadata().length());
+        assertTrue(scanner.deleteQuarantinedFile(result.sha256));
+        assertEquals(0, scanner.getQuarantineMetadata().length());
+        assertFalse(scanner.deleteQuarantinedFile("../" + result.sha256));
         fixture.delete();
     }
 

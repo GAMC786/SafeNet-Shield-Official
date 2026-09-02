@@ -5,7 +5,7 @@ import {
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
-import type { ApkScanResult } from "@/hooks/use-vpn";
+import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Shield, Bug, AlertTriangle, Database, Plus, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
@@ -38,6 +38,36 @@ export default function Antivirus() {
     url: "",
     isEnabled: true,
   });
+
+  const formatScanTime = (timestamp?: number) => {
+    if (!timestamp || !Number.isFinite(timestamp)) {
+      return "Unknown time";
+    }
+    return format(new Date(timestamp), "MMM d, yyyy · HH:mm");
+  };
+
+  const formatStorage = (bytes = 0) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleDeleteQuarantine = (item: ApkQuarantineFile) => {
+    if (!window.confirm(`Delete the quarantined copy of ${item.displayName || item.packageName || item.fileName}?`)) {
+      return;
+    }
+    void apkScanner.deleteQuarantinedApk(item.sha256).catch(() => undefined);
+  };
+
+  const handleClearScanHistory = () => {
+    if (!window.confirm("Clear all local APK scan history? Quarantined files will remain until deleted separately.")) {
+      return;
+    }
+    void apkScanner.clearScanHistory().catch(() => undefined);
+  };
+
+  const scanHistory = apkScanner.status?.scanHistory ?? [];
+  const quarantine = apkScanner.status?.quarantine ?? [];
 
   const handleAddFeed = () => {
     if (!newFeed.name || !newFeed.type) return;
@@ -248,6 +278,139 @@ export default function Antivirus() {
               {apkScanner.installedResults.filter((result) => result.verdict === "malicious").length === 1 ? "" : "s"} detected
             </p>
           )}
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-md border border-white/10 bg-background/40 p-4" data-testid="apk-scan-history">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display tracking-wider">Local scan history</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Stored on this device · {scanHistory.length} record
+                  {scanHistory.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearScanHistory}
+                disabled={!apkScanner.supported || apkScanner.isManaging || !scanHistory.length}
+                data-testid="button-clear-apk-history"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Clear
+              </Button>
+            </div>
+            <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+              {!apkScanner.supported ? (
+                <p className="py-4 text-sm text-muted-foreground">History is available in the SafeNet Android APK.</p>
+              ) : !scanHistory.length ? (
+                <p className="py-4 text-sm text-muted-foreground">No APK scans recorded yet.</p>
+              ) : (
+                scanHistory.map((historyItem, index) => {
+                  const styles = getApkResultStyles(historyItem);
+                  return (
+                    <div
+                      key={`${historyItem.scannedAt ?? "scan"}-${historyItem.sha256 ?? index}-${index}`}
+                      className="rounded-md border border-white/10 bg-card/50 p-3"
+                      data-testid={`apk-history-item-${index}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {styles.icon}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="truncate text-sm font-medium">
+                              {historyItem.displayName || historyItem.packageName || "Unknown APK"}
+                            </p>
+                            <Badge variant="outline" className="text-[10px] uppercase">
+                              {historyItem.verdict.replace("_", " ")}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {historyItem.packageName || "Package unavailable"} · {formatScanTime(historyItem.scannedAt)}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Signature version: {historyItem.signatureVersion || "Unavailable"}
+                          </p>
+                          {historyItem.sha256 && (
+                            <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                              SHA-256: {historyItem.sha256}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-white/10 bg-background/40 p-4" data-testid="apk-quarantine">
+            <div>
+              <h3 className="font-display tracking-wider">Private quarantine</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {quarantine.length} file
+                {quarantine.length === 1 ? "" : "s"} ·{" "}
+                {formatStorage(apkScanner.status?.quarantineBytes)}
+              </p>
+            </div>
+            <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-xs text-muted-foreground">
+              Quarantined files stay in SafeNet&apos;s private app storage. They cannot be opened, shared, or installed from this screen.
+            </p>
+            <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+              {!apkScanner.supported ? (
+                <p className="py-4 text-sm text-muted-foreground">Quarantine management is available in the SafeNet Android APK.</p>
+              ) : !quarantine.length ? (
+                <p className="py-4 text-sm text-muted-foreground">No files are currently quarantined.</p>
+              ) : (
+                quarantine.map((item) => {
+                  const styles = getApkResultStyles({ verdict: item.verdict || "malicious" });
+                  return (
+                    <div
+                      key={item.sha256}
+                      className="rounded-md border border-white/10 bg-card/50 p-3"
+                      data-testid={`quarantine-item-${item.sha256}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {styles.icon}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium">
+                              {item.displayName || item.packageName || "Quarantined APK"}
+                            </p>
+                            <Badge variant="outline" className="text-[10px] uppercase text-destructive">
+                              {item.verdict || "malicious"}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {item.packageName || "Package unavailable"} · {formatStorage(item.sizeBytes)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Detected {formatScanTime(item.scannedAt || item.quarantinedAt)} · Signature {item.signatureVersion || "Unavailable"}
+                          </p>
+                          <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                            SHA-256: {item.sha256}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteQuarantine(item)}
+                          disabled={apkScanner.isManaging}
+                          aria-label={`Delete quarantined ${item.displayName || item.packageName || "APK"}`}
+                          data-testid={`button-delete-quarantine-${item.sha256}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </CyberCard>
 

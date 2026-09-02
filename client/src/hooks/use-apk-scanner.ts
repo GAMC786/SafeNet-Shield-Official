@@ -12,6 +12,7 @@ export function useApkScanner() {
   const [lastResult, setLastResult] = useState<ApkScanResult | null>(null);
   const [installedResults, setInstalledResults] = useState<ApkScanResult[] | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isManaging, setIsManaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -85,17 +86,65 @@ export function useApkScanner() {
     }
   }, [refresh, supported]);
 
+  const deleteQuarantinedApk = useCallback(async (sha256: string) => {
+    if (!supported) {
+      throw new Error("Quarantine management is available in the Android APK.");
+    }
+    setIsManaging(true);
+    setError(null);
+    try {
+      const nextStatus = await SafeNetVpn.deleteQuarantinedApk({ sha256 });
+      setStatus(nextStatus);
+      setLastResult(nextStatus.lastScan ?? null);
+      return nextStatus;
+    } catch (managementError) {
+      const message = managementError instanceof Error
+        ? managementError.message
+        : "The quarantined APK could not be deleted.";
+      setError(message);
+      throw managementError;
+    } finally {
+      setIsManaging(false);
+    }
+  }, [supported]);
+
+  const clearScanHistory = useCallback(async () => {
+    if (!supported) {
+      throw new Error("APK scan history is available in the Android APK.");
+    }
+    setIsManaging(true);
+    setError(null);
+    try {
+      const nextStatus = await SafeNetVpn.clearApkScanHistory();
+      setStatus(nextStatus);
+      setLastResult(nextStatus.lastScan ?? null);
+      return nextStatus;
+    } catch (managementError) {
+      const message = managementError instanceof Error
+        ? managementError.message
+        : "The APK scan history could not be cleared.";
+      setError(message);
+      throw managementError;
+    } finally {
+      setIsManaging(false);
+    }
+  }, [supported]);
+
   return {
     supported,
+    status,
     scannerAvailable: status?.scannerAvailable ?? false,
     signatureVersion: status?.signatureVersion ?? null,
     scannerMessage: status?.scannerMessage ?? null,
     lastResult,
     installedResults,
     isScanning,
+    isManaging,
     error,
     refresh,
     scanApk,
     scanInstalledApks,
+    deleteQuarantinedApk,
+    clearScanHistory,
   };
 }

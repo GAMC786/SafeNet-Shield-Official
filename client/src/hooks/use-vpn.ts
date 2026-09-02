@@ -20,12 +20,32 @@ export interface ApkScanResult {
   scannedAt?: number;
 }
 
+export interface ApkQuarantineFile {
+  sha256: string;
+  fileName: string;
+  sizeBytes: number;
+  quarantinedAt?: number;
+  verdict?: ApkScanVerdict;
+  displayName?: string | null;
+  packageName?: string | null;
+  versionName?: string | null;
+  signatureVersion?: string | null;
+  threatType?: string | null;
+  severity?: string | null;
+  threatName?: string | null;
+  details?: string | null;
+  scannedAt?: number;
+}
+
 export interface ApkScanStatus {
   supported: boolean;
   scannerAvailable: boolean;
   signatureVersion?: string | null;
   scannerMessage?: string | null;
   lastScan?: ApkScanResult | null;
+  scanHistory?: ApkScanResult[];
+  quarantine?: ApkQuarantineFile[];
+  quarantineBytes?: number;
 }
 
 export interface VpnStatus {
@@ -42,6 +62,8 @@ interface SafeNetVpnPlugin {
   getApkScanStatus(): Promise<ApkScanStatus>;
   scanApk(): Promise<ApkScanResult>;
   scanInstalledApks(): Promise<ApkScanResult[]>;
+  deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;
+  clearApkScanHistory(): Promise<ApkScanStatus>;
   acceptEula(options: { version: string }): Promise<VpnStatus>;
   start(options: {
     type: string;
