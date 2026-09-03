@@ -110,7 +110,10 @@ async function updateIpLink(hostname: string, ip: string, customUrl?: string | n
 
 // Check and update all enabled DDNS updaters
 // If clientIp is provided, use it instead of fetching server's IP
-export async function checkAndUpdateDdns(clientIp?: string): Promise<void> {
+export async function checkAndUpdateDdns(
+  clientIp?: string,
+  options: { onlyIfIpChanged?: boolean } = {},
+): Promise<void> {
   const updaters = await storage.getDdnsUpdaters();
   const currentIp = clientIp || await getCurrentPublicIp();
 
@@ -122,8 +125,10 @@ export async function checkAndUpdateDdns(clientIp?: string): Promise<void> {
     const now = Date.now();
     const timeSinceLastUpdate = (now - lastUpdate) / 1000; // in seconds
 
-    if (timeSinceLastUpdate < (updater.updateInterval ?? 3600) && updater.lastIpAddress === currentIp) {
-      continue; // No need to update
+    if (updater.lastIpAddress === currentIp) {
+      if (options.onlyIfIpChanged || timeSinceLastUpdate < (updater.updateInterval ?? 3600)) {
+        continue; // No need to update
+      }
     }
 
     // Perform update

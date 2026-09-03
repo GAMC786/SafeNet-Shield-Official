@@ -662,7 +662,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # Manual and scheduled checks retain the hosted preflight. Tagged
-          # releases use the dedicated writable-system runner below.
+          # releases use the hosted emulator smoke lane below.
           api-level: 34
           target: google_apis
           arch: x86_64
@@ -1397,23 +1397,19 @@ jobs:
   android-release-smoke:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
-    # This label is intentionally exclusive to a runner with KVM, adb root,
-    # writable system overlays, and a disposable Android system image. A
-    # hosted runner must not silently replace it for a signed release.
-    runs-on: [self-hosted, linux, x64, android-writable-system]
+    # Hosted fallback for public repositories: this validates APK installation,
+    # instrumentation, and public-network DNS behavior, but cannot validate
+    # writable-system trust changes or adb-root-only behavior.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      ANDROID_SMOKE_RESOLVER_MODE: fixture
-      ANDROID_SMOKE_COVERAGE: controlled-fixture
-      ANDROID_AVD_NAME: safenet-writable
+      ANDROID_SMOKE_RESOLVER_MODE: public
+      ANDROID_SMOKE_COVERAGE: hosted-emulator
+      ANDROID_AVD_NAME: safenet-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Verify writable Android runner
-        shell: bash
-        run: ./scripts/provision-android-runner.sh --check
 
       - name: Download signed release APK
         uses: actions/download-artifact@v4
@@ -1437,35 +1433,31 @@ jobs:
           test -s "$test_apk" || { echo "::error::Release instrumentation APK is missing: $test_apk"; exit 1; }
           echo "Verified release APK inputs."
 
-      - name: Run controlled-fixture smoke test on writable emulator
+      - name: Run hosted-emulator smoke test (reduced validation)
         id: android-release-dns-smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # AOSP ATD is a userdebug test image intended for instrumentation.
-          # Unlike the hosted Google APIs image, the dedicated runner is
-          # qualified for adb root and writable-system CA installation.
-          api-level: 35
-          target: aosp_atd
+          # Hosted Google APIs images do not provide the writable-system and
+          # adb-root guarantees required by the dedicated runner lane.
+          api-level: 34
+          target: google_apis
           arch: x86_64
           profile: pixel_2
           avd-name: ${{ env.ANDROID_AVD_NAME }}
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -euo pipefail
-            ./scripts/android-smoke-test.sh \
-              --preflight \
-              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
             ./scripts/android-smoke-test.sh \
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
               --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
               --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
         env:
-          ANDROID_EMULATOR_API_LEVEL: 35
-          ANDROID_EMULATOR_TARGET: aosp_atd
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
           ANDROID_EMULATOR_ARCH: x86_64
-          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Upload release Android smoke evidence
         id: upload-release-android-smoke-evidence
@@ -1507,6 +1499,7 @@ jobs:
           {
             echo "## Android release smoke"
             echo
+            echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
@@ -1514,10 +1507,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-windows:
-    # Tagged releases in this lane publish the Android APK only. Keep the
-    # Windows packaging lane for non-tag builds without making it a release
-    # prerequisite.
-    if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
+    # Scheduled runs focus on Android network validation. Pushes, pull
+    # requests, manual runs, and tagged releases build the Windows installer.
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -1533,10 +1525,12 @@ jobs:
         run: npm ci
 
       - name: Validate Windows Android SDK setup
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: ./scripts/test-setup-android-sdk.ps1
 
       - name: Setup Java
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -1544,9 +1538,11 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Android SDK
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: android-actions/setup-android@v3
 
       - name: Install and verify Android toolchain from Gradle pins
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: ./scripts/setup-android-sdk.ps1
 
@@ -1588,6 +1584,7 @@ jobs:
           npm run build
 
       - name: Sync Android web assets for Windows
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: bash
         env:
           MOBILE_API_URL: https://safe-net-shield-official.replit.app
@@ -1595,6 +1592,7 @@ jobs:
 
       - name: Build debug APK on Windows
         id: build-windows-android
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         working-directory: android
         shell: pwsh
         run: .\gradlew.bat assembleDebug
@@ -1611,6 +1609,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Verify Windows debug APK
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: |
           $apkPath = Join-Path $env:GITHUB_WORKSPACE "android\app\build\outputs\apk\debug\app-debug.apk"
@@ -1663,7 +1662,7 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, android-release-smoke]
+    needs: [build-android, android-release-smoke, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -1674,6 +1673,26 @@ jobs:
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Windows
+          path: artifacts/windows
+
+      - name: Verify source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init --quiet
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git fetch --quiet --depth=1 origin "${{ github.sha }}"
+          checked_out_sha=$(git rev-parse FETCH_HEAD)
+          if [[ "$checked_out_sha" != "${GITHUB_SHA}" ]]; then
+            echo "::error::Release source commit mismatch: expected ${GITHUB_SHA}, got ${checked_out_sha}"
+            exit 1
+          fi
+          echo "Verified release source commit: ${checked_out_sha}"
 
       - name: Verify Android release APK
         shell: bash
@@ -1689,11 +1708,31 @@ jobs:
 
           echo "Verified $apk_count signed Android APK installer(s)."
 
+      - name: Verify Windows MSI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t msi_files < <(find artifacts/windows -maxdepth 1 -type f -name '*.msi' -print)
+          if [[ "${#msi_files[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one Windows MSI installer, found ${#msi_files[@]}."
+            printf '%s\n' "${msi_files[@]}"
+            exit 1
+          fi
+
+          if [[ ! -s "${msi_files[0]}" ]]; then
+            echo "::error::Windows MSI installer is empty: ${msi_files[0]}"
+            exit 1
+          fi
+
+          echo "Verified Windows MSI installer: ${msi_files[0]}"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/android/*.apk
+            artifacts/windows/*.msi
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

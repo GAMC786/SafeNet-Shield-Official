@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useUpdateDdnsWithIp } from "@/hooks/use-ddns";
+import type { PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Trash2, RefreshCw, Check, Clock, Wifi } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, RefreshCw, Clock, Wifi } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,48 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
+const ispBrands = [
+  { match: /rogers/i, name: "Rogers", mark: "R", color: "bg-red-500/20 text-red-300 border-red-400/40" },
+  { match: /telus/i, name: "TELUS", mark: "T", color: "bg-purple-500/20 text-purple-300 border-purple-400/40" },
+  { match: /bell/i, name: "Bell", mark: "B", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
+  { match: /videotron/i, name: "Videotron", mark: "V", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
+  { match: /cogeco/i, name: "Cogeco", mark: "C", color: "bg-cyan-500/20 text-cyan-300 border-cyan-400/40" },
+  { match: /shaw/i, name: "Shaw", mark: "S", color: "bg-green-500/20 text-green-300 border-green-400/40" },
+  { match: /sasktel/i, name: "SaskTel", mark: "S", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
+  { match: /freedom/i, name: "Freedom", mark: "F", color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/40" },
+  { match: /starlink/i, name: "Starlink", mark: "✦", color: "bg-white/10 text-white border-white/30" },
+  { match: /google/i, name: "Google", mark: "G", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
+  { match: /cloudflare/i, name: "Cloudflare", mark: "C", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
+  { match: /microsoft/i, name: "Microsoft", mark: "M", color: "bg-cyan-500/20 text-cyan-300 border-cyan-400/40" },
+  { match: /comcast|xfinity/i, name: "Xfinity", mark: "X", color: "bg-purple-500/20 text-purple-300 border-purple-400/40" },
+  { match: /at&t|att\b/i, name: "AT&T", mark: "&", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
+  { match: /verizon/i, name: "Verizon", mark: "V", color: "bg-red-500/20 text-red-300 border-red-400/40" },
+  { match: /t-mobile|tmobile/i, name: "T-Mobile", mark: "T", color: "bg-pink-500/20 text-pink-300 border-pink-400/40" },
+  { match: /google fiber/i, name: "Google Fiber", mark: "G", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
+  { match: /teksavvy/i, name: "TekSavvy", mark: "T", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
+] as const;
+
+function IspBadge({ isp }: { isp?: string }) {
+  if (!isp) return null;
+  const brand = ispBrands.find((candidate) => candidate.match.test(isp));
+  const name = brand?.name || isp;
+  const mark = brand?.mark || "ISP";
+  const color = brand?.color || "bg-primary/15 text-primary border-primary/30";
+
+  return (
+    <div
+      className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold", color)}
+      title={`Detected internet provider: ${isp}`}
+      data-testid="detected-isp"
+    >
+      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-black/20 px-1 font-display text-[10px]">
+        {mark}
+      </span>
+      <span>{name}</span>
+    </div>
+  );
+}
+
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
   const { data: publicIpData } = usePublicIp();
@@ -20,8 +63,16 @@ export default function DdnsUpdater() {
   const updateUpdater = useUpdateDdnsUpdater();
   const updateWithIp = useUpdateDdnsWithIp();
   const [isOpen, setIsOpen] = useState(false);
+  const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    hostname: string;
+    provider: PublicDdnsUpdater["provider"];
+    apiKey: string;
+    customUrl: string;
+    updateInterval: number;
+    isEnabled: boolean;
+  }>({
     hostname: "",
     provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
     apiKey: "",
@@ -30,10 +81,7 @@ export default function DdnsUpdater() {
     isEnabled: true,
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await createUpdater.mutateAsync(formData);
-    setIsOpen(false);
+  const resetForm = () => {
     setFormData({
       hostname: "",
       provider: "duckdns",
@@ -42,6 +90,44 @@ export default function DdnsUpdater() {
       updateInterval: 3600,
       isEnabled: true,
     });
+    setEditingUpdater(null);
+  };
+
+  const openCreateDialog = () => {
+    resetForm();
+    setIsOpen(true);
+  };
+
+  const openEditDialog = (updater: PublicDdnsUpdater) => {
+    setEditingUpdater(updater);
+    setFormData({
+      hostname: updater.hostname,
+      provider: updater.provider,
+      apiKey: "",
+      customUrl: "",
+      updateInterval: updater.updateInterval || 3600,
+      isEnabled: updater.isEnabled !== false,
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingUpdater) {
+      const { apiKey, customUrl, ...updaterData } = formData;
+      await updateUpdater.mutateAsync({
+        id: editingUpdater.id,
+        data: {
+          ...updaterData,
+          ...(apiKey.trim() ? { apiKey } : {}),
+          ...(customUrl.trim() ? { customUrl } : {}),
+        },
+      });
+    } else {
+      await createUpdater.mutateAsync(formData);
+    }
+    setIsOpen(false);
+    resetForm();
   };
 
   return (
@@ -62,6 +148,21 @@ export default function DdnsUpdater() {
               <p className="text-2xl font-mono font-bold text-white" data-testid="text-public-ip">
                 {publicIpData?.ip || "Loading..."}
               </p>
+              {publicIpData?.isp && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <IspBadge isp={publicIpData.isp} />
+                  {publicIpData.organization && publicIpData.organization !== publicIpData.isp && (
+                    <span className="text-xs text-muted-foreground">
+                      {publicIpData.organization}
+                    </span>
+                  )}
+                  {publicIpData.asn && (
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      {publicIpData.asn}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <Badge variant="outline" className="text-xs">
@@ -79,15 +180,20 @@ export default function DdnsUpdater() {
         >
           <RefreshCw className="w-4 h-4" /> {updateWithIp.isPending ? "Updating..." : "Update Now"}
         </Button>
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
+            <Button onClick={openCreateDialog} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
               <Plus className="w-4 h-4 mr-2" /> Add DDNS
             </Button>
           </DialogTrigger>
           <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle className="font-display tracking-wider">New DDNS Updater</DialogTitle>
+              <DialogTitle className="font-display tracking-wider">
+                {editingUpdater ? "Edit DDNS Updater" : "New DDNS Updater"}
+              </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div className="space-y-2">
@@ -114,6 +220,7 @@ export default function DdnsUpdater() {
                     <SelectItem value="duckdns">DuckDNS</SelectItem>
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
+                     <SelectItem value="cloudflare">Cloudflare</SelectItem>
                     <SelectItem value="dnsomatic">DNS-O-MATIC</SelectItem>
                     <SelectItem value="iplink">IP Link (Custom URL)</SelectItem>
                   </SelectContent>
@@ -126,9 +233,13 @@ export default function DdnsUpdater() {
                   <Input
                     value={formData.customUrl}
                     onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
-                    placeholder="https://example.com/update?ip={ip}&host={hostname}"
+                     placeholder={
+                       editingUpdater
+                         ? "Leave blank to keep the current URL"
+                         : "https://example.com/update?ip={ip}&host={hostname}"
+                     }
                     className="bg-background border-border font-mono text-xs"
-                    required
+                     required={!editingUpdater}
                   />
                   <p className="text-xs text-muted-foreground">
                     Use {"{ip}"} and {"{hostname}"} as placeholders
@@ -137,14 +248,20 @@ export default function DdnsUpdater() {
               )}
 
               <div className="space-y-2">
-                <Label>{formData.provider === "iplink" ? "Auth Token (optional)" : "API Key / Token"}</Label>
+                   <Label>{formData.provider === "iplink" ? "Auth Token (optional)" : "API Key / Token"}</Label>
                 <Input
                   value={formData.apiKey}
                   onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                  placeholder={formData.provider === "iplink" ? "Optional auth token" : "Your API key"}
+                     placeholder={
+                       editingUpdater
+                         ? "Leave blank to keep the current key"
+                         : formData.provider === "iplink"
+                           ? "Optional auth token"
+                           : "Your API key"
+                     }
                   type="password"
                   className="bg-background border-border font-mono"
-                  required={formData.provider !== "iplink"}
+                     required={!editingUpdater && formData.provider !== "iplink"}
                 />
               </div>
 
@@ -159,8 +276,16 @@ export default function DdnsUpdater() {
                 />
               </div>
 
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={createUpdater.isPending}>
-                {createUpdater.isPending ? "Creating..." : "Create"}
+               <Button
+                 type="submit"
+                 className="w-full bg-primary hover:bg-primary/90"
+                 disabled={createUpdater.isPending || updateUpdater.isPending}
+               >
+                 {createUpdater.isPending || updateUpdater.isPending
+                   ? "Saving..."
+                   : editingUpdater
+                     ? "Save Changes"
+                     : "Create"}
               </Button>
             </form>
           </DialogContent>
@@ -222,9 +347,20 @@ export default function DdnsUpdater() {
                   {updater.isEnabled ? "Disable" : "Enable"}
                 </Button>
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditDialog(updater)}
+                  aria-label={`Edit ${updater.hostname}`}
+                  className="min-h-10 border-primary/30 text-primary hover:border-primary hover:bg-primary/10"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span className="sr-only">Edit</span>
+                </Button>
+                <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => deleteUpdater.mutate(updater.id)}
+                  aria-label={`Delete ${updater.hostname}`}
                   className="flex-1"
                 >
                   <Trash2 className="w-4 h-4" />

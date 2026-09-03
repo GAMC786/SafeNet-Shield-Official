@@ -134,9 +134,37 @@ interface SafeNetVpnPlugin {
 }
 
 export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
+const VPN_STATUS_POLL_MS = 500;
 
 export function useSafeNetVpn() {
   const supported = Capacitor.getPlatform() === "android";
+
+  // The native plugin is intentionally Android-only. Do not mount React state,
+  // effects, or plugin listeners in a browser where there is no VpnService.
+  // Keeping this path synchronous also makes the web Settings controls safely
+  // inert instead of trying to initialize a native bridge.
+  if (!supported) {
+    return {
+      supported: false,
+      status: null,
+      isBusy: false,
+      refresh: async () => null,
+      acceptEula: async () => {
+        throw new Error("DNS protection is available in the Android APK.");
+      },
+      start: async (_options: {
+        type: string;
+        primaryAddress: string;
+        secondaryAddress?: string | null;
+      }) => {
+        throw new Error("DNS protection is available in the Android APK.");
+      },
+      stop: async () => {
+        throw new Error("DNS protection is available in the Android APK.");
+      },
+    };
+  }
+
   const [status, setStatus] = useState<VpnStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -167,7 +195,7 @@ export function useSafeNetVpn() {
       return;
     }
     void refresh().catch(() => undefined);
-    const interval = window.setInterval(() => void refresh().catch(() => undefined), 2000);
+    const interval = window.setInterval(() => void refresh().catch(() => undefined), VPN_STATUS_POLL_MS);
     return () => window.clearInterval(interval);
   }, [refresh, supported]);
 

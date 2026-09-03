@@ -1,27 +1,123 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
-import { useSettings } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
+import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { useRapidDdnsSync } from "@/hooks/use-ddns";
+import { EulaDialog } from "@/components/EulaDialog";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Activity, Shield, AlertTriangle, Play, Wifi, Server } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Play, Wifi, Server, Loader2, ShieldCheck } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from "framer-motion";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: stats } = useStats();
   const { data: logs } = useLogs();
-  const { data: settings } = useSettings();
   const { data: dnsServers } = useDnsServers();
-  
+  const vpn = useSafeNetVpn();
+  const { toast } = useToast();
+  const [eulaOpen, setEulaOpen] = useState(false);
+  const [startAfterEula, setStartAfterEula] = useState(false);
+
   const activeDns = dnsServers?.find(s => s.isActive);
 
   const handleSimulateTraffic = async () => {
-    await apiRequest("POST", "/api/simulate-traffic");
-    await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/logs"] });
+    try {
+      await apiRequest("POST", "/api/simulate-traffic");
+      await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/logs"] });
+      toast({
+        title: "Traffic simulation complete",
+        description: "Sample DNS events were added to the dashboard chart.",
+      });
+    } catch (error) {
+      toast({
+        title: "Traffic simulation failed",
+        description: error instanceof Error ? error.message : "Unable to create sample events.",
+        variant: "destructive",
+      });
+    }
   };
+
+  const startVpn = async () => {
+    if (!activeDns) {
+      toast({
+        title: "Select a DNS server first",
+        description: "Choose an active resolver in DNS Configuration before enabling protection.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const nextStatus = await vpn.start({
+        type: activeDns.type,
+        primaryAddress: activeDns.primaryAddress,
+        secondaryAddress: activeDns.secondaryAddress,
+      });
+      if (nextStatus.error) {
+        throw new Error(nextStatus.error);
+      }
+      toast({
+        title: "DNS protection enabled",
+        description: `${activeDns.name} is now handling DNS requests.`,
+      });
+    } catch (error) {
+      toast({
+        title: "DNS protection not enabled",
+        description: error instanceof Error ? error.message : "Android could not start the VPN service.",
+        variant: "destructive",
+      });
+      await vpn.refresh().catch(() => undefined);
+    }
+  };
+
+  const handleProtectionToggle = async (checked: boolean) => {
+    if (!checked) {
+      try {
+        await vpn.stop();
+        toast({ title: "DNS protection disabled" });
+      } catch (error) {
+        toast({
+          title: "Could not stop DNS protection",
+          description: error instanceof Error ? error.message : "Android could not stop the VPN service.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    if (!vpn.status?.eulaAccepted) {
+      setStartAfterEula(true);
+      setEulaOpen(true);
+      return;
+    }
+    await startVpn();
+  };
+
+  const handleEulaAccept = async () => {
+    try {
+      await vpn.acceptEula();
+      setEulaOpen(false);
+      if (startAfterEula) {
+        setStartAfterEula(false);
+        await startVpn();
+      }
+    } catch (error) {
+      toast({
+        title: "Agreement could not be saved",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const protectionRunning = vpn.supported && vpn.status?.running === true;
+  const ddnsSync = useRapidDdnsSync(protectionRunning);
 
   const chartData = logs?.slice(0, 20).map(log => ({
     name: new Date(log.timestamp || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -111,21 +207,59 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex flex-col justify-center items-center text-center space-y-4">
+        <CyberCard className="flex flex-col justify-center items-center text-center space-y-3">
           <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10 relative">
-            <div className="absolute inset-0 rounded-full border-t-2 border-primary animate-spin" />
-            <Wifi className="w-8 h-8 text-primary" />
+            <div className={`absolute inset-0 rounded-full border-t-2 ${protectionRunning ? "border-primary animate-spin" : "border-muted-foreground/50"}`} />
+            {vpn.isBusy ? (
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            ) : protectionRunning ? (
+              <Wifi className="w-8 h-8 text-primary" />
+            ) : (
+              <ShieldCheck className="w-8 h-8 text-muted-foreground" />
+            )}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">System Active</h3>
-            <p className="text-sm text-muted-foreground">Protection is running</p>
+            <h3 className="text-lg font-bold text-white">
+              {protectionRunning ? "System Active" : "System Standby"}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {vpn.supported
+                ? protectionRunning
+                  ? "Protection is running"
+                  : "Protection is off"
+                : "Android APK control"}
+            </p>
           </div>
-          <button 
+          <div className="w-full flex items-center justify-between rounded border border-white/10 bg-white/5 px-3 py-2">
+            <div className="text-left">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">DNS Protection</p>
+              <p className="text-[11px] text-muted-foreground">
+                {vpn.supported
+                  ? protectionRunning
+                    ? ddnsSync.error
+                      ? "VPN on • DDNS monitor retrying"
+                      : "VPN on • DDNS checks every 500 ms"
+                    : "Device VPN"
+                  : "Available in Android APK"}
+              </p>
+            </div>
+            <Switch
+              checked={protectionRunning}
+              onCheckedChange={(checked) => void handleProtectionToggle(checked)}
+              disabled={!vpn.supported || vpn.isBusy || !activeDns}
+              aria-label={vpn.supported ? "Enable DNS Protection VPN" : "DNS Protection VPN is Android-only"}
+            />
+          </div>
+          <button
             onClick={handleSimulateTraffic}
-            className="w-full py-2 px-4 bg-primary/20 hover:bg-primary/30 border border-primary/50 text-primary rounded text-sm font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2 px-4 bg-primary/10 hover:bg-primary/20 border border-primary/40 text-primary rounded text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+            aria-describedby="traffic-simulation-help"
           >
             <Play className="w-4 h-4" /> Simulate Traffic
           </button>
+          <p id="traffic-simulation-help" className="text-[11px] leading-relaxed text-muted-foreground">
+            Adds sample DNS events to test the chart; it does not generate real internet traffic.
+          </p>
         </CyberCard>
       </div>
 
@@ -197,6 +331,19 @@ export default function Dashboard() {
           )}
         </div>
       </CyberCard>
+      {vpn.supported && (
+        <EulaDialog
+          open={eulaOpen}
+          onOpenChange={(open) => {
+            setEulaOpen(open);
+            if (!open) {
+              setStartAfterEula(false);
+            }
+          }}
+          onAccept={handleEulaAccept}
+          isAccepting={vpn.isBusy}
+        />
+      )}
     </div>
   );
 }

@@ -279,21 +279,27 @@ test("temporary-CA cleanup preflight failure preserves emulator metadata and log
   );
 });
 
-test("tagged releases require the dedicated writable Android runner", () => {
+test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(
     workflow,
     /android-release-smoke:\n\s+needs: build-android\n\s+if: startsWith\(github\.ref, 'refs\/tags\/v'\)/,
   );
-  assert.match(
-    workflow,
-    /runs-on: \[self-hosted, linux, x64, android-writable-system\]/,
+  assert.match(workflow, /android-release-smoke:[\s\S]*?\n\s+runs-on: ubuntu-latest/);
+  assert.match(workflow, /ANDROID_SMOKE_RESOLVER_MODE: public/);
+  assert.match(workflow, /ANDROID_SMOKE_COVERAGE: hosted-emulator/);
+  assert.match(workflow, /target: google_apis/);
+  const releaseSmokeStep = getStepBlock(
+    "Run hosted-emulator smoke test (reduced validation)",
   );
-  assert.match(workflow, /target: aosp_atd/);
-  const releaseSmokeStep = getStepBlock("Run controlled-fixture smoke test on writable emulator");
-  assert.match(releaseSmokeStep, /ANDROID_EMULATOR_TARGET: aosp_atd/);
+  assert.match(releaseSmokeStep, /api-level: 34/);
+  assert.doesNotMatch(releaseSmokeStep, /--preflight/);
+  assert.doesNotMatch(
+    releaseSmokeStep,
+    /emulator-options:[^\n]*writable-system/,
+  );
   assert.match(
     releaseSmokeStep,
-    /ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64/,
+    /ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64/,
   );
   assert.match(
     workflow,
@@ -303,21 +309,21 @@ test("tagged releases require the dedicated writable Android runner", () => {
     workflow,
     /--test-apk "\$GITHUB_WORKSPACE\/artifacts\/android-test\/app-release-androidTest\.apk"/,
   );
-  assert.match(workflow, /needs: \[build-android, android-release-smoke\]/);
+  assert.match(workflow, /needs: \[build-android, android-release-smoke, build-windows\]/);
   assert.match(
     workflow,
-    /build-windows:\n\s+# Tagged releases.*\n\s+# Windows packaging lane.*\n\s+if: github\.event_name != 'schedule' && !startsWith\(github\.ref, 'refs\/tags\/v'\)/s,
+    /build-windows:\n\s+# Scheduled runs focus on Android network validation\.[\s\S]*?if: github\.event_name != 'schedule'/,
   );
-  assert.doesNotMatch(workflow, /name: Download Windows artifact/);
-  assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
+  assert.match(workflow, /name: Download Windows artifact/);
+  assert.match(workflow, /artifacts\/windows\/\*\.msi/);
   assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
 });
 
-test("emulator-runner wrapper failure still reaches release evidence upload", () => {
+test("hosted emulator wrapper failure still reaches release evidence upload", () => {
   const smokeStep = getStepBlock(
-    "Run controlled-fixture smoke test on writable emulator",
+    "Run hosted-emulator smoke test (reduced validation)",
   );
   const uploadStep = getStepBlock("Upload release Android smoke evidence");
 
@@ -326,11 +332,8 @@ test("emulator-runner wrapper failure still reaches release evidence upload", ()
   // adb failures above, which exercise the preflight script itself.
   assert.match(smokeStep, /uses: reactivecircus\/android-emulator-runner@v2/);
   assert.match(smokeStep, /script: \|/);
-  assert.match(smokeStep, /--preflight/);
-  assert.match(
-    smokeStep,
-    /--output "\$GITHUB_WORKSPACE\/android\/app\/build\/reports\/android-smoke\/latest\/preflight"/,
-  );
+  assert.doesNotMatch(smokeStep, /--preflight/);
+  assert.match(smokeStep, /--apk "\$GITHUB_WORKSPACE\/artifacts\/android\/app-release\.apk"/);
 
   // always() is required because an action-level wrapper failure prevents
   // the smoke script from producing a normal exit status.

@@ -47,11 +47,16 @@ export function useCreateFirewallRule() {
 export function useUpdateFirewallRule() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertFirewallRule> }) => {
-      return apiFetch(`/api/firewall/rules/${id}`, {
+      const response = await apiFetch(`/api/firewall/rules/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message || "Failed to update firewall rule");
+      }
+      return response.json() as Promise<FirewallRule>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/firewall/rules"] });

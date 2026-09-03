@@ -7,9 +7,10 @@ import {
 import { useApkScanner } from "@/hooks/use-apk-scanner";
 import { AiShieldControls } from "@/components/AiShieldControls";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
+import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Bug, AlertTriangle, Database, Plus, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Shield, Bug, AlertTriangle, Database, Plus, Pencil, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ export default function Antivirus() {
   const apkScanner = useApkScanner();
 
   const [isFeedDialogOpen, setIsFeedDialogOpen] = useState(false);
+  const [editingFeed, setEditingFeed] = useState<ThreatFeed | null>(null);
   const [newFeed, setNewFeed] = useState({
     name: "",
     type: "malware" as "malware" | "phishing" | "ransomware" | "botnet" | "spam",
@@ -78,12 +80,40 @@ export default function Antivirus() {
   const scanHistory = apkScanner.status?.scanHistory ?? [];
   const quarantine = apkScanner.status?.quarantine ?? [];
 
-  const handleAddFeed = () => {
+  const resetFeedForm = () => {
+    setNewFeed({ name: "", type: "malware", url: "", isEnabled: true });
+    setEditingFeed(null);
+  };
+
+  const openCreateFeedDialog = () => {
+    resetFeedForm();
+    setIsFeedDialogOpen(true);
+  };
+
+  const openEditFeedDialog = (feed: ThreatFeed) => {
+    setEditingFeed(feed);
+    setNewFeed({
+      name: feed.name,
+      type: feed.type,
+      url: feed.url || "",
+      isEnabled: feed.isEnabled !== false,
+    });
+    setIsFeedDialogOpen(true);
+  };
+
+  const handleSaveFeed = () => {
     if (!newFeed.name || !newFeed.type) return;
+    const onSuccess = () => {
+      setIsFeedDialogOpen(false);
+      resetFeedForm();
+    };
+    if (editingFeed) {
+      updateFeed.mutate({ id: editingFeed.id, data: newFeed }, { onSuccess });
+      return;
+    }
     createFeed.mutate(newFeed, {
       onSuccess: () => {
-        setIsFeedDialogOpen(false);
-        setNewFeed({ name: "", type: "malware", url: "", isEnabled: true });
+        onSuccess();
       }
     });
   };
@@ -538,15 +568,20 @@ export default function Antivirus() {
 
             <TabsContent value="feeds" className="mt-0 space-y-4">
               <div className="flex justify-end">
-                <Dialog open={isFeedDialogOpen} onOpenChange={setIsFeedDialogOpen}>
+                <Dialog open={isFeedDialogOpen} onOpenChange={(open) => {
+                  setIsFeedDialogOpen(open);
+                  if (!open) resetFeedForm();
+                }}>
                   <DialogTrigger asChild>
-                    <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-feed">
+                    <Button onClick={openCreateFeedDialog} className="bg-primary hover:bg-primary/90" data-testid="button-add-feed">
                       <Plus className="w-4 h-4 mr-2" /> Add Feed
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="bg-card border-border">
                     <DialogHeader>
-                      <DialogTitle className="font-display tracking-wider">Add Threat Feed</DialogTitle>
+                      <DialogTitle className="font-display tracking-wider">
+                        {editingFeed ? "Edit Threat Feed" : "Add Threat Feed"}
+                      </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 mt-4">
                       <div className="space-y-2">
@@ -583,8 +618,17 @@ export default function Antivirus() {
                           data-testid="input-feed-url"
                         />
                       </div>
-                      <Button onClick={handleAddFeed} className="w-full" data-testid="button-confirm-add-feed">
-                        Add Feed
+                      <Button
+                        onClick={handleSaveFeed}
+                        className="w-full"
+                        disabled={createFeed.isPending || updateFeed.isPending}
+                        data-testid="button-confirm-add-feed"
+                      >
+                        {createFeed.isPending || updateFeed.isPending
+                          ? "Saving..."
+                          : editingFeed
+                            ? "Save Changes"
+                            : "Add Feed"}
                       </Button>
                     </div>
                   </DialogContent>
@@ -613,7 +657,17 @@ export default function Antivirus() {
                         <Button
                           size="icon"
                           variant="ghost"
+                          onClick={() => openEditFeedDialog(feed)}
+                          aria-label={`Edit ${feed.name}`}
+                          data-testid={`button-edit-feed-${feed.id}`}
+                        >
+                          <Pencil className="w-4 h-4 text-primary" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           onClick={() => deleteFeed.mutate(feed.id)}
+                          aria-label={`Delete ${feed.name}`}
                           data-testid={`button-delete-feed-${feed.id}`}
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />

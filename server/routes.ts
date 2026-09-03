@@ -1,5 +1,9 @@
 import type { Express } from "express";
 import express from "express";
+import { randomBytes } from "node:crypto";
+import { isIP } from "node:net";
+
+let cachedServerPublicIp: { ip: string; checkedAt: number } | null = null;
 import type { Server } from "http";
 import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
@@ -163,6 +167,19 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.blocklists.update.path, async (req, res) => {
+    try {
+      const input = api.blocklists.update.input.parse(req.body);
+      const list = await storage.updateBlocklist(Number(req.params.id), input);
+      res.json(list);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(404).json({ message: "Blocklist entry not found" });
+    }
+  });
+
   app.delete(api.blocklists.delete.path, async (req, res) => {
     await storage.deleteBlocklist(Number(req.params.id));
     res.status(204).send();
@@ -280,6 +297,23 @@ export async function registerRoutes(
       res.json(updaters.map(publicDdnsUpdater));
     } catch (err) {
       res.status(500).json({ message: "Failed to update DDNS" });
+    }
+  });
+
+  // Lightweight switch-driven sync. The client may poll this route frequently,
+  // but configured DDNS providers are contacted only when the IP changes.
+  app.post("/api/ddns/sync", async (req, res) => {
+    try {
+      const { clientIp } = req.body;
+      if (!clientIp || typeof clientIp !== "string") {
+        return res.status(400).json({ message: "Client IP is required" });
+      }
+      const { checkAndUpdateDdns } = await import("./ddns-service");
+      await checkAndUpdateDdns(clientIp, { onlyIfIpChanged: true });
+      const updaters = await storage.getDdnsUpdaters();
+      res.json(updaters.map(publicDdnsUpdater));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to synchronize DDNS" });
     }
   });
 
@@ -454,23 +488,79 @@ export async function registerRoutes(
   app.get("/api/public-ip", async (req, res) => {
     try {
       const { getCurrentPublicIp } = await import("./ddns-service");
-      const ip = await getCurrentPublicIp();
-      res.json({ ip });
+      const forwardedIp = (req.ip || "").replace(/^::ffff:/, "");
+      const isPrivateIp = (candidate: string) => {
+        if (!candidate || !isIP(candidate)) return true;
+        return candidate === "127.0.0.1"
+          || candidate === "::1"
+          || candidate.startsWith("10.")
+          || candidate.startsWith("192.168.")
+          || /^172\.(1[6-9]|2\d|3[0-1])\./.test(candidate)
+          || candidate.toLowerCase().startsWith("fc")
+          || candidate.toLowerCase().startsWith("fd");
+      };
+      // Behind a trusted proxy this is the user's address. Local development
+      // falls back to the app's public egress address.
+      let fallbackIp: string;
+      if (cachedServerPublicIp && Date.now() - cachedServerPublicIp.checkedAt < 5000) {
+        fallbackIp = cachedServerPublicIp.ip;
+      } else {
+        fallbackIp = await getCurrentPublicIp();
+        cachedServerPublicIp = { ip: fallbackIp, checkedAt: Date.now() };
+      }
+      const ip = !isPrivateIp(forwardedIp) ? forwardedIp : fallbackIp;
+      let isp: string | undefined;
+      let organization: string | undefined;
+      let asn: string | undefined;
+      let countryCode: string | undefined;
+
+      if (req.query.enrich !== "false") {
+        try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const lookup = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        clearTimeout(timeout);
+        if (lookup.ok) {
+          const data = await lookup.json() as {
+            success?: boolean;
+            country_code?: string;
+            connection?: { isp?: string; org?: string; asn?: string };
+          };
+          if (data.success !== false) {
+            isp = data.connection?.isp || data.connection?.org;
+            organization = data.connection?.org;
+            asn = data.connection?.asn;
+            countryCode = data.country_code;
+          }
+        }
+        } catch {
+          // ISP enrichment is optional; returning the detected IP must remain reliable.
+        }
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ip, isp, organization, asn, countryCode });
     } catch (err) {
       res.status(500).json({ message: "Failed to get public IP" });
     }
   });
 
   // === Speed Test ===
-  // Download test - returns random data for speed measurement
+  // Download test - returns non-cacheable random data for speed measurement.
   app.get("/api/speedtest/download", (req, res) => {
-    const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
+    const requestedSize = Number(req.query.size);
+    const size = Number.isInteger(requestedSize) && requestedSize > 0 ? requestedSize : 1000000; // Default 1MB
     const maxSize = 10000000; // Max 10MB
     const actualSize = Math.min(size, maxSize);
     
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", actualSize);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Speed-Test-Server", "SafeNet");
     
     // Generate random data in chunks
     const chunkSize = 65536; // 64KB chunks
@@ -479,7 +569,7 @@ export async function registerRoutes(
     const sendChunk = () => {
       while (remaining > 0) {
         const size = Math.min(chunkSize, remaining);
-        const chunk = Buffer.alloc(size, Math.random() * 255);
+        const chunk = randomBytes(size);
         const canContinue = res.write(chunk);
         remaining -= size;
         if (!canContinue) {
@@ -493,18 +583,32 @@ export async function registerRoutes(
     sendChunk();
   });
 
-  // Upload test - receives data and measures speed
-  app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
-    const startTime = Date.now();
+  // Upload test - starts its server-side clock before the raw body parser.
+  // The browser still uses its end-to-end timing for the displayed result.
+  app.post(
+    "/api/speedtest/upload",
+    (_req, res, next) => {
+      res.locals.speedTestStartedAt = process.hrtime.bigint();
+      next();
+    },
+    express.raw({ type: "application/octet-stream", limit: "10mb" }),
+    (req, res) => {
+    const startTime = res.locals.speedTestStartedAt as bigint | undefined;
     const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    const duration = Math.max((Date.now() - startTime) / 1000, 0.001);
+    const duration = Math.max(
+      startTime ? Number(process.hrtime.bigint() - startTime) / 1_000_000_000 : 0.001,
+      0.001,
+    );
     const speedMbps = (bytesReceived * 8) / (duration * 1000000);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.json({ 
       bytesReceived, 
       duration, 
       speedMbps: Math.round(speedMbps * 100) / 100 
     });
-  });
+    },
+  );
 
   // Ping test
   app.get("/api/speedtest/ping", (req, res) => {

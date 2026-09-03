@@ -32,6 +32,25 @@ export function useCreateBlocklist() {
   });
 }
 
+export function useUpdateBlocklist() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertBlocklist> }) => {
+      const validated = api.blocklists.update.input.parse(data);
+      const url = buildUrl(api.blocklists.update.path, { id });
+      const res = await apiFetch(url, {
+        method: api.blocklists.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update blocklist entry");
+      return api.blocklists.update.responses[200].parse(await res.json());
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] }),
+  });
+}
+
 export function useDeleteBlocklist() {
   const queryClient = useQueryClient();
   return useMutation({

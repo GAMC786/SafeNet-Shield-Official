@@ -2,10 +2,14 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { transform } from "esbuild";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const serviceWorkerPath = path.resolve(import.meta.dirname, "client", "src", "service-worker.ts");
+const packageJson = JSON.parse(
+  readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf-8"),
+) as { version: string };
 
 function serveServiceWorker(): Plugin {
   return {
@@ -56,6 +60,9 @@ export default defineConfig({
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
+  },
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(packageJson.version),
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {

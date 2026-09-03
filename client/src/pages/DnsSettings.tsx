@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useDnsServers, useCreateDnsServer, useDeleteDnsServer, useActivateDnsServer } from "@/hooks/use-dns";
+import { useDnsServers, useCreateDnsServer, useUpdateDnsServer, useDeleteDnsServer, useActivateDnsServer } from "@/hooks/use-dns";
+import type { DnsServer } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Server, Plus, Trash2, CheckCircle, Shield, Lock } from "lucide-react";
+import { Globe, Server, Plus, Pencil, Trash2, CheckCircle, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,36 +15,68 @@ import { Badge } from "@/components/ui/badge";
 export default function DnsSettings() {
   const { data: servers } = useDnsServers();
   const createServer = useCreateDnsServer();
+  const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
   const activateServer = useActivateDnsServer();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
+  const [editingServer, setEditingServer] = useState<NonNullable<typeof servers>[number] | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    type: DnsServer["type"];
+    primaryAddress: string;
+    secondaryAddress: string;
+  }>({
     name: "",
     type: "plain",
     primaryAddress: "",
     secondaryAddress: ""
   });
 
+  const resetForm = () => {
+    setFormData({ name: "", type: "plain", primaryAddress: "", secondaryAddress: "" });
+    setEditingServer(null);
+  };
+
+  const openCreateDialog = () => {
+    resetForm();
+    setIsOpen(true);
+  };
+
+  const openEditDialog = (server: NonNullable<typeof servers>[number]) => {
+    setEditingServer(server);
+    setFormData({
+      name: server.name,
+      type: server.type,
+      primaryAddress: server.primaryAddress,
+      secondaryAddress: server.secondaryAddress || "",
+    });
+    setIsOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createServer.mutateAsync({
-        ...formData,
-        isCustom: true,
-        isActive: false
-      } as any);
+      if (editingServer) {
+        await updateServer.mutateAsync({ id: editingServer.id, ...formData });
+      } else {
+        await createServer.mutateAsync({
+          ...formData,
+          isCustom: true,
+          isActive: false
+        } as any);
+      }
       setIsOpen(false);
-      setFormData({ name: "", type: "plain", primaryAddress: "", secondaryAddress: "" });
+      resetForm();
       toast({
-        title: "DNS server added",
+        title: editingServer ? "DNS server updated" : "DNS server added",
         description: `${formData.name} is now available in your resolver list.`,
       });
     } catch (error) {
       toast({
-        title: "DNS server not added",
+        title: editingServer ? "DNS server not updated" : "DNS server not added",
         description: error instanceof Error ? error.message : "Unable to save this DNS server.",
         variant: "destructive",
       });
@@ -58,15 +91,23 @@ export default function DnsSettings() {
       />
 
       <div className="flex justify-end mb-6">
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold font-display tracking-wider">
+            <Button
+              onClick={openCreateDialog}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold font-display tracking-wider"
+            >
               <Plus className="w-4 h-4 mr-2" /> Add Server
             </Button>
           </DialogTrigger>
           <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle className="font-display tracking-wider text-xl">New DNS Entry</DialogTitle>
+              <DialogTitle className="font-display tracking-wider text-xl">
+                {editingServer ? "Edit DNS Entry" : "New DNS Entry"}
+              </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div className="space-y-2">
@@ -84,7 +125,7 @@ export default function DnsSettings() {
                 <Label>Protocol Type</Label>
                 <Select 
                   value={formData.type} 
-                  onValueChange={v => setFormData({...formData, type: v})}
+                  onValueChange={v => setFormData({...formData, type: v as DnsServer["type"]})}
                 >
                   <SelectTrigger className="bg-background border-border">
                     <SelectValue />
@@ -119,7 +160,11 @@ export default function DnsSettings() {
               </div>
 
               <Button type="submit" className="w-full bg-primary text-primary-foreground font-bold mt-4">
-                {createServer.isPending ? "Configuring..." : "Add Server"}
+                {createServer.isPending || updateServer.isPending
+                  ? "Saving..."
+                  : editingServer
+                    ? "Save Changes"
+                    : "Add Server"}
               </Button>
             </form>
           </DialogContent>
@@ -167,16 +212,28 @@ export default function DnsSettings() {
                 ) : "Use This"}
               </Button>
               
-              {server.isCustom && (
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="bg-destructive/10 hover:bg-destructive/30 text-destructive border border-destructive/20"
-                  onClick={() => deleteServer.mutate(server.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              )}
+               {server.isCustom && (
+                 <>
+                   <Button
+                     variant="outline"
+                     size="icon"
+                     className="border-primary/30 text-primary hover:bg-primary/10"
+                     onClick={() => openEditDialog(server)}
+                     aria-label={`Edit ${server.name}`}
+                   >
+                     <Pencil className="w-4 h-4" />
+                   </Button>
+                   <Button
+                     variant="destructive"
+                     size="icon"
+                     className="bg-destructive/10 hover:bg-destructive/30 text-destructive border border-destructive/20"
+                     onClick={() => deleteServer.mutate(server.id)}
+                     aria-label={`Delete ${server.name}`}
+                   >
+                     <Trash2 className="w-4 h-4" />
+                   </Button>
+                 </>
+               )}
             </div>
           </CyberCard>
         ))}

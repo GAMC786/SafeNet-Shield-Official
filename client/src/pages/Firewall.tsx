@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
-import { useFirewallRules, useCreateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
+import { useUpdateBlocklist } from "@/hooks/use-blocklists";
+import { useFirewallRules, useCreateFirewallRule, useUpdateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
+import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, List, Search, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
+import { Shield, List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,17 +20,23 @@ export default function Firewall() {
   const { toast } = useToast();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
+  const updateBlock = useUpdateBlocklist();
   const deleteBlock = useDeleteBlocklist();
   
   const { data: rules } = useFirewallRules();
   const createRule = useCreateFirewallRule();
+  const updateRule = useUpdateFirewallRule();
   const deleteRule = useDeleteFirewallRule();
 
   const [newDomain, setNewDomain] = useState("");
   const [newDomainAction, setNewDomainAction] = useState<"allow" | "block">("block");
   const [newKeyword, setNewKeyword] = useState("");
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
-  const [newRule, setNewRule] = useState({
+  const [editingRule, setEditingRule] = useState<FirewallRule | null>(null);
+  const [editingBlocklist, setEditingBlocklist] = useState<Blocklist | null>(null);
+  const [editedBlocklistContent, setEditedBlocklistContent] = useState("");
+  const [editedBlocklistAction, setEditedBlocklistAction] = useState<"allow" | "block">("block");
+  const [newRule, setNewRule] = useState<InsertFirewallRule>({
     name: "",
     sourceInterface: "lan",
     sourceAddress: "Any",
@@ -61,25 +69,83 @@ export default function Firewall() {
     setNewKeyword("");
   };
 
-  const handleAddRule = () => {
+  const resetRuleForm = () => {
+    setNewRule({
+      name: "",
+      sourceInterface: "lan",
+      sourceAddress: "Any",
+      destinationInterface: "wan",
+      destinationAddress: "Any",
+      service: "dns",
+      action: "deny",
+    });
+    setEditingRule(null);
+  };
+
+  const openCreateRuleDialog = () => {
+    resetRuleForm();
+    setIsRuleDialogOpen(true);
+  };
+
+  const openEditRuleDialog = (rule: FirewallRule) => {
+    setEditingRule(rule);
+    setNewRule({
+      name: rule.name,
+      sourceInterface: rule.sourceInterface,
+      sourceAddress: rule.sourceAddress || "Any",
+      destinationInterface: rule.destinationInterface,
+      destinationAddress: rule.destinationAddress || "Any",
+      service: rule.service,
+      action: rule.action,
+    });
+    setIsRuleDialogOpen(true);
+  };
+
+  const handleSaveRule = () => {
     if (!newRule.name) {
       toast({ title: "Error", description: "Rule name is required", variant: "destructive" });
       return;
     }
+    const onSuccess = () => {
+      setIsRuleDialogOpen(false);
+      resetRuleForm();
+    };
+    if (editingRule) {
+      updateRule.mutate({ id: editingRule.id, data: newRule }, { onSuccess });
+      return;
+    }
     createRule.mutate(newRule, {
       onSuccess: () => {
-        setIsRuleDialogOpen(false);
-        setNewRule({
-          name: "",
-          sourceInterface: "lan",
-          sourceAddress: "Any",
-          destinationInterface: "wan",
-          destinationAddress: "Any",
-          service: "dns",
-          action: "deny",
-        });
+        onSuccess();
       }
     });
+  };
+
+  const openEditBlocklistDialog = (item: Blocklist) => {
+    setEditingBlocklist(item);
+    setEditedBlocklistContent(item.content);
+    setEditedBlocklistAction(item.action === "allow" ? "allow" : "block");
+  };
+
+  const closeEditBlocklistDialog = () => {
+    setEditingBlocklist(null);
+    setEditedBlocklistContent("");
+    setEditedBlocklistAction("block");
+  };
+
+  const handleSaveBlocklist = () => {
+    const content = editedBlocklistContent.trim();
+    if (!editingBlocklist || !content) return;
+    updateBlock.mutate(
+      {
+        id: editingBlocklist.id,
+        data: {
+          content,
+          ...(editingBlocklist.type === "domain" ? { action: editedBlocklistAction } : {}),
+        },
+      },
+      { onSuccess: closeEditBlocklistDialog },
+    );
   };
 
   const domains = blocklists?.filter(b => b.type === "domain") || [];
@@ -125,15 +191,20 @@ export default function Firewall() {
 
         <TabsContent value="rules" className="mt-0 space-y-4">
           <div className="flex justify-end mb-4">
-            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+            <Dialog open={isRuleDialogOpen} onOpenChange={(open) => {
+              setIsRuleDialogOpen(open);
+              if (!open) resetRuleForm();
+            }}>
               <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
+                <Button onClick={openCreateRuleDialog} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
                   <Plus className="w-4 h-4 mr-2" /> New Rule
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-card border-border text-foreground sm:max-w-[500px]">
                 <DialogHeader>
-                  <DialogTitle className="font-display tracking-wider">Create Firewall Rule</DialogTitle>
+                  <DialogTitle className="font-display tracking-wider">
+                    {editingRule ? "Edit Firewall Rule" : "Create Firewall Rule"}
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 mt-4">
                   <div className="space-y-2">
@@ -206,8 +277,8 @@ export default function Firewall() {
                     </div>
                   </div>
 
-                  <Button onClick={handleAddRule} className="w-full bg-primary hover:bg-primary/90" disabled={createRule.isPending || !newRule.name}>
-                    {createRule.isPending ? "Creating..." : "Create Rule"}
+                  <Button onClick={handleSaveRule} className="w-full bg-primary hover:bg-primary/90" disabled={createRule.isPending || updateRule.isPending || !newRule.name}>
+                    {createRule.isPending || updateRule.isPending ? "Saving..." : editingRule ? "Save Changes" : "Create Rule"}
                   </Button>
                 </div>
               </DialogContent>
@@ -242,14 +313,26 @@ export default function Firewall() {
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteRule.mutate(rule.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditRuleDialog(rule)}
+                        className="text-primary hover:text-primary hover:bg-primary/10"
+                        aria-label={`Edit ${rule.name}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteRule.mutate(rule.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label={`Delete ${rule.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CyberCard>
               ))
@@ -260,6 +343,46 @@ export default function Firewall() {
             )}
           </div>
         </TabsContent>
+
+          <Dialog open={editingBlocklist !== null} onOpenChange={(open) => {
+            if (!open) closeEditBlocklistDialog();
+          }}>
+            <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="font-display tracking-wider">
+                  Edit {editingBlocklist?.type === "keyword" ? "Keyword" : "URL Rule"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-4">
+                {editingBlocklist?.type === "domain" && (
+                  <div className="space-y-2">
+                    <Label>Action</Label>
+                    <Select value={editedBlocklistAction} onValueChange={(value: "allow" | "block") => setEditedBlocklistAction(value)}>
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover border-border">
+                        <SelectItem value="allow">Allow</SelectItem>
+                        <SelectItem value="block">Block</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>{editingBlocklist?.type === "keyword" ? "Keyword" : "Domain or URL"}</Label>
+                  <Input
+                    value={editedBlocklistContent}
+                    onChange={(event) => setEditedBlocklistContent(event.target.value)}
+                    className="bg-background border-border font-mono"
+                    autoFocus
+                  />
+                </div>
+                <Button onClick={handleSaveBlocklist} className="w-full" disabled={updateBlock.isPending || !editedBlocklistContent.trim()}>
+                  {updateBlock.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
         <TabsContent value="domains" className="mt-0 space-y-4">
           <div className="flex gap-2">
@@ -315,15 +438,28 @@ export default function Firewall() {
                     {item.action?.toUpperCase() || "BLOCK"}
                   </Badge>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteBlock.mutate(item.id)}
-                  data-testid={`button-delete-rule-${item.id}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-primary hover:text-primary hover:bg-primary/10"
+                    onClick={() => openEditBlocklistDialog(item)}
+                    aria-label={`Edit ${item.content}`}
+                    data-testid={`button-edit-rule-${item.id}`}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteBlock.mutate(item.id)}
+                    aria-label={`Delete ${item.content}`}
+                    data-testid={`button-delete-rule-${item.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             ))}
             {domains.length === 0 && (
@@ -356,14 +492,26 @@ export default function Firewall() {
                   <List className="w-4 h-4 text-destructive" />
                   <span className="font-mono text-sm">{item.content}</span>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => deleteBlock.mutate(item.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                    onClick={() => openEditBlocklistDialog(item)}
+                    aria-label={`Edit ${item.content}`}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => deleteBlock.mutate(item.id)}
+                    aria-label={`Delete ${item.content}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             ))}
             {keywords.length === 0 && (

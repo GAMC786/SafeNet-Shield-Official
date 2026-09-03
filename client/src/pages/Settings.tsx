@@ -188,7 +188,7 @@ export default function Settings() {
           </div>
         </CyberCard>
 
-        {vpn.supported && (
+        {vpn.supported ? (
           <CyberCard className="md:col-span-2 space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -252,6 +252,39 @@ export default function Settings() {
               View DNS VPN EULA
             </Button>
           </CyberCard>
+        ) : (
+          <CyberCard
+            className="md:col-span-2 space-y-5 border-muted-foreground/20 opacity-80"
+            aria-disabled="true"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-6 h-6 text-muted-foreground" />
+                <div>
+                  <h2 className="text-xl font-display font-bold text-muted-foreground">
+                    DNS Protection VPN
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Android-only device protection
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={false}
+                disabled
+                aria-label="DNS Protection VPN unavailable in web browser"
+              />
+            </div>
+
+            <div className="rounded-md border border-muted-foreground/15 bg-muted/5 p-4 text-sm text-muted-foreground">
+              <p className="font-medium">Available in the SafeNet Android APK</p>
+              <p className="mt-2 text-xs">
+                The APK can create and control the device VPN needed to route DNS
+                requests through your active SafeNet resolver. Web browsers cannot
+                activate an Android VPN service.
+              </p>
+            </div>
+          </CyberCard>
         )}
 
         <div className="md:col-span-2">
@@ -303,7 +336,9 @@ export default function Settings() {
         
         <div className="md:col-span-2 flex items-center justify-center p-4 rounded border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-sm gap-2">
           <AlertTriangle className="w-4 h-4" />
-          <span className="font-mono uppercase">SafeNet DNS Server (Official) v1.0.7</span>
+          <span className="font-mono uppercase">
+            SafeNet Shield DNS + (Official) v{import.meta.env.VITE_APP_VERSION}
+          </span>
         </div>
       </div>
       {vpn.supported && (

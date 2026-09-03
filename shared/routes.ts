@@ -96,6 +96,15 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/blocklists/:id',
+      input: insertBlocklistSchema.partial(),
+      responses: {
+        200: z.custom<typeof blocklists.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
     delete: {
       method: 'DELETE' as const,
       path: '/api/blocklists/:id',

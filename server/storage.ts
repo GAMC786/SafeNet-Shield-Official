@@ -18,6 +18,7 @@ export interface IStorage {
   // Blocklists
   getBlocklists(): Promise<Blocklist[]>;
   createBlocklist(blocklist: InsertBlocklist): Promise<Blocklist>;
+  updateBlocklist(id: number, updates: Partial<InsertBlocklist>): Promise<Blocklist>;
   deleteBlocklist(id: number): Promise<void>;
 
   // Logs
@@ -95,6 +96,14 @@ export class DatabaseStorage implements IStorage {
   async createBlocklist(blocklist: InsertBlocklist): Promise<Blocklist> {
     const [created] = await db.insert(blocklists).values(blocklist).returning();
     return created;
+  }
+
+  async updateBlocklist(id: number, updates: Partial<InsertBlocklist>): Promise<Blocklist> {
+    const [updated] = await db.update(blocklists)
+      .set(updates)
+      .where(eq(blocklists.id, id))
+      .returning();
+    return updated;
   }
 
   async deleteBlocklist(id: number): Promise<void> {
