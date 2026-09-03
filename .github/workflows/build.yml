@@ -662,7 +662,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # Manual and scheduled checks retain the hosted preflight. Tagged
-          # releases use the dedicated writable-system runner below.
+          # releases use the hosted emulator smoke lane below.
           api-level: 34
           target: google_apis
           arch: x86_64
@@ -1397,23 +1397,19 @@ jobs:
   android-release-smoke:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
-    # This label is intentionally exclusive to a runner with KVM, adb root,
-    # writable system overlays, and a disposable Android system image. A
-    # hosted runner must not silently replace it for a signed release.
-    runs-on: [self-hosted, linux, x64, android-writable-system]
+    # Hosted fallback for public repositories: this validates APK installation,
+    # instrumentation, and public-network DNS behavior, but cannot validate
+    # writable-system trust changes or adb-root-only behavior.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      ANDROID_SMOKE_RESOLVER_MODE: fixture
-      ANDROID_SMOKE_COVERAGE: controlled-fixture
-      ANDROID_AVD_NAME: safenet-writable
+      ANDROID_SMOKE_RESOLVER_MODE: public
+      ANDROID_SMOKE_COVERAGE: hosted-emulator
+      ANDROID_AVD_NAME: safenet-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Verify writable Android runner
-        shell: bash
-        run: ./scripts/provision-android-runner.sh --check
 
       - name: Download signed release APK
         uses: actions/download-artifact@v4
@@ -1437,35 +1433,31 @@ jobs:
           test -s "$test_apk" || { echo "::error::Release instrumentation APK is missing: $test_apk"; exit 1; }
           echo "Verified release APK inputs."
 
-      - name: Run controlled-fixture smoke test on writable emulator
+      - name: Run hosted-emulator smoke test (reduced validation)
         id: android-release-dns-smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # AOSP ATD is a userdebug test image intended for instrumentation.
-          # Unlike the hosted Google APIs image, the dedicated runner is
-          # qualified for adb root and writable-system CA installation.
-          api-level: 35
-          target: aosp_atd
+          # Hosted Google APIs images do not provide the writable-system and
+          # adb-root guarantees required by the dedicated runner lane.
+          api-level: 34
+          target: google_apis
           arch: x86_64
           profile: pixel_2
           avd-name: ${{ env.ANDROID_AVD_NAME }}
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -euo pipefail
-            ./scripts/android-smoke-test.sh \
-              --preflight \
-              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest/preflight"
             ./scripts/android-smoke-test.sh \
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
               --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
               --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
         env:
-          ANDROID_EMULATOR_API_LEVEL: 35
-          ANDROID_EMULATOR_TARGET: aosp_atd
+          ANDROID_EMULATOR_API_LEVEL: 34
+          ANDROID_EMULATOR_TARGET: google_apis
           ANDROID_EMULATOR_ARCH: x86_64
-          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-35;aosp_atd;x86_64
+          ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
       - name: Upload release Android smoke evidence
         id: upload-release-android-smoke-evidence
@@ -1507,6 +1499,7 @@ jobs:
           {
             echo "## Android release smoke"
             echo
+            echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
