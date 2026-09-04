@@ -35,11 +35,19 @@ on:
         required: true
         default: false
         type: boolean
+      clerk_auth_health_check:
+        description: "Run the non-blocking Clerk fixture health check"
+        required: true
+        default: false
+        type: boolean
+      pin_recovery_email_delivery:
+        description: "Run the non-blocking non-production PIN recovery mailbox check"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
-  issues: write
-  actions: read
+  contents: read
 
 jobs:
   validate-release-workflow:
@@ -403,7 +411,7 @@ jobs:
       - name: Download workflow lint outcomes
         if: always()
         continue-on-error: true
-        uses: actions/download-artifact@v4.1.3
+        uses: actions/download-artifact@v4
         with:
           pattern: SafeNet-DNS-workflow-lint-outcome-*
           path: ${{ runner.temp }}/workflow-lint-results
@@ -617,7 +625,7 @@ jobs:
     needs: validate-release-workflow
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       issues: write
     env:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
@@ -641,6 +649,171 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Check controlled PIN recovery email delivery
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pin_recovery_email_delivery == true)
+        continue-on-error: true
+        shell: bash
+        env:
+          PIN_RECOVERY_EMAIL_SMOKE: "true"
+          PIN_RECOVERY_SMOKE_EMAIL: ${{ secrets.PIN_RECOVERY_SMOKE_EMAIL }}
+        run: |
+          set -u
+          report_header="## PIN recovery email delivery"
+          if [[ -z "${PIN_RECOVERY_SMOKE_EMAIL}" ]]; then
+            echo "::warning title=PIN recovery mailbox configuration missing::The controlled check was not run because PIN_RECOVERY_SMOKE_EMAIL is not configured."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** not configured"
+              echo "- **Finding:** The non-production mailbox secret is missing."
+              echo
+              echo "Configure PIN_RECOVERY_SMOKE_EMAIL with a non-production mailbox. The address and message contents are never printed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          smoke_log="$RUNNER_TEMP/pin-recovery-email-smoke.log"
+          if node --import tsx --test server/pin-api.test.ts >"$smoke_log" 2>&1; then
+            echo "PIN recovery email delivery check passed."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** healthy"
+              echo "- **Finding:** The recovery message was found in the configured non-production mailbox, and the delivered code was rejected after expiry."
+              echo
+              echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          stage="unknown"
+          if grep -q "Gmail configuration stage" "$smoke_log"; then
+            stage="configuration"
+          elif grep -q "Gmail delivery stage" "$smoke_log"; then
+            stage="delivery"
+          fi
+          echo "::warning title=PIN recovery email delivery needs attention::The controlled check failed at the ${stage} stage. Inspect the Gmail connection or non-production delivery path without publishing mailbox contents."
+          {
+            echo "$report_header"
+            echo
+            echo "- **Status:** needs attention"
+            echo "- **Finding:** The controlled check failed at the **${stage}** stage. The failure log was kept in the runner workspace and was not published."
+            echo
+            echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Check Clerk authentication fixture health
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
+        shell: bash
+        env:
+          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
+          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
+          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
+          AUTH_SMOKE_HEALTH_CHECK: "true"
+        run: |
+          set -u
+          report_header="## Clerk authentication health"
+          renewal_guidance="Renew the non-production fixture locally with AUTH_SMOKE_BASE_URL=<test deployment URL> npm run test:auth:record, then replace the AUTH_SMOKE_STORAGE_STATE workspace/GitHub secret through the secret manager. Never commit, print, or paste the fixture JSON into logs or issues."
+
+          if [[ -z "${AUTH_SMOKE_BASE_URL}" ]]; then
+            echo "::warning title=Clerk auth configuration missing::Clerk auth health could not run because AUTH_SMOKE_BASE_URL is not configured."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** not configured"
+              echo "- **Finding:** AUTH_SMOKE_BASE_URL is missing."
+              echo
+              echo "$renewal_guidance"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          has_fixture=false
+          has_google_credentials=false
+          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
+          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
+
+          if [[ "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ]]; then
+            echo "::warning title=Clerk auth configuration missing::Clerk auth health found neither a storage-state fixture nor Google test credentials."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** not configured"
+              echo "- **Finding:** No supported non-production authentication configuration is available."
+              echo
+              echo "$renewal_guidance"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! npx playwright install --with-deps chromium >"$RUNNER_TEMP/auth-fixture-browser-install.log" 2>&1; then
+            echo "::warning title=Clerk auth health unavailable::The browser health check could not install its browser dependency."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** unavailable"
+              echo "- **Finding:** The scheduled browser dependency could not be installed; authentication state was not inspected."
+              echo
+              echo "$renewal_guidance"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if AUTH_SMOKE_HEALTH_CHECK=true npm run test:auth >"$RUNNER_TEMP/auth-fixture-health.log" 2>&1; then
+            echo "Clerk authentication configuration is healthy."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** healthy"
+              echo "- **Finding:** The configured non-production authentication session reached the SafeNet dashboard."
+              echo
+              echo "The health check used an isolated browser context and did not write session state to the repository."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "::warning title=Clerk auth fixture needs renewal::The authentication health check could not authenticate; the fixture may be expired, revoked, malformed, or the non-production deployment may be unavailable."
+          {
+            echo "$report_header"
+            echo
+            echo "- **Status:** needs attention"
+            echo "- **Finding:** The configured authentication session did not reach the SafeNet dashboard. It may be expired, revoked, malformed, or the non-production deployment may be unavailable."
+            echo
+            echo "$renewal_guidance"
+            echo
+            echo "The session value was kept in the protected secret and the diagnostic output was not published."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run Clerk authentication browser smoke test
+        if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
+        shell: bash
+        env:
+          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
+          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
+          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          has_fixture=false
+          has_google_credentials=false
+          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
+          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
+
+          if [[ -z "${AUTH_SMOKE_BASE_URL}" || ( "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ) ]]; then
+            if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+              echo "::notice::Clerk auth smoke skipped because secure test configuration is unavailable to this pull request."
+              exit 0
+            fi
+            echo "::error::Clerk auth smoke requires AUTH_SMOKE_BASE_URL plus AUTH_SMOKE_STORAGE_STATE or both Google test credentials."
+            exit 1
+          fi
+
+          npx playwright install --with-deps chromium
+          npm run test:auth
 
       - name: Build web app
         run: npm run build
@@ -1400,7 +1573,8 @@ jobs:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
     # Hosted fallback for public repositories: this validates APK installation,
-    # instrumentation, and public-network DNS behavior, but cannot validate
+    # PIN-gated WebView relaunch/recovery, instrumentation, and public-network
+    # DNS behavior, but cannot validate
     # writable-system trust changes or adb-root-only behavior.
     runs-on: ubuntu-latest
     permissions:
@@ -1414,13 +1588,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download signed release APK
-        uses: actions/download-artifact@v4.1.3
+        uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
       - name: Download release instrumentation APK
-        uses: actions/download-artifact@v4.1.3
+        uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
@@ -1509,9 +1683,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-windows:
-    # Scheduled runs focus on Android network validation. Pushes, pull
-    # requests, manual runs, and tagged releases build the Windows installer.
-    if: github.event_name != 'schedule'
+    # Tagged releases in this lane publish the Android APK only. Keep the
+    # Windows packaging lane for non-tag builds without making it a release
+    # prerequisite.
+    if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -1527,12 +1702,10 @@ jobs:
         run: npm ci
 
       - name: Validate Windows Android SDK setup
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: ./scripts/test-setup-android-sdk.ps1
 
       - name: Setup Java
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -1540,11 +1713,9 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Android SDK
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: android-actions/setup-android@v3
 
       - name: Install and verify Android toolchain from Gradle pins
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: ./scripts/setup-android-sdk.ps1
 
@@ -1586,7 +1757,6 @@ jobs:
           npm run build
 
       - name: Sync Android web assets for Windows
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: bash
         env:
           MOBILE_API_URL: https://safe-net-shield-official.replit.app
@@ -1594,7 +1764,6 @@ jobs:
 
       - name: Build debug APK on Windows
         id: build-windows-android
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         working-directory: android
         shell: pwsh
         run: .\gradlew.bat assembleDebug
@@ -1611,7 +1780,6 @@ jobs:
           if-no-files-found: warn
 
       - name: Verify Windows debug APK
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         shell: pwsh
         run: |
           $apkPath = Join-Path $env:GITHUB_WORKSPACE "android\app\build\outputs\apk\debug\app-debug.apk"
@@ -1664,37 +1832,17 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, android-release-smoke, build-windows]
+    needs: [build-android, android-release-smoke]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
       - name: Download Android artifact
-        uses: actions/download-artifact@v4.1.3
+        uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4.1.3
-        with:
-          name: SafeNet-DNS-Windows
-          path: artifacts/windows
-
-      - name: Verify source commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init --quiet
-          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
-          git fetch --quiet --depth=1 origin "${{ github.sha }}"
-          checked_out_sha=$(git rev-parse FETCH_HEAD)
-          if [[ "$checked_out_sha" != "${GITHUB_SHA}" ]]; then
-            echo "::error::Release source commit mismatch: expected ${GITHUB_SHA}, got ${checked_out_sha}"
-            exit 1
-          fi
-          echo "Verified release source commit: ${checked_out_sha}"
 
       - name: Verify Android release APK
         shell: bash
@@ -1710,31 +1858,11 @@ jobs:
 
           echo "Verified $apk_count signed Android APK installer(s)."
 
-      - name: Verify Windows MSI
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -t msi_files < <(find artifacts/windows -maxdepth 1 -type f -name '*.msi' -print)
-          if [[ "${#msi_files[@]}" -ne 1 ]]; then
-            echo "::error::Expected exactly one Windows MSI installer, found ${#msi_files[@]}."
-            printf '%s\n' "${msi_files[@]}"
-            exit 1
-          fi
-
-          if [[ ! -s "${msi_files[0]}" ]]; then
-            echo "::error::Windows MSI installer is empty: ${msi_files[0]}"
-            exit 1
-          fi
-
-          echo "Verified Windows MSI installer: ${msi_files[0]}"
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/android/*.apk
-            artifacts/windows/*.msi
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

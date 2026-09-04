@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "CzB-hfIVAPjAMWkM4DByI"
+uri = "file://SafeNet-Android-v1.0.15.apk"
+type = "unspecified"
+title = "SafeNet Android APK v1.0.15"
+description = "Verified signed Android release APK. Built against the public SafeNet backend, which passed the manual PIN protection check; the bundled app includes the four-digit PIN entry screen."
+logical_id = "fc2df4e6-481f-49cd-a900-3e7dc983fdb3"
+content_hash = "sha256:6dc51b1a9b9ce9813fe11061575f0a1edd7e85f518a8192184a2d93f637a9e0c"
+size = 4503168
+mtime_ms = 1788496697531
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/fc2df4e6-481f-49cd-a900-3e7dc983fdb3/359621ec-4887-44da-9495-ecc123179951"
+storage_version_token = "1788496702579193"
+content_type = "application/octet-stream"
