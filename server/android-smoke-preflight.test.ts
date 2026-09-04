@@ -101,6 +101,48 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /cat "\$output_dir\/emulator-image\.txt"/);
 });
 
+
+test("main-branch APK-only workflow builds and uploads only a signed APK", () => {
+  assert.match(apkOnlyWorkflow, /^name: Build SafeNet Android APK only$/m);
+  assert.match(apkOnlyWorkflow, /push:\n\s+branches:\n\s+- main/);
+  assert.match(apkOnlyWorkflow, /workflow_dispatch:/);
+  assert.match(
+    apkOnlyWorkflow,
+    /MOBILE_API_URL: https:\/\/safe-net-shield-official\.replit\.app/,
+  );
+  assert.match(apkOnlyWorkflow, /Verify production manual PIN protection/);
+  assert.match(
+    apkOnlyWorkflow,
+    /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/auth\/status"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /status\.authenticated !== false \|\| status\.pinRequired !== true/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /validate-mobile-api\.mjs "\$MOBILE_API_URL"/,
+  );
+  assert.match(apkOnlyWorkflow, /run: \.\/gradlew assembleRelease/);
+  assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
+  assert.match(
+    apkOnlyWorkflow,
+    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='7' versionName='1\.0\.15'"/,
+  );
+  assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
+  assert.match(apkOnlyWorkflow, /name: Upload APK only/);
+  assert.match(
+    apkOnlyWorkflow,
+    /path: android\/app\/build\/outputs\/apk\/release\/app-release\.apk/,
+  );
+  assert.doesNotMatch(apkOnlyWorkflow, /needs:/);
+  assert.doesNotMatch(apkOnlyWorkflow, /build-windows|Windows|assembleDebug|AndroidTest/i);
+  assert.equal(
+    (apkOnlyWorkflow.match(/uses: actions\/upload-artifact@v4/g) ?? []).length,
+    1,
+  );
+});
+
 type PreflightFailureMode = "root" | "remount" | "cleanup-remains";
 
 function assertMockedPreflightFailure(
