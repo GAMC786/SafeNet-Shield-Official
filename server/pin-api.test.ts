@@ -191,6 +191,7 @@ test("PIN verification rate-limits repeated invalid attempts", async () => {
   try {
     const statusBefore = await request("/api/auth/status");
     assert.deepEqual(await statusBefore.json(), { authenticated: false, pinRequired: true });
+    assert.equal(statusBefore.headers.get("cache-control"), "no-store, no-cache, must-revalidate, proxy-revalidate");
 
     const blocked = await request("/api/settings");
     assert.equal(blocked.status, 401);

@@ -440,7 +440,9 @@ export default function Settings() {
           <div className="space-y-2 border-t border-white/10 pt-5">
             <Label htmlFor="pin-recovery-email">PIN Recovery Email</Label>
             <p className="text-xs text-muted-foreground">
-              Gmail sends a one-time recovery code here. SafeNet never displays or emails the PIN itself.
+              Saving this address only sets the destination. To generate a code,
+              choose “Forgot PIN?” on the access screen and select “Send recovery
+              code”. SafeNet never displays or emails the PIN itself.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
