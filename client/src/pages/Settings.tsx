@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 
 export default function Settings() {
   const { data: settings } = useSettings();
@@ -20,18 +21,104 @@ export default function Settings() {
   const vpn = useSafeNetVpn();
   const { toast } = useToast();
   const [pin, setPin] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
 
+  useEffect(() => {
+    if (settings?.pinRecoveryEmail !== undefined) {
+      setRecoveryEmail(settings.pinRecoveryEmail || "");
+    }
+  }, [settings?.pinRecoveryEmail]);
+
+  const settingLabels: Record<string, string> = {
+    aiShieldEnabled: "AI Shield",
+    firewallEnabled: "Firewall protection",
+    alwaysOnEnabled: "Always-on protection",
+    deviceAdminEnabled: "Device administrator access",
+    isPinEnabled: "PIN protection",
+  };
+
   const handleToggle = (key: string, checked: boolean) => {
-    updateSettings.mutate({ [key]: checked });
+    const label = settingLabels[key] || "Setting";
+    if (key === "isPinEnabled" && checked && !settings?.pinConfigured) {
+      toast({
+        title: "Set a PIN first",
+        description: "Create a four-digit PIN before enabling PIN protection.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateSettings.mutate(
+      { [key]: checked },
+      {
+        onSuccess: () => {
+          toast({
+            title: `${label} ${checked ? "enabled" : "disabled"}`,
+            description: checked
+              ? `${label} is now active.`
+              : `${label} is now turned off.`,
+          });
+        },
+        onError: (error) => {
+          toast({
+            title: `${label} could not be changed`,
+            description: error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   const handleSetPin = () => {
     if (pin.length === 4) {
-      updateSettings.mutate({ pinCode: pin, isPinEnabled: true });
-      setPin("");
+      updateSettings.mutate(
+        { pinCode: pin, isPinEnabled: true },
+        {
+          onSuccess: () => {
+            setPin("");
+            toast({
+              title: "PIN updated",
+              description: "PIN protection is enabled with your new code.",
+            });
+          },
+          onError: (error) => {
+            toast({
+              title: "PIN could not be updated",
+              description: error instanceof Error ? error.message : "Please try again.",
+              variant: "destructive",
+            });
+          },
+        },
+      );
     }
+  };
+
+  const handleSaveRecoveryEmail = () => {
+    const email = recoveryEmail.trim();
+    if (!email || !email.includes("@")) {
+      toast({
+        title: "Recovery email required",
+        description: "Enter a valid email address so you can recover access if the PIN is forgotten.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateSettings.mutate(
+      { pinRecoveryEmail: email },
+      {
+        onSuccess: () => toast({
+          title: "Recovery email saved",
+          description: "SafeNet can now send PIN recovery codes to this address.",
+        }),
+        onError: (error) => toast({
+          title: "Recovery email could not be saved",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        }),
+      },
+    );
   };
 
   const activeDnsServer = dnsServers?.find((server) => server.isActive);
@@ -39,7 +126,7 @@ export default function Settings() {
     if (!activeDnsServer) {
       toast({
         title: "Select a DNS server first",
-        description: "Choose an active resolver in DNS Configuration before enabling protection.",
+        description: "Choose an active resolver in DNS Servers before enabling protection.",
         variant: "destructive",
       });
       return;
@@ -110,10 +197,22 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <Header 
-        title="System Settings" 
-        subtitle="Configuration & Security" 
-      />
+      <div className="relative">
+        <Header
+          title="System Settings"
+          subtitle="Configuration & Security"
+        />
+        <div
+          className="pointer-events-none absolute right-0 top-0 hidden h-14 w-[220px] items-center justify-end overflow-hidden sm:flex"
+          aria-label="SafeNet Inc. brand"
+        >
+          <img
+            src={wordmarkImage}
+            alt="SafeNet Inc."
+            className="h-full w-full object-contain object-right"
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Security Modules */}
@@ -133,6 +232,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.aiShieldEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("aiShieldEnabled", c)}
+               disabled={updateSettings.isPending}
               aria-label="AI Shield"
             />
           </div>
@@ -147,6 +247,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.firewallEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("firewallEnabled", c)}
+               disabled={updateSettings.isPending}
               aria-label="App Firewall"
             />
           </div>
@@ -169,6 +270,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.alwaysOnEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("alwaysOnEnabled", c)}
+               disabled={updateSettings.isPending}
               aria-label="Always-On VPN"
             />
           </div>
@@ -183,6 +285,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.deviceAdminEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
+               disabled={updateSettings.isPending}
               aria-label="Device Admin"
             />
           </div>
@@ -307,6 +410,7 @@ export default function Settings() {
               <Switch 
                 checked={settings?.isPinEnabled ?? false} 
                 onCheckedChange={(c) => handleToggle("isPinEnabled", c)}
+                disabled={updateSettings.isPending || (!settings?.pinConfigured && !(settings?.isPinEnabled ?? false))}
                 aria-label="PIN Protection"
               />
             </div>
@@ -332,12 +436,37 @@ export default function Settings() {
               </div>
             </div>
           </div>
+
+          <div className="space-y-2 border-t border-white/10 pt-5">
+            <Label htmlFor="pin-recovery-email">PIN Recovery Email</Label>
+            <p className="text-xs text-muted-foreground">
+              Gmail sends a one-time recovery code here. SafeNet never displays or emails the PIN itself.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="pin-recovery-email"
+                type="email"
+                value={recoveryEmail}
+                onChange={(event) => setRecoveryEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="bg-background border-border"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSaveRecoveryEmail}
+                disabled={updateSettings.isPending || !recoveryEmail.trim()}
+              >
+                Save recovery email
+              </Button>
+            </div>
+          </div>
         </CyberCard>
         
         <div className="md:col-span-2 flex items-center justify-center p-4 rounded border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-sm gap-2">
           <AlertTriangle className="w-4 h-4" />
           <span className="font-mono uppercase">
-            SafeNet Shield DNS + (Official) v{import.meta.env.VITE_APP_VERSION}
+            SafeNet DNS Server (Official) v{import.meta.env.VITE_APP_VERSION}
           </span>
         </div>
       </div>

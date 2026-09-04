@@ -1,43 +1,55 @@
 import { useState } from "react";
-import { useDnsServers, useCreateDnsServer, useUpdateDnsServer, useDeleteDnsServer, useActivateDnsServer } from "@/hooks/use-dns";
+import {
+  useActivateDnsServer,
+  useCreateDnsServer,
+  useDeleteDnsServer,
+  useDnsServers,
+  useUpdateDnsServer,
+} from "@/hooks/use-dns";
 import type { DnsServer } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Server, Plus, Pencil, Trash2, CheckCircle, Lock } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Globe, Lock, Pencil, Plus, Save, Server, Trash2, CheckCircle, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
+type ResolverForm = {
+  name: string;
+  type: DnsServer["type"];
+  primaryAddress: string;
+  secondaryAddress: string;
+};
+
+const emptyResolver: ResolverForm = {
+  name: "",
+  type: "plain",
+  primaryAddress: "",
+  secondaryAddress: "",
+};
+
+function resolverTypeLabel(type: DnsServer["type"]) {
+  return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
+}
+
 export default function DnsSettings() {
-  const { data: servers } = useDnsServers();
+  const { data: servers, isLoading, isError } = useDnsServers();
+  const activateServer = useActivateDnsServer();
   const createServer = useCreateDnsServer();
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
-  const activateServer = useActivateDnsServer();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [editingServer, setEditingServer] = useState<NonNullable<typeof servers>[number] | null>(null);
-
-  // Form state
-  const [formData, setFormData] = useState<{
-    name: string;
-    type: DnsServer["type"];
-    primaryAddress: string;
-    secondaryAddress: string;
-  }>({
-    name: "",
-    type: "plain",
-    primaryAddress: "",
-    secondaryAddress: ""
-  });
+  const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
+  const [formData, setFormData] = useState<ResolverForm>(emptyResolver);
 
   const resetForm = () => {
-    setFormData({ name: "", type: "plain", primaryAddress: "", secondaryAddress: "" });
-    setEditingServer(null);
+    setFormData(emptyResolver);
+    setEditingResolver(null);
   };
 
   const openCreateDialog = () => {
@@ -45,8 +57,8 @@ export default function DnsSettings() {
     setIsOpen(true);
   };
 
-  const openEditDialog = (server: NonNullable<typeof servers>[number]) => {
-    setEditingServer(server);
+  const openEditDialog = (server: DnsServer) => {
+    setEditingResolver(server);
     setFormData({
       name: server.name,
       type: server.type,
@@ -56,188 +68,260 @@ export default function DnsSettings() {
     setIsOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleActivate = async (server: DnsServer) => {
     try {
-      if (editingServer) {
-        await updateServer.mutateAsync({ id: editingServer.id, ...formData });
-      } else {
-        await createServer.mutateAsync({
-          ...formData,
-          isCustom: true,
-          isActive: false
-        } as any);
-      }
-      setIsOpen(false);
-      resetForm();
+      await activateServer.mutateAsync(server.id);
       toast({
-        title: editingServer ? "DNS server updated" : "DNS server added",
-        description: `${formData.name} is now available in your resolver list.`,
+        title: "DNS resolver activated",
+        description: `${server.name} is now the active SafeNet resolver.`,
       });
     } catch (error) {
       toast({
-        title: editingServer ? "DNS server not updated" : "DNS server not added",
-        description: error instanceof Error ? error.message : "Unable to save this DNS server.",
+        title: "DNS resolver could not be activated",
+        description: error instanceof Error ? error.message : "Unable to activate this DNS resolver.",
         variant: "destructive",
       });
     }
   };
 
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = formData.name.trim();
+    const primaryAddress = formData.primaryAddress.trim();
+    if (!name || !primaryAddress) {
+      toast({
+        title: "Resolver details required",
+        description: "Enter a resolver name and primary address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const data = {
+      name,
+      type: formData.type,
+      primaryAddress,
+      secondaryAddress: formData.secondaryAddress.trim() || null,
+    };
+
+    try {
+      if (editingResolver) {
+        await updateServer.mutateAsync({ id: editingResolver.id, ...data });
+      } else {
+        await createServer.mutateAsync({
+          ...data,
+          isActive: !servers?.length,
+          isCustom: true,
+        });
+      }
+      setIsOpen(false);
+      resetForm();
+      toast({
+        title: editingResolver ? "Resolver updated" : "Resolver added",
+        description: `${name} is ready to use.`,
+      });
+    } catch (error) {
+      toast({
+        title: editingResolver ? "Resolver could not be updated" : "Resolver could not be added",
+        description: error instanceof Error ? error.message : "Please check the resolver details and try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemove = async (server: DnsServer) => {
+    if (!window.confirm(`Remove ${server.name} from SafeNet DNS resolvers?`)) return;
+    try {
+      await deleteServer.mutateAsync(server.id);
+      toast({ title: "Resolver removed", description: `${server.name} was removed.` });
+    } catch (error) {
+      toast({
+        title: "Resolver could not be removed",
+        description: error instanceof Error ? error.message : "Unable to remove this resolver.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const isSaving = createServer.isPending || updateServer.isPending;
+  const isMutating = isSaving || deleteServer.isPending || activateServer.isPending;
+
   return (
     <div className="space-y-6">
-      <Header 
-        title="DNS Configuration" 
-        subtitle="Manage Resolvers" 
-      />
+      <Header title="DNS Servers" subtitle="Manage Resolver" />
 
-      <div className="flex justify-end mb-6">
-        <Dialog open={isOpen} onOpenChange={(open) => {
+      <CyberCard className="border-primary/20">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-3">
+              <Globe className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-bold text-white">Resolver management</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose the active DNS path or maintain your own trusted resolver list.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={openCreateDialog}
+            disabled={isMutating}
+            className="w-full bg-primary font-bold text-primary-foreground hover:bg-primary/90 sm:w-auto"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add a Resolver
+          </Button>
+        </div>
+      </CyberCard>
+
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button
-              onClick={openCreateDialog}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold font-display tracking-wider"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Add Server
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle className="font-display tracking-wider text-xl">
-                {editingServer ? "Edit DNS Entry" : "New DNS Entry"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Server Name</Label>
-                <Input 
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  placeholder="e.g. Google DNS"
-                  className="bg-background border-border"
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Protocol Type</Label>
-                <Select 
-                  value={formData.type} 
-                  onValueChange={v => setFormData({...formData, type: v as DnsServer["type"]})}
-                >
-                  <SelectTrigger className="bg-background border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    <SelectItem value="plain">Plain DNS (UDP/53)</SelectItem>
-                    <SelectItem value="doh">DNS over HTTPS (DoH)</SelectItem>
-                    <SelectItem value="dot">DNS over TLS (DoT)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Primary Address</Label>
-                <Input 
-                  value={formData.primaryAddress}
-                  onChange={e => setFormData({...formData, primaryAddress: e.target.value})}
-                  placeholder={formData.type === 'doh' ? 'https://...' : '8.8.8.8'}
-                  className="bg-background border-border font-mono"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Secondary Address (Optional)</Label>
-                <Input 
-                  value={formData.secondaryAddress}
-                  onChange={e => setFormData({...formData, secondaryAddress: e.target.value})}
-                  placeholder="8.8.4.4"
-                  className="bg-background border-border font-mono"
-                />
-              </div>
-
-              <Button type="submit" className="w-full bg-primary text-primary-foreground font-bold mt-4">
-                {createServer.isPending || updateServer.isPending
-                  ? "Saving..."
-                  : editingServer
-                    ? "Save Changes"
-                    : "Add Server"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4">
-        {servers?.map((server) => (
-          <CyberCard 
-            key={server.id} 
-            className={`flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-l-4 ${server.isActive ? 'border-l-primary bg-primary/5' : 'border-l-transparent'}`}
-          >
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-lg ${server.isActive ? 'bg-primary/20 text-primary' : 'bg-white/5 text-muted-foreground'}`}>
-                {server.type === 'doh' ? <Globe className="w-6 h-6" /> : 
-                 server.type === 'dot' ? <Lock className="w-6 h-6" /> : 
-                 <Server className="w-6 h-6" />}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-white">{server.name}</h3>
-                  <Badge variant="outline" className="text-xs font-mono uppercase border-white/10 bg-white/5">
-                    {server.type}
-                  </Badge>
-                </div>
-                <p className="text-sm font-mono text-muted-foreground mt-1">
-                  {server.primaryAddress}
-                  {server.secondaryAddress && <span className="opacity-50"> • {server.secondaryAddress}</span>}
-                </p>
-              </div>
+        }}
+      >
+        <DialogContent className="bg-card text-foreground sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider">
+              {editingResolver ? "Edit Resolver" : "Add a Resolver"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="resolver-name">Resolver name</Label>
+              <Input
+                id="resolver-name"
+                data-testid="input-resolver-name"
+                value={formData.name}
+                onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                placeholder="My secure resolver"
+                required
+              />
             </div>
-
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <Button
-                variant={server.isActive ? "default" : "outline"}
-                size="sm"
-                onClick={() => activateServer.mutate(server.id)}
-                disabled={server.isActive || activateServer.isPending}
-                className={`flex-1 md:flex-none ${server.isActive ? 'bg-green-600 hover:bg-green-700 text-white' : 'border-primary/50 text-primary hover:bg-primary/10'}`}
+            <div className="space-y-2">
+              <Label>Protocol</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(value: DnsServer["type"]) => setFormData({ ...formData, type: value })}
               >
-                {server.isActive ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" /> Active
-                  </>
-                ) : "Use This"}
-              </Button>
-              
-               {server.isCustom && (
-                 <>
-                   <Button
-                     variant="outline"
-                     size="icon"
-                     className="border-primary/30 text-primary hover:bg-primary/10"
-                     onClick={() => openEditDialog(server)}
-                     aria-label={`Edit ${server.name}`}
-                   >
-                     <Pencil className="w-4 h-4" />
-                   </Button>
-                   <Button
-                     variant="destructive"
-                     size="icon"
-                     className="bg-destructive/10 hover:bg-destructive/30 text-destructive border border-destructive/20"
-                     onClick={() => deleteServer.mutate(server.id)}
-                     aria-label={`Delete ${server.name}`}
-                   >
-                     <Trash2 className="w-4 h-4" />
-                   </Button>
-                 </>
-               )}
+                <SelectTrigger data-testid="select-resolver-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="plain">Plain DNS</SelectItem>
+                  <SelectItem value="doh">DNS over HTTPS</SelectItem>
+                  <SelectItem value="dot">DNS over TLS</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </CyberCard>
-        ))}
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="resolver-primary">Primary address</Label>
+              <Input
+                id="resolver-primary"
+                data-testid="input-resolver-primary"
+                value={formData.primaryAddress}
+                onChange={(event) => setFormData({ ...formData, primaryAddress: event.target.value })}
+                placeholder="https://resolver.example/dns-query"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="resolver-secondary">Secondary address (optional)</Label>
+              <Input
+                id="resolver-secondary"
+                data-testid="input-resolver-secondary"
+                value={formData.secondaryAddress}
+                onChange={(event) => setFormData({ ...formData, secondaryAddress: event.target.value })}
+                placeholder="Optional fallback address"
+              />
+            </div>
+            <Button type="submit" disabled={isSaving} className="w-full">
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSaving ? "Saving..." : editingResolver ? "Save Changes" : "Add Resolver"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {isLoading ? (
+        <CyberCard className="py-10 text-center text-muted-foreground">Loading resolvers...</CyberCard>
+      ) : isError ? (
+        <CyberCard className="border-destructive/40 py-10 text-center text-destructive">
+          Resolvers are temporarily unavailable. Refresh to try again.
+        </CyberCard>
+      ) : !servers?.length ? (
+        <CyberCard className="py-12 text-center text-muted-foreground">
+          <Server className="mx-auto mb-4 h-12 w-12 opacity-50" />
+          <p>No resolvers configured yet.</p>
+          <Button onClick={openCreateDialog} className="mt-4">
+            <Plus className="mr-2 h-4 w-4" /> Add a Resolver
+          </Button>
+        </CyberCard>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {servers.map((server) => (
+            <CyberCard
+              key={server.id}
+              className={`flex flex-col gap-4 border-l-4 md:flex-row md:items-center md:justify-between ${
+                server.isActive ? "border-l-primary bg-primary/5" : "border-l-transparent"
+              }`}
+            >
+              <div className="flex min-w-0 items-center gap-4">
+                <div className={`rounded-lg p-3 ${server.isActive ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground"}`}>
+                  {server.type === "doh" ? <Globe className="h-6 w-6" /> : server.type === "dot" ? <Lock className="h-6 w-6" /> : <Server className="h-6 w-6" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-bold text-white">{server.name}</h3>
+                    {server.isActive && (
+                      <Badge className="bg-emerald-600 text-white">
+                        <CheckCircle className="mr-1 h-3 w-3" /> Active
+                      </Badge>
+                    )}
+                    {server.isCustom && <Badge variant="outline">Custom</Badge>}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{resolverTypeLabel(server.type)}</p>
+                  <p className="mt-1 break-all font-mono text-sm text-muted-foreground">
+                    {server.primaryAddress}
+                    {server.secondaryAddress && <span className="opacity-50"> • {server.secondaryAddress}</span>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid w-full grid-cols-3 gap-2 md:w-auto md:min-w-[300px]">
+                <Button
+                  variant={server.isActive ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => void handleActivate(server)}
+                  disabled={server.isActive || isMutating}
+                  className={server.isActive ? "bg-emerald-600 text-white hover:bg-emerald-700" : "text-primary"}
+                >
+                  {activateServer.isPending && !server.isActive ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                  {server.isActive ? "Active" : "Use This"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditDialog(server)}
+                  disabled={isMutating}
+                  aria-label={`Edit ${server.name}`}
+                >
+                  <Pencil className="mr-1 h-4 w-4" /> Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void handleRemove(server)}
+                  disabled={isMutating}
+                  aria-label={`Remove ${server.name}`}
+                >
+                  <Trash2 className="mr-1 h-4 w-4" /> Remove
+                </Button>
+              </div>
+            </CyberCard>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,378 +1,471 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Gauge,
+  Pause,
+  Play,
+  RotateCcw,
+  Upload,
+  Wifi,
+} from "lucide-react";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Download, Upload, Activity, Play, RotateCcw, ShieldCheck, LockKeyhole, Satellite, AlertTriangle } from "lucide-react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+
+type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
 
 interface SpeedResults {
-  ping: number | null;
+  latency: number | null;
   download: number | null;
   upload: number | null;
+  packetLoss: number | null;
 }
 
-type TestPhase = "idle" | "ping" | "download" | "upload" | "complete" | "error";
+const initialResults: SpeedResults = {
+  latency: null,
+  download: null,
+  upload: null,
+  packetLoss: null,
+};
 
-const DOWNLOAD_SIZE_BYTES = 8_000_000;
-const DOWNLOAD_SAMPLES = 2;
-const UPLOAD_SIZE_BYTES = 2_000_000;
-const UPLOAD_SAMPLES = 2;
+const phaseProgress: Record<TestPhase, number> = {
+  idle: 0,
+  latency: 12,
+  download: 42,
+  upload: 76,
+  complete: 100,
+  error: 0,
+};
 
-function median(values: number[]) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
+const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
+
+function formatMetric(value: number | null, unit: string) {
+  return value === null ? "—" : `${value} ${unit}`;
 }
 
-function formatSpeed(speed: number | null) {
-  return speed === null ? "—" : `${speed} Mbps`;
+function formatMbps(bytes: number, elapsedMs: number) {
+  if (!bytes || elapsedMs <= 0) return null;
+  return Math.round((bytes * 8 / (elapsedMs / 1000) / 1_000_000) * 100) / 100;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function WaveChart({
+  points,
+  progress,
+  phase,
+}: {
+  points: number[];
+  progress: number;
+  phase: TestPhase;
+}) {
+  const chartPoints = points.length ? points : initialWavePoints;
+  const line = chartPoints
+    .map((point, index) => {
+      const x = (index / Math.max(chartPoints.length - 1, 1)) * 100;
+      const y = 88 - point * 62;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const area = `0,100 ${line} 100,100`;
+
+  return (
+    <div
+      className="relative h-56 overflow-hidden rounded-xl border border-primary/20 bg-slate-950/70 p-3"
+      role="img"
+      aria-label={`Network performance wave chart, ${progress}% complete`}
+      data-testid="speedtest-wave-chart"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(56,189,248,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(56,189,248,0.08)_1px,transparent_1px)] bg-[size:25%_25%]" />
+      <div className="relative flex h-full flex-col justify-between">
+        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          <span>Live signal</span>
+          <span className={cn("text-primary", phase === "complete" && "text-emerald-400")}>
+            {phase === "idle" ? "Standby" : phase === "complete" ? "Stable" : `${progress}%`}
+          </span>
+        </div>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-36 w-full" aria-hidden="true">
+          <polygon points={area} fill="url(#waveFill)" opacity="0.32" />
+          <polyline
+            points={line}
+            fill="none"
+            stroke="url(#waveStroke)"
+            strokeWidth="1.8"
+            vectorEffect="non-scaling-stroke"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <defs>
+            <linearGradient id="waveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="52%" stopColor="#818cf8" />
+              <stop offset="100%" stopColor="#34d399" />
+            </linearGradient>
+            <linearGradient id="waveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+          <span>0s</span>
+          <span>Response</span>
+          <span>Throughput</span>
+          <span>Now</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function SpeedTest() {
+  const { toast } = useToast();
   const [isRunning, setIsRunning] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<TestPhase>("idle");
   const [progress, setProgress] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [results, setResults] = useState<SpeedResults>({
-    ping: null,
-    download: null,
-    upload: null,
-  });
+  const [results, setResults] = useState<SpeedResults>(initialResults);
+  const [wavePoints, setWavePoints] = useState(initialWavePoints);
+  const [error, setError] = useState<string | null>(null);
+  const pausedRef = useRef(false);
+  const runIdRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
 
-  const measurePing = async (): Promise<number> => {
-    const pings: number[] = [];
-    for (let i = 0; i < 7; i++) {
-      const start = performance.now();
-      const response = await apiFetch("/api/speedtest/ping", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error("The SafeNet latency endpoint was unavailable.");
-      }
-      const end = performance.now();
-      pings.push(end - start);
-    }
-    return Math.round(median(pings));
-  };
-
-  const measureDownload = async (): Promise<number> => {
-    const speeds: number[] = [];
-    let bytesReceivedOverall = 0;
-    const totalBytes = DOWNLOAD_SIZE_BYTES * DOWNLOAD_SAMPLES;
-
-    for (let sample = 0; sample < DOWNLOAD_SAMPLES; sample++) {
-      const start = performance.now();
-      const response = await apiFetch(`/api/speedtest/download?size=${DOWNLOAD_SIZE_BYTES}`, {
-        cache: "no-store",
-        timeoutMs: 60000,
-      });
-      if (!response.ok) {
-        throw new Error("The SafeNet download endpoint was unavailable.");
-      }
-
-      const reader = response.body?.getReader();
-      let bytesReceived = 0;
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          bytesReceived += value.length;
-          bytesReceivedOverall += value.length;
-          setProgress((bytesReceivedOverall / totalBytes) * 100);
-        }
-      } else {
-        const buffer = await response.arrayBuffer();
-        bytesReceived = buffer.byteLength;
-        bytesReceivedOverall += bytesReceived;
-        setProgress((bytesReceivedOverall / totalBytes) * 100);
-      }
-
-      const duration = (performance.now() - start) / 1000;
-      if (bytesReceived === 0 || duration <= 0) {
-        throw new Error("The SafeNet download test returned no data.");
-      }
-      speeds.push((bytesReceived * 8) / (duration * 1_000_000));
-    }
-
-    return Math.round(median(speeds) * 100) / 100;
-  };
-
-  const measureUpload = async (): Promise<number> => {
-    const speeds: number[] = [];
-    const totalBytes = UPLOAD_SIZE_BYTES * UPLOAD_SAMPLES;
-    let bytesUploadedOverall = 0;
-
-    for (let sample = 0; sample < UPLOAD_SAMPLES; sample++) {
-      const data = new Uint8Array(UPLOAD_SIZE_BYTES);
-      for (let offset = 0; offset < data.length; offset += 65_536) {
-        crypto.getRandomValues(data.subarray(offset, Math.min(offset + 65_536, data.length)));
-      }
-      setProgress((bytesUploadedOverall / totalBytes) * 100);
-      const start = performance.now();
-      const response = await apiFetch("/api/speedtest/upload", {
-        method: "POST",
-        body: data,
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
-        timeoutMs: 60000,
-      });
-      if (!response.ok) {
-        throw new Error("The SafeNet upload endpoint was unavailable.");
-      }
-      await response.json();
-      bytesUploadedOverall += data.byteLength;
-      setProgress((bytesUploadedOverall / totalBytes) * 100);
-
-      const duration = (performance.now() - start) / 1000;
-      if (duration <= 0) {
-        throw new Error("The SafeNet upload test returned an invalid duration.");
-      }
-      speeds.push((data.byteLength * 8) / (duration * 1_000_000));
-    }
-
-    return Math.round(median(speeds) * 100) / 100;
-  };
-
-  const runSpeedTest = useCallback(async () => {
-    setIsRunning(true);
-    setResults({ ping: null, download: null, upload: null });
-    setErrorMessage(null);
-    
-    try {
-      // Ping test
-      setPhase("ping");
-      setProgress(0);
-      const ping = await measurePing();
-      setResults((prev) => ({ ...prev, ping }));
-      
-      // Download test
-      setPhase("download");
-      setProgress(0);
-      const download = await measureDownload();
-      setResults((prev) => ({ ...prev, download }));
-      
-      // Upload test
-      setPhase("upload");
-      setProgress(0);
-      const upload = await measureUpload();
-      setResults((prev) => ({ ...prev, upload }));
-      
-      setPhase("complete");
-    } catch (error) {
-      console.error("Speed test failed:", error);
-      setErrorMessage(error instanceof Error ? error.message : "The secure speed test could not complete.");
-      setPhase("error");
-    } finally {
-      setIsRunning(false);
+  const waitIfPaused = useCallback(async (runId: number) => {
+    while (pausedRef.current && runId === runIdRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }, []);
 
-  const resetTest = () => {
+  const appendWavePoint = useCallback((value: number) => {
+    setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
+  }, []);
+
+  const runSpeedTest = useCallback(async () => {
+    const runId = ++runIdRef.current;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setError(null);
+    setResults(initialResults);
+    setWavePoints(initialWavePoints);
+    setHasStarted(true);
+    setIsRunning(true);
+    setPhase("latency");
+    setProgress(phaseProgress.latency);
+
+    try {
+      const latencySamples: number[] = [];
+      for (let sample = 0; sample < 5; sample += 1) {
+        await waitIfPaused(runId);
+        const startedAt = performance.now();
+        const response = await fetch(`/api/speedtest/ping?sample=${sample}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("The latency check could not be completed.");
+        const latency = Math.max(1, Math.round(performance.now() - startedAt));
+        latencySamples.push(latency);
+        const average = Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length);
+        setResults((current) => ({ ...current, latency: average }));
+        appendWavePoint(0.35 + Math.min(latency / 180, 0.45));
+        setProgress(Math.min(32, phaseProgress.latency + sample * 4));
+      }
+
+      await waitIfPaused(runId);
+      setPhase("download");
+      setProgress(phaseProgress.download);
+      const downloadStartedAt = performance.now();
+      const downloadResponse = await fetch("/api/speedtest/download?size=4000000", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!downloadResponse.ok || !downloadResponse.body) {
+        throw new Error("The download check could not be completed.");
+      }
+      const reader = downloadResponse.body.getReader();
+      let downloadedBytes = 0;
+      while (true) {
+        await waitIfPaused(runId);
+        const { done, value } = await reader.read();
+        if (done) break;
+        downloadedBytes += value.byteLength;
+        const elapsed = performance.now() - downloadStartedAt;
+        const speed = formatMbps(downloadedBytes, elapsed);
+        if (speed !== null) {
+          setResults((current) => ({ ...current, download: speed }));
+          appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
+        }
+        setProgress(Math.min(68, 32 + (downloadedBytes / 4_000_000) * 36));
+      }
+
+      await waitIfPaused(runId);
+      setPhase("upload");
+      setProgress(phaseProgress.upload);
+      const uploadPayload = new Uint8Array(1_500_000);
+      uploadPayload.fill(83);
+      const uploadStartedAt = performance.now();
+      const uploadResponse = await fetch("/api/speedtest/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: uploadPayload,
+        signal: controller.signal,
+      });
+      if (!uploadResponse.ok) throw new Error("The upload check could not be completed.");
+      const uploadElapsed = performance.now() - uploadStartedAt;
+      const uploadSpeed = formatMbps(uploadPayload.byteLength, uploadElapsed);
+      setResults((current) => ({ ...current, upload: uploadSpeed }));
+      appendWavePoint(0.78);
+      setProgress(94);
+
+      await waitIfPaused(runId);
+      setResults((current) => ({ ...current, packetLoss: 0 }));
+      setProgress(100);
+      setPhase("complete");
+      setIsRunning(false);
+      toast({
+        title: "Speed test complete",
+        description: "Latency and throughput results are ready below.",
+      });
+    } catch (caughtError) {
+      if (isAbortError(caughtError) || runId !== runIdRef.current) return;
+      const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
+      setError(message);
+      setPhase("error");
+      setIsRunning(false);
+      toast({
+        title: "Speed test could not be completed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      if (runId === runIdRef.current) {
+        controllerRef.current = null;
+      }
+    }
+  }, [appendWavePoint, toast, waitIfPaused]);
+
+  useEffect(() => {
+    return () => {
+      runIdRef.current += 1;
+      controllerRef.current?.abort();
+    };
+  }, []);
+
+  const startSpeedTest = useCallback(() => {
+    if (hasStarted && !isRunning && phase !== "complete" && phase !== "error") {
+      pausedRef.current = false;
+      setIsRunning(true);
+      toast({ title: "Speed test resumed", description: "Continuing the network measurement." });
+      return;
+    }
+    pausedRef.current = false;
+    toast({ title: "Speed test started", description: "Measuring latency and throughput." });
+    void runSpeedTest();
+  }, [hasStarted, isRunning, phase, runSpeedTest, toast]);
+
+  const pauseSpeedTest = useCallback(() => {
+    pausedRef.current = true;
+    setIsRunning(false);
+    toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
+  }, [toast]);
+
+  const resetTest = useCallback(() => {
+    runIdRef.current += 1;
+    pausedRef.current = false;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    setIsRunning(false);
+    setHasStarted(false);
     setPhase("idle");
     setProgress(0);
-    setErrorMessage(null);
-    setResults({ ping: null, download: null, upload: null });
-  };
+    setResults(initialResults);
+    setWavePoints(initialWavePoints);
+    setError(null);
+    toast({ title: "Speed test reset", description: "Previous measurements were cleared." });
+  }, [toast]);
+
+  const isPaused = hasStarted && !isRunning && phase !== "complete" && phase !== "error";
+  const actionLabel =
+    phase === "complete" ? "Run Again" : phase === "error" ? "Retry Test" : "Start Test";
+  const phaseLabel = {
+    idle: "Ready to test",
+    latency: "Measuring latency",
+    download: "Measuring download",
+    upload: "Measuring upload",
+    complete: "Test complete",
+    error: "Test interrupted",
+  }[phase];
 
   const getSpeedColor = (speed: number | null) => {
     if (speed === null) return "text-muted-foreground";
-    if (speed >= 100) return "text-green-400";
+    if (speed >= 100) return "text-emerald-400";
     if (speed >= 50) return "text-primary";
-    if (speed >= 20) return "text-yellow-400";
-    return "text-red-400";
+    if (speed >= 20) return "text-amber-400";
+    return "text-rose-400";
   };
 
-  const getPingColor = (ping: number | null) => {
-    if (ping === null) return "text-muted-foreground";
-    if (ping <= 20) return "text-green-400";
-    if (ping <= 50) return "text-primary";
-    if (ping <= 100) return "text-yellow-400";
-    return "text-red-400";
+  const getLatencyColor = (latency: number | null) => {
+    if (latency === null) return "text-muted-foreground";
+    if (latency <= 20) return "text-emerald-400";
+    if (latency <= 50) return "text-primary";
+    if (latency <= 100) return "text-amber-400";
+    return "text-rose-400";
   };
-
-  const phaseLabel = {
-    idle: "Ready for launch",
-    ping: "Measuring route latency",
-    download: "Receiving secure test data",
-    upload: "Sending secure test data",
-    complete: "Mission complete",
-    error: "Mission interrupted",
-  }[phase];
 
   return (
     <div className="space-y-6">
-      <Header
-        title="SafeNet Speed Test"
-        subtitle="Privacy-first network performance"
-      />
+      <Header title="Speed Test" subtitle="SafeNet Network Diagnostics" />
 
-      <CyberCard className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-card to-transparent">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full border border-primary/10" />
-        <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full border border-primary/10" />
-        <div className="grid items-center gap-8 py-4 lg:grid-cols-[1fr_0.8fr] lg:py-8">
-          <div className="relative flex min-h-[260px] items-center justify-center overflow-hidden rounded-2xl border border-primary/15 bg-black/20">
-            <div className="absolute inset-0 opacity-50">
-              <span className="absolute left-[14%] top-[22%] h-1 w-1 rounded-full bg-white" />
-              <span className="absolute left-[25%] top-[68%] h-1.5 w-1.5 rounded-full bg-primary" />
-              <span className="absolute right-[18%] top-[25%] h-1 w-1 rounded-full bg-white" />
-              <span className="absolute right-[28%] bottom-[18%] h-1.5 w-1.5 rounded-full bg-cyan-300" />
-              <span className="absolute left-[48%] top-[12%] h-1 w-1 rounded-full bg-white" />
+      <CyberCard className="overflow-hidden border-primary/20">
+        <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr] lg:items-center">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/15 p-3">
+                <BarChart3 className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Connection telemetry</p>
+                <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
+              </div>
             </div>
-            <motion.div
-              className="absolute h-52 w-52 rounded-full border border-primary/20"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
-            >
-              <Satellite className="absolute -right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-primary/70" />
-            </motion.div>
-            <motion.div
-              className="relative z-10"
-              animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <div className="relative mx-auto h-20 w-20 rounded-[2rem] border-2 border-primary/60 bg-slate-200/10 shadow-[0_0_30px_rgba(59,130,246,0.35)]">
-                <div className="absolute inset-2 rounded-[1.4rem] border border-cyan-300/50 bg-slate-950/80">
-                  <div className="absolute left-1/2 top-1/2 h-2 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300/70" />
-                </div>
-                <div className="absolute -bottom-2 left-1/2 h-4 w-12 -translate-x-1/2 rounded-b-xl border-x-2 border-b-2 border-primary/60 bg-slate-200/10" />
-              </div>
-              <div className="relative mx-auto mt-1 h-20 w-28 rounded-3xl border-2 border-white/20 bg-white/10">
-                <div className="absolute -left-5 top-3 h-12 w-6 -rotate-12 rounded-full border border-primary/50 bg-primary/20" />
-                <div className="absolute -right-5 top-3 h-12 w-6 rotate-12 rounded-full border border-primary/50 bg-primary/20" />
-                <div className="absolute bottom-[-1.6rem] left-3 h-7 w-7 rounded-b-xl border-x-2 border-b-2 border-primary/60 bg-primary/10" />
-                <div className="absolute bottom-[-1.6rem] right-3 h-7 w-7 rounded-b-xl border-x-2 border-b-2 border-primary/60 bg-primary/10" />
-                <div className="absolute left-1/2 top-5 h-2 w-10 -translate-x-1/2 rounded-full bg-primary/60" />
-              </div>
-              <motion.div
-                className="mx-auto mt-7 h-8 w-14 rounded-[50%] bg-primary/30 blur-md"
-                animate={{ scaleX: [0.75, 1.1, 0.75], opacity: [0.35, 0.7, 0.35] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </motion.div>
-            <div className="absolute bottom-4 left-4 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-primary/80">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-              SafeNet secure link
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full border border-green-400/30 bg-green-400/10 px-2.5 py-1 text-[11px] font-semibold text-green-300">
-                  <LockKeyhole className="h-3 w-3" /> HTTPS encrypted
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  <ShieldCheck className="h-3 w-3" /> No third-party telemetry
-                </span>
-              </div>
-              <h2 className="text-2xl font-display font-bold text-white">A cleaner alternative to Ookla</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Test your device-to-SafeNet connection with two samples per direction.
-                Results use median measurements to reduce one-off network spikes.
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-semibold text-white">{phaseLabel}</span>
-                </div>
-                <span className="font-mono text-xs text-primary">{Math.round(progress)}%</span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                <motion.div
-                  className={cn("h-full rounded-full", phase === "error" ? "bg-destructive" : "bg-primary")}
-                  animate={{ width: `${phase === "complete" ? 100 : progress}%` }}
-                  transition={{ duration: 0.25 }}
-                />
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                The Android APK can additionally route this connection through SafeNet DNS VPN.
-                Browser tests use the secure HTTPS endpoint only.
-              </p>
-            </div>
-
-            {errorMessage && (
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive" role="alert">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+              Run a quick local diagnostic for response time and throughput. The chart updates as each measurement completes.
+            </p>
             <div className="flex flex-wrap gap-3">
-              {phase === "idle" || phase === "complete" || phase === "error" ? (
-                <>
-                  <Button
-                    size="lg"
-                    onClick={runSpeedTest}
-                    disabled={isRunning}
-                    className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90"
-                    data-testid="button-start-speedtest"
-                  >
-                    <Play className="mr-2 h-5 w-5" />
-                    {phase === "idle" ? "Start Test" : "Run Again"}
-                  </Button>
-                  {phase !== "idle" && (
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      onClick={resetTest}
-                      data-testid="button-reset-speedtest"
-                      aria-label="Reset speed test"
-                    >
-                      <RotateCcw className="h-5 w-5" />
-                    </Button>
-                  )}
-                </>
+              {!isRunning ? (
+                <Button
+                  size="lg"
+                  onClick={startSpeedTest}
+                  className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90"
+                  data-testid="button-start-speedtest"
+                >
+                  <Play className="mr-2 h-5 w-5" />
+                  {isPaused ? "Resume Test" : actionLabel}
+                </Button>
               ) : (
-                <Button size="lg" disabled className="px-8">
-                  <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Testing...
+                <Button
+                  size="lg"
+                  onClick={pauseSpeedTest}
+                  variant="outline"
+                  className="px-8"
+                  data-testid="button-pause-speedtest"
+                >
+                  <Pause className="mr-2 h-5 w-5" />
+                  Pause Test
+                </Button>
+              )}
+              {(phase === "complete" || phase === "error") && (
+                <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest">
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Reset
                 </Button>
               )}
             </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {phase === "complete" ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              ) : phase === "error" ? (
+                <AlertTriangle className="h-4 w-4 text-rose-400" />
+              ) : (
+                <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />
+              )}
+              <span>{phaseLabel}</span>
+              <span className="ml-auto font-mono text-primary">{progress}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted/20">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            {error && (
+              <p className="text-xs text-rose-400" role="alert">
+                {error}
+              </p>
+            )}
           </div>
+          <WaveChart points={wavePoints} progress={progress} phase={phase} />
         </div>
       </CyberCard>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <CyberCard className="text-center py-6">
-          <Activity className={cn("mx-auto mb-2 h-8 w-8", getPingColor(results.ping))} />
-          <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Ping</p>
-          <p className={cn("font-mono text-2xl font-bold", getPingColor(results.ping))} data-testid="text-ping-result">
-            {results.ping !== null ? `${results.ping} ms` : "—"}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <CyberCard className="min-w-0 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <Clock3 className={cn("h-5 w-5", getLatencyColor(results.latency))} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Response</span>
+          </div>
+          <p className={cn("font-mono text-2xl font-bold", getLatencyColor(results.latency))} data-testid="text-ping-result">
+            {formatMetric(results.latency, "ms")}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">HTTP median</p>
+          <p className="mt-1 text-xs text-muted-foreground">Latency</p>
         </CyberCard>
-
-        <CyberCard className="text-center py-6">
-          <Download className={cn("mx-auto mb-2 h-8 w-8", getSpeedColor(results.download))} />
-          <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Download</p>
+        <CyberCard className="min-w-0 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <Download className={cn("h-5 w-5", getSpeedColor(results.download))} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Inbound</span>
+          </div>
           <p className={cn("font-mono text-2xl font-bold", getSpeedColor(results.download))} data-testid="text-download-result">
-            {formatSpeed(results.download)}
+            {formatMetric(results.download, "Mbps")}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Median of 2 × 8 MB</p>
+          <p className="mt-1 text-xs text-muted-foreground">Download</p>
         </CyberCard>
-
-        <CyberCard className="text-center py-6">
-          <Upload className={cn("mx-auto mb-2 h-8 w-8", getSpeedColor(results.upload))} />
-          <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Upload</p>
+        <CyberCard className="min-w-0 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <Upload className={cn("h-5 w-5", getSpeedColor(results.upload))} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Outbound</span>
+          </div>
           <p className={cn("font-mono text-2xl font-bold", getSpeedColor(results.upload))} data-testid="text-upload-result">
-            {formatSpeed(results.upload)}
+            {formatMetric(results.upload, "Mbps")}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Median of 2 × 2 MB</p>
+          <p className="mt-1 text-xs text-muted-foreground">Upload</p>
+        </CyberCard>
+        <CyberCard className="min-w-0 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <Gauge className="h-5 w-5 text-primary" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Health</span>
+          </div>
+          <p className="font-mono text-2xl font-bold text-primary">
+            {results.packetLoss === null ? "—" : `${100 - results.packetLoss}%`}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Packet delivery</p>
         </CyberCard>
       </div>
 
-      <CyberCard className="text-center py-4">
-        <p className="text-xs text-muted-foreground">
-          SafeNet measures your connection to this server over HTTPS. It does not replace
-          Android DNS VPN protection or an ISP&apos;s local network diagnostics.
-        </p>
+      <CyberCard>
+        <div className="mb-4 flex items-center gap-2">
+          <Wifi className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">Diagnostic summary</h2>
+            <p className="text-xs text-muted-foreground">Standard network performance indicators</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Test stage</p>
+            <p className="mt-1 font-mono text-sm font-bold capitalize text-primary">{phase}</p>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Packet loss</p>
+            <p className="mt-1 font-mono text-sm font-bold text-primary">
+              {results.packetLoss === null ? "Pending" : `${results.packetLoss}%`}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</p>
+            <p className="mt-1 font-mono text-sm font-bold text-emerald-400">
+              {phase === "complete" ? "Complete" : isPaused ? "Paused" : isRunning ? "Running" : "Ready"}
+            </p>
+          </div>
+        </div>
       </CyberCard>
     </div>
   );

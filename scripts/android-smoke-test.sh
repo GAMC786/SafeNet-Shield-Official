@@ -170,7 +170,7 @@ command -v adb >/dev/null 2>&1 || {
 }
 
 mkdir -p "$output_dir"
-rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
+rm -f "$output_dir"/instrumentation.log "$output_dir"/pin-smoke-evidence.txt "$output_dir"/result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt
 printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode" > "$output_dir/coverage.txt"
@@ -629,7 +629,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 echo "Running SafeNet DNS instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
-    -e class com.safenet.dns.SafeNetVpnInstrumentationTest \
+    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetPinInstrumentationTest \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
@@ -639,6 +639,19 @@ adb_run shell am instrument -w -r \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
 set -e
+
+# Keep the PIN smoke evidence structured and free of entered PINs or recovery
+# codes. The test emits only named PASS outcomes; missing outcomes are useful
+# evidence when instrumentation stops before completing the case.
+{
+    for pin_outcome in initial_gate relaunch_gate incorrect_pin fifth_attempt_lockout recovery_reset; do
+        if grep -q "PIN_SMOKE_OUTCOME ${pin_outcome}=PASS" "$output_dir/instrumentation.log"; then
+            echo "${pin_outcome}=PASS"
+        else
+            echo "${pin_outcome}=NOT_RECORDED"
+        fi
+    done
+} > "$output_dir/pin-smoke-evidence.txt"
 
 # Capture the VPN and network state even after a failed test. This is the
 # evidence needed to tell a route problem from an upstream resolver problem.

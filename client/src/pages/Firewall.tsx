@@ -6,7 +6,7 @@ import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
+import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AiShieldControls } from "@/components/AiShieldControls";
+
+const GOOGLE_GMAIL_DOMAINS = [
+  "accounts.google.com",
+  "gmail.com",
+  "google.com",
+  "googleapis.com",
+  "gstatic.com",
+];
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -48,23 +55,47 @@ export default function Firewall() {
 
   const handleAddDomain = () => {
     if (!newDomain) return;
+    const content = newDomain.trim();
+    if (!content) return;
     createBlock.mutate({
       type: "domain",
-      content: newDomain,
+      content,
       category: "custom",
       action: newDomainAction,
       isActive: true
+    }, {
+      onSuccess: () => toast({
+        title: "URL rule added",
+        description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
+      }),
+      onError: (error) => toast({
+        title: "URL rule could not be added",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      }),
     });
     setNewDomain("");
   };
 
   const handleAddKeyword = () => {
     if (!newKeyword) return;
+    const content = newKeyword.trim();
+    if (!content) return;
     createBlock.mutate({
       type: "keyword",
-      content: newKeyword,
+      content,
       category: "custom",
       isActive: true
+    }, {
+      onSuccess: () => toast({
+        title: "Keyword filter added",
+        description: `${content} will be filtered from DNS requests.`,
+      }),
+      onError: (error) => toast({
+        title: "Keyword filter could not be added",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      }),
     });
     setNewKeyword("");
   };
@@ -103,21 +134,25 @@ export default function Firewall() {
 
   const handleSaveRule = () => {
     if (!newRule.name) {
-      toast({ title: "Error", description: "Rule name is required", variant: "destructive" });
+      toast({ title: "Firewall rule name required", description: "Enter a name before saving the rule.", variant: "destructive" });
       return;
     }
     const onSuccess = () => {
       setIsRuleDialogOpen(false);
       resetRuleForm();
+      toast({
+        title: editingRule ? "Firewall rule updated" : "Firewall rule created",
+        description: editingRule
+          ? "The access rule changes are now active."
+          : `${newRule.name} is now active.`,
+      });
     };
     if (editingRule) {
       updateRule.mutate({ id: editingRule.id, data: newRule }, { onSuccess });
       return;
     }
     createRule.mutate(newRule, {
-      onSuccess: () => {
-        onSuccess();
-      }
+      onSuccess,
     });
   };
 
@@ -144,8 +179,146 @@ export default function Firewall() {
           ...(editingBlocklist.type === "domain" ? { action: editedBlocklistAction } : {}),
         },
       },
-      { onSuccess: closeEditBlocklistDialog },
+      {
+        onSuccess: () => {
+          const filterType = editingBlocklist.type === "keyword" ? "keyword filter" : "URL rule";
+          closeEditBlocklistDialog();
+          toast({
+            title: `${filterType[0].toUpperCase()}${filterType.slice(1)} updated`,
+            description: `${content} is now configured to ${editingBlocklist.type === "domain" ? editedBlocklistAction : "block"} matching requests.`,
+          });
+        },
+        onError: (error) => toast({
+          title: "Filter could not be updated",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        }),
+      },
     );
+  };
+
+  const handleToggleBlocklist = (item: Blocklist) => {
+    updateBlock.mutate(
+      { id: item.id, data: { isActive: !item.isActive } },
+      {
+        onSuccess: () => toast({
+          title: `${item.type === "keyword" ? "Keyword filter" : "URL rule"} ${item.isActive ? "disabled" : "enabled"}`,
+          description: `${item.content} is now ${item.isActive ? "ignored" : "active"} by SafeNet filtering.`,
+        }),
+        onError: (error) => toast({
+          title: "Filter status could not be changed",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        }),
+      },
+    );
+  };
+
+  const handleAllowGoogleServices = async () => {
+    try {
+      let createdCount = 0;
+      let updatedCount = 0;
+      let unchangedCount = 0;
+
+      for (const domain of GOOGLE_GMAIL_DOMAINS) {
+        const existing = blocklists?.filter((item) => item.type === "domain" && item.content.toLowerCase() === domain) || [];
+        if (existing.length > 0) {
+          let changed = false;
+          for (const item of existing) {
+            if (item.action !== "allow" || !item.isActive) {
+              await updateBlock.mutateAsync({ id: item.id, data: { action: "allow", isActive: true } });
+              changed = true;
+            }
+          }
+          if (changed) {
+            updatedCount += 1;
+          } else {
+            unchangedCount += 1;
+          }
+        } else {
+          await createBlock.mutateAsync({
+            type: "domain",
+            content: domain,
+            category: "google-gmail",
+            action: "allow",
+            isActive: true,
+          });
+          createdCount += 1;
+        }
+      }
+
+      const changedCount = createdCount + updatedCount;
+      if (changedCount === 0) {
+        toast({
+          title: "Google and Gmail access already allowed",
+          description: "All required Google and Gmail DNS rules are already active.",
+        });
+        return;
+      }
+
+      toast({
+        title: "Google and Gmail access rules updated",
+        description: [
+          createdCount > 0 ? `${createdCount} rule${createdCount === 1 ? "" : "s"} added` : "",
+          updatedCount > 0 ? `${updatedCount} existing rule${updatedCount === 1 ? "" : "s"} enabled` : "",
+          unchangedCount > 0 ? `${unchangedCount} already active` : "",
+        ].filter(Boolean).join("; ") + ".",
+      });
+    } catch (error) {
+      toast({
+        title: "Google and Gmail access could not be allowed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteRule = async (rule: FirewallRule) => {
+    if (!window.confirm(`Delete the firewall rule "${rule.name}"?`)) return;
+    try {
+      await deleteRule.mutateAsync(rule.id);
+      toast({ title: "Firewall rule deleted", description: `${rule.name} was removed.` });
+    } catch (error) {
+      toast({
+        title: "Firewall rule could not be deleted",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleRule = (rule: FirewallRule) => {
+    updateRule.mutate(
+      { id: rule.id, data: { isEnabled: !rule.isEnabled } },
+      {
+        onSuccess: () => toast({
+          title: `Access rule ${rule.isEnabled ? "disabled" : "enabled"}`,
+          description: `${rule.name} is now ${rule.isEnabled ? "inactive" : "active"}.`,
+        }),
+        onError: (error) => toast({
+          title: "Access rule status could not be changed",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        }),
+      },
+    );
+  };
+
+  const handleDeleteBlocklist = async (item: Blocklist) => {
+    if (!window.confirm(`Delete the ${item.type === "keyword" ? "keyword filter" : "URL rule"} "${item.content}"?`)) return;
+    try {
+      await deleteBlock.mutateAsync(item.id);
+      toast({
+        title: item.type === "keyword" ? "Keyword filter deleted" : "URL rule deleted",
+        description: `${item.content} was removed.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Filter could not be deleted",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const domains = blocklists?.filter(b => b.type === "domain") || [];
@@ -159,18 +332,27 @@ export default function Firewall() {
         status="active"
       />
 
-      <AiShieldControls />
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
         <div className="flex items-center gap-4">
           <div className="p-4 bg-destructive/20 rounded-full shadow-[0_0_20px_var(--destructive)]">
             <Ban className="w-8 h-8 text-destructive" />
           </div>
-          <div>
+          <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.length || 0} active custom rules.
+              Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+            onClick={() => void handleAllowGoogleServices()}
+            disabled={createBlock.isPending || updateBlock.isPending}
+          >
+            <Check className="mr-2 h-4 w-4" />
+            Allow Google &amp; Gmail
+          </Button>
         </div>
       </CyberCard>
 
@@ -215,6 +397,27 @@ export default function Firewall() {
                       placeholder="e.g., Block DNS"
                       className="bg-background border-border"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Source Address</Label>
+                      <Input
+                        value={newRule.sourceAddress || ""}
+                        onChange={(e) => setNewRule({ ...newRule, sourceAddress: e.target.value || "Any" })}
+                        placeholder="Any or CIDR"
+                        className="bg-background border-border font-mono"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Destination Address</Label>
+                      <Input
+                        value={newRule.destinationAddress || ""}
+                        onChange={(e) => setNewRule({ ...newRule, destinationAddress: e.target.value || "Any" })}
+                        placeholder="Any or CIDR"
+                        className="bg-background border-border font-mono"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -277,7 +480,7 @@ export default function Firewall() {
                     </div>
                   </div>
 
-                  <Button onClick={handleSaveRule} className="w-full bg-primary hover:bg-primary/90" disabled={createRule.isPending || updateRule.isPending || !newRule.name}>
+                  <Button onClick={handleSaveRule} className="w-full bg-primary hover:bg-primary/90" disabled={createRule.isPending || updateRule.isPending || !newRule.name.trim()}>
                     {createRule.isPending || updateRule.isPending ? "Saving..." : editingRule ? "Save Changes" : "Create Rule"}
                   </Button>
                 </div>
@@ -288,7 +491,7 @@ export default function Firewall() {
           <div className="grid gap-3">
             {rules && rules.length > 0 ? (
               rules.map(rule => (
-                <CyberCard key={rule.id} className="p-4">
+                <CyberCard key={rule.id} className={`p-4 ${rule.isEnabled === false ? "opacity-50" : ""}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-3">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -298,7 +501,7 @@ export default function Firewall() {
                           {rule.action.toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono">
                         <div className="flex flex-col">
                           <span className="text-muted-foreground">Source</span>
                           <span className="text-foreground uppercase">{rule.sourceInterface}</span>
@@ -311,9 +514,24 @@ export default function Firewall() {
                           <span className="text-muted-foreground">Service</span>
                           <span className="text-foreground uppercase">{rule.service}</span>
                         </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Addresses</span>
+                  <span className="text-foreground break-words">
+                    {rule.sourceAddress || "Any"} → {rule.destinationAddress || "Any"}
+                  </span>
+                </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleToggleRule(rule)}
+                        className={rule.isEnabled === false ? "text-muted-foreground hover:text-primary" : "text-primary hover:text-primary hover:bg-primary/10"}
+                        aria-label={`${rule.isEnabled === false ? "Enable" : "Disable"} ${rule.name}`}
+                      >
+                        {rule.isEnabled === false ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -326,7 +544,7 @@ export default function Firewall() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteRule.mutate(rule.id)}
+                       onClick={() => void handleDeleteRule(rule)}
                         className="text-muted-foreground hover:text-destructive"
                         aria-label={`Delete ${rule.name}`}
                       >
@@ -407,7 +625,8 @@ export default function Firewall() {
               />
             </div>
             <Button 
-              onClick={handleAddDomain} 
+              onClick={handleAddDomain}
+              disabled={createBlock.isPending || !newDomain.trim()}
               className={newDomainAction === "block" ? "bg-destructive hover:bg-destructive/80 text-white font-bold" : "bg-primary hover:bg-primary/80 text-white font-bold"}
               data-testid="button-add-domain"
             >
@@ -420,8 +639,8 @@ export default function Firewall() {
               <div 
                 key={item.id} 
                 className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border transition-colors group ${
-                  item.action === "block" ? "border-destructive/20 hover:border-destructive/40" : "border-primary/20 hover:border-primary/40"
-                }`}
+                    item.action === "block" ? "border-destructive/20 hover:border-destructive/40" : "border-primary/20 hover:border-primary/40"
+                  } ${!item.isActive ? "opacity-50" : ""}`}
                 data-testid={`url-rule-${item.id}`}
               >
                 <div className="flex items-center gap-3">
@@ -442,6 +661,16 @@ export default function Firewall() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
+                    onClick={() => handleToggleBlocklist(item)}
+                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
+                    data-testid={`button-toggle-rule-${item.id}`}
+                  >
+                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="text-primary hover:text-primary hover:bg-primary/10"
                     onClick={() => openEditBlocklistDialog(item)}
                     aria-label={`Edit ${item.content}`}
@@ -453,7 +682,7 @@ export default function Firewall() {
                     variant="ghost"
                     size="icon"
                     className="text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteBlock.mutate(item.id)}
+                    onClick={() => void handleDeleteBlocklist(item)}
                     aria-label={`Delete ${item.content}`}
                     data-testid={`button-delete-rule-${item.id}`}
                   >
@@ -480,19 +709,28 @@ export default function Firewall() {
                 onKeyDown={e => e.key === 'Enter' && handleAddKeyword()}
               />
             </div>
-            <Button onClick={handleAddKeyword} className="bg-destructive hover:bg-destructive/80 text-white font-bold">
+            <Button onClick={handleAddKeyword} disabled={createBlock.isPending || !newKeyword.trim()} className="bg-destructive hover:bg-destructive/80 text-white font-bold">
               <Plus className="w-4 h-4 mr-2" /> Filter
             </Button>
           </div>
 
           <div className="grid gap-2">
             {keywords.map(item => (
-              <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-card/50 border border-white/5 hover:border-destructive/30 transition-colors group">
+              <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border border-white/5 hover:border-destructive/30 transition-colors group ${!item.isActive ? "opacity-50" : ""}`}>
                 <div className="flex items-center gap-3">
                   <List className="w-4 h-4 text-destructive" />
                   <span className="font-mono text-sm">{item.content}</span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
+                    onClick={() => handleToggleBlocklist(item)}
+                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
+                  >
+                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -506,7 +744,7 @@ export default function Firewall() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => deleteBlock.mutate(item.id)}
+                    onClick={() => void handleDeleteBlocklist(item)}
                     aria-label={`Delete ${item.content}`}
                   >
                     <Trash2 className="w-4 h-4" />

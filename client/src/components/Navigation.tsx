@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { Shield, Activity, List, Settings, Globe, Wifi, Bug, Gauge } from "lucide-react";
+import { Shield, Activity, List, Settings, Globe, Wifi, Bug, Gauge, LogOut } from "lucide-react";
+import { useUser, useClerk } from "@clerk/react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
@@ -7,7 +8,7 @@ import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
 const navItems = [
   { path: "/", label: "Dashboard", icon: Activity },
   { path: "/dns", label: "DNS Servers", icon: Globe },
-  { path: "/ddns", label: "Dynamic DNS", icon: Wifi },
+  { path: "/ddns", label: "DDNS", icon: Wifi },
   { path: "/speedtest", label: "Speed Test", icon: Gauge },
   { path: "/firewall", label: "Firewall", icon: Shield },
   { path: "/antivirus", label: "Antivirus", icon: Bug },
@@ -17,6 +18,8 @@ const navItems = [
 
 export function Navigation() {
   const [location] = useLocation();
+  const { isLoaded, user } = useUser();
+  const { signOut } = useClerk();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
@@ -64,6 +67,26 @@ export function Navigation() {
           );
         })}
       </div>
+      {isLoaded && user && (
+        <div className="mt-2 md:mt-auto md:px-2">
+          <button
+            type="button"
+            onClick={() => void signOut({ redirectUrl: basePathForLogout() })}
+            aria-label={`Sign out ${user.primaryEmailAddress?.emailAddress ?? "of SafeNet DNS"}`}
+            className="relative flex flex-col items-center justify-center p-3 md:p-4 rounded-xl transition-all duration-300 cursor-pointer group text-muted-foreground hover:text-white hover:bg-white/5"
+          >
+            <LogOut className="w-6 h-6" />
+            <span className="text-[10px] mt-1 md:hidden font-medium">Sign out</span>
+            <span className="hidden md:block absolute left-16 bg-card border border-border px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+              Sign out
+            </span>
+          </button>
+        </div>
+      )}
     </nav>
   );
+}
+
+function basePathForLogout() {
+  return import.meta.env.BASE_URL || "/";
 }

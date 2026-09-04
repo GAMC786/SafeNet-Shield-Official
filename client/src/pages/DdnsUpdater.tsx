@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useUpdateDdnsWithIp } from "@/hooks/use-ddns";
-import type { PublicDdnsUpdater } from "@shared/schema";
+import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp } from "@/hooks/use-ddns";
+import { useDnsServers } from "@/hooks/use-dns";
+import { DDNS_DEFAULT_INTERVAL_MS, DDNS_MIN_INTERVAL_MS, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Pencil, Trash2, RefreshCw, Clock, Wifi } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,58 +13,52 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-
-const ispBrands = [
-  { match: /rogers/i, name: "Rogers", mark: "R", color: "bg-red-500/20 text-red-300 border-red-400/40" },
-  { match: /telus/i, name: "TELUS", mark: "T", color: "bg-purple-500/20 text-purple-300 border-purple-400/40" },
-  { match: /bell/i, name: "Bell", mark: "B", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
-  { match: /videotron/i, name: "Videotron", mark: "V", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
-  { match: /cogeco/i, name: "Cogeco", mark: "C", color: "bg-cyan-500/20 text-cyan-300 border-cyan-400/40" },
-  { match: /shaw/i, name: "Shaw", mark: "S", color: "bg-green-500/20 text-green-300 border-green-400/40" },
-  { match: /sasktel/i, name: "SaskTel", mark: "S", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
-  { match: /freedom/i, name: "Freedom", mark: "F", color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/40" },
-  { match: /starlink/i, name: "Starlink", mark: "✦", color: "bg-white/10 text-white border-white/30" },
-  { match: /google/i, name: "Google", mark: "G", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
-  { match: /cloudflare/i, name: "Cloudflare", mark: "C", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
-  { match: /microsoft/i, name: "Microsoft", mark: "M", color: "bg-cyan-500/20 text-cyan-300 border-cyan-400/40" },
-  { match: /comcast|xfinity/i, name: "Xfinity", mark: "X", color: "bg-purple-500/20 text-purple-300 border-purple-400/40" },
-  { match: /at&t|att\b/i, name: "AT&T", mark: "&", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
-  { match: /verizon/i, name: "Verizon", mark: "V", color: "bg-red-500/20 text-red-300 border-red-400/40" },
-  { match: /t-mobile|tmobile/i, name: "T-Mobile", mark: "T", color: "bg-pink-500/20 text-pink-300 border-pink-400/40" },
-  { match: /google fiber/i, name: "Google Fiber", mark: "G", color: "bg-blue-500/20 text-blue-300 border-blue-400/40" },
-  { match: /teksavvy/i, name: "TekSavvy", mark: "T", color: "bg-orange-500/20 text-orange-300 border-orange-400/40" },
-] as const;
-
-function IspBadge({ isp }: { isp?: string }) {
-  if (!isp) return null;
-  const brand = ispBrands.find((candidate) => candidate.match.test(isp));
-  const name = brand?.name || isp;
-  const mark = brand?.mark || "ISP";
-  const color = brand?.color || "bg-primary/15 text-primary border-primary/30";
-
-  return (
-    <div
-      className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold", color)}
-      title={`Detected internet provider: ${isp}`}
-      data-testid="detected-isp"
-    >
-      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-black/20 px-1 font-display text-[10px]">
-        {mark}
-      </span>
-      <span>{name}</span>
-    </div>
-  );
-}
+import { useToast } from "@/hooks/use-toast";
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
   const { data: publicIpData } = usePublicIp();
+  const { data: dnsServers } = useDnsServers();
   const createUpdater = useCreateDdnsUpdater();
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
-  const updateWithIp = useUpdateDdnsWithIp();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
+  const activeDnsServer = dnsServers?.find((server) => server.isActive);
+
+  const isAutoMode = Boolean(updaters?.length && updaters.every((updater) => updater.isEnabled !== false));
+  const [isSwitchingToAuto, setIsSwitchingToAuto] = useState(false);
+
+  const handleAutoModeToggle = async () => {
+    if (!updaters?.length || isSwitchingToAuto) return;
+    const nextAutoMode = !isAutoMode;
+    setIsSwitchingToAuto(true);
+    try {
+      for (const updater of updaters) {
+        if ((updater.isEnabled !== false) !== nextAutoMode) {
+          await updateUpdater.mutateAsync({
+            id: updater.id,
+            data: { isEnabled: nextAutoMode },
+          });
+        }
+      }
+      toast({
+        title: nextAutoMode ? "Automatic updates enabled" : "Automatic updates paused",
+        description: nextAutoMode
+          ? "All configured DDNS resolvers will update automatically."
+          : "DDNS provider updates are paused until auto mode is enabled again.",
+      });
+    } catch (error) {
+      toast({
+        title: "Auto mode could not be changed",
+        description: error instanceof Error ? error.message : "Unable to change automatic updates.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSwitchingToAuto(false);
+    }
+  };
 
   const [formData, setFormData] = useState<{
     hostname: string;
@@ -77,7 +72,7 @@ export default function DdnsUpdater() {
     provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
     apiKey: "",
     customUrl: "",
-    updateInterval: 3600,
+    updateInterval: DDNS_DEFAULT_INTERVAL_MS,
     isEnabled: true,
   });
 
@@ -87,7 +82,7 @@ export default function DdnsUpdater() {
       provider: "duckdns",
       apiKey: "",
       customUrl: "",
-      updateInterval: 3600,
+      updateInterval: DDNS_DEFAULT_INTERVAL_MS,
       isEnabled: true,
     });
     setEditingUpdater(null);
@@ -105,7 +100,7 @@ export default function DdnsUpdater() {
       provider: updater.provider,
       apiKey: "",
       customUrl: "",
-      updateInterval: updater.updateInterval || 3600,
+      updateInterval: updater.updateInterval || DDNS_DEFAULT_INTERVAL_MS,
       isEnabled: updater.isEnabled !== false,
     });
     setIsOpen(true);
@@ -113,27 +108,72 @@ export default function DdnsUpdater() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUpdater) {
-      const { apiKey, customUrl, ...updaterData } = formData;
-      await updateUpdater.mutateAsync({
-        id: editingUpdater.id,
-        data: {
-          ...updaterData,
-          ...(apiKey.trim() ? { apiKey } : {}),
-          ...(customUrl.trim() ? { customUrl } : {}),
-        },
+    try {
+      if (editingUpdater) {
+        const { apiKey, customUrl, ...updaterData } = formData;
+        await updateUpdater.mutateAsync({
+          id: editingUpdater.id,
+          data: {
+            ...updaterData,
+            ...(apiKey.trim() ? { apiKey } : {}),
+            ...(customUrl.trim() ? { customUrl } : {}),
+          },
+        });
+      } else {
+        await createUpdater.mutateAsync(formData);
+      }
+      setIsOpen(false);
+      resetForm();
+      toast({
+        title: editingUpdater ? "DDNS updater updated" : "DDNS updater added",
+        description: editingUpdater
+          ? `${formData.hostname} was updated successfully.`
+          : `${formData.hostname} is ready for automatic updates.`,
       });
-    } else {
-      await createUpdater.mutateAsync(formData);
+    } catch (error) {
+      toast({
+        title: editingUpdater ? "DDNS updater not saved" : "DDNS updater not created",
+        description: error instanceof Error ? error.message : "Unable to save this DDNS updater.",
+        variant: "destructive",
+      });
     }
-    setIsOpen(false);
-    resetForm();
+  };
+
+  const handleUpdaterToggle = async (updater: PublicDdnsUpdater) => {
+    const nextEnabled = updater.isEnabled === false;
+    try {
+      await updateUpdater.mutateAsync({
+        id: updater.id,
+        data: { isEnabled: nextEnabled },
+      });
+      toast({
+        title: `${updater.hostname} ${nextEnabled ? "enabled" : "disabled"}`,
+        description: nextEnabled
+          ? "This updater will run on its configured schedule."
+          : "This updater is paused until you enable it again.",
+      });
+    } catch {
+      // The mutation hook restores the previous state and reports the error.
+    }
+  };
+
+  const handleDeleteUpdater = async (updater: PublicDdnsUpdater) => {
+    if (!window.confirm(`Delete the DDNS updater for ${updater.hostname}?`)) return;
+    try {
+      await deleteUpdater.mutateAsync(updater.id);
+      toast({
+        title: "DDNS updater deleted",
+        description: `${updater.hostname} was removed.`,
+      });
+    } catch {
+      // The mutation hook reports the error.
+    }
   };
 
   return (
     <div className="space-y-6">
       <Header
-        title="Dynamic DNS"
+          title="DDNS"
         subtitle="Auto-Update DNS Records"
       />
 
@@ -148,21 +188,6 @@ export default function DdnsUpdater() {
               <p className="text-2xl font-mono font-bold text-white" data-testid="text-public-ip">
                 {publicIpData?.ip || "Loading..."}
               </p>
-              {publicIpData?.isp && (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <IspBadge isp={publicIpData.isp} />
-                  {publicIpData.organization && publicIpData.organization !== publicIpData.isp && (
-                    <span className="text-xs text-muted-foreground">
-                      {publicIpData.organization}
-                    </span>
-                  )}
-                  {publicIpData.asn && (
-                    <span className="text-[11px] font-mono text-muted-foreground">
-                      {publicIpData.asn}
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
           <Badge variant="outline" className="text-xs">
@@ -171,14 +196,34 @@ export default function DdnsUpdater() {
         </div>
       </CyberCard>
 
+      <CyberCard className="border-primary/20">
+        <div className="flex items-start gap-3">
+          <div className="p-3 rounded-lg bg-primary/10">
+            <Server className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground">Active DNS Resolver</p>
+            <p className="font-display font-bold text-white">
+              {activeDnsServer?.name || "No resolver selected"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              DDNS status refreshes every 500 ms. Provider updates use the authenticated
+              SafeNet API, and custom IP Link endpoints require HTTPS.
+            </p>
+          </div>
+        </div>
+      </CyberCard>
+
       <div className="flex gap-2 justify-end mb-6">
         <Button
-          variant="outline"
-          onClick={() => publicIpData?.ip && updateWithIp.mutate(publicIpData.ip)}
-          disabled={updateWithIp.isPending || !publicIpData?.ip}
+          variant={isAutoMode ? "default" : "outline"}
+          onClick={() => void handleAutoModeToggle()}
+          disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
+          aria-pressed={isAutoMode}
           className="flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" /> {updateWithIp.isPending ? "Updating..." : "Update Now"}
+          <Zap className="w-4 h-4" />
+          {isSwitchingToAuto ? "Switching..." : isAutoMode ? "Auto Mode On" : "Switch to Auto"}
         </Button>
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open);
@@ -266,12 +311,13 @@ export default function DdnsUpdater() {
               </div>
 
               <div className="space-y-2">
-                <Label>Update Interval (seconds)</Label>
+                 <Label>Update Interval (milliseconds)</Label>
                 <Input
                   value={formData.updateInterval}
-                  onChange={(e) => setFormData({ ...formData, updateInterval: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, updateInterval: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MS })}
                   type="number"
-                  min="1"
+                  min={DDNS_MIN_INTERVAL_MS}
+                  step="1000"
                   className="bg-background border-border"
                 />
               </div>
@@ -330,11 +376,33 @@ export default function DdnsUpdater() {
                 </div>
               </div>
 
+               {updater.lastFailureMessage && (
+                 <div
+                   role="alert"
+                   data-testid={`ddns-failure-${updater.id}`}
+                   className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-3 text-sm text-destructive"
+                 >
+                   <div className="flex items-start gap-2">
+                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                     <div className="min-w-0">
+                       <p className="font-semibold">Last update failed</p>
+                       <p className="mt-1 break-words">{updater.lastFailureMessage}</p>
+                       {updater.lastFailureTime && (
+                         <p className="mt-1 text-xs text-destructive/80">
+                           {new Date(updater.lastFailureTime).toLocaleString()}
+                         </p>
+                       )}
+                     </div>
+                   </div>
+                 </div>
+               )}
+
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updateUpdater.mutate({ id: updater.id, data: { isEnabled: !updater.isEnabled } })}
+                  onClick={() => void handleUpdaterToggle(updater)}
+                  disabled={updateUpdater.isPending}
                   aria-label={`${updater.isEnabled ? "Disable" : "Enable"} ${updater.hostname}`}
                   aria-pressed={updater.isEnabled ?? false}
                   className={cn(
@@ -351,6 +419,7 @@ export default function DdnsUpdater() {
                   size="sm"
                   onClick={() => openEditDialog(updater)}
                   aria-label={`Edit ${updater.hostname}`}
+                  disabled={updateUpdater.isPending || deleteUpdater.isPending}
                   className="min-h-10 border-primary/30 text-primary hover:border-primary hover:bg-primary/10"
                 >
                   <Pencil className="w-4 h-4" />
@@ -359,8 +428,9 @@ export default function DdnsUpdater() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => deleteUpdater.mutate(updater.id)}
+                  onClick={() => void handleDeleteUpdater(updater)}
                   aria-label={`Delete ${updater.hostname}`}
+                  disabled={updateUpdater.isPending || deleteUpdater.isPending}
                   className="flex-1"
                 >
                   <Trash2 className="w-4 h-4" />

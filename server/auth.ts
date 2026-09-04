@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { getAuth } from "@clerk/express";
 import { storage, type IStorage } from "./storage";
 
 const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
@@ -21,7 +22,7 @@ export function createRequireAuthentication(
   settingsStorage: Pick<IStorage, "getSettings"> = storage,
 ): RequestHandler {
   return (req, res, next) => {
-    if (req.session.authenticated === true) {
+    if (req.session.authenticated === true || getClerkUserId(req)) {
       return next();
     }
 
@@ -39,6 +40,29 @@ export function createRequireAuthentication(
       });
     }).catch(next);
   };
+}
+
+/**
+ * Used by trusted device reporters. Unlike the general middleware, this does
+ * not auto-authenticate when PIN protection is disabled: the caller must
+ * already carry the session or Clerk identity established by the web app.
+ */
+export function createRequireExistingAuthentication(): RequestHandler {
+  return (req, res, next) => {
+    if (req.session.authenticated === true || getClerkUserId(req)) {
+      return next();
+    }
+    res.status(401).json({ message: "Authentication required" });
+  };
+}
+
+export function getClerkUserId(req: Request): string | null {
+  try {
+    return getAuth(req).userId ?? null;
+  } catch {
+    // Routes can be exercised without Clerk middleware in isolated tests.
+    return null;
+  }
 }
 
 export const requireAuthentication = createRequireAuthentication();

@@ -3,6 +3,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FirewallRule, InsertFirewallRule } from "@shared/schema";
 import { apiFetch } from "@/lib/api";
+import { firewallConfigQueryKey } from "@/hooks/firewall-config-key";
 
 export function useFirewallRules() {
   return useQuery({
@@ -32,11 +33,11 @@ export function useCreateFirewallRule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/firewall/rules"] });
-      toast({ title: "Success", description: "Firewall rule created" });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
     },
     onError: (error: any) => {
-      toast({ 
-        title: "Error", 
+      toast({
+        title: "Firewall rule could not be created",
         description: error.message || "Failed to create firewall rule",
         variant: "destructive"
       });
@@ -60,6 +61,7 @@ export function useUpdateFirewallRule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/firewall/rules"] });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
     },
   });
 }
@@ -71,6 +73,7 @@ export function useDeleteFirewallRule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/firewall/rules"] });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
     },
   });
 }

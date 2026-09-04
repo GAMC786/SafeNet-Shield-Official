@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 
 export default function Logs() {
   const { data: logs, isLoading } = useLogs();
+  const realLogs = logs?.filter((log) => log.source === "android") ?? [];
+  const historicalLogs = logs?.filter((log) => log.source !== "android") ?? [];
 
   return (
     <div className="space-y-6">
@@ -21,7 +23,7 @@ export default function Logs() {
           </div>
         )}
 
-        {logs?.map((log) => (
+        {realLogs.map((log) => (
           <div 
             key={log.id} 
             className={cn(
@@ -59,7 +61,10 @@ export default function Logs() {
                   {log.reason && (
                     <>
                       <span>•</span>
-                      <span className="text-destructive font-bold">{log.reason}</span>
+                      <span className={cn(
+                        "font-bold",
+                        log.status === "blocked" ? "text-destructive" : "text-muted-foreground",
+                      )}>{log.reason}</span>
                     </>
                   )}
                 </div>
@@ -79,10 +84,41 @@ export default function Logs() {
           </div>
         ))}
 
-        {(!logs || logs.length === 0) && !isLoading && (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        {realLogs.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-white/10 rounded-lg">
             <Info className="w-12 h-12 mb-4 opacity-20" />
-            <p className="font-mono text-sm">No activity recorded yet</p>
+            <p className="font-mono text-sm">No live Android DNS activity recorded yet</p>
+            <p className="font-mono text-xs mt-2 text-center max-w-md">
+              Activity appears here after DNS protection handles a request on an Android device.
+            </p>
+          </div>
+        )}
+
+        {historicalLogs.length > 0 && (
+          <div className="pt-4">
+            <div className="flex items-center gap-2 mb-3 text-muted-foreground">
+              <Clock className="w-4 h-4" />
+              <h3 className="font-mono text-xs uppercase tracking-wider">Historical activity</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              These older records are retained for reference and are not live Android reports.
+            </p>
+            {historicalLogs.map((log) => (
+              <div key={log.id} className="mb-3 p-4 rounded-lg border border-white/5 bg-card/60">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="font-mono text-sm font-bold text-white">{log.domain}</h4>
+                    <p className="text-xs text-muted-foreground uppercase font-mono mt-1">
+                      {log.protocol} · {new Date(log.timestamp || "").toLocaleString()}
+                      {log.reason && ` · ${log.reason}`}
+                    </p>
+                  </div>
+                  <span className="text-xs uppercase font-mono text-muted-foreground">
+                    {log.status}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

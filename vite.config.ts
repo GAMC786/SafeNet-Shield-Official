@@ -17,6 +17,30 @@ function serveServiceWorker(): Plugin {
     configureServer(server) {
       server.middlewares.use("/service-worker.js", async (_req, res, next) => {
         try {
+          if (process.env.NODE_ENV !== "production") {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/javascript");
+            res.setHeader("Cache-Control", "no-store");
+            res.end(`
+              self.addEventListener("install", () => self.skipWaiting());
+              self.addEventListener("activate", (event) => {
+                event.waitUntil(
+                  Promise.all([
+                    self.registration.unregister(),
+                    caches.keys().then((names) =>
+                      Promise.all(
+                        names
+                          .filter((name) => name.startsWith("safenet-dns-"))
+                          .map((name) => caches.delete(name))
+                      )
+                    )
+                  ])
+                );
+              });
+            `);
+            return;
+          }
+
           const source = await readFile(serviceWorkerPath, "utf-8");
           const output = await transform(source, {
             loader: "ts",
@@ -70,6 +94,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    hmr: {
+      overlay: false,
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
