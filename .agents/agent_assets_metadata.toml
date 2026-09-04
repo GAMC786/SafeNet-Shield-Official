@@ -3,9 +3,9 @@ generated = []
 
 [[outputs]]
 id = "CzB-hfIVAPjAMWkM4DByI"
-uri = "file://SafeNet-Android-v1.0.15.apk"
+uri = "file://SafeNet-Android-v1.0.16.apk"
 type = "unspecified"
-title = "SafeNet Android APK v1.0.15"
+title = "SafeNet Android APK v1.0.16"
 description = "Verified signed Android release APK. Built against the public SafeNet backend, which passed the manual PIN protection check; the bundled app includes the four-digit PIN entry screen."
 logical_id = "fc2df4e6-481f-49cd-a900-3e7dc983fdb3"
 content_hash = "sha256:6dc51b1a9b9ce9813fe11061575f0a1edd7e85f518a8192184a2d93f637a9e0c"
