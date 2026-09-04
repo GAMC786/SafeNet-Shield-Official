@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --fail --silent --show-error --location "$MOBILE_API_URL/api/auth/status")"
+          response="$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "$MOBILE_API_URL/api/auth/status")"
           RESPONSE="$response" node --input-type=module <<'NODE'
           const status = JSON.parse(process.env.RESPONSE);
           if (status.authenticated !== false || status.pinRequired !== true) {
