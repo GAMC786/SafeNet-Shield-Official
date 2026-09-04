@@ -6,7 +6,7 @@ on:
   workflow_dispatch: # Allows you to manually trigger it anytime from the Actions tab
 
 jobs:
-  build-apk:
+  build-apk: 
     runs-on: ubuntu-latest
 
     steps:
@@ -30,7 +30,10 @@ jobs:
 
       - name: Build Web Assets / Bundle
         run: npm run build
-
+        
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+        
       - name: Build Android APK
         env:
           CI: true
