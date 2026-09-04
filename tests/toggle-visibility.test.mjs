@@ -171,7 +171,7 @@ function mockApi(page, { ddnsUpdateResponses = [], threatFeedUpdateResponses = [
       let response;
 
       if (url.pathname === "/api/auth/status") {
-        response = { authenticated: true, pinRequired: false };
+        response = { authenticated: true, pinRequired: true };
       } else if (url.pathname === "/api/settings" && method === "GET") {
         response = settings;
       } else if (url.pathname === "/api/settings" && method === "PUT") {
