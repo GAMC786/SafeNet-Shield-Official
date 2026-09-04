@@ -3,7 +3,7 @@ name: Build SafeNet Android APK only
 on:
   push:
     branches:
-      - release-v1.0.15
+      - main
   workflow_dispatch:
 
 permissions:
@@ -25,8 +25,37 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Resolve and verify Android release version
+        id: app_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node --input-type=module -e "import fs from 'node:fs'; process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
+          android_version="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
+          if [[ -z "$package_version" || -z "$android_version" ]]; then
+            echo 'Could not resolve the app version from package.json and android/app/build.gradle.' >&2
+            exit 1
+          fi
+          if [[ "$package_version" != "$android_version" ]]; then
+            echo "App version mismatch: package.json=$package_version, android/app/build.gradle=$android_version" >&2
+            exit 1
+          fi
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "Verified Android release version: $package_version"
+
+      - name: Install dependencies with bounded retry
+        id: npm_ci
+        shell: bash
+        run: bash scripts/npm-ci-with-retry.sh
+
+      - name: Upload npm install diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-Android-npm-ci-diagnostics
+          path: ${{ runner.temp }}/npm-ci-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify production manual PIN protection
         shell: bash
@@ -90,6 +119,8 @@ jobs:
 
       - name: Verify APK and manual PIN bundle
         shell: bash
+        env:
+          APP_VERSION: ${{ steps.app_version.outputs.version }}
         run: |
           set -euo pipefail
           apk=android/app/build/outputs/apk/release/app-release.apk
@@ -97,16 +128,42 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
-          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='7' versionName='1.0.15'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionName='$APP_VERSION'"
           if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
             echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
             exit 1
           fi
           stat -c '%n %s bytes' "$apk"
 
+      - name: Generate APK SHA-256 checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          checksum_file="$RUNNER_TEMP/app-release.apk.sha256"
+          checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
+          printf '%s  app-release.apk\n' "$checksum" > "$checksum_file"
+          (
+            cd "$(dirname "$apk")"
+            sha256sum --check "$checksum_file"
+          )
+          {
+            echo '## Android APK release'
+            echo
+            echo "- APK: \`app-release.apk\`"
+            echo "- SHA-256: \`$checksum\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK only
         uses: actions/upload-artifact@v4
         with:
-          name: SafeNet-Android-APK-v1.0.15
+          name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}
           path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload APK SHA-256 checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}-SHA256
+          path: ${{ runner.temp }}/app-release.apk.sha256
           if-no-files-found: error

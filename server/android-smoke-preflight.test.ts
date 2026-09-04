@@ -18,6 +18,10 @@ const workflow = readFileSync(
   path.resolve(process.cwd(), ".github/workflows/build.yml"),
   "utf8",
 ).replace(/\r\n/g, "\n");
+const apkOnlyWorkflow = readFileSync(
+  path.resolve(process.cwd(), ".github/workflows/build-apk-only.yml"),
+  "utf8",
+).replace(/\r\n/g, "\n");
 const smokeScript = readFileSync(smokeScriptPath, "utf8");
 const runnerScript = readFileSync(
   path.resolve(process.cwd(), "scripts/provision-android-runner.sh"),
@@ -101,8 +105,7 @@ test("system trust preflight records strict write and cleanup checks", () => {
   assert.match(smokeScript, /cat "\$output_dir\/emulator-image\.txt"/);
 });
 
-
-test("main-branch APK-only workflow builds and uploads only a signed APK", () => {
+test("main-branch APK-only workflow builds and uploads a signed APK and checksum", () => {
   assert.match(apkOnlyWorkflow, /^name: Build SafeNet Android APK only$/m);
   assert.match(apkOnlyWorkflow, /push:\n\s+branches:\n\s+- main/);
   assert.match(apkOnlyWorkflow, /workflow_dispatch:/);
@@ -135,11 +138,41 @@ test("main-branch APK-only workflow builds and uploads only a signed APK", () =>
     apkOnlyWorkflow,
     /path: android\/app\/build\/outputs\/apk\/release\/app-release\.apk/,
   );
+  assert.match(apkOnlyWorkflow, /name: Generate APK SHA-256 checksum/);
+  assert.match(
+    apkOnlyWorkflow,
+    /checksum="\$\(sha256sum "\$apk" \| cut -d ' ' -f1\)"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /printf '%s  app-release\.apk\\n' "\$checksum" > "\$checksum_file"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /cd "\$\(dirname "\$apk"\)"\s+sha256sum --check "\$checksum_file"/,
+  );
+  assert.match(apkOnlyWorkflow, /name: Upload APK SHA-256 checksum/);
+  assert.match(
+    apkOnlyWorkflow,
+    /name: SafeNet-Android-APK-v1\.0\.15-SHA256/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /path: \$\{\{ runner\.temp \}\}\/app-release\.apk\.sha256/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /name: Install dependencies with bounded retry[\s\S]*?run: bash scripts\/npm-ci-with-retry\.sh/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /name: Upload npm install diagnostics[\s\S]*?if: always\(\)[\s\S]*?name: SafeNet-Android-npm-ci-diagnostics/,
+  );
   assert.doesNotMatch(apkOnlyWorkflow, /needs:/);
   assert.doesNotMatch(apkOnlyWorkflow, /build-windows|Windows|assembleDebug|AndroidTest/i);
   assert.equal(
     (apkOnlyWorkflow.match(/uses: actions\/upload-artifact@v4/g) ?? []).length,
-    1,
+    3,
   );
 });
 
