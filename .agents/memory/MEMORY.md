@@ -11,5 +11,15 @@
 - [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
 - [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.
+- [GitHub private npm lockfiles](github-private-npm-lockfile.md) — hosted Actions cannot resolve Replit-only tarball URLs recorded in package-lock files.
 - [Windows Bash preflight compatibility](windows-bash-preflight-compatibility.md) — Git Bash can rewrite paths and add warnings; isolate tool commands and parse readiness output defensively.
 - [Playwright UI test setup](playwright-ui-test-setup.md) — browser checks need an installed Chromium binary plus Linux runtime libraries; mock complete API schemas, not just fields the page reads.
+- [Playwright failure simulation](playwright-failure-simulation.md) — simulate client request failures with invalid JSON when strict no-console assertions would treat mocked HTTP errors as browser errors.
+- [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
+- [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
+- [Cloudflare speed test integration](cloudflare-speedtest-integration.md) — Cloudflare’s public test denies iframe embedding; use the official browser engine package for an in-app ad-free test.
+- [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
+- [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
+- [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.
+- [Production API public access](production-api-public-access.md) — native builds require a public deployment; password protection redirects API calls through Replit Shield.
+- [Npm security refresh fallback](npm-security-refresh-fallback.md) — when Replit’s audit endpoint is unavailable, verify resolved lock entries and retry registry propagation before pinning.

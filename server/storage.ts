@@ -2,10 +2,12 @@ import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
   antivirusSettings, threatFeeds, antivirusEvents,
-  type InsertDnsServer, type InsertBlocklist, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
+  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent
 } from "@shared/schema";
-import { eq, desc, count } from "drizzle-orm";
+import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
+import { eq, desc, asc, count } from "drizzle-orm";
+import { hashPin, verifyPin } from "./pin-security";
 
 export interface IStorage {
   // DNS Servers
@@ -23,12 +25,13 @@ export interface IStorage {
 
   // Logs
   getLogs(limit?: number): Promise<AccessLog[]>;
-  createLog(log: Omit<AccessLog, "id" | "timestamp">): Promise<AccessLog>;
+  createLog(log: InsertAccessLog): Promise<AccessLog>;
   getStats(): Promise<{ totalQueries: number; blockedQueries: number; threatsBlocked: number }>;
 
   // Settings
   getSettings(): Promise<AppSettings>;
   updateSettings(updates: Partial<InsertAppSettings>): Promise<AppSettings>;
+  resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean>;
 
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
@@ -36,6 +39,7 @@ export interface IStorage {
   updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater>;
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
+  updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater>;
 
   // Firewall Rules
   getFirewallRules(): Promise<FirewallRule[]>;
@@ -75,10 +79,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteDnsServer(id: number): Promise<void> {
+    const [server] = await db.select().from(dnsServers).where(eq(dnsServers.id, id));
+    if (!server) {
+      throw new Error("DNS resolver not found");
+    }
+    const existing = await this.getDnsServers();
+    if (existing.length === 1) {
+      throw new Error("At least one DNS resolver must remain configured");
+    }
     await db.delete(dnsServers).where(eq(dnsServers.id, id));
+    if (server.isActive) {
+      const fallback = existing.find((candidate) => candidate.id !== id);
+      if (fallback) {
+        await this.activateDnsServer(fallback.id);
+      }
+    }
   }
 
   async activateDnsServer(id: number): Promise<DnsServer> {
+    const [target] = await db.select().from(dnsServers).where(eq(dnsServers.id, id));
+    if (!target) {
+      throw new Error("Server not found");
+    }
     // Deactivate all first
     await db.update(dnsServers).set({ isActive: false });
     // Activate target
@@ -86,7 +108,7 @@ export class DatabaseStorage implements IStorage {
       .set({ isActive: true })
       .where(eq(dnsServers.id, id))
       .returning();
-    return activated;
+    return activated ?? target;
   }
 
   async getBlocklists(): Promise<Blocklist[]> {
@@ -114,7 +136,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(accessLogs).orderBy(desc(accessLogs.timestamp)).limit(limit);
   }
 
-  async createLog(log: Omit<AccessLog, "id" | "timestamp">): Promise<AccessLog> {
+  async createLog(log: InsertAccessLog): Promise<AccessLog> {
     const [created] = await db.insert(accessLogs).values(log).returning();
     return created;
   }
@@ -149,8 +171,53 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      const [settings] = await tx.select().from(appSettings).for("update");
+      const valid =
+        settings?.isPinEnabled === true &&
+        settings.pinRecoveryEmail?.toLowerCase() === email.toLowerCase() &&
+        settings.pinRecoveryCodeExpiresAt !== null &&
+        settings.pinRecoveryCodeExpiresAt !== undefined &&
+        settings.pinRecoveryCodeExpiresAt.getTime() > Date.now() &&
+        verifyPin(settings.pinRecoveryCodeHash, code);
+
+      if (!valid || !settings) {
+        return false;
+      }
+
+      await tx.update(appSettings)
+        .set({
+          pinCode: hashPin(pin),
+          isPinEnabled: true,
+          pinRecoveryCodeHash: null,
+          pinRecoveryCodeExpiresAt: null,
+        })
+        .where(eq(appSettings.id, settings.id));
+      return true;
+    });
+  }
+
   async getDdnsUpdaters(): Promise<DdnsUpdater[]> {
-    return await db.select().from(ddnsUpdaters);
+    const updaters = await db.select().from(ddnsUpdaters);
+    return await Promise.all(updaters.map(async (updater) => {
+      // Values written before the millisecond contract were seconds. Upgrade
+      // those legacy rows once while leaving valid millisecond values intact.
+      if (
+        updater.updateInterval === null ||
+        (updater.updateInterval > 0 && updater.updateInterval < DDNS_MIN_INTERVAL_MS)
+      ) {
+        const [migrated] = await db.update(ddnsUpdaters)
+          .set({ updateInterval: updater.updateInterval === null ? 60 * 60 * 1000 : updater.updateInterval * 1000 })
+          .where(eq(ddnsUpdaters.id, updater.id))
+          .returning();
+        return migrated ?? {
+          ...updater,
+          updateInterval: updater.updateInterval === null ? 60 * 60 * 1000 : updater.updateInterval * 1000,
+        };
+      }
+      return updater;
+    }));
   }
 
   async createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater> {
@@ -172,7 +239,23 @@ export class DatabaseStorage implements IStorage {
 
   async updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater> {
     const [updated] = await db.update(ddnsUpdaters)
-      .set({ lastIpAddress: ipAddress, lastUpdateTime: new Date() })
+      .set({
+        lastIpAddress: ipAddress,
+        lastUpdateTime: new Date(),
+        lastFailureMessage: null,
+        lastFailureTime: null,
+      })
+      .where(eq(ddnsUpdaters.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater> {
+    const [updated] = await db.update(ddnsUpdaters)
+      .set({
+        lastFailureMessage: message,
+        lastFailureTime: new Date(),
+      })
       .where(eq(ddnsUpdaters.id, id))
       .returning();
     return updated;
@@ -219,7 +302,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getThreatFeeds(): Promise<ThreatFeed[]> {
-    return await db.select().from(threatFeeds);
+    return await db.select().from(threatFeeds).orderBy(asc(threatFeeds.id));
   }
 
   async createThreatFeed(feed: InsertThreatFeed): Promise<ThreatFeed> {

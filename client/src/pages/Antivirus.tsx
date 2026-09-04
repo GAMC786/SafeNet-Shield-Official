@@ -5,7 +5,6 @@ import {
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
-import { AiShieldControls } from "@/components/AiShieldControls";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -20,11 +19,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Antivirus() {
   const { data: settings } = useAntivirusSettings();
   const updateSettings = useUpdateAntivirusSettings();
-  const { data: feeds } = useThreatFeeds();
+  const { data: feeds, refetch: refetchFeeds, isFetching: isFetchingFeeds } = useThreatFeeds();
   const createFeed = useCreateThreatFeed();
   const updateFeed = useUpdateThreatFeed();
   const deleteFeed = useDeleteThreatFeed();
@@ -32,6 +32,8 @@ export default function Antivirus() {
   const resolveEvent = useResolveAntivirusEvent();
   const { data: stats } = useAntivirusStats();
   const apkScanner = useApkScanner();
+  const { toast } = useToast();
+  const antivirusEnabled = settings?.isEnabled ?? true;
 
   const [isFeedDialogOpen, setIsFeedDialogOpen] = useState(false);
   const [editingFeed, setEditingFeed] = useState<ThreatFeed | null>(null);
@@ -41,6 +43,36 @@ export default function Antivirus() {
     url: "",
     isEnabled: true,
   });
+  const [pendingFeedIds, setPendingFeedIds] = useState<Set<number>>(() => new Set());
+  const antivirusSettingLabels: Record<string, string> = {
+    isEnabled: "Antivirus protection",
+    malwareDomainBlocking: "Malware domain blocking",
+    phishingProtection: "Phishing protection",
+    realTimeProtection: "Real-time protection",
+    autoQuarantine: "Automatic quarantine",
+  };
+
+  const handleAntivirusSettingToggle = (key: string, checked: boolean) => {
+    const label = antivirusSettingLabels[key] || "Antivirus setting";
+    updateSettings.mutate(
+      { [key]: checked },
+      {
+        onSuccess: () => {
+          toast({
+            title: `${label} ${checked ? "enabled" : "disabled"}`,
+            description: checked ? `${label} is now active.` : `${label} is now turned off.`,
+          });
+        },
+        onError: (error) => {
+          toast({
+            title: `${label} could not be changed`,
+            description: error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
 
   const formatScanTime = (timestamp?: number) => {
     if (!timestamp || !Number.isFinite(timestamp)) {
@@ -67,14 +99,35 @@ export default function Antivirus() {
     if (!window.confirm(`Delete the quarantined copy of ${item.displayName || item.packageName || item.fileName}?`)) {
       return;
     }
-    void apkScanner.deleteQuarantinedApk(item.sha256).catch(() => undefined);
+    void apkScanner.deleteQuarantinedApk(item.sha256)
+      .then(() => toast({
+        title: "Quarantined APK deleted",
+        description: `${item.displayName || item.packageName || item.fileName} was removed from private quarantine.`,
+      }))
+      .catch((error) => toast({
+        title: "Quarantined APK could not be deleted",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      }));
   };
 
-  const handleClearScanHistory = () => {
+  const handleClearScanHistory = async () => {
     if (!window.confirm("Clear all local APK scan history? Quarantined files will remain until deleted separately.")) {
       return;
     }
-    void apkScanner.clearScanHistory().catch(() => undefined);
+    try {
+      await apkScanner.clearScanHistory();
+      toast({
+        title: "APK scan history cleared",
+        description: "Local scan records were removed. Quarantined files were kept.",
+      });
+    } catch (error) {
+      toast({
+        title: "APK scan history could not be cleared",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const scanHistory = apkScanner.status?.scanHistory ?? [];
@@ -106,6 +159,10 @@ export default function Antivirus() {
     const onSuccess = () => {
       setIsFeedDialogOpen(false);
       resetFeedForm();
+      toast({
+        title: editingFeed ? "Threat feed updated" : "Threat feed added",
+        description: `${newFeed.name} is ready for SafeNet protection.`,
+      });
     };
     if (editingFeed) {
       updateFeed.mutate({ id: editingFeed.id, data: newFeed }, { onSuccess });
@@ -116,6 +173,45 @@ export default function Antivirus() {
         onSuccess();
       }
     });
+  };
+
+  const handleFeedToggle = async (feedId: number, isEnabled: boolean) => {
+    if (pendingFeedIds.has(feedId)) return;
+    setPendingFeedIds((current) => new Set(current).add(feedId));
+    try {
+      const feed = feeds?.find((candidate) => candidate.id === feedId);
+      await updateFeed.mutateAsync({ id: feedId, data: { isEnabled } });
+      toast({
+        title: `${feed?.name || "Threat feed"} ${isEnabled ? "enabled" : "disabled"}`,
+        description: isEnabled
+          ? "New entries from this feed will be used for protection."
+          : "This feed will no longer be used for protection.",
+      });
+    } catch {
+      // The mutation hook displays the error and restores the previous value.
+    } finally {
+      setPendingFeedIds((current) => {
+        const next = new Set(current);
+        next.delete(feedId);
+        return next;
+      });
+    }
+  };
+
+  const handleRefreshFeeds = async () => {
+    try {
+      await refetchFeeds();
+      toast({
+        title: "Threat feed status refreshed",
+        description: "SafeNet loaded the latest saved status for all configured feeds.",
+      });
+    } catch (error) {
+      toast({
+        title: "Threat feed status could not be refreshed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getThreatTypeColor = (type: string) => {
@@ -172,7 +268,7 @@ export default function Antivirus() {
       <Header 
         title="Built-In Antivirus" 
         subtitle="On-Device APK & DNS Threat Protection"
-        status={settings?.isEnabled ? "active" : "inactive"}
+        status={antivirusEnabled ? "active" : "inactive"}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -238,7 +334,21 @@ export default function Antivirus() {
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
             <Button
-              onClick={() => void apkScanner.scanApk().catch(() => undefined)}
+              onClick={() => {
+                void apkScanner.scanApk()
+                  .then((result) => toast({
+                    title: result.verdict === "malicious" ? "APK threat detected" : "APK scan complete",
+                    description: result.verdict === "malicious"
+                      ? "Do not install this APK."
+                      : "No known threats were found.",
+                    variant: result.verdict === "malicious" ? "destructive" : "default",
+                  }))
+                  .catch((error) => toast({
+                    title: "APK scan could not be completed",
+                    description: error instanceof Error ? error.message : "Please try again.",
+                    variant: "destructive",
+                  }));
+              }}
               disabled={!apkScanner.supported || !apkScanner.scannerAvailable || apkScanner.isScanning}
               data-testid="button-scan-apk"
             >
@@ -251,7 +361,22 @@ export default function Antivirus() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => void apkScanner.scanInstalledApks().catch(() => undefined)}
+              onClick={() => {
+                void apkScanner.scanInstalledApks()
+                  .then((results) => {
+                    const threatCount = results.filter((result) => result.verdict !== "safe").length;
+                    toast({
+                      title: "Installed APK scan complete",
+                      description: `${results.length} APK${results.length === 1 ? "" : "s"} checked${threatCount ? `; ${threatCount} finding${threatCount === 1 ? "" : "s"} require${threatCount === 1 ? "s" : ""} attention.` : " with no known threats found."}`,
+                      variant: threatCount ? "destructive" : "default",
+                    });
+                  })
+                  .catch((error) => toast({
+                    title: "Installed APK scan could not be completed",
+                    description: error instanceof Error ? error.message : "Please try again.",
+                    variant: "destructive",
+                  }));
+              }}
               disabled={!apkScanner.supported || !apkScanner.scannerAvailable || apkScanner.isScanning}
               data-testid="button-scan-installed-apks"
             >
@@ -354,7 +479,7 @@ export default function Antivirus() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleClearScanHistory}
+                onClick={() => void handleClearScanHistory()}
                 disabled={!apkScanner.supported || apkScanner.isManaging || !scanHistory.length}
                 data-testid="button-clear-apk-history"
               >
@@ -475,10 +600,6 @@ export default function Antivirus() {
         </div>
       </CyberCard>
 
-      <div className="md:col-span-3">
-        <AiShieldControls />
-      </div>
-
       <Tabs defaultValue="dashboard" className="w-full" orientation="vertical">
         <div className="flex flex-col md:flex-row gap-6">
           <TabsList className="flex flex-col h-auto bg-card border border-white/5 p-2 md:w-48 shrink-0">
@@ -502,8 +623,9 @@ export default function Antivirus() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-display text-lg tracking-wider">Protection Status</h3>
                   <Switch
-                    checked={settings?.isEnabled ?? false}
-                    onCheckedChange={(checked) => updateSettings.mutate({ isEnabled: checked })}
+                    checked={antivirusEnabled}
+                    onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
+                    disabled={updateSettings.isPending}
                     data-testid="switch-antivirus-enabled"
                   />
                 </div>
@@ -512,7 +634,8 @@ export default function Antivirus() {
                     <span className="text-sm">Malware Blocking</span>
                     <Switch
                       checked={settings?.malwareDomainBlocking ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ malwareDomainBlocking: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("malwareDomainBlocking", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-malware-protection"
                     />
                   </div>
@@ -520,7 +643,8 @@ export default function Antivirus() {
                     <span className="text-sm">Phishing Protection</span>
                     <Switch
                       checked={settings?.phishingProtection ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ phishingProtection: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("phishingProtection", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-phishing-protection"
                     />
                   </div>
@@ -528,7 +652,8 @@ export default function Antivirus() {
                     <span className="text-sm">Real-time Protection</span>
                     <Switch
                       checked={settings?.realTimeProtection ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ realTimeProtection: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("realTimeProtection", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-realtime-scanning"
                     />
                   </div>
@@ -536,7 +661,8 @@ export default function Antivirus() {
                     <span className="text-sm">Auto-Quarantine</span>
                     <Switch
                       checked={settings?.autoQuarantine ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ autoQuarantine: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("autoQuarantine", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-auto-update"
                     />
                   </div>
@@ -638,11 +764,14 @@ export default function Antivirus() {
               <CyberCard>
                 <div className="space-y-3">
                   {feeds?.map((feed) => (
-                    <div key={feed.id} className="flex items-center justify-between p-4 bg-background/50 rounded-lg" data-testid={`feed-${feed.id}`}>
+                    <div key={feed.id} className="flex min-h-[76px] items-center justify-between gap-4 p-4 bg-background/50 rounded-lg" data-testid={`feed-${feed.id}`}>
                       <div className="flex items-center gap-4">
                         <Switch
                           checked={feed.isEnabled ?? false}
-                          onCheckedChange={(checked) => updateFeed.mutate({ id: feed.id, data: { isEnabled: checked } })}
+                          onCheckedChange={(checked) => void handleFeedToggle(feed.id, checked)}
+                          disabled={pendingFeedIds.has(feed.id)}
+                          aria-label={`${feed.isEnabled ? "Disable" : "Enable"} ${feed.name}`}
+                          aria-busy={pendingFeedIds.has(feed.id)}
                           data-testid={`switch-feed-${feed.id}`}
                         />
                         <div>
@@ -742,8 +871,9 @@ export default function Antivirus() {
                       <p className="text-sm text-muted-foreground">Block connections to known malicious domains</p>
                     </div>
                     <Switch
-                      checked={settings?.isEnabled ?? false}
-                      onCheckedChange={(checked) => updateSettings.mutate({ isEnabled: checked })}
+                      checked={antivirusEnabled}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-main-enabled"
                     />
                   </div>
@@ -755,7 +885,8 @@ export default function Antivirus() {
                     </div>
                     <Switch
                       checked={settings?.malwareDomainBlocking ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ malwareDomainBlocking: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("malwareDomainBlocking", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-malware-settings"
                     />
                   </div>
@@ -767,7 +898,8 @@ export default function Antivirus() {
                     </div>
                     <Switch
                       checked={settings?.phishingProtection ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ phishingProtection: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("phishingProtection", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-phishing-settings"
                     />
                   </div>
@@ -779,7 +911,8 @@ export default function Antivirus() {
                     </div>
                     <Switch
                       checked={settings?.realTimeProtection ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ realTimeProtection: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("realTimeProtection", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-realtime-settings"
                     />
                   </div>
@@ -791,14 +924,22 @@ export default function Antivirus() {
                     </div>
                     <Switch
                       checked={settings?.autoQuarantine ?? true}
-                      onCheckedChange={(checked) => updateSettings.mutate({ autoQuarantine: checked })}
+                      onCheckedChange={(checked) => handleAntivirusSettingToggle("autoQuarantine", checked)}
+                    disabled={updateSettings.isPending}
                       data-testid="switch-autoupdate-settings"
                     />
                   </div>
 
                   <div className="pt-4 border-t border-border">
-                    <Button variant="outline" className="w-full" data-testid="button-update-feeds">
-                      <RefreshCw className="w-4 h-4 mr-2" /> Update All Feeds Now
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void handleRefreshFeeds()}
+                      disabled={isFetchingFeeds}
+                      data-testid="button-update-feeds"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isFetchingFeeds ? "animate-spin" : ""}`} />
+                      {isFetchingFeeds ? "Refreshing Feed Status..." : "Refresh Feed Status"}
                     </Button>
                   </div>
                 </div>

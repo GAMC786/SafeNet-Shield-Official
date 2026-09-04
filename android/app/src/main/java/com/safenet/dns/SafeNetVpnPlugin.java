@@ -8,7 +8,10 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.OpenableColumns;
+import android.webkit.CookieManager;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -21,6 +24,8 @@ import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.PermissionState;
 import org.json.JSONObject;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
@@ -52,6 +57,7 @@ public class SafeNetVpnPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("supported", true);
         result.put("running", SafeNetVpnService.isRunning());
+        result.put("firewallEnabled", SafeNetVpnService.isFirewallEnabled());
         result.put("permissionGranted", VpnService.prepare(getContext()) == null);
         result.put("eulaVersion", EULA_VERSION);
         result.put("eulaAccepted", hasAcceptedEula());
@@ -72,6 +78,28 @@ public class SafeNetVpnPlugin extends Plugin {
     @PluginMethod
     public void getProtectionStatus(PluginCall call) {
         call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
+    }
+
+    @PluginMethod
+    public void syncFirewallConfig(PluginCall call) {
+        JSObject config = call.getObject("config");
+        if (config == null) {
+            call.reject("A firewall configuration is required.", "FIREWALL_CONFIG_REQUIRED");
+            return;
+        }
+        try {
+            String serialized = config.toString();
+            FirewallConfigStore.save(getContext(), serialized);
+            SafeNetVpnService.updateFirewallConfig(serialized);
+            JSObject result = new JSObject();
+            result.put("synced", true);
+            result.put("firewallEnabled", SafeNetVpnService.isFirewallEnabled());
+            call.resolve(result);
+        } catch (org.json.JSONException error) {
+            call.reject("The firewall configuration is invalid.", "FIREWALL_CONFIG_INVALID");
+        } catch (IllegalStateException error) {
+            call.reject(error.getMessage(), "FIREWALL_CONFIG_NOT_SAVED");
+        }
     }
 
     @PluginMethod
@@ -108,8 +136,8 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
 
-        startService(serviceIntent);
-        call.resolve(status());
+        startVpnService(serviceIntent);
+        resolveWhenStarted(call);
     }
 
     @ActivityCallback
@@ -125,8 +153,8 @@ public class SafeNetVpnPlugin extends Plugin {
         String type = call.getString("type", "plain");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
-        startService(createServiceIntent(type, primaryAddress, secondaryAddress));
-        call.resolve(status());
+        startVpnService(createServiceIntent(type, primaryAddress, secondaryAddress));
+        resolveWhenStarted(call);
     }
 
     @PluginMethod
@@ -134,6 +162,43 @@ public class SafeNetVpnPlugin extends Plugin {
         SafeNetVpnService.requestStop();
         getContext().stopService(new Intent(getContext(), SafeNetVpnService.class));
         call.resolve(status());
+    }
+
+    private void startVpnService(Intent intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getContext().startForegroundService(intent);
+        } else {
+            getContext().startService(intent);
+        }
+    }
+
+    private void resolveWhenStarted(PluginCall call) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        long deadline = System.currentTimeMillis() + 10_000L;
+        Runnable[] poll = new Runnable[1];
+        poll[0] = () -> {
+            JSObject current = status();
+            if (SafeNetVpnService.isRunning()) {
+                call.resolve(current);
+                return;
+            }
+
+            String error = SafeNetVpnService.getLastError();
+            if (error != null && !error.trim().isEmpty()) {
+                call.reject(error, "VPN_START_FAILED");
+                return;
+            }
+
+            if (System.currentTimeMillis() >= deadline) {
+                call.reject(
+                    "Android did not report the DNS VPN as running.",
+                    "VPN_START_TIMEOUT"
+                );
+                return;
+            }
+            handler.postDelayed(poll[0], 100L);
+        };
+        handler.post(poll[0]);
     }
 
     @PluginMethod
@@ -410,10 +475,30 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private Intent createServiceIntent(String type, String primaryAddress, String secondaryAddress) {
+        String apiOrigin = getConfigApiOrigin();
         return new Intent(getContext(), SafeNetVpnService.class)
             .putExtra(SafeNetVpnService.EXTRA_TYPE, type)
             .putExtra(SafeNetVpnService.EXTRA_PRIMARY, primaryAddress)
-            .putExtra(SafeNetVpnService.EXTRA_SECONDARY, secondaryAddress == null ? "" : secondaryAddress);
+            .putExtra(SafeNetVpnService.EXTRA_SECONDARY, secondaryAddress == null ? "" : secondaryAddress)
+            .putExtra(SafeNetVpnService.EXTRA_API_ORIGIN, apiOrigin)
+            .putExtra(SafeNetVpnService.EXTRA_AUTH_COOKIE, apiOrigin.isEmpty()
+                ? "" : CookieManager.getInstance().getCookie(apiOrigin));
+    }
+
+    private String getConfigApiOrigin() {
+        try (InputStream input = getContext().getAssets().open("public/mobile-build.json");
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = input.read(buffer)) != -1) {
+                output.write(buffer, 0, length);
+            }
+            return new JSONObject(output.toString(java.nio.charset.StandardCharsets.UTF_8.name()))
+                .optString("apiOrigin", "")
+                .trim();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private void startService(Intent intent) {

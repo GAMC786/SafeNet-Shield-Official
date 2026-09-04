@@ -1,8 +1,20 @@
-import { pgTable, text, serial, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const DDNS_DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
+export const DDNS_MIN_INTERVAL_MS = 1000;
+
 // === TABLE DEFINITIONS ===
+
+// Express session storage is part of the development database schema. Keeping
+// it here prevents schema sync from treating the live session table as an
+// unmanaged table and proposing its deletion.
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});
 
 export const dnsServers = pgTable("dns_servers", {
   id: serial("id").primaryKey(),
@@ -29,12 +41,16 @@ export const accessLogs = pgTable("access_logs", {
   protocol: text("protocol").notNull(),
   status: text("status", { enum: ["allowed", "blocked"] }).notNull(),
   reason: text("reason"),
+  source: text("source", { enum: ["android", "historical"] }).notNull().default("historical"),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
 export const appSettings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   pinCode: text("pin_code"),
+  pinRecoveryEmail: text("pin_recovery_email"),
+  pinRecoveryCodeHash: text("pin_recovery_code_hash"),
+  pinRecoveryCodeExpiresAt: timestamp("pin_recovery_code_expires_at"),
   isPinEnabled: boolean("is_pin_enabled").default(false),
   aiShieldEnabled: boolean("ai_shield_enabled").default(false),
   alwaysOnEnabled: boolean("always_on_enabled").default(false),
@@ -51,8 +67,10 @@ export const ddnsUpdaters = pgTable("ddns_updaters", {
   customUrl: text("custom_url"), // For IP Link - URL with {ip} and {hostname} placeholders
   lastIpAddress: text("last_ip_address"),
   lastUpdateTime: timestamp("last_update_time"),
+  lastFailureMessage: text("last_failure_message"),
+  lastFailureTime: timestamp("last_failure_time"),
   isEnabled: boolean("is_enabled").default(true),
-  updateInterval: integer("update_interval").default(3600), // seconds
+  updateInterval: integer("update_interval").default(DDNS_DEFAULT_INTERVAL_MS), // milliseconds
 });
 
 export const firewallRules = pgTable("firewall_rules", {
@@ -114,13 +132,33 @@ export const insertAntivirusEventSchema = createInsertSchema(antivirusEvents).om
 
 export const insertDnsServerSchema = createInsertSchema(dnsServers).omit({ id: true });
 export const insertBlocklistSchema = createInsertSchema(blocklists).omit({ id: true });
+export const insertAccessLogSchema = createInsertSchema(accessLogs).omit({ id: true, timestamp: true });
+export const activityLogSchema = z.object({
+  domain: z.string().trim().min(1).max(253),
+  protocol: z.enum(["plain", "doh", "dot"]),
+  status: z.enum(["allowed", "blocked"]),
+  reason: z.string().trim().min(1).max(120).nullable().optional(),
+});
 export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
-export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({ id: true, lastIpAddress: true, lastUpdateTime: true });
+export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({
+  id: true,
+  lastIpAddress: true,
+  lastUpdateTime: true,
+  lastFailureMessage: true,
+  lastFailureTime: true,
+});
 export const insertFirewallRuleSchema = createInsertSchema(firewallRules).omit({ id: true, createdAt: true });
 
 // API response schemas intentionally exclude secrets stored in these tables.
 export const publicAppSettingsSchema = z.object({
   id: z.number(),
+  // Older published/mobile builds may receive a response created before this
+  // field existed. Defaulting the omitted field keeps those clients usable
+  // while new responses continue to return null when it is unset.
+  pinRecoveryEmail: z.string().nullable().default(null),
+  // Never expose the PIN itself; this only lets clients avoid enabling a PIN
+  // lock before a code has been configured.
+  pinConfigured: z.boolean().default(false),
   isPinEnabled: z.boolean().nullable(),
   aiShieldEnabled: z.boolean().nullable(),
   alwaysOnEnabled: z.boolean().nullable(),
@@ -129,12 +167,19 @@ export const publicAppSettingsSchema = z.object({
   theme: z.string().nullable(),
 });
 
+export const firewallConfigSchema = z.object({
+  settings: publicAppSettingsSchema,
+  rules: z.array(z.custom<typeof firewallRules.$inferSelect>()),
+  blocklists: z.array(z.custom<typeof blocklists.$inferSelect>()),
+});
 export const publicDdnsUpdaterSchema = z.object({
   id: z.number(),
   hostname: z.string(),
   provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"]),
   lastIpAddress: z.string().nullable(),
   lastUpdateTime: z.coerce.date().nullable(),
+  lastFailureMessage: z.string().nullable(),
+  lastFailureTime: z.coerce.date().nullable(),
   isEnabled: z.boolean().nullable(),
   updateInterval: z.number().nullable(),
 });
@@ -148,6 +193,7 @@ export type Blocklist = typeof blocklists.$inferSelect;
 export type InsertBlocklist = z.infer<typeof insertBlocklistSchema>;
 
 export type AccessLog = typeof accessLogs.$inferSelect;
+export type InsertAccessLog = z.infer<typeof insertAccessLogSchema>;
 
 export type AppSettings = typeof appSettings.$inferSelect;
 export type PublicAppSettings = z.infer<typeof publicAppSettingsSchema>;
@@ -160,6 +206,7 @@ export type InsertDdnsUpdater = z.infer<typeof insertDdnsUpdaterSchema>;
 export type FirewallRule = typeof firewallRules.$inferSelect;
 export type InsertFirewallRule = z.infer<typeof insertFirewallRuleSchema>;
 
+export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 export type AntivirusSettings = typeof antivirusSettings.$inferSelect;
 export type InsertAntivirusSettings = z.infer<typeof insertAntivirusSettingsSchema>;
 

@@ -1,6 +1,10 @@
-import { Switch, Route } from "wouter";
+import { useEffect, useRef } from "react";
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { PinEntry } from "@/pages/PinEntry";
@@ -8,6 +12,7 @@ import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
+import { useFirewallConfig } from "@/hooks/use-firewall-config";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -19,6 +24,76 @@ import Antivirus from "@/pages/Antivirus";
 import Logs from "@/pages/Logs";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
+
+// Resolve the key from the browser hostname so the same build works on
+// SafeNet's development and published domains.
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
+
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.");
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+    socialButtonsPlacement: "top" as const,
+    socialButtonsVariant: "blockButton" as const,
+  },
+  variables: {
+    colorPrimary: "#3b82f6",
+    colorForeground: "#f8fafc",
+    colorMutedForeground: "#94a3b8",
+    colorDanger: "#f87171",
+    colorBackground: "#0f172a",
+    colorInput: "#111c32",
+    colorInputForeground: "#f8fafc",
+    colorNeutral: "#334155",
+    fontFamily: "Space Grotesk, sans-serif",
+    borderRadius: "0.75rem",
+  },
+  elements: {
+    rootBox: "w-full flex justify-center",
+    cardBox: "bg-slate-900 rounded-2xl w-[440px] max-w-full overflow-hidden",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-white font-display tracking-wider",
+    headerSubtitle: "text-slate-300",
+    socialButtonsBlockButtonText: "text-white font-medium",
+    formFieldLabel: "text-slate-200",
+    footerActionLink: "text-blue-400 hover:text-blue-300",
+    footerActionText: "text-slate-300",
+    dividerText: "text-slate-400",
+    identityPreviewEditButton: "text-blue-400",
+    formFieldSuccessText: "text-emerald-400",
+    alertText: "text-red-300",
+    logoBox: "h-12",
+    logoImage: "max-h-12",
+    socialButtonsBlockButton: "border-slate-600 bg-slate-800 hover:bg-slate-700",
+    formButtonPrimary: "bg-blue-600 hover:bg-blue-500 text-white",
+    formFieldInput: "border-slate-600 bg-slate-800 text-white",
+    footerAction: "border-slate-700",
+    dividerLine: "bg-slate-700",
+    alert: "border-red-500/40 bg-red-950/40",
+    otpCodeFieldInput: "border-slate-600 bg-slate-800 text-white",
+    formFieldRow: "text-slate-200",
+    main: "bg-transparent",
+  },
+};
 
 function MainLayout() {
   return (
@@ -54,15 +129,21 @@ function MainLayout() {
 }
 
 function AppContent() {
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const authStatus = useAuthStatus();
-  const settingsQuery = useSettings(authStatus.data?.authenticated === true);
+  const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
+  const settingsQuery = useSettings(isAuthenticated);
+  const firewallConfigQuery = useFirewallConfig(isAuthenticated);
   const { data: settings } = settingsQuery;
-  const isLoading = authStatus.isLoading || (authStatus.data?.authenticated === true && settingsQuery.isLoading);
+  const isLoading =
+    !clerkLoaded ||
+    authStatus.isLoading ||
+    (isAuthenticated && (settingsQuery.isLoading || firewallConfigQuery.isLoading));
   const isError = authStatus.isError || settingsQuery.isError;
   const error = authStatus.error || settingsQuery.error;
   const refetch = () => {
     void authStatus.refetch();
-    if (authStatus.data?.authenticated) {
+    if (isAuthenticated) {
       void settingsQuery.refetch();
     }
   };
@@ -124,19 +205,93 @@ function AppContent() {
   }
 
   // Show PIN entry when the server says this session is not authenticated.
-  if (authStatus.data && !authStatus.data.authenticated) {
+  if (authStatus.data && !isAuthenticated) {
     return <PinEntry onSuccess={() => void authStatus.refetch()} />;
   }
 
   return <MainLayout />;
 }
 
+function SignInPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    </div>
+  );
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+        queryClient.clear();
+      }
+      previousUserId.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, queryClient]);
+
+  return null;
+}
+
+function AppWithAuth() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: {
+          start: {
+            title: "Welcome back",
+            subtitle: "Sign in to access SafeNet DNS",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your SafeNet account",
+            subtitle: "Secure your DNS workspace",
+          },
+        },
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <Switch>
+          <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/sign-up/*?" component={SignUpPage} />
+          <Route component={AppContent} />
+        </Switch>
+        <Toaster />
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppContent />
-      <Toaster />
-    </QueryClientProvider>
+    <WouterRouter base={basePath}>
+      <AppWithAuth />
+    </WouterRouter>
   );
 }
 

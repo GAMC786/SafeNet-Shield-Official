@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { type InsertBlocklist } from "@shared/schema";
 import { apiFetch } from "@/lib/api";
+import { firewallConfigQueryKey } from "@/hooks/firewall-config-key";
 
 export function useBlocklists() {
   return useQuery({
@@ -28,7 +29,10 @@ export function useCreateBlocklist() {
       if (!res.ok) throw new Error("Failed to create blocklist entry");
       return api.blocklists.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
+    },
   });
 }
 
@@ -47,7 +51,10 @@ export function useUpdateBlocklist() {
       if (!res.ok) throw new Error("Failed to update blocklist entry");
       return api.blocklists.update.responses[200].parse(await res.json());
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
+    },
   });
 }
 
@@ -59,6 +66,9 @@ export function useDeleteBlocklist() {
       const res = await apiFetch(url, { method: api.blocklists.delete.method });
       if (!res.ok) throw new Error("Failed to delete blocklist entry");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.blocklists.list.path] });
+      queryClient.invalidateQueries({ queryKey: firewallConfigQueryKey });
+    },
   });
 }

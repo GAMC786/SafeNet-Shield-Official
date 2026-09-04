@@ -116,6 +116,15 @@ export function useActivateDnsServer() {
       if (!res.ok) throw new Error("Failed to activate DNS server");
       return api.dns.activate.responses[200].parse(await res.json());
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.dns.list.path] }),
+    onSuccess: (activatedServer) => {
+      queryClient.setQueryData<DnsServer[]>(
+        [api.dns.list.path],
+        (servers = []) => servers.map((server) => ({
+          ...server,
+          isActive: server.id === activatedServer.id,
+        })),
+      );
+      void queryClient.invalidateQueries({ queryKey: [api.dns.list.path] });
+    },
   });
 }

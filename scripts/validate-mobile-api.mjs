@@ -116,9 +116,20 @@ try {
   response = await fetch(new URL("/api/auth/status", url), {
     signal: AbortSignal.timeout(20000),
     headers: { Accept: "application/json" },
+    redirect: "manual",
   });
 } catch {
   fail(`The mobile backend is not reachable at ${url.origin}/api/auth/status.`);
+}
+
+if (response.status >= 300 && response.status < 400) {
+  const location = response.headers.get("location") || "";
+  if (location.includes("/__replshield")) {
+    fail(
+      "The published deployment protects the mobile API with Replit Shield. Set deployment visibility to Public and republish before building native clients.",
+    );
+  }
+  fail(`The mobile backend authentication endpoint returned HTTP ${response.status}.`);
 }
 
 if (!response.ok) {

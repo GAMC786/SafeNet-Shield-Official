@@ -1,0 +1,112 @@
+name: Build SafeNet Android APK only
+
+on:
+  push:
+    branches:
+      - release-v1.0.15
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: build-apk
+    runs-on: ubuntu-latest
+    env:
+      MOBILE_API_URL: https://safe-net-shield-official.replit.app
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify production manual PIN protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "$MOBILE_API_URL/api/auth/status")"
+          RESPONSE="$response" node --input-type=module <<'NODE'
+          const status = JSON.parse(process.env.RESPONSE);
+          if (status.authenticated !== false || status.pinRequired !== true) {
+            throw new Error(`Production manual PIN gate is not enabled: ${JSON.stringify(status)}`);
+          }
+          console.log('Production manual PIN gate is enabled.');
+          NODE
+
+      - name: Build web assets and sync Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
+          export VITE_API_URL="$api_origin"
+          npm run build
+          printf '{\n  "apiOrigin": "%s"\n}\n' "$api_origin" > dist/public/mobile-build.json
+          npx cap sync android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Decode release keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" ]]; then
+            echo 'ANDROID_KEYSTORE_BASE64 repository secret is required.' >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/safenet-release.keystore"
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Verify APK and manual PIN bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$apksigner" verify --verbose "$apk"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='7' versionName='1.0.15'"
+          if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
+            echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
+            exit 1
+          fi
+          stat -c '%n %s bytes' "$apk"
+
+      - name: Upload APK only
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-Android-APK-v1.0.15
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

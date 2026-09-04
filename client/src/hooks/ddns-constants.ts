@@ -1,0 +1,1 @@
+export const DDNS_STATUS_REFRESH_INTERVAL_MS = 500;

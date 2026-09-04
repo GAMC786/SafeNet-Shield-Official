@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Clerk renders its own inputs outside Tailwind's generated utility markup. */
+.cl-formFieldInput::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
   --font-display: 'Space Grotesk', sans-serif;
