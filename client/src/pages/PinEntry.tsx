@@ -221,7 +221,10 @@ export function PinEntry({ onSuccess }: PinEntryProps) {
       {recoveryMode && (
         <div className="mt-4 w-full max-w-[360px] space-y-3 rounded-lg border border-white/10 bg-white/5 p-4">
           <p className="text-sm text-muted-foreground">
-            Use the recovery email configured in SafeNet Settings. Your code expires in 10 minutes.
+            Use the exact recovery email configured in SafeNet Settings, then select
+            <span className="font-medium text-foreground"> Send recovery code</span>.
+            The code expires in 10 minutes. Check Gmail Inbox, Spam, and Promotions
+            for the subject “SafeNet PIN recovery code”.
           </p>
           <Input
             type="email"

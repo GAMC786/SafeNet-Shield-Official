@@ -8,7 +8,11 @@ export function useAuthStatus() {
   return useQuery({
     queryKey: [api.auth.status.path],
     queryFn: async ({ signal }) => {
-      const res = await apiFetch(api.auth.status.path, { signal, timeoutMs: 10000 });
+      const res = await apiFetch(api.auth.status.path, {
+        signal,
+        timeoutMs: 10000,
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error("Failed to check authentication");
       return api.auth.status.responses[200].parse(await res.json());
     },

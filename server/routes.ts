@@ -89,6 +89,11 @@ export async function registerRoutes(
   // These endpoints are the only unauthenticated API surface. The status
   // response contains no settings, PIN, or provider data.
   app.get(api.auth.status.path, async (req, res) => {
+    // Authentication state changes after PIN verification. Prevent browsers
+    // and proxies from replaying the pre-verification 304 response.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     const settings = await storage.getSettings();
     const pinRequired = settings.isPinEnabled === true;
     const clerkUserId = getClerkUserId(req);

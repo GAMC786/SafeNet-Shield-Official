@@ -23,3 +23,4 @@
 - [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.
 - [Production API public access](production-api-public-access.md) — native builds require a public deployment; password protection redirects API calls through Replit Shield.
 - [Npm security refresh fallback](npm-security-refresh-fallback.md) — when Replit’s audit endpoint is unavailable, verify resolved lock entries and retry registry propagation before pinning.
+- [PIN auth status cache](pin-auth-status-cache.md) — never cache auth status across PIN verification or a valid PIN can appear rejected.
