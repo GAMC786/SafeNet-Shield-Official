@@ -617,8 +617,8 @@ jobs:
     needs: validate-release-workflow
     runs-on: ubuntu-latest
     permissions:
-  contents: write
-  issues: write
+      contents: write
+      issues: write
     env:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
