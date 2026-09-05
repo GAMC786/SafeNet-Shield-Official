@@ -14,3 +14,17 @@ mtime_ms = 1788569009566
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/fc2df4e6-481f-49cd-a900-3e7dc983fdb3/1b14cf68-3927-435e-aa8f-9fa4ea5d90cc"
 storage_version_token = "1788569083503917"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "pJvQJebx2x5b35Big8ns7"
+uri = "file://SafeNet-Android-v1.0.17.apk"
+type = "unspecified"
+title = "SafeNet Android v1.0.17 PIN hotfix"
+description = "Signed APK that preserves the production PIN session in Android WebView. Installs over v1.0.16. SHA-256: 4774d2284f28e023878a39910080fd7c6327b828018bd34b5d5b52399494e77c"
+logical_id = "37c569c2-96cd-4796-ab13-acc644b29db9"
+content_hash = "sha256:4774d2284f28e023878a39910080fd7c6327b828018bd34b5d5b52399494e77c"
+size = 4503264
+mtime_ms = 1788569731258
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/37c569c2-96cd-4796-ab13-acc644b29db9/11b61750-e938-4cf9-8ea5-1425503d75e8"
+storage_version_token = "1788569786902005"
+content_type = "application/octet-stream"
