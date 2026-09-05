@@ -128,7 +128,7 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
-          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='10' versionName='$APP_VERSION'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='11' versionName='$APP_VERSION'"
           if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
             echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
             exit 1

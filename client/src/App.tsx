@@ -138,15 +138,15 @@ function AppContent() {
     !clerkLoaded ||
     authStatus.isLoading ||
     (isAuthenticated && (settingsQuery.isLoading || firewallConfigQuery.isLoading));
-  const isError = authStatus.isError || settingsQuery.isError;
-  const error = authStatus.error || settingsQuery.error;
+  const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);
+  const error = authStatus.error || (isAuthenticated ? settingsQuery.error : null);
   const refetch = () => {
     void authStatus.refetch();
     if (isAuthenticated) {
       void settingsQuery.refetch();
     }
   };
-  const isFetching = authStatus.isFetching || settingsQuery.isFetching;
+  const isFetching = authStatus.isFetching || (isAuthenticated && settingsQuery.isFetching);
 
   if (isLoading) {
     return (
