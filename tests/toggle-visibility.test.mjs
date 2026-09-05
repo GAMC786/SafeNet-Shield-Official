@@ -70,7 +70,14 @@ async function startVite() {
   }
 }
 
-function mockApi(page, { ddnsUpdateResponses = [], threatFeedUpdateResponses = [] } = {}) {
+function mockApi(
+  page,
+  {
+    authenticated = true,
+    ddnsUpdateResponses = [],
+    threatFeedUpdateResponses = [],
+  } = {},
+) {
   let settings = {
     id: 1,
     pinRecoveryEmail: null,
@@ -171,7 +178,7 @@ function mockApi(page, { ddnsUpdateResponses = [], threatFeedUpdateResponses = [
       let response;
 
       if (url.pathname === "/api/auth/status") {
-        response = { authenticated: true, pinRequired: true };
+        response = { authenticated, pinRequired: true };
       } else if (url.pathname === "/api/settings" && method === "GET") {
         response = settings;
       } else if (url.pathname === "/api/settings" && method === "PUT") {
@@ -301,6 +308,24 @@ function mockApi(page, { ddnsUpdateResponses = [], threatFeedUpdateResponses = [
     ),
   ]);
 }
+
+test("PIN does not block startup and still protects Settings recovery", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, { authenticated: false });
+
+  await page.goto(baseUrl);
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  assert.equal(
+    await page.getByText("Secure Access Required", { exact: true }).count(),
+    0,
+    "startup should not show the PIN gate",
+  );
+
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByText("Secure Access Required", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Forgot PIN? Recover by email" }).waitFor();
+  await page.close();
+});
 
 async function waitForAttribute(locator, attribute, expected) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
