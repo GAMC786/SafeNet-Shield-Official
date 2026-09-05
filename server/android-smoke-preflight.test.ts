@@ -130,7 +130,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
   assert.match(
     apkOnlyWorkflow,
-    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='7' versionName='1\.0\.15'"/,
+    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='8' versionName='\$APP_VERSION'"/,
   );
   assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
@@ -154,7 +154,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /name: Upload APK SHA-256 checksum/);
   assert.match(
     apkOnlyWorkflow,
-    /name: SafeNet-Android-APK-v1\.0\.15-SHA256/,
+    /name: SafeNet-Android-APK-v\$\{\{ steps\.app_version\.outputs\.version \}\}-SHA256/,
   );
   assert.match(
     apkOnlyWorkflow,
