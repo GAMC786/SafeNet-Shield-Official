@@ -25,3 +25,4 @@
 - [Npm security refresh fallback](npm-security-refresh-fallback.md) — when Replit’s audit endpoint is unavailable, verify resolved lock entries and retry registry propagation before pinning.
 - [PIN auth status cache](pin-auth-status-cache.md) — never cache auth status across PIN verification or a valid PIN can appear rejected.
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
+- [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
