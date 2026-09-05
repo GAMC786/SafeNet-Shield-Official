@@ -2,6 +2,7 @@ package com.safenet.dns;
 
 import android.os.Bundle;
 import android.view.Window;
+import android.webkit.CookieManager;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -15,6 +16,10 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
         super.onCreate(savedInstanceState);
+
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
 
         Window window = getWindow();
         // Keep the web content below system bars where the platform allows it.

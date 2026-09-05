@@ -27,6 +27,13 @@ const runnerScript = readFileSync(
   path.resolve(process.cwd(), "scripts/provision-android-runner.sh"),
   "utf8",
 );
+const mainActivity = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/MainActivity.java",
+  ),
+  "utf8",
+);
 
 function getStepBlock(stepName: string) {
   const stepStart = workflow.indexOf(`      - name: ${stepName}`);
@@ -130,7 +137,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
   assert.match(
     apkOnlyWorkflow,
-    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='8' versionName='\$APP_VERSION'"/,
+    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='9' versionName='\$APP_VERSION'"/,
   );
   assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
@@ -173,6 +180,15 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.equal(
     (apkOnlyWorkflow.match(/uses: actions\/upload-artifact@v4/g) ?? []).length,
     3,
+  );
+});
+
+test("Android WebView accepts the production PIN session cookie", () => {
+  assert.match(mainActivity, /CookieManager\.getInstance\(\)/);
+  assert.match(mainActivity, /setAcceptCookie\(true\)/);
+  assert.match(
+    mainActivity,
+    /setAcceptThirdPartyCookies\(getBridge\(\)\.getWebView\(\), true\)/,
   );
 });
 
