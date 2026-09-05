@@ -180,6 +180,14 @@ function mockApi(
       if (url.pathname === "/api/auth/status") {
         response = { authenticated, pinRequired: true };
       } else if (url.pathname === "/api/settings" && method === "GET") {
+        if (!authenticated) {
+          await route.fulfill({
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({ message: "Authentication required" }),
+          });
+          return;
+        }
         response = settings;
       } else if (url.pathname === "/api/settings" && method === "PUT") {
         settings = { ...settings, ...JSON.parse(request.postData() || "{}") };
