@@ -7,7 +7,6 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
-import { PinEntry } from "@/pages/PinEntry";
 import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -202,11 +201,6 @@ function AppContent() {
         </div>
       </div>
     );
-  }
-
-  // Show PIN entry when the server says this session is not authenticated.
-  if (authStatus.data && !isAuthenticated) {
-    return <PinEntry onSuccess={() => void authStatus.refetch()} />;
   }
 
   return <MainLayout />;

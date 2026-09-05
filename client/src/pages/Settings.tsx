@@ -1,4 +1,4 @@
-import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
+import { useAuthStatus, useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { AiShieldControls } from "@/components/AiShieldControls";
@@ -13,9 +13,12 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
+import { PinEntry } from "@/pages/PinEntry";
 
 export default function Settings() {
-  const { data: settings } = useSettings();
+  const authStatus = useAuthStatus();
+  const isAuthenticated = authStatus.data?.authenticated === true;
+  const { data: settings } = useSettings(isAuthenticated);
   const { data: dnsServers } = useDnsServers();
   const updateSettings = useUpdateSettings();
   const vpn = useSafeNetVpn();
@@ -30,6 +33,18 @@ export default function Settings() {
       setRecoveryEmail(settings.pinRecoveryEmail || "");
     }
   }, [settings?.pinRecoveryEmail]);
+
+  if (authStatus.isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center" role="status">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (authStatus.data && !isAuthenticated) {
+    return <PinEntry onSuccess={() => void authStatus.refetch()} />;
+  }
 
   const settingLabels: Record<string, string> = {
     aiShieldEnabled: "AI Shield",
