@@ -96,7 +96,6 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    @Override
     public void onDestroy() {
         if (startupLoaderCheck != null) {
             startupHandler.removeCallbacks(startupLoaderCheck);

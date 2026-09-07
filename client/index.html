@@ -92,6 +92,11 @@
         audio.volume = 0.55;
         audio.muted = savedMuted;
 
+        const stopAudioForPageClose = () => {
+          audio.pause();
+          audio.currentTime = 0;
+        };
+
         const updateLabel = (needsGesture = false) => {
           const muted = audio.muted || audio.paused;
           toggle.textContent = needsGesture
@@ -121,6 +126,8 @@
 
         audio.addEventListener("play", () => updateLabel());
         audio.addEventListener("pause", () => updateLabel());
+        window.addEventListener("pagehide", stopAudioForPageClose);
+        window.addEventListener("beforeunload", stopAudioForPageClose);
         if (!savedMuted) {
           audio.play().catch(() => updateLabel(true));
         }
