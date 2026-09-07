@@ -96,12 +96,31 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    @Override
+    public void onDestroy() {
         if (startupLoaderCheck != null) {
             startupHandler.removeCallbacks(startupLoaderCheck);
         }
         startupLoader = null;
+        stopStartupAudio();
         super.onDestroy();
+    }
+
+    @Override
+    public void onPause() {
+        stopStartupAudio();
+        super.onPause();
+    }
+
+    private void stopStartupAudio() {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+        getBridge().getWebView().evaluateJavascript(
+                "(function(){const a=document.getElementById('safenet-startup-audio');" +
+                        "if(a){a.pause();a.currentTime=0;}})();",
+                null
+        );
     }
 
     @Override
