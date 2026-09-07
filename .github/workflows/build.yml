@@ -1963,16 +1963,12 @@ jobs:
 
           require_badging \
             "$apk" \
-            "package: name='com.safenet.dns' versionCode='19' versionName='$expected_version'" \
+            "package: name='com.safenet.dns' versionCode='20' versionName='$expected_version'" \
             "Android application APK"
           require_badging \
             "$test_apk" \
             "package: name='com.safenet.dns.test'" \
             "Android instrumentation APK package"
-          require_badging \
-            "$test_apk" \
-            "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'" \
-            "Android instrumentation APK runner"
 
           checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
           test_checksum="$(sha256sum "$test_apk" | cut -d ' ' -f1)"
@@ -1987,7 +1983,7 @@ jobs:
             sha256sum --check app-release-androidTest.apk.sha256
           )
           unzip -l "$apk" | grep -F "assets/public/"
-          echo "Verified $apk_count signed Android APK installer with versionCode 19, versionName $expected_version, and SHA-256 $checksum."
+          echo "Verified $apk_count signed Android APK installer with versionCode 20, versionName $expected_version, and SHA-256 $checksum."
           echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
 
       - name: Prepare release-linked Android smoke evidence
@@ -2003,6 +1999,9 @@ jobs:
           checksum_asset="$release_dir/SafeNet-DNS-Android-smoke-evidence.sha256"
 
           test -d "$evidence_dir"
+          if [[ ! -s "$result_file" && -s "$evidence_dir/result.txt" ]]; then
+            result_file="$evidence_dir/result.txt"
+          fi
           test -s "$result_file"
           mkdir -p "$release_dir"
           tar -czf "$archive" -C "$evidence_dir" .

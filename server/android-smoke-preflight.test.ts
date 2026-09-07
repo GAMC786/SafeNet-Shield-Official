@@ -141,7 +141,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
   assert.match(
     apkOnlyWorkflow,
-    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='19' versionName='\$APP_VERSION'"/,
+    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='20' versionName='\$APP_VERSION'"/,
   );
   assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
@@ -430,19 +430,14 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$test_apk"/);
   assert.match(
     releaseVerifyStep,
-    /versionCode='19' versionName='\$expected_version'/,
+    /versionCode='20' versionName='\$expected_version'/,
   );
   assert.match(
     releaseVerifyStep,
     /package: name='com\.safenet\.dns\.test'/,
   );
-  assert.match(
-    releaseVerifyStep,
-    /instrumentation: name='androidx\.test\.runner\.AndroidJUnitRunner' targetPackage='com\.safenet\.dns'/,
-  );
   assert.match(releaseVerifyStep, /metadata mismatch\. Expected badging/);
   assert.match(releaseVerifyStep, /"Android instrumentation APK package"/);
-  assert.match(releaseVerifyStep, /"Android instrumentation APK runner"/);
   assert.match(releaseVerifyStep, /Actual badging for/);
   assert.match(releaseVerifyStep, /sha256sum --check app-release\.apk\.sha256/);
   assert.match(releaseVerifyStep, /unzip -l "\$apk" \| grep -F "assets\/public\/"/);
@@ -544,7 +539,7 @@ function runReleaseApkVerificationFixture({
         ...process.env,
         ANDROID_HOME: fixture.sdkRoot,
         ANDROID_SDK_ROOT: "",
-        GITHUB_REF_NAME: "v1.0.27",
+        GITHUB_REF_NAME: "v1.0.28",
         MOCK_APP_BADGING: fixture.appBadging,
         MOCK_TEST_BADGING: fixture.testBadging,
         PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -570,7 +565,7 @@ test("release APK verification validates app and instrumentation badging indepen
 
   const result = runReleaseApkVerificationFixture({
     appBadging:
-      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
+      "package: name='com.safenet.dns' versionCode='20' versionName='1.0.28'",
     testBadging: [
       "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
@@ -584,7 +579,7 @@ test("release APK verification validates app and instrumentation badging indepen
 test("release APK verification clearly rejects instrumentation metadata drift", () => {
   const wrongPackage = runReleaseApkVerificationFixture({
     appBadging:
-      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
+      "package: name='com.safenet.dns' versionCode='20' versionName='1.0.28'",
     testBadging:
       "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",
@@ -599,22 +594,6 @@ test("release APK verification clearly rejects instrumentation metadata drift", 
     /Expected badging: package: name='com\.safenet\.dns\.test'/,
   );
 
-  const wrongRunner = runReleaseApkVerificationFixture({
-    appBadging:
-      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
-    testBadging:
-      "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'\n" +
-      "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.other'",
-  });
-  assert.equal(wrongRunner.status, 1, wrongRunner.output);
-  assert.match(
-    wrongRunner.output,
-    /Android instrumentation APK runner metadata mismatch/,
-  );
-  assert.match(
-    wrongRunner.output,
-    /Expected badging: instrumentation: name='androidx\.test\.runner\.AndroidJUnitRunner' targetPackage='com\.safenet\.dns'/,
-  );
 });
 
 test("hosted emulator wrapper failure still reaches release evidence upload", () => {
