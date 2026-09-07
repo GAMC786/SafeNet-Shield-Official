@@ -149,17 +149,7 @@ function AppContent() {
   const isFetching = authStatus.isFetching || (isAuthenticated && settingsQuery.isFetching);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
-        <div className="text-center space-y-4" role="status">
-          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <div>
-            <h1 className="text-xl">Connecting to SafeNet DNS</h1>
-            <p className="text-muted-foreground mt-2">Loading server settings…</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <StartupLoader />;
   }
 
   if (isError) {
@@ -204,6 +194,44 @@ function AppContent() {
   }
 
   return <MainLayout />;
+}
+
+function StartupLoader() {
+  return (
+    <div
+      className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#090b14] p-6 text-foreground"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(9,11,20,0.82), rgba(9,11,20,0.94)), url('https://drive.google.com/uc?export=download&id=1FCRkhLTptVUftTEJAgLKEz5INl0adSRa')",
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+      }}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.16),transparent_42%)]" />
+      <div className="relative z-10 flex max-w-md flex-col items-center gap-7 text-center" role="status">
+        <div className="relative h-24 w-28" aria-hidden="true">
+          <div className="absolute left-1/2 top-1 h-20 w-20 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-red-500/30" />
+          {[
+            "left-1/2 top-0 -translate-x-1/2",
+            "bottom-0 left-0",
+            "bottom-0 right-0",
+          ].map((position, index) => (
+            <span
+              key={position}
+              className={`absolute h-4 w-4 rounded-full bg-red-500 shadow-[0_0_22px_rgba(239,68,68,0.95)] animate-pulse ${position}`}
+              style={{ animationDelay: `${index * 180}ms` }}
+            />
+          ))}
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-xl tracking-[0.18em] text-white sm:text-2xl">
+            Connecting to SafeNet Shield DNS Server+
+          </h1>
+          <p className="text-sm text-slate-300">Loading secure server settings…</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SignInPage() {

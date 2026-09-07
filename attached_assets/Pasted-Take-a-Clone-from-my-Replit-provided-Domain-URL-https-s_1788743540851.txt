@@ -1,0 +1,36 @@
+Take a Clone from my Replit provided Domain URL (https://safe-net-shield-official.replit.app/), and
+Ensure the new App/APK/PWA Build is 100% Safe, 100% Live, 100% Autoscaled for Android Devices including Phones, Tablets, and TV, 100% Real, 100% Accurate, 100% Visible, and 100% Working with Auto-Upgrades to GitHub, and Replit Domain URL (https://safe-net-shield-official.replit.app/) for the Pages, Tabs, and Features in App/APK/PWA including:
+Add a ISP-Based Measure Your Network Speed Test Infographic as seen on Replit Domain URL (https://safe-net-shield-official.replit.app/).
+Ensure Edit Pencil Tools are present or Add to all applicable pages/tabs/features.
+Ensure the DNS Configuration>DNS Entry works with correct details.
+Ensure the Toggle buttons are visible and not too large.
+Ensure the Add/Delete buttons work correctly.
+Ensure Ai Shield from Firewall Rules page is removed.
+Ensure an actual 100% working Ai Screen/Camera Scanner for Nudity is built. (Refer to BullDog Blocker, and SafeSurfer on Google Play).
+Ensure the Firewall Rules options are working correctly. Remove the “Allow Google/Gmail” button.
+Ensure the app has an actual built-in robust antivirus with real-time apk/web scanner.
+Safely Autoscale the entire app and elements for Android devices.
+Ensure the SafeNet Inc. logo as seen on the top right corner of the Settings page is always present in the App/APK/PWA.
+Ensure APK Endpoint protection is working automatically. Scan Browser, File Transfer, and Google Play Store downloads each time.
+Ensure Notifications Act/React with the right information accordingly when triggered by toggles or events.
+Ensure there are Zero Errors in functionality throughout the app.
+Ensure User Input is acquired correctly, and the user is notified with instructions if errors exist.
+Ensure my HAPP defeats Private VPN Proxy Browsers like UPX Browser.
+Ensure the Android Status Bar is fully-visible when scrolling within the App/APK/PWA.
+On the DDNS Tab, Write Dynamic DNS as the Header/Title name. Keep DDNS for the Tab Icon.
+On-Startup, Show an actual Connecting to SafeNet Shield DNS Server+ Loader with a Live Red Triangular Tri-Dots in the middle of this background image (https://drive.google.com/file/d/1FCRkhLTptVUftTEJAgLKEz5INl0adSRa/view?usp=sharing). Autoscaled.
+Ensure you have safely Autoscaled everything for Android Devices including Phones, Tablets, and TV.
+After the Start-Up screen. Add Standard Sign-In, and Sign-Up Options for major E-mail services with minimal permissions access.
+Add $5 Monthly Subscription Payment option with the right integrations or services such as Google/Google Play Store.
+Add “Contact Us: Post@SafeNetInc.Ca” at the very bottom of the Settings page.
+Ensure App Access Protection feature is 100% working, and safe to use.
+Ensure Security Modules, Device Integration, DNS Protection VPN, Ai Shield on System Settings is 100% working, and safe to use.
+Ensure my Dashboard is showing accurate information including Network Traffic Analysis.
+Ensure the APK app is mistake-proof and cannot overblock or brick my phone at any point even when using Screen and Camera Detection.
+Ensure Access Logs are reflecting accurately.
+At the very bottom of the Settings page, Show a “Made in Canada with Replit” Text, and Replit’s Logo including Canadian Flag with a Wave.
+Replace and Write SafeNet Shield DNS Server+ (Official) v1.0.20 as the Hardcoded App/APK Name at the very bottom of the Settings page.
+Make my App/APK VPN compatible with Android’s Built-In Private DNS with Only AdGuard DNS, Next DNS, and Control D inputs.
+Ensure the Touchscreen/Keyboard Act/React perfectly throughout the App/APK with the best applicable SFX/VFX.
+Add an Instrumental Space Soundtrack playing in the background throughout the App/APK/PWA.
+As a Final Step, Publish and Release the Latest App/APK/PWA on GitHub, my Replit Domain URL, and Browser-Based Installations.
