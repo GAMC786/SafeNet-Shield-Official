@@ -28,6 +28,17 @@ export const errorSchemas = {
 
 export const api = {
   auth: {
+    config: {
+      method: 'GET' as const,
+      path: '/api/auth/config',
+      responses: {
+        200: z.object({
+          publishableKey: z.string().min(1),
+          proxyUrl: z.string().url(),
+        }),
+        503: errorSchemas.internal,
+      },
+    },
     status: {
       method: 'GET' as const,
       path: '/api/auth/status',

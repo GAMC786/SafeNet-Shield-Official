@@ -25,24 +25,34 @@ import Logs from "@/pages/Logs";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
-// Resolve the key from the browser hostname so the same build works on
-// SafeNet's development and published domains.
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const STARTUP_LOADER_DURATION_MS = 5000;
+
+export type ClerkRuntimeConfig = {
+  publishableKey?: string;
+  proxyUrl?: string;
+};
+
+// Resolve the key from the browser hostname so the same build works on
+// SafeNet's development and published domains. Packaged builds may not have a
+// compile-time key, in which case main.tsx loads this public configuration
+// from the HTTPS backend before mounting ClerkProvider.
+export function getBuildClerkConfig(): ClerkRuntimeConfig {
+  const publishableKey = publishableKeyFromHost(
+    window.location.hostname,
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+  );
+
+  return {
+    publishableKey: publishableKey || undefined,
+    proxyUrl: import.meta.env.VITE_CLERK_PROXY_URL || undefined,
+  };
+}
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
     ? path.slice(basePath.length) || "/"
     : path;
-}
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.");
 }
 
 const clerkAppearance = {
@@ -282,13 +292,13 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-function AppWithAuth() {
+function AppWithAuth({ clerkConfig }: { clerkConfig: ClerkRuntimeConfig }) {
   const [, setLocation] = useLocation();
 
   return (
     <ClerkProvider
-      publishableKey={clerkPubKey}
-      proxyUrl={clerkProxyUrl}
+      publishableKey={clerkConfig.publishableKey!}
+      proxyUrl={clerkConfig.proxyUrl}
       appearance={clerkAppearance}
       signInUrl={`${basePath}/sign-in`}
       signUpUrl={`${basePath}/sign-up`}
@@ -322,10 +332,30 @@ function AppWithAuth() {
   );
 }
 
-function App() {
+function StartupConfigurationError() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#090b14] p-6 text-center text-foreground">
+      <div className="max-w-md space-y-3">
+        <h1 className="font-display text-xl tracking-[0.12em] text-white">
+          SafeNet Shield could not start
+        </h1>
+        <p className="text-sm text-slate-300">
+          The app opened, but its secure sign-in configuration was unavailable.
+          Reinstall the latest APK after connecting to the internet.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function App({ clerkConfig = getBuildClerkConfig() }: { clerkConfig?: ClerkRuntimeConfig }) {
+  if (!clerkConfig.publishableKey) {
+    return <StartupConfigurationError />;
+  }
+
   return (
     <WouterRouter base={basePath}>
-      <AppWithAuth />
+      <AppWithAuth clerkConfig={clerkConfig} />
     </WouterRouter>
   );
 }

@@ -33,12 +33,14 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { isStripeReady } from "./stripe-init";
 import { pool } from "./db";
 import { getSafeNetPortalConfiguration, getSafeNetPrice } from "./stripe-setup";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
 import {
   getGmailFailureStage,
   PIN_RECOVERY_CODE_TTL_MS,
   sendPinRecoveryCode,
   sendPinSecurityNotification,
 } from "./gmail";
+import { CLERK_PROXY_PATH, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -98,8 +100,34 @@ export async function registerRoutes(
     options.generatePinRecoveryCode ?? (() => String(randomInt(100000, 1000000)));
   const deliverPinRecoveryCode = options.sendPinRecoveryCode ?? sendPinRecoveryCode;
 
-  // These endpoints are the only unauthenticated API surface. The status
-  // response contains no settings, PIN, or provider data.
+  // These endpoints are the only unauthenticated API surface. They contain no
+  // settings, PIN, provider, or user data.
+  app.get(api.auth.config.path, (req, res) => {
+    const publishableKey = process.env.CLERK_PUBLISHABLE_KEY
+      ? publishableKeyFromHost(getClerkProxyHost(req) ?? "", process.env.CLERK_PUBLISHABLE_KEY)
+      : undefined;
+
+    if (!publishableKey) {
+      return res.status(503).json({
+        message: "Clerk publishable-key configuration is unavailable.",
+      });
+    }
+
+    const protocol = req.headers["x-forwarded-proto"]?.toString().split(",")[0]?.trim() || req.protocol;
+    const host = getClerkProxyHost(req);
+    if (!host) {
+      return res.status(503).json({
+        message: "SafeNet public host configuration is unavailable.",
+      });
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      publishableKey,
+      proxyUrl: `${protocol}://${host}${CLERK_PROXY_PATH}`,
+    });
+  });
+
   app.get(api.auth.status.path, async (req, res) => {
     // Authentication state changes after PIN verification. Prevent browsers
     // and proxies from replaying the pre-verification 304 response.
