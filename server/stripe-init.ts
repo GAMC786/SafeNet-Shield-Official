@@ -1,12 +1,29 @@
-import { runMigrations } from "stripe-replit-sync";
+import type Stripe from "stripe";
+import { runMigrations, type StripeSync } from "stripe-replit-sync";
 import { getStripeSync, isStripeUnavailableError } from "./stripeClient";
 import { pool } from "./db";
 import { ensureSafeNetStripeSetup } from "./stripe-setup";
+
+export const STRIPE_STARTUP_LOCK_KEY = "safenet:stripe-startup";
 
 let stripeReady = false;
 
 export function isStripeReady() {
   return stripeReady;
+}
+
+type StripeSetup = (stripe: Stripe) => Promise<unknown>;
+
+export async function synchronizeStripeStartup(
+  sync: StripeSync,
+  webhookUrl: string,
+  setup: StripeSetup = (stripe) => ensureSafeNetStripeSetup(stripe),
+) {
+  await sync.postgresClient.withAdvisoryLock(STRIPE_STARTUP_LOCK_KEY, async () => {
+    await setup(sync.stripe);
+    await sync.findOrCreateManagedWebhook(webhookUrl);
+    await sync.syncBackfill({ object: "all" });
+  });
 }
 
 export async function initializeStripe() {
@@ -23,12 +40,10 @@ export async function initializeStripe() {
   await runMigrations({ databaseUrl: process.env.DATABASE_URL });
 
   try {
-    await ensureSafeNetStripeSetup();
     const sync = await getStripeSync();
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
     if (!domain) throw new Error("REPLIT_DOMAINS is required to configure Stripe webhooks.");
-    await sync.findOrCreateManagedWebhook(`https://${domain}/api/stripe/webhook`);
-    await sync.syncBackfill();
+    await synchronizeStripeStartup(sync, `https://${domain}/api/stripe/webhook`);
     stripeReady = true;
   } catch (error) {
     if (isStripeUnavailableError(error)) {
