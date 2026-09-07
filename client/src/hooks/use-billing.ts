@@ -6,6 +6,7 @@ import {
   getBillingAction,
   shouldPollForCheckoutConvergence,
 } from "@/lib/billing-state";
+import { trackEvent } from "@/lib/analytics";
 
 export { getBillingAction, shouldPollForCheckoutConvergence } from "@/lib/billing-state";
 
@@ -33,17 +34,22 @@ export function useSubscriptionStatus(enabled = true) {
   });
 }
 
-async function openBillingUrl(path: string) {
+async function openBillingUrl(path: string, eventName: string) {
   const response = await apiFetch(path, { method: "POST" });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || "Billing could not be opened.");
+  trackEvent(eventName, { location: "settings_subscription" });
   window.location.assign(body.url);
 }
 
 export function useStartCheckout() {
-  return useMutation({ mutationFn: () => openBillingUrl(api.billing.checkout.path) });
+  return useMutation({
+    mutationFn: () => openBillingUrl(api.billing.checkout.path, "subscription_checkout_started"),
+  });
 }
 
 export function useOpenBillingPortal() {
-  return useMutation({ mutationFn: () => openBillingUrl(api.billing.portal.path) });
+  return useMutation({
+    mutationFn: () => openBillingUrl(api.billing.portal.path, "billing_portal_opened"),
+  });
 }
