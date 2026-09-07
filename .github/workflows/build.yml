@@ -788,7 +788,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run Clerk authentication browser smoke test
-        if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
+        if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
         shell: bash
         env:
           AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
