@@ -550,35 +550,12 @@ export default function Settings() {
             </span>
           </div>
           <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
-            <img
-              src={wordmarkImage}
-              alt="SafeNet Inc."
-              className="h-7 w-auto max-w-[12rem] object-contain"
-            />
-            <span className="hidden text-muted-foreground sm:inline" aria-hidden="true">•</span>
             <a
               href="mailto:Post@SafeNetInc.Ca"
-              className="text-primary underline-offset-4 hover:underline"
+              className="text-white underline-offset-4 hover:underline"
             >
               Contact Us: Post@SafeNetInc.Ca
             </a>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-yellow-500/10 pt-4 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-2" aria-label="Replit">
-              <span
-                className="grid h-6 w-6 place-items-center rounded-md bg-[#f26207] text-sm font-black leading-none text-white shadow-[0_0_12px_rgba(242,98,7,0.45)]"
-                aria-hidden="true"
-              >
-                &gt;
-              </span>
-              <span className="font-semibold tracking-wide text-white">Replit</span>
-            </span>
-            <span aria-hidden="true">•</span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-lg" aria-hidden="true">🇨🇦</span>
-              <span>Made in Canada with Replit</span>
-              <span className="text-base text-red-400" aria-hidden="true">〰</span>
-            </span>
           </div>
         </div>
       </div>

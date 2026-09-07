@@ -1,12 +1,9 @@
-import { Alignment, Fit, Layout, useRive } from "@rive-app/react-canvas";
 import { Music2, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 const REFERENCE_SOUNDTRACK_URL =
   "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav";
-const RIVE_COMPANION_URL = "https://cdn.rive.app/animations/vehicles.riv";
-
 /**
  * The reference experience starts its full soundtrack after an explicit
  * start interaction. Keep the same browser-safe behavior here: the complete
@@ -21,16 +18,6 @@ export function SoundtrackControl() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasAudioError, setHasAudioError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const riveLayout = useMemo(
-    () => new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-    [],
-  );
-  const { RiveComponent, rive } = useRive({
-    src: RIVE_COMPANION_URL,
-    autoplay: false,
-    layout: riveLayout,
-  });
-
   useEffect(() => {
     const audio = new Audio(REFERENCE_SOUNDTRACK_URL);
     audio.loop = true;
@@ -57,18 +44,6 @@ export function SoundtrackControl() {
       audioRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (!rive) {
-      return;
-    }
-
-    if (isPlaying) {
-      rive.play();
-    } else {
-      rive.pause();
-    }
-  }, [isPlaying, rive]);
 
   const stop = () => {
     const audio = audioRef.current;
@@ -109,12 +84,6 @@ export function SoundtrackControl() {
 
   return (
     <div className="fixed right-3 top-3 z-40 flex items-center gap-2">
-      <div
-        className="hidden h-9 w-14 overflow-hidden rounded-md border border-white/15 bg-slate-950/60 shadow-lg shadow-cyan-950/20 backdrop-blur-md sm:block"
-        aria-hidden="true"
-      >
-        <RiveComponent className="h-full w-full opacity-80" />
-      </div>
       <Button
         type="button"
         variant="outline"

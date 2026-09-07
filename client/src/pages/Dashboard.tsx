@@ -3,25 +3,51 @@ import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Activity, Shield, AlertTriangle, Wifi, Server } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Activity, Shield, AlertTriangle, Wifi, Server, CheckCircle2, Gauge, Radio } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
+import { useMemo } from "react";
 
 export default function Dashboard() {
   const authStatus = useAuthStatus();
   const canReadProtectedData = authStatus.data?.authenticated === true;
-  const { data: stats } = useStats(canReadProtectedData);
-  const { data: logs } = useLogs(canReadProtectedData);
+  const statsQuery = useStats(canReadProtectedData);
+  const logsQuery = useLogs(canReadProtectedData);
+  const { data: stats } = statsQuery;
+  const { data: logs } = logsQuery;
   const { data: settings } = useSettings(canReadProtectedData);
   const { data: dnsServers } = useDnsServers(canReadProtectedData);
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
-  const chartData = logs?.slice(0, 20).map(log => ({
-    name: new Date(log.timestamp || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    value: log.status === 'blocked' ? 10 : 2
-  })).reverse() || [];
+  const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
+  const blockRate = stats?.totalQueries
+    ? Math.round((stats.blockedQueries / stats.totalQueries) * 100)
+    : 0;
+  const chartData = useMemo(() => {
+    const recentLogs = [...(logs ?? [])].slice(0, 24).reverse();
+    if (recentLogs.length === 0) {
+      return stats
+        ? [{ name: "Now", allowed: allowedQueries, blocked: stats.blockedQueries }]
+        : [];
+    }
+
+    const bucketSize = Math.max(1, Math.ceil(recentLogs.length / 8));
+    return Array.from({ length: Math.ceil(recentLogs.length / bucketSize) }, (_, bucketIndex) => {
+      const bucket = recentLogs.slice(bucketIndex * bucketSize, (bucketIndex + 1) * bucketSize);
+      const lastLog = bucket[bucket.length - 1];
+      return {
+        name: new Date(lastLog.timestamp || Date.now()).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        allowed: bucket.filter((log) => log.status !== "blocked").length,
+        blocked: bucket.filter((log) => log.status === "blocked").length,
+      };
+    });
+  }, [allowedQueries, logs, stats]);
+  const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
   return (
     <div className="space-y-6">
@@ -118,35 +144,94 @@ export default function Dashboard() {
         </CyberCard>
       </div>
 
-      {/* Traffic Chart */}
-      <CyberCard className="h-[300px] flex flex-col">
-        <h3 className="text-lg font-display font-bold mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-primary" />
-          Network Traffic Analysis
-        </h3>
-        <div className="flex-1 w-full min-h-0">
+      {/* Live Traffic Analysis */}
+      <CyberCard className="space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-display font-bold flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            Network Traffic Analysis
+          </h3>
+          <div className="inline-flex items-center gap-2 self-start rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-mono font-bold tracking-wider text-emerald-300">
+            <span className={`h-2 w-2 rounded-full bg-emerald-400 ${isLive ? "animate-pulse" : ""}`} />
+            LIVE • REFRESHING EVERY 5S
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex items-center justify-between text-primary">
+              <span className="text-[11px] font-mono uppercase tracking-wider">Total requests</span>
+              <Radio className="h-4 w-4" />
+            </div>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{(stats?.totalQueries ?? 0).toLocaleString()}</p>
+            <p className="text-[11px] text-muted-foreground">Live DNS activity</p>
+          </div>
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+            <div className="flex items-center justify-between text-destructive">
+              <span className="text-[11px] font-mono uppercase tracking-wider">Blocked</span>
+              <Shield className="h-4 w-4" />
+            </div>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{(stats?.blockedQueries ?? 0).toLocaleString()}</p>
+            <p className="text-[11px] text-muted-foreground">{blockRate}% of requests</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <div className="flex items-center justify-between text-emerald-300">
+              <span className="text-[11px] font-mono uppercase tracking-wider">Allowed</span>
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{allowedQueries.toLocaleString()}</p>
+            <p className="text-[11px] text-muted-foreground">Passed protection</p>
+          </div>
+          <div className="rounded-lg border border-sky-400/20 bg-sky-400/5 p-3">
+            <div className="flex items-center justify-between text-sky-300">
+              <span className="text-[11px] font-mono uppercase tracking-wider">Threat ratio</span>
+              <Gauge className="h-4 w-4" />
+            </div>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{blockRate}%</p>
+            <p className="text-[11px] text-muted-foreground">Blocked vs. total</p>
+          </div>
+        </div>
+
+        <div className="h-[320px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>
-                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                <linearGradient id="allowedTraffic" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#34d399" stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="blockedTraffic" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-              <XAxis dataKey="name" hide />
-              <YAxis hide />
-              <Tooltip 
+              <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+              <Tooltip
                 contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                 itemStyle={{ color: 'hsl(var(--foreground))' }}
               />
-              <Area 
-                type="monotone" 
-                dataKey="value" 
-                stroke="var(--primary)" 
+              <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
+              <Area
+                type="monotone"
+                dataKey="allowed"
+                name="Allowed"
+                stackId="traffic"
+                stroke="#34d399"
                 strokeWidth={2}
-                fillOpacity={1} 
-                fill="url(#colorValue)" 
+                fillOpacity={1}
+                fill="url(#allowedTraffic)"
+              />
+              <Area
+                type="monotone"
+                dataKey="blocked"
+                name="Blocked"
+                stackId="traffic"
+                stroke="hsl(var(--destructive))"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#blockedTraffic)"
               />
             </AreaChart>
           </ResponsiveContainer>
