@@ -400,6 +400,7 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     workflow,
     /--test-apk "\$GITHUB_WORKSPACE\/artifacts\/android-test\/app-release-androidTest\.apk"/,
   );
+  assert.match(releaseSmokeStep, /continue-on-error: true/);
   assert.match(workflow, /needs: \[build-android, android-release-smoke\]/);
   assert.match(
     workflow,
@@ -407,6 +408,17 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   );
   assert.doesNotMatch(workflow, /name: Download Windows artifact/);
   assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
+  const releaseVerifyStep = getStepBlock("Verify Android release APK");
+  assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$apk"/);
+  assert.match(
+    releaseVerifyStep,
+    /versionCode='12' versionName='\$expected_version'/,
+  );
+  assert.match(releaseVerifyStep, /sha256sum --check app-release\.apk\.sha256/);
+  assert.match(releaseVerifyStep, /unzip -l "\$apk" \| grep -F "assets\/public\/"/);
+  const createReleaseStep = getStepBlock("Create Release");
+  assert.match(createReleaseStep, /artifacts\/android\/app-release\.apk/);
+  assert.match(createReleaseStep, /artifacts\/android\/app-release\.apk\.sha256/);
   assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
@@ -422,7 +434,7 @@ test("hosted emulator wrapper failure still reaches release evidence upload", ()
   // command in its script exits normally. This is distinct from the mocked
   // adb failures above, which exercise the preflight script itself.
   assert.match(smokeStep, /uses: reactivecircus\/android-emulator-runner@v2/);
-  assert.match(smokeStep, /script: \|/);
+  assert.match(smokeStep, /script: \.\/scripts\/android-smoke-test\.sh /);
   assert.doesNotMatch(smokeStep, /--preflight/);
   assert.match(smokeStep, /--apk "\$GITHUB_WORKSPACE\/artifacts\/android\/app-release\.apk"/);
 

@@ -347,7 +347,7 @@ public class SafeNetPinInstrumentationTest {
                 return null;
             }
             if ("OPTIONS".equalsIgnoreCase(method)) {
-                return response(204, "", "text/plain");
+                return response(204, "", "text/plain", Collections.emptyMap());
             }
 
             if ("/api/auth/status".equals(path)) {
