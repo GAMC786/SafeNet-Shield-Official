@@ -1963,7 +1963,7 @@ jobs:
 
           require_badging \
             "$apk" \
-            "package: name='com.safenet.dns' versionCode='21' versionName='$expected_version'" \
+            "package: name='com.safenet.dns' versionCode='22' versionName='$expected_version'" \
             "Android application APK"
           require_badging \
             "$test_apk" \
