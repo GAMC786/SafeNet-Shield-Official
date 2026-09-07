@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type Stripe from "stripe";
 import type { StripeSync } from "stripe-replit-sync";
-import {
-  STRIPE_STARTUP_LOCK_KEY,
-  synchronizeStripeStartup,
-} from "./stripe-init";
+
+// The test exercises the in-memory startup ordering and never opens a
+// database connection, but stripe-init imports the shared database module.
+// Give that module a harmless connection string so hosted release tests do
+// not depend on a provisioned database.
+process.env.DATABASE_URL ??= "postgres://stripe-init-test";
+
+const { STRIPE_STARTUP_LOCK_KEY, synchronizeStripeStartup } = await import("./stripe-init");
 
 type StartupSync = Pick<StripeSync, "findOrCreateManagedWebhook" | "syncBackfill"> & {
   stripe: Stripe;
