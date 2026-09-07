@@ -22,6 +22,10 @@ function isTrustedRequestOrigin(req: Request) {
   return origin === sameOrigin || mobileOrigins.has(origin);
 }
 
+export function isMobileOrigin(origin: string) {
+  return mobileOrigins.has(origin);
+}
+
 export function registerRequestOriginMiddleware(app: Express) {
   app.use((req, res, next) => {
     const origin = req.headers.origin;

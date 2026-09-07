@@ -22,6 +22,7 @@
 import type { IncomingHttpHeaders } from 'http';
 import type { RequestHandler } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { isMobileOrigin } from '../request-origin';
 
 const CLERK_FAPI = 'https://frontend-api.clerk.dev';
 export const CLERK_PROXY_PATH = '/api/__clerk';
@@ -118,6 +119,19 @@ export function clerkProxyMiddleware(): RequestHandler {
         // Content-Length is forbidden on 1xx/204; HEAD/304 may keep theirs.
         if (status < 200 || status === 204) {
           delete headers['content-length'];
+        }
+
+        // Clerk reflects the rewritten upstream Origin in its CORS response.
+        // Restore the native WebView origin so the browser accepts the
+        // response while keeping Clerk's upstream origin validation intact.
+        const requestOrigin =
+          typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+        if (requestOrigin && isMobileOrigin(requestOrigin)) {
+          headers['access-control-allow-origin'] = requestOrigin;
+          headers['access-control-allow-credentials'] = 'true';
+          headers['vary'] = headers['vary']
+            ? `${headers['vary']}, Origin`
+            : 'Origin';
         }
 
         const bodyless =
