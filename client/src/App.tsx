@@ -6,7 +6,6 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { Navigation } from "@/components/Navigation";
 import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -108,8 +107,7 @@ const clerkAppearance = {
 
 function MainLayout() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row pb-24 md:pb-0 safe-area-inset">
-      <Navigation />
+    <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset">
       <SoundtrackControl />
       
       {/* Scanline Effect */}
@@ -123,7 +121,7 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 p-3 sm:p-4 md:p-8 md:ml-20 overflow-y-auto max-w-7xl mx-auto w-full safe-area-inset-bottom">
+      <main className="flex-1 p-3 sm:p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full safe-area-inset-bottom">
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/dns" component={DnsSettings} />
