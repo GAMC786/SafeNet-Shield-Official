@@ -1840,22 +1840,36 @@ jobs:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
+      - name: Download Android instrumentation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
       - name: Verify Android release APK
         shell: bash
         run: |
           set -euo pipefail
 
           apk="artifacts/android/app-release.apk"
+          test_apk="artifacts/android-test/app-release-androidTest.apk"
           checksum_file="artifacts/android/app-release.apk.sha256"
           apk_count=$(find artifacts/android -maxdepth 1 -type f -name 'app-release.apk' | wc -l)
+          test_apk_count=$(find artifacts/android-test -maxdepth 1 -type f -name 'app-release-androidTest.apk' | wc -l)
 
           if [[ "$apk_count" -eq 0 ]]; then
             echo "::error::Android APK installer is missing from artifacts/android"
             exit 1
           fi
+          if [[ "$test_apk_count" -eq 0 ]]; then
+            echo "::error::Android instrumentation APK is missing from artifacts/android-test"
+            exit 1
+          fi
 
           test "$apk_count" -eq 1
           test -s "$apk"
+          test "$test_apk_count" -eq 1
+          test -s "$test_apk"
 
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           test -n "$sdk_root"
@@ -1864,10 +1878,13 @@ jobs:
           test -n "$apksigner"
           test -n "$aapt"
           "$apksigner" verify --verbose "$apk"
+          "$apksigner" verify --verbose "$test_apk"
 
           expected_version="${GITHUB_REF_NAME#v}"
           "$aapt" dump badging "$apk" |
             grep -F "package: name='com.safenet.dns' versionCode='14' versionName='$expected_version'"
+          "$aapt" dump badging "$test_apk" |
+            grep -F "package: name='com.safenet.dns.test' versionCode='14' versionName='$expected_version'"
 
           checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
           printf '%s  app-release.apk\n' "$checksum" > "$checksum_file"
@@ -1884,6 +1901,7 @@ jobs:
           files: |
             artifacts/android/app-release.apk
             artifacts/android/app-release.apk.sha256
+            artifacts/android-test/app-release-androidTest.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

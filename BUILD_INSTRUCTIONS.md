@@ -284,7 +284,27 @@ This project includes a GitHub Actions workflow that automatically builds APK an
 ### Create a Release with downloads:
 1. Create a git tag: `git tag v1.0.0`
 2. Push the tag: `git push origin v1.0.0`
-3. GitHub will automatically create a Release with APK and MSI attached
+3. GitHub will automatically create a Release with these Android downloads attached:
+   - `app-release.apk` — the signed app APK
+   - `app-release-androidTest.apk` — the matching instrumentation test APK
+   - `app-release.apk.sha256` — the signed app APK checksum
+
+The two APKs are built and verified by the same tagged workflow run. For release
+verification, download both `app-release.apk` and
+`app-release-androidTest.apk` from the GitHub Release and pass them to the
+smoke-test script:
+
+```bash
+./scripts/android-smoke-test.sh \
+  --apk app-release.apk \
+  --test-apk app-release-androidTest.apk \
+  --serial emulator-5554
+```
+
+The instrumentation APK is also retained as the
+`SafeNet-DNS-Android-instrumentation` Actions artifact for tagged workflow
+runs, but the GitHub Release downloads above are the stable handoff for
+real-device verification.
 
 ---
 

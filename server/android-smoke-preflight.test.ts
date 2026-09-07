@@ -410,15 +410,25 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
   const releaseVerifyStep = getStepBlock("Verify Android release APK");
   assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$apk"/);
+  assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$test_apk"/);
   assert.match(
     releaseVerifyStep,
     /versionCode='14' versionName='\$expected_version'/,
   );
+  assert.match(
+    releaseVerifyStep,
+    /package: name='com\.safenet\.dns\.test' versionCode='14' versionName='\$expected_version'/,
+  );
   assert.match(releaseVerifyStep, /sha256sum --check app-release\.apk\.sha256/);
   assert.match(releaseVerifyStep, /unzip -l "\$apk" \| grep -F "assets\/public\/"/);
+  assert.match(workflow, /name: Download Android instrumentation artifact/);
   const createReleaseStep = getStepBlock("Create Release");
   assert.match(createReleaseStep, /artifacts\/android\/app-release\.apk/);
   assert.match(createReleaseStep, /artifacts\/android\/app-release\.apk\.sha256/);
+  assert.match(
+    createReleaseStep,
+    /artifacts\/android-test\/app-release-androidTest\.apk/,
+  );
   assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
