@@ -26,7 +26,7 @@ import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const STARTUP_LOADER_DURATION_MS = 5000;
+const STARTUP_LOADER_DURATION_MS = 10000;
 
 export type ClerkRuntimeConfig = {
   publishableKey?: string;
@@ -219,7 +219,7 @@ function AppContent() {
   return <MainLayout />;
 }
 
-function StartupLoader() {
+export function StartupLoader() {
   return (
     <div
       className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#090b14] p-6 text-foreground"
