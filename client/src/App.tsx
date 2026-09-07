@@ -225,9 +225,7 @@ export function StartupLoader() {
       className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#090b14] p-6 text-foreground"
       style={{
         backgroundImage:
-          "linear-gradient(rgba(9,11,20,0.82), rgba(9,11,20,0.94)), url('https://drive.google.com/uc?export=download&id=1FCRkhLTptVUftTEJAgLKEz5INl0adSRa')",
-        backgroundPosition: "center",
-        backgroundSize: "cover",
+          "radial-gradient(circle at center, rgba(239,68,68,0.16), transparent 42%)",
       }}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.16),transparent_42%)]" />

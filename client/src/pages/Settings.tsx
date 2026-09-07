@@ -5,7 +5,7 @@ import { AiShieldControls } from "@/components/AiShieldControls";
 import { EulaDialog } from "@/components/EulaDialog";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Smartphone, Lock, Activity, Eye, Zap, AlertTriangle, Loader2, ShieldCheck, CreditCard, CheckCircle2 } from "lucide-react";
+import { Shield, Smartphone, Lock, Activity, Eye, Zap, AlertTriangle, Loader2, ShieldCheck } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,9 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { PinEntry } from "@/pages/PinEntry";
-import { useSubscriptionStatus, useStartCheckout, useOpenBillingPortal } from "@/hooks/use-billing";
-import { getBillingRecovery } from "@/lib/billing-state";
-import { trackSubscriptionCheckoutReturn } from "@/lib/billing-analytics";
-import { Link } from "wouter";
-import { useAuth } from "@clerk/react";
 
 export default function Settings() {
   const authStatus = useAuthStatus();
-  const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } = useAuth();
   const isAuthenticated = authStatus.data?.authenticated === true;
   const { data: settings } = useSettings(isAuthenticated);
   const { data: dnsServers } = useDnsServers();
@@ -33,27 +27,12 @@ export default function Settings() {
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
-  const subscription = useSubscriptionStatus(clerkLoaded && clerkSignedIn === true);
-  const checkout = useStartCheckout();
-  const billingPortal = useOpenBillingPortal();
-  const billingRecovery = getBillingRecovery(subscription.data?.status ?? "none");
 
   useEffect(() => {
     if (settings?.pinRecoveryEmail !== undefined) {
       setRecoveryEmail(settings.pinRecoveryEmail || "");
     }
   }, [settings?.pinRecoveryEmail]);
-
-  useEffect(() => {
-    const result = new URLSearchParams(window.location.search).get("subscription");
-    const outcome = trackSubscriptionCheckoutReturn(result);
-    if (outcome === "success") {
-      toast({ title: "Subscription received", description: "Your access will update as soon as Stripe confirms payment." });
-      void subscription.refetch();
-    } else if (outcome === "canceled") {
-      toast({ title: "Checkout canceled", description: "No charge was made." });
-    }
-  }, []);
 
   if (authStatus.isLoading) {
     return (
@@ -251,56 +230,6 @@ export default function Settings() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <CyberCard className="md:col-span-2 space-y-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <CreditCard className="mt-1 h-6 w-6 text-primary" />
-              <div>
-                <h2 className="text-xl font-display font-bold">SafeNet Subscription</h2>
-                <p className="text-sm text-muted-foreground">$5 USD per month, billed securely by Stripe.</p>
-              </div>
-            </div>
-            {subscription.data?.entitled && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-300">
-                <CheckCircle2 className="h-4 w-4" /> Active
-              </span>
-            )}
-          </div>
-          {subscription.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Checking subscription…</div>
-          ) : !clerkSignedIn || !subscription.data?.signedIn ? (
-            <div className="space-y-3 rounded border border-white/10 bg-white/5 p-4">
-              <p className="text-sm">Sign in with a SafeNet account to subscribe and restore access on another device.</p>
-              <Button asChild><Link href="/sign-in?redirect_url=%2Fsettings">Sign in to subscribe</Link></Button>
-            </div>
-          ) : (
-            <div className="space-y-3 rounded border border-white/10 bg-white/5 p-4">
-              <p className="text-sm">
-                {subscription.data.entitled && subscription.data.cancelAtPeriodEnd
-                  ? `Canceled — access continues${subscription.data.currentPeriodEnd ? ` until ${new Date(subscription.data.currentPeriodEnd).toLocaleDateString()}` : ""}.`
-                  : billingRecovery.message}
-              </p>
-              {billingRecovery.supportEscalation && (
-                <p className="text-xs text-muted-foreground">
-                  Need help?{" "}
-                  <a className="text-primary underline underline-offset-4" href="mailto:Post@SafeNetInc.Ca">
-                    Contact SafeNet support
-                  </a>
-                  .
-                </p>
-              )}
-              <Button
-                onClick={() => (billingRecovery.action === "checkout"
-                  ? checkout.mutate(undefined, { onError: (error) => toast({ title: "Checkout unavailable", description: error.message, variant: "destructive" }) })
-                  : billingPortal.mutate(undefined, { onError: (error) => toast({ title: "Billing unavailable", description: error.message, variant: "destructive" }) }))}
-                disabled={checkout.isPending || billingPortal.isPending}
-              >
-                {(checkout.isPending || billingPortal.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {billingRecovery.actionLabel}
-              </Button>
-            </div>
-          )}
-        </CyberCard>
         {/* Security Modules */}
         <CyberCard className="space-y-6">
           <div className="flex items-center gap-3 mb-6">
