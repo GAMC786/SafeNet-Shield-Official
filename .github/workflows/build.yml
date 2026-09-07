@@ -1623,11 +1623,7 @@ jobs:
           force-avd-creation: true
           emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            ./scripts/android-smoke-test.sh \
-              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
-              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
-              --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+          script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" --output "$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
         env:
           ANDROID_EMULATOR_API_LEVEL: 34
           ANDROID_EMULATOR_TARGET: google_apis

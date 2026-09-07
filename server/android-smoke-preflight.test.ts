@@ -422,7 +422,7 @@ test("hosted emulator wrapper failure still reaches release evidence upload", ()
   // command in its script exits normally. This is distinct from the mocked
   // adb failures above, which exercise the preflight script itself.
   assert.match(smokeStep, /uses: reactivecircus\/android-emulator-runner@v2/);
-  assert.match(smokeStep, /script: \|/);
+  assert.match(smokeStep, /script: \.\/scripts\/android-smoke-test\.sh /);
   assert.doesNotMatch(smokeStep, /--preflight/);
   assert.match(smokeStep, /--apk "\$GITHUB_WORKSPACE\/artifacts\/android\/app-release\.apk"/);
 
