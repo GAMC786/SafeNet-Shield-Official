@@ -73,12 +73,23 @@ export function clerkProxyMiddleware(): RequestHandler {
       path.replace(new RegExp(`^${CLERK_PROXY_PATH}`), ''),
     on: {
       proxyReq: (proxyReq, req) => {
-        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const protocol =
+          (Array.isArray(req.headers['x-forwarded-proto'])
+            ? req.headers['x-forwarded-proto'][0]
+            : req.headers['x-forwarded-proto'])
+            ?.split(',')[0]
+            ?.trim() || 'https';
         const host = getClerkProxyHost(req) || '';
-        const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
+        const proxyOrigin = `${protocol}://${host}`;
+        const proxyUrl = `${proxyOrigin}${CLERK_PROXY_PATH}`;
 
         proxyReq.setHeader('Clerk-Proxy-Url', proxyUrl);
         proxyReq.setHeader('Clerk-Secret-Key', secretKey);
+        // Native WebViews load the app from https://localhost, but Clerk
+        // validates the Origin header against the public proxy host. Keep the
+        // browser origin for CORS on the response while presenting the
+        // canonical proxy origin to Clerk upstream.
+        proxyReq.setHeader('Origin', proxyOrigin);
 
         const xff = req.headers['x-forwarded-for'];
         const clientIp =
