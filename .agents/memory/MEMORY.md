@@ -26,3 +26,4 @@
 - [PIN auth status cache](pin-auth-status-cache.md) — never cache auth status across PIN verification or a valid PIN can appear rejected.
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
 - [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
+- [Stripe subscription entitlement safety](stripe-subscription-entitlement-safety.md) — grant access only for the exact synced plan, and serialize checkout creation across app instances.

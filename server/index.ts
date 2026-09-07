@@ -14,6 +14,8 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import { registerStripeWebhook } from "./stripe-webhook";
+import { initializeStripe } from "./stripe-init";
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,6 +31,8 @@ app.use(
     ),
   })),
 );
+
+registerStripeWebhook(app);
 
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
@@ -110,6 +114,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await initializeStripe();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

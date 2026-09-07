@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, integer, varchar, json, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -58,6 +58,15 @@ export const appSettings = pgTable("app_settings", {
   firewallEnabled: boolean("firewall_enabled").default(false),
   theme: text("theme").default("red-gray-blue"),
 });
+
+export const billingAccounts = pgTable("billing_accounts", {
+  clerkUserId: text("clerk_user_id").primaryKey(),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("billing_accounts_stripe_customer_id_unique").on(table.stripeCustomerId),
+]);
 
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
@@ -198,6 +207,18 @@ export type InsertAccessLog = z.infer<typeof insertAccessLogSchema>;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type PublicAppSettings = z.infer<typeof publicAppSettingsSchema>;
 export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
+
+export type BillingAccount = typeof billingAccounts.$inferSelect;
+
+export const subscriptionStatusSchema = z.object({
+  signedIn: z.boolean(),
+  entitled: z.boolean(),
+  status: z.enum(["none", "incomplete", "trialing", "active", "past_due", "canceled", "unpaid", "paused"]),
+  cancelAtPeriodEnd: z.boolean(),
+  currentPeriodEnd: z.string().nullable(),
+  priceLabel: z.literal("$5 USD / month"),
+});
+export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;
