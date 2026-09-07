@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
@@ -33,6 +33,7 @@ const clerkPubKey = publishableKeyFromHost(
 );
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+const STARTUP_LOADER_DURATION_MS = 5000;
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -132,11 +133,13 @@ function MainLayout() {
 function AppContent() {
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const authStatus = useAuthStatus();
+  const [startupLoaderComplete, setStartupLoaderComplete] = useState(false);
   const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
   const settingsQuery = useSettings(isAuthenticated);
   const firewallConfigQuery = useFirewallConfig(isAuthenticated);
   const { data: settings } = settingsQuery;
   const isLoading =
+    !startupLoaderComplete ||
     !clerkLoaded ||
     authStatus.isLoading ||
     (isAuthenticated && (settingsQuery.isLoading || firewallConfigQuery.isLoading));
@@ -149,6 +152,14 @@ function AppContent() {
     }
   };
   const isFetching = authStatus.isFetching || (isAuthenticated && settingsQuery.isFetching);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setStartupLoaderComplete(true);
+    }, STARTUP_LOADER_DURATION_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   if (isLoading) {
     return <StartupLoader />;
