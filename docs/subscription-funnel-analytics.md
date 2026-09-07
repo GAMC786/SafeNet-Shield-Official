@@ -40,3 +40,46 @@ subscription status query and is not inferred from analytics.
 
 Enable analytics in Publishing settings and publish or republish the app before
 expecting these custom events in the published web analytics.
+
+## Published verification record
+
+Verification run on September 7, 2026 against
+`https://safe-net-shield-official.replit.app`:
+
+- **Publishing and tracker: confirmed.** The deployment is public with a
+  successful build, and the published HTML contains Replit's injected tracker.
+  A transport probe sent a `subscription_checkout_returned` event successfully
+  and the request contained only `outcome` and `location` from the documented
+  property set.
+- **Return UI: confirmed.** Visiting Settings with
+  `subscription=canceled` and `subscription=success` displayed the expected
+  cancellation and successful-return messages.
+- **Checkout start and billing portal: not confirmed.** The published Settings
+  page correctly requires a SafeNet account before showing those actions. In an
+  unauthenticated browser, both billing endpoints returned `401` with the
+  documented sign-in message, so no checkout or portal event should be counted
+  from that run.
+- **Published analytics query: no funnel events were present in the 30-day
+  window before this verification, and the query was still empty after a
+  20-second recheck following the transport probe.** This is consistent with
+  the missing authenticated billing run, but the transport success alone does
+  not confirm analytics ingestion. If an authenticated rerun remains empty,
+  inspect the Publishing analytics pane, republish with analytics enabled, and
+  repeat the query after generating fresh activity.
+
+### Action required for a complete production verification
+
+Sign in to the published app with a dedicated non-production SafeNet/Clerk
+account, then exercise checkout start, cancel the hosted Checkout page, repeat
+with a successful test payment, and open the billing portal. Query Project
+Analytics afterward for all three event names and verify that checkout returns
+have `outcome=success` or `outcome=canceled`, while checkout starts and portal
+opens have only `location=settings_subscription`.
+
+There is also a cold-load timing risk for return events: the published tracker
+loads asynchronously and the Settings return effect can run before
+`window.umami` exists. The browser probe reproduced a missing custom-event
+request on a cold return page, while the tracker accepted the same payload once
+ready. If the authenticated rerun shows the same gap, queue `trackEvent` calls
+until the tracker is ready (or load the tracker before mounting the app), then
+republish before repeating verification.
