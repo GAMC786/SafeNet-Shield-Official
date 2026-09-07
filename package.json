@@ -18,6 +18,7 @@
     "test:ui": "node --test tests/toggle-visibility.test.mjs",
     "test:auth": "node --test tests/auth-smoke.test.mjs",
     "test:auth:record": "node tests/record-auth-state.mjs",
+    "smoke:stripe": "node scripts/stripe-production-smoke.mjs",
     "lint:workflows": "node scripts/lint-workflows.mjs",
     "setup:workflow-lint": "node scripts/setup-workflow-lint.mjs",
     "android:setup": "./scripts/setup-android-sdk.sh",

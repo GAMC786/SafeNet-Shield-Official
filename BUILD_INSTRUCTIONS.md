@@ -188,6 +188,21 @@ VITE_API_URL=https://your-server.example.com npm run build
 npx electron-builder --win --x64 --publish never
 ```
 
+### Verify published Stripe billing
+
+After publishing the web application, run the post-publish billing smoke check
+against the published HTTPS URL:
+
+```bash
+STRIPE_SMOKE_BASE_URL=https://your-published-deployment.example.com npm run smoke:stripe
+```
+
+The check confirms that Stripe initialization completed in the published
+process and that the public webhook endpoint is reachable. It sends only a
+synthetic unsigned request, expecting the safe `400 Invalid Stripe webhook`
+response; it does not create customers, subscriptions, checkout sessions, or
+payment data. Failure output includes only check names and HTTP status codes.
+
 ### Output Files:
 - MSI installer: `dist-electron/SafeNet DNS Setup X.X.X.msi`
 - NSIS installer: `dist-electron/SafeNet DNS Setup X.X.X.exe`

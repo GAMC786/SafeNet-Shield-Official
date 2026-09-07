@@ -174,6 +174,7 @@ test("concurrent checkout requests reuse one open Checkout Session", async () =>
   }
 });
 
+
 test("separate route instances serialize checkout creation with the PostgreSQL lock", {
   skip: !hasConfiguredDatabase,
 }, async () => {
@@ -411,6 +412,18 @@ test("Stripe webhook rejects an invalid signature and accepts a verified event",
   });
 
   try {
+    const health = await fetch(`${server.baseUrl}/api/stripe/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { ready: true });
+
+    const unsigned = await fetch(`${server.baseUrl}/api/stripe/webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "safenet.billing.smoke" }),
+    });
+    assert.equal(unsigned.status, 400);
+    assert.deepEqual(await unsigned.json(), { message: "Invalid Stripe webhook." });
+
     const invalid = await fetch(`${server.baseUrl}/api/stripe/webhook`, {
       method: "POST",
       headers: {
@@ -436,6 +449,24 @@ test("Stripe webhook rejects an invalid signature and accepts a verified event",
     assert.deepEqual(await valid.json(), { received: true });
     assert.equal(processed.length, 1);
     assert.equal(processed[0].payload.toString(), validPayload);
+  } finally {
+    await server.close();
+  }
+});
+
+test("Stripe health reports unavailable billing without exposing connection details", async () => {
+  const { registerStripeWebhook } = await import("./stripe-webhook");
+  const server = await startTestServer(async (app) => {
+    registerStripeWebhook(app, { isStripeReady: () => false });
+  });
+
+  try {
+    const health = await fetch(`${server.baseUrl}/api/stripe/health`);
+    assert.equal(health.status, 503);
+    assert.deepEqual(await health.json(), {
+      ready: false,
+      message: "Stripe billing is not configured.",
+    });
   } finally {
     await server.close();
   }

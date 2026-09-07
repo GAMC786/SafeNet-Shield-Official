@@ -12,6 +12,16 @@ export function registerStripeWebhook(
 ) {
   const stripeReady = options.isStripeReady ?? isStripeReady;
   const createStripeSync = options.getStripeSync ?? getStripeSync;
+  app.get("/api/stripe/health", (_req, res) => {
+    if (!stripeReady()) {
+      return res.status(503).json({
+        ready: false,
+        message: "Stripe billing is not configured.",
+      });
+    }
+    return res.json({ ready: true });
+  });
+
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     if (!stripeReady()) {
       return res.status(503).json({ message: "Stripe billing is not configured." });
