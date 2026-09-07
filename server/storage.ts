@@ -234,9 +234,11 @@ export class DatabaseStorage implements IStorage {
             )
           WHERE si._raw_data->>'subscription' = s._raw_data->>'id'
             AND p._raw_data->>'lookup_key' = 'safenet_monthly'
+            AND p._raw_data->>'active' = 'true'
             AND (p._raw_data->>'unit_amount')::integer = 500
             AND p._raw_data->>'currency' = 'usd'
             AND p._raw_data->'recurring'->>'interval' = 'month'
+            AND (p._raw_data->'recurring'->>'interval_count')::integer = 1
         )
       ORDER BY
         CASE WHEN s._raw_data->>'status' IN ('active', 'trialing') THEN 0 ELSE 1 END,

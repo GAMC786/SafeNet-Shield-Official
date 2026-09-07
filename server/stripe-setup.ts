@@ -9,7 +9,8 @@ export function isSafeNetPrice(price: Stripe.Price) {
     price.lookup_key === SAFENET_PRICE_LOOKUP_KEY &&
     price.unit_amount === 500 &&
     price.currency === "usd" &&
-    price.recurring?.interval === "month";
+    price.recurring?.interval === "month" &&
+    price.recurring.interval_count === 1;
 }
 
 export async function getSafeNetPrice(stripe: Stripe) {

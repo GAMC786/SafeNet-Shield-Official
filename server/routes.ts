@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { randomInt } from "node:crypto";
 import type { Server } from "http";
+import type Stripe from "stripe";
 import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -83,6 +84,13 @@ export async function registerRoutes(
     seed?: boolean;
     generatePinRecoveryCode?: () => string;
     sendPinRecoveryCode?: (to: string, code: string) => Promise<void>;
+    billing?: {
+      isStripeReady?: () => boolean;
+      getStripeClient?: () => Promise<Stripe>;
+      getBillingUserId?: (req: express.Request) => string | null;
+      withCheckoutLock?: <T>(userId: string, operation: () => Promise<T>) => Promise<T>;
+      baseUrl?: string;
+    };
   } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
@@ -252,13 +260,17 @@ export async function registerRoutes(
     if (!domain) throw new Error("The trusted SafeNet public domain is unavailable.");
     return `https://${domain}`;
   };
+  const getBillingUserId = options.billing?.getBillingUserId ?? getClerkUserId;
+  const stripeReady = options.billing?.isStripeReady ?? isStripeReady;
   const getSafeNetPriceClient = async () => {
-    const stripe = await getUncachableStripeClient();
+    const stripe = await (options.billing?.getStripeClient
+      ? options.billing.getStripeClient()
+      : getUncachableStripeClient());
     const price = await getSafeNetPrice(stripe);
     return { stripe, price };
   };
   const requireBillingUser = (req: express.Request, res: express.Response) => {
-    const userId = getClerkUserId(req);
+    const userId = getBillingUserId(req);
     if (!userId) {
       res.status(401).json({ message: "Sign in with a SafeNet account to manage a subscription." });
       return null;
@@ -276,10 +288,11 @@ export async function registerRoutes(
       client.release();
     }
   };
+  const withCheckoutLock = options.billing?.withCheckoutLock ?? withBillingCheckoutLock;
 
   app.get(api.billing.status.path, async (req, res) => {
-    const userId = getClerkUserId(req);
-    if (!isStripeReady()) {
+    const userId = getBillingUserId(req);
+    if (!stripeReady()) {
       return res.json({
         signedIn: Boolean(userId), entitled: false, status: "none",
         cancelAtPeriodEnd: false, currentPeriodEnd: null, priceLabel: "$5 USD / month",
@@ -304,10 +317,10 @@ export async function registerRoutes(
   app.post(api.billing.checkout.path, async (req, res) => {
     const userId = requireBillingUser(req, res);
     if (!userId) return;
-    if (!isStripeReady()) {
+    if (!stripeReady()) {
       return res.status(503).json({ message: "Stripe billing is not configured." });
     }
-    const result = await withBillingCheckoutLock(userId, async () => {
+    const result = await withCheckoutLock(userId, async () => {
       const { stripe, price } = await getSafeNetPriceClient();
       let account = await storage.getBillingAccount(userId);
       if (!account) {
@@ -340,7 +353,7 @@ export async function registerRoutes(
       if (existingCheckout?.url) {
         return { conflict: false as const, url: existingCheckout.url };
       }
-      const baseUrl = billingBaseUrl();
+      const baseUrl = options.billing?.baseUrl ?? billingBaseUrl();
       const checkout = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: account.stripeCustomerId,

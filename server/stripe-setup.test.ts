@@ -42,8 +42,16 @@ function safeNetPrice(overrides: Partial<Stripe.Price> = {}): Stripe.Price {
 test("SafeNet entitlement price validation rejects lookalike plans", () => {
   assert.equal(isSafeNetPrice(safeNetPrice()), true);
   assert.equal(isSafeNetPrice(safeNetPrice({ unit_amount: 600 })), false);
+  assert.equal(isSafeNetPrice(safeNetPrice({ active: false })), false);
   assert.equal(isSafeNetPrice(safeNetPrice({ currency: "cad" })), false);
   assert.equal(isSafeNetPrice(safeNetPrice({ lookup_key: "other_plan" })), false);
+  assert.equal(isSafeNetPrice(safeNetPrice({ recurring: {
+    interval: "month",
+    interval_count: 2,
+    meter: null,
+    trial_period_days: null,
+    usage_type: "licensed",
+  } })), false);
 });
 
 test("fresh Stripe accounts are provisioned with the exact price and restricted portal", async () => {

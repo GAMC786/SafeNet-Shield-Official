@@ -2,6 +2,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { apiFetch } from "@/lib/api";
 import { useRef } from "react";
+import {
+  getBillingAction,
+  shouldPollForCheckoutConvergence,
+} from "@/lib/billing-state";
+
+export { getBillingAction, shouldPollForCheckoutConvergence } from "@/lib/billing-state";
 
 export function useSubscriptionStatus(enabled = true) {
   const convergenceDeadline = useRef(Date.now() + 2 * 60 * 1000);
@@ -16,9 +22,12 @@ export function useSubscriptionStatus(enabled = true) {
       return api.billing.status.responses[200].parse(await response.json());
     },
     refetchInterval: (query) =>
-      returningFromCheckout &&
-      query.state.data?.entitled !== true &&
-      Date.now() < convergenceDeadline.current
+      shouldPollForCheckoutConvergence({
+        returningFromCheckout,
+        entitled: query.state.data?.entitled,
+        now: Date.now(),
+        deadline: convergenceDeadline.current,
+      })
         ? 3000
         : false,
   });

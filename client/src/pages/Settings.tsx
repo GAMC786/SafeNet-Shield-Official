@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { PinEntry } from "@/pages/PinEntry";
 import { useSubscriptionStatus, useStartCheckout, useOpenBillingPortal } from "@/hooks/use-billing";
+import { getBillingAction } from "@/lib/billing-state";
 import { Link } from "wouter";
 
 export default function Settings() {
@@ -281,13 +282,13 @@ export default function Settings() {
                       : "Subscribe to activate monthly SafeNet access."}
               </p>
               <Button
-                onClick={() => (subscription.data?.status === "none" || subscription.data?.status === "canceled"
+                onClick={() => (getBillingAction(subscription.data?.status ?? "none") === "checkout"
                   ? checkout.mutate(undefined, { onError: (error) => toast({ title: "Checkout unavailable", description: error.message, variant: "destructive" }) })
                   : billingPortal.mutate(undefined, { onError: (error) => toast({ title: "Billing unavailable", description: error.message, variant: "destructive" }) }))}
                 disabled={checkout.isPending || billingPortal.isPending}
               >
                 {(checkout.isPending || billingPortal.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {subscription.data?.status === "none" || subscription.data?.status === "canceled" ? "Subscribe for $5/month" : "Manage subscription"}
+                {getBillingAction(subscription.data?.status ?? "none") === "checkout" ? "Subscribe for $5/month" : "Manage subscription"}
               </Button>
             </div>
           )}
