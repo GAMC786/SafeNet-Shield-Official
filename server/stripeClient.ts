@@ -12,13 +12,25 @@ export function isStripeUnavailableError(error: unknown): error is StripeUnavail
   return error instanceof StripeUnavailableError;
 }
 
+export function getStripeConnectionAuthHeader(env: NodeJS.ProcessEnv = process.env) {
+  // A published app can inherit REPL_IDENTITY from its source repl while also
+  // receiving the deployment-scoped WEB_REPL_RENEWAL token. Prefer the latter
+  // in production so the connector resolves the published environment.
+  if (env.NODE_ENV === "production" && env.WEB_REPL_RENEWAL) {
+    return `depl ${env.WEB_REPL_RENEWAL}`;
+  }
+  if (env.REPL_IDENTITY) {
+    return `repl ${env.REPL_IDENTITY}`;
+  }
+  if (env.WEB_REPL_RENEWAL) {
+    return `depl ${env.WEB_REPL_RENEWAL}`;
+  }
+  return null;
+}
+
 async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string }> {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const token = process.env.REPL_IDENTITY
-    ? `repl ${process.env.REPL_IDENTITY}`
-    : process.env.WEB_REPL_RENEWAL
-      ? `depl ${process.env.WEB_REPL_RENEWAL}`
-      : null;
+  const token = getStripeConnectionAuthHeader();
   if (!hostname || !token) {
     throw new StripeUnavailableError("Stripe connection environment is unavailable.");
   }

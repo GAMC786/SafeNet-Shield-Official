@@ -28,4 +28,5 @@
 - [Android Clerk startup configuration](android-clerk-startup-config.md) — packaged builds must load public Clerk config before mounting React or a missing CI key produces a blank WebView.
 - [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
 - [Stripe subscription entitlement safety](stripe-subscription-entitlement-safety.md) — grant access only for the exact synced plan, and serialize checkout creation across app instances.
+- [Published Stripe connector auth](published-stripe-connector-auth.md) — production must prefer the deployment token when both repl and deployment connector tokens are present.
 - [Reference soundtrack and Rive loading](reference-soundtrack-rive-loading.md) — the reference audio can stream after a user gesture, but its mainstage Rive file lacks cross-origin headers.
