@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { PinEntry } from "@/pages/PinEntry";
 import { useSubscriptionStatus, useStartCheckout, useOpenBillingPortal } from "@/hooks/use-billing";
-import { getBillingAction } from "@/lib/billing-state";
+import { getBillingRecovery } from "@/lib/billing-state";
 import { trackEvent } from "@/lib/analytics";
 import { Link } from "wouter";
 
@@ -34,6 +34,7 @@ export default function Settings() {
   const subscription = useSubscriptionStatus(isAuthenticated);
   const checkout = useStartCheckout();
   const billingPortal = useOpenBillingPortal();
+  const billingRecovery = getBillingRecovery(subscription.data?.status ?? "none");
 
   useEffect(() => {
     if (settings?.pinRecoveryEmail !== undefined) {
@@ -280,24 +281,27 @@ export default function Settings() {
           ) : (
             <div className="space-y-3 rounded border border-white/10 bg-white/5 p-4">
               <p className="text-sm">
-                {subscription.data.entitled
-                  ? subscription.data.cancelAtPeriodEnd
-                    ? `Canceled — access continues${subscription.data.currentPeriodEnd ? ` until ${new Date(subscription.data.currentPeriodEnd).toLocaleDateString()}` : ""}.`
-                    : "Your SafeNet subscription is active."
-                  : subscription.data.status === "past_due"
-                    ? "Payment is past due. Update your payment method to recover access."
-                    : subscription.data.status === "canceled"
-                      ? "Your subscription has expired. You can subscribe again at any time."
-                      : "Subscribe to activate monthly SafeNet access."}
+                {subscription.data.entitled && subscription.data.cancelAtPeriodEnd
+                  ? `Canceled — access continues${subscription.data.currentPeriodEnd ? ` until ${new Date(subscription.data.currentPeriodEnd).toLocaleDateString()}` : ""}.`
+                  : billingRecovery.message}
               </p>
+              {billingRecovery.supportEscalation && (
+                <p className="text-xs text-muted-foreground">
+                  Need help?{" "}
+                  <a className="text-primary underline underline-offset-4" href="mailto:Post@SafeNetInc.Ca">
+                    Contact SafeNet support
+                  </a>
+                  .
+                </p>
+              )}
               <Button
-                onClick={() => (getBillingAction(subscription.data?.status ?? "none") === "checkout"
+                onClick={() => (billingRecovery.action === "checkout"
                   ? checkout.mutate(undefined, { onError: (error) => toast({ title: "Checkout unavailable", description: error.message, variant: "destructive" }) })
                   : billingPortal.mutate(undefined, { onError: (error) => toast({ title: "Billing unavailable", description: error.message, variant: "destructive" }) }))}
                 disabled={checkout.isPending || billingPortal.isPending}
               >
                 {(checkout.isPending || billingPortal.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {getBillingAction(subscription.data?.status ?? "none") === "checkout" ? "Subscribe for $5/month" : "Manage subscription"}
+                {billingRecovery.actionLabel}
               </Button>
             </div>
           )}

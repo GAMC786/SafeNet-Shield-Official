@@ -293,7 +293,7 @@ test("separate route instances serialize checkout creation with the PostgreSQL l
 
 test("subscription lifecycle states expose the expected access and recovery action", async () => {
   const { registerRoutes } = await import("./routes");
-  const { getBillingAction } = await import("../client/src/lib/billing-state");
+  const { getBillingAction, getBillingRecovery } = await import("../client/src/lib/billing-state");
   let status: SubscriptionStatus = {
     signedIn: true,
     entitled: true,
@@ -329,6 +329,32 @@ test("subscription lifecycle states expose the expected access and recovery acti
     status = { ...status, entitled: false, status: "past_due" };
     assert.deepEqual(await readStatus(), status);
     assert.equal(getBillingAction(status.status), "portal");
+    assert.deepEqual(getBillingRecovery(status.status), {
+      action: "portal",
+      actionLabel: "Update payment details",
+      message: "Payment is past due. Update your payment method in Stripe to restore access.",
+      supportEscalation: false,
+    });
+
+    status = { ...status, status: "unpaid" };
+    assert.deepEqual(await readStatus(), status);
+    assert.equal(getBillingAction(status.status), "portal");
+    assert.deepEqual(getBillingRecovery(status.status), {
+      action: "portal",
+      actionLabel: "Update payment details",
+      message: "Your subscription is unpaid. Update your payment method in Stripe to retry payment and restore access.",
+      supportEscalation: false,
+    });
+
+    status = { ...status, status: "paused" };
+    assert.deepEqual(await readStatus(), status);
+    assert.equal(getBillingAction(status.status), "portal");
+    assert.deepEqual(getBillingRecovery(status.status), {
+      action: "portal",
+      actionLabel: "Update payment details",
+      message: "Your subscription is paused. Update your payment method in Stripe. If it stays paused, contact SafeNet support to resume access.",
+      supportEscalation: true,
+    });
 
     status = { ...status, entitled: true, status: "active", cancelAtPeriodEnd: true };
     assert.deepEqual(await readStatus(), status);
