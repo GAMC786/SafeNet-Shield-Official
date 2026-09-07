@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
@@ -7,6 +8,7 @@ import type Stripe from "stripe";
 import type { IStorage } from "./storage";
 import type { SubscriptionStatus } from "@shared/schema";
 
+const hasConfiguredDatabase = Boolean(process.env.DATABASE_URL);
 process.env.DATABASE_URL ??= "postgres://billing-regression-test";
 
 const safeNetPrice = {
@@ -169,6 +171,123 @@ test("concurrent checkout requests reuse one open Checkout Session", async () =>
     assert.match(createdInputs[0].idempotencyKey ?? "", /^safenet-checkout-user_123-\d+$/);
   } finally {
     await server.close();
+  }
+});
+
+test("separate route instances serialize checkout creation with the PostgreSQL lock", {
+  skip: !hasConfiguredDatabase,
+}, async () => {
+  const { registerRoutes } = await import("./routes");
+  const { DatabaseStorage } = await import("./storage");
+  const { pool } = await import("./db");
+  const userId = `billing-regression-${randomUUID()}`;
+  const createIndependentStorage = () => {
+    const databaseStorage = new DatabaseStorage();
+    return {
+      getSettings: async () => ({ isPinEnabled: false }),
+      getBillingAccount: databaseStorage.getBillingAccount.bind(databaseStorage),
+      saveBillingAccount: databaseStorage.saveBillingAccount.bind(databaseStorage),
+      getSubscriptionStatus: databaseStorage.getSubscriptionStatus.bind(databaseStorage),
+    } as unknown as IStorage;
+  };
+  const storageA = createIndependentStorage();
+  const storageB = createIndependentStorage();
+  const openSessions: Array<{ client_reference_id: string; url: string }> = [];
+  let customerCreates = 0;
+  let checkoutCreates = 0;
+  let customerCreateEntered!: () => void;
+  const customerCreateStarted = new Promise<void>((resolve) => {
+    customerCreateEntered = resolve;
+  });
+  let releaseCustomerCreate!: () => void;
+  const customerCreateGate = new Promise<void>((resolve) => {
+    releaseCustomerCreate = resolve;
+  });
+  const stripe = {
+    prices: { list: async () => ({ data: [safeNetPrice] }) },
+    customers: {
+      create: async () => {
+        customerCreates += 1;
+        customerCreateEntered();
+        await customerCreateGate;
+        return { id: "cus_multi_instance_safenet" };
+      },
+    },
+    subscriptions: { list: async () => ({ data: [] }) },
+    checkout: {
+      sessions: {
+        list: async () => ({ data: openSessions }),
+        create: async () => {
+          checkoutCreates += 1;
+          const checkout = {
+            client_reference_id: userId,
+            url: "https://checkout.stripe.test/multi_instance_session",
+          };
+          openSessions.push(checkout);
+          return checkout;
+        },
+      },
+    },
+  } as unknown as Stripe;
+
+  async function waitForLockWaiter() {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const result = await pool.query<{ waiting: number }>(
+        `SELECT count(*)::int AS waiting
+         FROM pg_locks
+         WHERE locktype = 'advisory'
+           AND granted = false
+           AND objid::bigint = ((hashtext($1)::bigint + 4294967296) % 4294967296)`,
+        [`safenet-checkout:${userId}`],
+      );
+      if ((result.rows[0]?.waiting ?? 0) > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error("The second checkout request did not wait on the PostgreSQL advisory lock.");
+  }
+
+  const startRouteInstance = (
+    storage: IStorage,
+  ) => startTestServer(async (app, httpServer) => {
+    await registerRoutes(httpServer, app, storage, {
+      seed: false,
+      billing: {
+        isStripeReady: () => true,
+        getStripeClient: async () => stripe,
+        getBillingUserId: () => userId,
+        baseUrl: "https://safenet.test",
+      },
+    });
+  });
+
+  const [serverA, serverB] = await Promise.all([
+    startRouteInstance(storageA),
+    startRouteInstance(storageB),
+  ]);
+
+  try {
+    const requests = Promise.all([
+      checkoutRequest(serverA.baseUrl),
+      checkoutRequest(serverB.baseUrl),
+    ]);
+    await customerCreateStarted;
+    await waitForLockWaiter();
+    releaseCustomerCreate();
+
+    const responses = await requests;
+    assert.deepEqual(responses.map((response) => response.status), [200, 200]);
+    const payloads = await Promise.all(responses.map((response) => response.json()));
+    assert.deepEqual(payloads, [
+      { url: "https://checkout.stripe.test/multi_instance_session" },
+      { url: "https://checkout.stripe.test/multi_instance_session" },
+    ]);
+    assert.equal(customerCreates, 1);
+    assert.equal(checkoutCreates, 1);
+  } finally {
+    releaseCustomerCreate();
+    await Promise.all([serverA.close(), serverB.close()]);
+    await pool.query("DELETE FROM billing_accounts WHERE clerk_user_id = $1", [userId]);
   }
 });
 
