@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.os.Bundle;
+import android.graphics.Color;
 import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
@@ -21,8 +22,12 @@ public class MainActivity extends BridgeActivity {
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
-        cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
-        WebSettings webSettings = getBridge().getWebView().getSettings();
+        WebView webView = getBridge().getWebView();
+        webView.setBackgroundColor(Color.rgb(9, 11, 20));
+        cookieManager.setAcceptThirdPartyCookies(webView, true);
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true);
         // Allow the SafeNet startup soundtrack to begin while the loader is
         // visible. Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the loader.
