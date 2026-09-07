@@ -141,7 +141,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
   assert.match(
     apkOnlyWorkflow,
-     /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='32' versionName='\$APP_VERSION'"/,
+     /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='33' versionName='\$APP_VERSION'"/,
   );
   assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
@@ -430,7 +430,7 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$test_apk"/);
   assert.match(
     releaseVerifyStep,
-    /versionCode='32' versionName='\$expected_version'/,
+    /versionCode='33' versionName='\$expected_version'/,
   );
   assert.match(
     releaseVerifyStep,
@@ -539,7 +539,7 @@ function runReleaseApkVerificationFixture({
         ...process.env,
         ANDROID_HOME: fixture.sdkRoot,
         ANDROID_SDK_ROOT: "",
-         GITHUB_REF_NAME: "v1.0.40",
+         GITHUB_REF_NAME: "v1.0.41",
         MOCK_APP_BADGING: fixture.appBadging,
         MOCK_TEST_BADGING: fixture.testBadging,
         PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -565,7 +565,7 @@ test("release APK verification validates app and instrumentation badging indepen
 
   const result = runReleaseApkVerificationFixture({
     appBadging:
-       "package: name='com.safenet.dns' versionCode='32' versionName='1.0.40'",
+       "package: name='com.safenet.dns' versionCode='33' versionName='1.0.41'",
     testBadging: [
       "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
@@ -579,7 +579,7 @@ test("release APK verification validates app and instrumentation badging indepen
 test("release APK verification clearly rejects instrumentation metadata drift", () => {
   const wrongPackage = runReleaseApkVerificationFixture({
     appBadging:
-       "package: name='com.safenet.dns' versionCode='32' versionName='1.0.40'",
+       "package: name='com.safenet.dns' versionCode='33' versionName='1.0.41'",
     testBadging:
       "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",

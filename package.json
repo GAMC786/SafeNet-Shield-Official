@@ -1,6 +1,6 @@
 {
   "name": "rest-express",
-  "version": "1.0.40",
+  "version": "1.0.41",
   "type": "module",
   "license": "MIT",
   "author": "SafeNet Inc.",
@@ -18,13 +18,11 @@
     "test:ui": "node --test tests/toggle-visibility.test.mjs",
     "test:auth": "node --test tests/auth-smoke.test.mjs",
     "test:auth:record": "node tests/record-auth-state.mjs",
-    "smoke:stripe": "node scripts/stripe-production-smoke.mjs",
     "lint:workflows": "node scripts/lint-workflows.mjs",
     "setup:workflow-lint": "node scripts/setup-workflow-lint.mjs",
     "android:setup": "./scripts/setup-android-sdk.sh",
     "android:setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android-sdk.ps1",
-    "db:push": "drizzle-kit push",
-    "billing:setup": "tsx scripts/seed-safenet-subscription.ts"
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -100,8 +98,6 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.4",
-    "stripe": "^22.6.1",
-    "stripe-replit-sync": "^1.0.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.5",

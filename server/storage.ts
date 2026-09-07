@@ -1,13 +1,12 @@
 import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
-  antivirusSettings, threatFeeds, antivirusEvents, billingAccounts,
+  antivirusSettings, threatFeeds, antivirusEvents,
   type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
-  type BillingAccount, type SubscriptionStatus,
 } from "@shared/schema";
 import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
-import { eq, desc, asc, count, sql } from "drizzle-orm";
+import { eq, desc, asc, count } from "drizzle-orm";
 import { hashPin, verifyPin } from "./pin-security";
 
 export interface IStorage {
@@ -33,10 +32,6 @@ export interface IStorage {
   getSettings(): Promise<AppSettings>;
   updateSettings(updates: Partial<InsertAppSettings>): Promise<AppSettings>;
   resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean>;
-  getBillingAccount(clerkUserId: string): Promise<BillingAccount | undefined>;
-  saveBillingAccount(clerkUserId: string, stripeCustomerId: string): Promise<BillingAccount>;
-  getSubscriptionStatus(stripeCustomerId: string): Promise<SubscriptionStatus>;
-
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
   createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
@@ -200,66 +195,6 @@ export class DatabaseStorage implements IStorage {
         .where(eq(appSettings.id, settings.id));
       return true;
     });
-  }
-
-  async getBillingAccount(clerkUserId: string): Promise<BillingAccount | undefined> {
-    const [account] = await db.select().from(billingAccounts)
-      .where(eq(billingAccounts.clerkUserId, clerkUserId));
-    return account;
-  }
-
-  async saveBillingAccount(clerkUserId: string, stripeCustomerId: string): Promise<BillingAccount> {
-    const [account] = await db.insert(billingAccounts)
-      .values({ clerkUserId, stripeCustomerId, updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: billingAccounts.clerkUserId,
-        set: { stripeCustomerId, updatedAt: new Date() },
-      })
-      .returning();
-    return account;
-  }
-
-  async getSubscriptionStatus(stripeCustomerId: string): Promise<SubscriptionStatus> {
-    const result = await db.execute(sql`
-      SELECT s._raw_data
-      FROM stripe.subscriptions s
-      WHERE s._raw_data->>'customer' = ${stripeCustomerId}
-        AND EXISTS (
-          SELECT 1
-          FROM stripe.subscription_items si
-          JOIN stripe.prices p
-            ON p._raw_data->>'id' = COALESCE(
-              si._raw_data->'price'->>'id',
-              si._raw_data->>'price'
-            )
-          WHERE si._raw_data->>'subscription' = s._raw_data->>'id'
-            AND p._raw_data->>'lookup_key' = 'safenet_monthly'
-            AND p._raw_data->>'active' = 'true'
-            AND (p._raw_data->>'unit_amount')::integer = 500
-            AND p._raw_data->>'currency' = 'usd'
-            AND p._raw_data->'recurring'->>'interval' = 'month'
-            AND (p._raw_data->'recurring'->>'interval_count')::integer = 1
-        )
-      ORDER BY
-        CASE WHEN s._raw_data->>'status' IN ('active', 'trialing') THEN 0 ELSE 1 END,
-        COALESCE((s._raw_data->>'created')::bigint, 0) DESC
-      LIMIT 1
-    `);
-    const subscription = result.rows[0]?._raw_data as Record<string, unknown> | undefined;
-    const rawStatus = typeof subscription?.status === "string" ? subscription.status : "none";
-    const allowedStatuses = new Set(["none", "incomplete", "trialing", "active", "past_due", "canceled", "unpaid", "paused"]);
-    const status = allowedStatuses.has(rawStatus) ? rawStatus as SubscriptionStatus["status"] : "none";
-    const periodEnd = typeof subscription?.current_period_end === "number"
-      ? new Date(subscription.current_period_end * 1000).toISOString()
-      : null;
-    return {
-      signedIn: true,
-      entitled: status === "active" || status === "trialing",
-      status,
-      cancelAtPeriodEnd: subscription?.cancel_at_period_end === true,
-      currentPeriodEnd: periodEnd,
-      priceLabel: "$5 USD / month",
-    };
   }
 
   async getDdnsUpdaters(): Promise<DdnsUpdater[]> {

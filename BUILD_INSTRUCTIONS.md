@@ -188,27 +188,6 @@ VITE_API_URL=https://your-server.example.com npm run build
 npx electron-builder --win --x64 --publish never
 ```
 
-### Verify published Stripe billing
-
-The tagged release workflow runs the post-publish billing smoke check
-automatically after creating the GitHub Release. Configure the protected
-repository or environment secret `STRIPE_SMOKE_BASE_URL` with the published
-HTTPS origin before creating a release. The workflow passes that secret to the
-probe without printing it, and a missing secret or failed readiness/webhook
-check blocks the release job.
-
-To run the same check manually against a published HTTPS URL:
-
-```bash
-STRIPE_SMOKE_BASE_URL=https://your-published-deployment.example.com npm run smoke:stripe
-```
-
-The check confirms that Stripe initialization completed in the published
-process and that the public webhook endpoint is reachable. It sends only a
-synthetic unsigned request, expecting the safe `400 Invalid Stripe webhook`
-response; it does not create customers, subscriptions, checkout sessions, or
-payment data. Failure output includes only check names and HTTP status codes.
-
 ### Output Files:
 - MSI installer: `dist-electron/SafeNet DNS Setup X.X.X.msi`
 - NSIS installer: `dist-electron/SafeNet DNS Setup X.X.X.exe`

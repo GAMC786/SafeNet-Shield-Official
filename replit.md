@@ -75,11 +75,6 @@ Preferred communication style: Simple, everyday language.
 ### External APIs
 - ipify.org: Public IP detection for DDNS updates
 
-### Billing
-- Stripe provides the SafeNet Monthly subscription at $5 USD per month.
-- Startup idempotently provisions the required price and restricted customer portal.
-- Run `npm run billing:setup` to verify or provision these Stripe resources manually before a release.
-
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
 - p-limit and p-retry for batch processing rate limiting

@@ -10,7 +10,6 @@ import {
   accessLogs,
   activityLogSchema,
   firewallConfigSchema,
-  subscriptionStatusSchema,
 } from './schema';
 
 export const errorSchemas = {
@@ -47,31 +46,6 @@ export const api = {
           authenticated: z.boolean(),
           pinRequired: z.boolean(),
         }),
-      },
-    },
-  },
-  billing: {
-    status: {
-      method: 'GET' as const,
-      path: '/api/billing/status',
-      responses: { 200: subscriptionStatusSchema },
-    },
-    checkout: {
-      method: 'POST' as const,
-      path: '/api/billing/checkout',
-      responses: {
-        200: z.object({ url: z.string().url() }),
-        401: errorSchemas.validation,
-        409: errorSchemas.validation,
-      },
-    },
-    portal: {
-      method: 'POST' as const,
-      path: '/api/billing/portal',
-      responses: {
-        200: z.object({ url: z.string().url() }),
-        401: errorSchemas.validation,
-        404: errorSchemas.notFound,
       },
     },
   },
