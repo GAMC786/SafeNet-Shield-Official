@@ -20,6 +20,8 @@ serial="${ANDROID_SERIAL:-}"
 output_dir="${ANDROID_SMOKE_OUTPUT_DIR:-android/app/build/reports/android-smoke/latest}"
 preflight_only=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
+validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
+device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
 fixture_host="${ANDROID_SMOKE_FIXTURE_HOST:-10.0.2.2}"
 plain_primary="${ANDROID_SMOKE_PLAIN_PRIMARY:-1.1.1.1}"
 plain_secondary="${ANDROID_SMOKE_PLAIN_SECONDARY:-8.8.8.8}"
@@ -136,6 +138,16 @@ if [[ "$resolver_mode" != "fixture" && "$resolver_mode" != "public" ]]; then
     echo "ERROR: --resolver-mode must be fixture or public; got: $resolver_mode" >&2
     exit 2
 fi
+if [[ "$validation_mode" != "hosted-emulator-reduced" &&
+    "$validation_mode" != "hosted-emulator-full" &&
+    "$validation_mode" != "real-device" ]]; then
+    echo "ERROR: ANDROID_SMOKE_VALIDATION_MODE must be hosted-emulator-reduced, hosted-emulator-full, or real-device; got: $validation_mode" >&2
+    exit 2
+fi
+if [[ -z "$device_kind" ]]; then
+    echo "ERROR: ANDROID_SMOKE_DEVICE_KIND must not be empty." >&2
+    exit 2
+fi
 if [[ "$resolver_mode" == "fixture" ]] &&
     [[ ! "$fixture_host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
     echo "ERROR: ANDROID_SMOKE_FIXTURE_HOST must be an IPv4 address; got: $fixture_host" >&2
@@ -173,7 +185,11 @@ mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/pin-smoke-evidence.txt "$output_dir"/result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt
-printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode" > "$output_dir/coverage.txt"
+{
+    printf 'validation_mode=%s\n' "$validation_mode"
+    printf 'device_kind=%s\n' "$device_kind"
+    printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
+} > "$output_dir/coverage.txt"
 
 adb_args=()
 if [[ -n "$serial" ]]; then
@@ -195,8 +211,8 @@ fixture_failure() {
     local message="$1"
     echo "FIXTURE_FAILURE: $message" | tee "$output_dir/failure-category.txt" >&2
     {
-        printf 'target=%s\nresolver_mode=%s\ncoverage=%s\n' \
-            "$serial" "$resolver_mode" "$coverage_label"
+        printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\n' \
+            "$serial" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label"
         if [[ -f "$output_dir/emulator-image.txt" ]]; then
             cat "$output_dir/emulator-image.txt"
         fi
@@ -335,6 +351,8 @@ run_system_trust_preflight() {
 
     cat > "$output_dir/preflight-result.txt" <<EOF
 target=$serial
+validation_mode=$validation_mode
+device_kind=$device_kind
 $(cat "$output_dir/emulator-image.txt")
 adb_root=PASS
 system_remount=PASS
@@ -688,8 +706,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
-    "$serial" "$apk_path" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
+    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

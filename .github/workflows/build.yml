@@ -630,6 +630,8 @@ jobs:
     env:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
+      ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
+      ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
     steps:
       - name: Checkout code
@@ -1582,6 +1584,8 @@ jobs:
     env:
       ANDROID_SMOKE_RESOLVER_MODE: public
       ANDROID_SMOKE_COVERAGE: hosted-emulator
+      ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-reduced
+      ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       ANDROID_AVD_NAME: safenet-hosted
     steps:
       - name: Checkout code
@@ -1647,9 +1651,14 @@ jobs:
           SMOKE_STEP_OUTCOME: ${{ steps.android-release-dns-smoke.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVIDENCE_URL: ${{ steps.upload-release-android-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          RELEASE_EVIDENCE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-evidence.tar.gz
+          RELEASE_RESULT_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-result.txt
         run: |
           set -euo pipefail
           evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-smoke/latest"
+          mkdir -p "$evidence_dir"
+          release_evidence_url="${RELEASE_EVIDENCE_URL:-unavailable}"
+          release_result_url="${RELEASE_RESULT_URL:-unavailable}"
           category_file="$evidence_dir/failure-category.txt"
           category="EMULATOR_RUNNER_FAILURE"
 
@@ -1668,6 +1677,35 @@ jobs:
             esac
           fi
 
+          # Keep a small, stable result record even when the emulator action
+          # fails before the smoke script starts. The full directory remains
+          # useful for diagnostics, while this file is the release-linked
+          # verifier entry point.
+          if [[ ! -f "$evidence_dir/result.txt" ]]; then
+            cat > "$evidence_dir/result.txt" <<EOF
+          target=unavailable
+          apk=unavailable
+          validation_mode=hosted-emulator-reduced
+          device_kind=hosted-emulator
+          resolver_mode=public
+          coverage=hosted-emulator
+          instrumentation_status=not-started
+          failure_category=$category
+          EOF
+          fi
+          cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
+          {
+            echo "validation_mode=hosted-emulator-reduced"
+            echo "device_kind=hosted-emulator"
+            echo "coverage=hosted-emulator"
+            echo "resolver_mode=public"
+            echo "failure_category=$category"
+            echo "smoke_step_outcome=$SMOKE_STEP_OUTCOME"
+            echo "workflow_run=$RUN_URL"
+            echo "release_evidence_url=$release_evidence_url"
+            echo "release_result_url=$release_result_url"
+          } > "$evidence_dir/release-record.txt"
+
           {
             echo "## Android release smoke"
             echo
@@ -1676,6 +1714,8 @@ jobs:
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"
+            echo "- **Release-linked evidence:** [Download evidence archive]($release_evidence_url)"
+            echo "- **Release-linked result:** [Download smoke result]($release_result_url)"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-windows:
@@ -1846,6 +1886,12 @@ jobs:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
 
+      - name: Download Android smoke evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-smoke-evidence-release
+          path: artifacts/android-smoke-evidence
+
       - name: Verify Android release APK
         shell: bash
         run: |
@@ -1895,6 +1941,30 @@ jobs:
           unzip -l "$apk" | grep -F "assets/public/"
           echo "Verified $apk_count signed Android APK installer with versionCode 16, versionName $expected_version, and SHA-256 $checksum."
 
+      - name: Prepare release-linked Android smoke evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          evidence_dir="artifacts/android-smoke-evidence"
+          release_dir="artifacts/release"
+          result_file="$evidence_dir/android-smoke-result.txt"
+          archive="$release_dir/SafeNet-DNS-Android-smoke-evidence.tar.gz"
+          result_asset="$release_dir/SafeNet-DNS-Android-smoke-result.txt"
+          checksum_asset="$release_dir/SafeNet-DNS-Android-smoke-evidence.sha256"
+
+          test -d "$evidence_dir"
+          test -s "$result_file"
+          mkdir -p "$release_dir"
+          tar -czf "$archive" -C "$evidence_dir" .
+          cp "$result_file" "$result_asset"
+          (
+            cd "$release_dir"
+            sha256sum "$(basename "$archive")" "$(basename "$result_asset")" > "$(basename "$checksum_asset")"
+          )
+          echo "Prepared release-linked Android smoke evidence:"
+          ls -lh "$archive" "$result_asset" "$checksum_asset"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -1902,6 +1972,9 @@ jobs:
             artifacts/android/app-release.apk
             artifacts/android/app-release.apk.sha256
             artifacts/android-test/app-release-androidTest.apk
+            artifacts/release/SafeNet-DNS-Android-smoke-evidence.tar.gz
+            artifacts/release/SafeNet-DNS-Android-smoke-result.txt
+            artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
