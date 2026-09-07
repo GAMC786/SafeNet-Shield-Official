@@ -121,7 +121,9 @@
 
         audio.addEventListener("play", () => updateLabel());
         audio.addEventListener("pause", () => updateLabel());
-        audio.play().catch(() => updateLabel(true));
+        if (!savedMuted) {
+          audio.play().catch(() => updateLabel(true));
+        }
         updateLabel();
       })();
     </script>

@@ -18,10 +18,17 @@ const MUTED_STORAGE_KEY = "safenet-soundtrack-muted";
  */
 export function SoundtrackControl() {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(
+    () => window.localStorage.getItem(MUTED_STORAGE_KEY) === "true",
+  );
   const [hasAudioError, setHasAudioError] = useState(false);
   const [needsUserGesture, setNeedsUserGesture] = useState(() => {
     const existingAudio = document.getElementById(AUDIO_ELEMENT_ID);
-    return existingAudio instanceof HTMLAudioElement && existingAudio.paused && !existingAudio.muted;
+    return (
+      existingAudio instanceof HTMLAudioElement &&
+      existingAudio.paused &&
+      !existingAudio.muted
+    );
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
@@ -32,7 +39,10 @@ export function SoundtrackControl() {
     audio.loop = true;
     audio.preload = "auto";
     audio.volume = 0.55;
-    audio.muted = window.localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+    const savedMuted =
+      window.localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+    audio.muted = savedMuted;
+    setIsMuted(savedMuted);
     audioRef.current = audio;
 
     const handleAudioError = () => {
@@ -40,15 +50,25 @@ export function SoundtrackControl() {
       setIsPlaying(false);
     };
     const handleAudioPlay = () => {
-      setIsPlaying(true);
+      setIsPlaying(!audio.muted);
+      setIsMuted(audio.muted);
       setNeedsUserGesture(false);
     };
     const handleAudioPause = () => setIsPlaying(false);
+    const handleAudioVolumeChange = () => {
+      setIsMuted(audio.muted);
+      if (audio.muted) {
+        setIsPlaying(false);
+      }
+    };
 
     audio.addEventListener("error", handleAudioError);
     audio.addEventListener("play", handleAudioPlay);
     audio.addEventListener("pause", handleAudioPause);
-    void audio.play().catch(() => setNeedsUserGesture(true));
+    audio.addEventListener("volumechange", handleAudioVolumeChange);
+    if (!savedMuted) {
+      void audio.play().catch(() => setNeedsUserGesture(true));
+    }
 
     return () => {
       if (!document.getElementById(AUDIO_ELEMENT_ID)) {
@@ -58,21 +78,24 @@ export function SoundtrackControl() {
       audio.removeEventListener("error", handleAudioError);
       audio.removeEventListener("play", handleAudioPlay);
       audio.removeEventListener("pause", handleAudioPause);
+      audio.removeEventListener("volumechange", handleAudioVolumeChange);
       audioRef.current = null;
     };
   }, []);
 
-  const stop = () => {
+  const mute = () => {
     const audio = audioRef.current;
     if (!audio) {
       setIsPlaying(false);
+      setIsMuted(true);
       return;
     }
-    audio.pause();
     audio.muted = true;
+    audio.pause();
     window.localStorage.setItem(MUTED_STORAGE_KEY, "true");
     audio.currentTime = 0;
     setIsPlaying(false);
+    setIsMuted(true);
   };
 
   const toggle = async () => {
@@ -81,8 +104,8 @@ export function SoundtrackControl() {
       return;
     }
 
-    if (isPlaying && !audio.muted) {
-      stop();
+    if (!audio.paused && !audio.muted) {
+      mute();
       return;
     }
 
@@ -91,10 +114,13 @@ export function SoundtrackControl() {
     try {
       await audio.play();
       window.localStorage.setItem(MUTED_STORAGE_KEY, "false");
+      setIsMuted(false);
       setNeedsUserGesture(false);
     } catch {
+      audio.muted = true;
       setNeedsUserGesture(true);
       setIsPlaying(false);
+      setIsMuted(true);
     }
   };
 
@@ -102,7 +128,7 @@ export function SoundtrackControl() {
     ? "Reference soundtrack unavailable"
     : needsUserGesture
       ? "Tap to enable soundtrack"
-    : isPlaying
+    : isPlaying && !isMuted
       ? "Pause background soundtrack"
       : "Play background soundtrack";
 
@@ -118,7 +144,7 @@ export function SoundtrackControl() {
         title={audioLabel}
         className="border-white/20 bg-black/40 text-slate-200 backdrop-blur-md hover:bg-black/60"
       >
-        {isPlaying ? (
+        {isPlaying && !isMuted ? (
           <Volume2 className="h-4 w-4" />
         ) : (
           <VolumeX className="h-4 w-4" />
@@ -129,7 +155,7 @@ export function SoundtrackControl() {
             ? "Unavailable"
             : needsUserGesture
               ? "Enable sound"
-              : isPlaying
+              : isPlaying && !isMuted
                 ? "Mute"
                 : "Soundtrack"}
         </span>
