@@ -1624,7 +1624,6 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -euo pipefail
             ./scripts/android-smoke-test.sh \
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
               --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
