@@ -539,7 +539,7 @@ function runReleaseApkVerificationFixture({
         ...process.env,
         ANDROID_HOME: fixture.sdkRoot,
         ANDROID_SDK_ROOT: "",
-         GITHUB_REF_NAME: "v1.0.29",
+         GITHUB_REF_NAME: "v1.0.30",
         MOCK_APP_BADGING: fixture.appBadging,
         MOCK_TEST_BADGING: fixture.testBadging,
         PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -565,7 +565,7 @@ test("release APK verification validates app and instrumentation badging indepen
 
   const result = runReleaseApkVerificationFixture({
     appBadging:
-       "package: name='com.safenet.dns' versionCode='21' versionName='1.0.29'",
+       "package: name='com.safenet.dns' versionCode='22' versionName='1.0.30'",
     testBadging: [
       "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
@@ -579,7 +579,7 @@ test("release APK verification validates app and instrumentation badging indepen
 test("release APK verification clearly rejects instrumentation metadata drift", () => {
   const wrongPackage = runReleaseApkVerificationFixture({
     appBadging:
-       "package: name='com.safenet.dns' versionCode='21' versionName='1.0.29'",
+       "package: name='com.safenet.dns' versionCode='22' versionName='1.0.30'",
     testBadging:
       "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",
