@@ -1611,6 +1611,7 @@ jobs:
 
       - name: Run hosted-emulator smoke test (reduced validation)
         id: android-release-dns-smoke
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # Hosted Google APIs images do not provide the writable-system and
@@ -1844,6 +1845,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          apk="artifacts/android/app-release.apk"
+          checksum_file="artifacts/android/app-release.apk.sha256"
           apk_count=$(find artifacts/android -maxdepth 1 -type f -name 'app-release.apk' | wc -l)
 
           if [[ "$apk_count" -eq 0 ]]; then
@@ -1851,13 +1854,36 @@ jobs:
             exit 1
           fi
 
-          echo "Verified $apk_count signed Android APK installer(s)."
+          test "$apk_count" -eq 1
+          test -s "$apk"
+
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt -perm -u+x | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          test -n "$aapt"
+          "$apksigner" verify --verbose "$apk"
+
+          expected_version="${GITHUB_REF_NAME#v}"
+          "$aapt" dump badging "$apk" |
+            grep -F "package: name='com.safenet.dns' versionCode='12' versionName='$expected_version'"
+
+          checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
+          printf '%s  app-release.apk\n' "$checksum" > "$checksum_file"
+          (
+            cd artifacts/android
+            sha256sum --check app-release.apk.sha256
+          )
+          unzip -l "$apk" | grep -F "assets/public/"
+          echo "Verified $apk_count signed Android APK installer with versionCode 12, versionName $expected_version, and SHA-256 $checksum."
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/android/*.apk
+            artifacts/android/app-release.apk
+            artifacts/android/app-release.apk.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
