@@ -42,14 +42,22 @@ async function openBillingUrl(path: string, eventName: string) {
   window.location.assign(body.url);
 }
 
+export function startCheckout() {
+  return openBillingUrl(api.billing.checkout.path, "subscription_checkout_started");
+}
+
 export function useStartCheckout() {
   return useMutation({
-    mutationFn: () => openBillingUrl(api.billing.checkout.path, "subscription_checkout_started"),
+    mutationFn: startCheckout,
   });
+}
+
+export function openBillingPortal() {
+  return openBillingUrl(api.billing.portal.path, "billing_portal_opened");
 }
 
 export function useOpenBillingPortal() {
   return useMutation({
-    mutationFn: () => openBillingUrl(api.billing.portal.path, "billing_portal_opened"),
+    mutationFn: openBillingPortal,
   });
 }

@@ -16,7 +16,7 @@ import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { PinEntry } from "@/pages/PinEntry";
 import { useSubscriptionStatus, useStartCheckout, useOpenBillingPortal } from "@/hooks/use-billing";
 import { getBillingRecovery } from "@/lib/billing-state";
-import { trackEvent } from "@/lib/analytics";
+import { trackSubscriptionCheckoutReturn } from "@/lib/billing-analytics";
 import { Link } from "wouter";
 
 export default function Settings() {
@@ -44,18 +44,11 @@ export default function Settings() {
 
   useEffect(() => {
     const result = new URLSearchParams(window.location.search).get("subscription");
-    if (result === "success") {
-      trackEvent("subscription_checkout_returned", {
-        outcome: "success",
-        location: "settings_subscription",
-      });
+    const outcome = trackSubscriptionCheckoutReturn(result);
+    if (outcome === "success") {
       toast({ title: "Subscription received", description: "Your access will update as soon as Stripe confirms payment." });
       void subscription.refetch();
-    } else if (result === "canceled") {
-      trackEvent("subscription_checkout_returned", {
-        outcome: "canceled",
-        location: "settings_subscription",
-      });
+    } else if (outcome === "canceled") {
       toast({ title: "Checkout canceled", description: "No charge was made." });
     }
   }, []);
