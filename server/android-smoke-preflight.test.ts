@@ -34,6 +34,10 @@ const mainActivity = readFileSync(
   ),
   "utf8",
 );
+const androidAppGradle = readFileSync(
+  path.resolve(process.cwd(), "android/app/build.gradle"),
+  "utf8",
+);
 
 function getStepBlock(stepName: string) {
   const stepStart = workflow.indexOf(`      - name: ${stepName}`);
@@ -432,6 +436,14 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     releaseVerifyStep,
     /package: name='com\.safenet\.dns\.test'/,
   );
+  assert.match(
+    releaseVerifyStep,
+    /instrumentation: name='androidx\.test\.runner\.AndroidJUnitRunner' targetPackage='com\.safenet\.dns'/,
+  );
+  assert.match(releaseVerifyStep, /metadata mismatch\. Expected badging/);
+  assert.match(releaseVerifyStep, /"Android instrumentation APK package"/);
+  assert.match(releaseVerifyStep, /"Android instrumentation APK runner"/);
+  assert.match(releaseVerifyStep, /Actual badging for/);
   assert.match(releaseVerifyStep, /sha256sum --check app-release\.apk\.sha256/);
   assert.match(releaseVerifyStep, /unzip -l "\$apk" \| grep -F "assets\/public\/"/);
   assert.match(workflow, /name: Download Android instrumentation artifact/);
@@ -445,6 +457,164 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(runnerScript, /system-images;android-\$\{api_level\};aosp_atd;x86_64/);
   assert.match(runnerScript, /build-tools;\$build_tools_version/);
   assert.match(runnerScript, /\/dev\/kvm/);
+});
+
+function createAndroidReleaseApkFixture() {
+  const fixtureDir = mkdtempSync(path.join(tmpdir(), "android-release-apk-"));
+  const artifactDir = path.join(fixtureDir, "artifacts");
+  const appDir = path.join(artifactDir, "android");
+  const testAppDir = path.join(artifactDir, "android-test");
+  const sdkToolsDir = path.join(fixtureDir, "sdk", "build-tools", "36.0.0");
+  const appApk = path.join(appDir, "app-release.apk");
+  const testApk = path.join(testAppDir, "app-release-androidTest.apk");
+  const appBadging = path.join(fixtureDir, "app-badging.txt");
+  const testBadging = path.join(fixtureDir, "test-badging.txt");
+  const binDir = path.join(fixtureDir, "bin");
+  const aapt = path.join(sdkToolsDir, "aapt");
+  const apksigner = path.join(sdkToolsDir, "apksigner");
+  const unzip = path.join(binDir, "unzip");
+
+  mkdirSync(appDir, { recursive: true });
+  mkdirSync(testAppDir, { recursive: true });
+  mkdirSync(sdkToolsDir, { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+
+  for (const apk of [appApk, testApk]) {
+    writeFileSync(apk, "fixture APK\n");
+  }
+
+  writeFileSync(
+    aapt,
+    `#!/usr/bin/env bash
+set -eu
+if [[ "\${3:?}" == *"app-release-androidTest.apk" ]]; then
+  cat "\${MOCK_TEST_BADGING:?}"
+else
+  cat "\${MOCK_APP_BADGING:?}"
+fi
+`,
+  );
+  writeFileSync(
+    apksigner,
+    `#!/usr/bin/env bash
+set -eu
+exit 0
+`,
+  );
+  writeFileSync(
+    unzip,
+    `#!/usr/bin/env bash
+set -eu
+printf '  assets/public/index.html\\n'
+`,
+  );
+  chmodSync(aapt, 0o755);
+  chmodSync(apksigner, 0o755);
+  chmodSync(unzip, 0o755);
+
+  return {
+    fixtureDir,
+    binDir,
+    appDir,
+    testAppDir,
+    appApk,
+    testApk,
+    appBadging,
+    testBadging,
+    sdkRoot: path.join(fixtureDir, "sdk"),
+  };
+}
+
+function runReleaseApkVerificationFixture({
+  appBadging,
+  testBadging,
+}: {
+  appBadging: string;
+  testBadging: string;
+}) {
+  const fixture = createAndroidReleaseApkFixture();
+  try {
+    writeFileSync(fixture.appBadging, `${appBadging}\n`);
+    writeFileSync(fixture.testBadging, `${testBadging}\n`);
+
+    const result = spawnSync("bash", ["-c", getRunScript("Verify Android release APKs")], {
+      cwd: fixture.fixtureDir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANDROID_HOME: fixture.sdkRoot,
+        ANDROID_SDK_ROOT: "",
+        GITHUB_REF_NAME: "v1.0.27",
+        MOCK_APP_BADGING: fixture.appBadging,
+        MOCK_TEST_BADGING: fixture.testBadging,
+        PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+      },
+    });
+
+    return {
+      ...result,
+      output: [result.stdout, result.stderr].filter(Boolean).join("\n"),
+    };
+  } finally {
+    rmSync(fixture.fixtureDir, { recursive: true, force: true });
+  }
+}
+
+test("release APK verification validates app and instrumentation badging independently", () => {
+  assert.match(androidAppGradle, /applicationId "com\.safenet\.dns"/);
+  assert.match(androidAppGradle, /testApplicationId "com\.safenet\.dns\.test"/);
+  assert.match(
+    androidAppGradle,
+    /testInstrumentationRunner "androidx\.test\.runner\.AndroidJUnitRunner"/,
+  );
+
+  const result = runReleaseApkVerificationFixture({
+    appBadging:
+      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
+    testBadging: [
+      "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
+      "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
+    ].join("\n"),
+  });
+
+  assert.equal(result.status, 0, `release APK fixture failed:\n${result.output}`);
+  assert.equal(result.signal, null);
+});
+
+test("release APK verification clearly rejects instrumentation metadata drift", () => {
+  const wrongPackage = runReleaseApkVerificationFixture({
+    appBadging:
+      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
+    testBadging:
+      "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
+      "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",
+  });
+  assert.equal(wrongPackage.status, 1, wrongPackage.output);
+  assert.match(
+    wrongPackage.output,
+    /Android instrumentation APK package metadata mismatch/,
+  );
+  assert.match(
+    wrongPackage.output,
+    /Expected badging: package: name='com\.safenet\.dns\.test'/,
+  );
+
+  const wrongRunner = runReleaseApkVerificationFixture({
+    appBadging:
+      "package: name='com.safenet.dns' versionCode='19' versionName='1.0.27'",
+    testBadging:
+      "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'\n" +
+      "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.other'",
+  });
+  assert.equal(wrongRunner.status, 1, wrongRunner.output);
+  assert.match(
+    wrongRunner.output,
+    /Android instrumentation APK runner metadata mismatch/,
+  );
+  assert.match(
+    wrongRunner.output,
+    /Expected badging: instrumentation: name='androidx\.test\.runner\.AndroidJUnitRunner' targetPackage='com\.safenet\.dns'/,
+  );
 });
 
 test("hosted emulator wrapper failure still reaches release evidence upload", () => {

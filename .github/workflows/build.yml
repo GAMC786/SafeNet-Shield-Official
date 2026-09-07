@@ -1947,10 +1947,32 @@ jobs:
           "$apksigner" verify --verbose "$test_apk"
 
           expected_version="${GITHUB_REF_NAME#v}"
-          "$aapt" dump badging "$apk" |
-            grep -F "package: name='com.safenet.dns' versionCode='19' versionName='$expected_version'"
-          "$aapt" dump badging "$test_apk" |
-            grep -F "package: name='com.safenet.dns.test'"
+          require_badging() {
+            local artifact="$1"
+            local expected="$2"
+            local description="$3"
+            local badging
+
+            badging="$("$aapt" dump badging "$artifact")"
+            if ! grep -Fq "$expected" <<< "$badging"; then
+              echo "::error::$description metadata mismatch. Expected badging: $expected"
+              printf 'Actual badging for %s:\n%s\n' "$artifact" "$badging" >&2
+              exit 1
+            fi
+          }
+
+          require_badging \
+            "$apk" \
+            "package: name='com.safenet.dns' versionCode='19' versionName='$expected_version'" \
+            "Android application APK"
+          require_badging \
+            "$test_apk" \
+            "package: name='com.safenet.dns.test'" \
+            "Android instrumentation APK package"
+          require_badging \
+            "$test_apk" \
+            "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'" \
+            "Android instrumentation APK runner"
 
           checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
           test_checksum="$(sha256sum "$test_apk" | cut -d ' ' -f1)"
