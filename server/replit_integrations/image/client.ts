@@ -2,10 +2,30 @@ import fs from "node:fs";
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
 
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let openaiClient: OpenAI | undefined;
+
+function getOpenAiClient(): OpenAI {
+  if (openaiClient) {
+    return openaiClient;
+  }
+
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("AI image integration is not configured.");
+  }
+
+  openaiClient = new OpenAI({
+    apiKey,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+  return openaiClient;
+}
+
+export const openai = {
+  get images() {
+    return getOpenAiClient().images;
+  },
+};
 
 function decodeImageData(
   base64: string | null | undefined,
@@ -34,7 +54,7 @@ export async function generateImageBuffer(
   prompt: string,
   size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
 ): Promise<Buffer> {
-  const response = await openai.images.generate({
+  const response = await getOpenAiClient().images.generate({
     model: "gpt-image-1",
     prompt,
     size,
@@ -59,7 +79,7 @@ export async function editImages(
     )
   );
 
-  const response = await openai.images.edit({
+  const response = await getOpenAiClient().images.edit({
     model: "gpt-image-1",
     image: images,
     prompt,
