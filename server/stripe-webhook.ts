@@ -1,9 +1,13 @@
 import type { Express } from "express";
 import express from "express";
 import { getStripeSync } from "./stripeClient";
+import { isStripeReady } from "./stripe-init";
 
 export function registerStripeWebhook(app: Express) {
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    if (!isStripeReady()) {
+      return res.status(503).json({ message: "Stripe billing is not configured." });
+    }
     const signature = req.headers["stripe-signature"];
     if (!signature || !Buffer.isBuffer(req.body)) {
       return res.status(400).json({ message: "Invalid Stripe webhook." });

@@ -29,6 +29,7 @@ import {
 } from "./auth";
 import { hashPin, isHashedPin, verifyPin } from "./pin-security";
 import { getUncachableStripeClient } from "./stripeClient";
+import { isStripeReady } from "./stripe-init";
 import { pool } from "./db";
 import { getSafeNetPortalConfiguration, getSafeNetPrice } from "./stripe-setup";
 import {
@@ -278,6 +279,12 @@ export async function registerRoutes(
 
   app.get(api.billing.status.path, async (req, res) => {
     const userId = getClerkUserId(req);
+    if (!isStripeReady()) {
+      return res.json({
+        signedIn: Boolean(userId), entitled: false, status: "none",
+        cancelAtPeriodEnd: false, currentPeriodEnd: null, priceLabel: "$5 USD / month",
+      });
+    }
     if (!userId) {
       return res.json({
         signedIn: false, entitled: false, status: "none",
@@ -297,6 +304,9 @@ export async function registerRoutes(
   app.post(api.billing.checkout.path, async (req, res) => {
     const userId = requireBillingUser(req, res);
     if (!userId) return;
+    if (!isStripeReady()) {
+      return res.status(503).json({ message: "Stripe billing is not configured." });
+    }
     const result = await withBillingCheckoutLock(userId, async () => {
       const { stripe, price } = await getSafeNetPriceClient();
       let account = await storage.getBillingAccount(userId);
@@ -355,6 +365,9 @@ export async function registerRoutes(
   app.post(api.billing.portal.path, async (req, res) => {
     const userId = requireBillingUser(req, res);
     if (!userId) return;
+    if (!isStripeReady()) {
+      return res.status(503).json({ message: "Stripe billing is not configured." });
+    }
     const account = await storage.getBillingAccount(userId);
     if (!account) return res.status(404).json({ message: "No subscription account was found." });
     const stripe = await getUncachableStripeClient();
