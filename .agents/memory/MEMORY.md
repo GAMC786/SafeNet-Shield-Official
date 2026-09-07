@@ -27,3 +27,4 @@
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
 - [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
 - [Stripe subscription entitlement safety](stripe-subscription-entitlement-safety.md) — grant access only for the exact synced plan, and serialize checkout creation across app instances.
+- [Reference soundtrack and Rive loading](reference-soundtrack-rive-loading.md) — the reference audio can stream after a user gesture, but its mainstage Rive file lacks cross-origin headers.
