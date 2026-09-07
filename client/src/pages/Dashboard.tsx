@@ -53,7 +53,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <Header 
         title="Command Center" 
-        subtitle={canReadProtectedData ? "System Status: Online" : "Sign in to load live network data"}
+        subtitle={canReadProtectedData ? "System Status: Online" : "Connecting to SafeNet Shield DNS Server+"}
         status={canReadProtectedData ? "active" : "warning"}
       />
 
