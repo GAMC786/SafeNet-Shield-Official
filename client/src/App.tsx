@@ -228,6 +228,7 @@ export function StartupLoader() {
           "radial-gradient(circle at center, rgba(239,68,68,0.16), transparent 42%)",
       }}
     >
+      <SoundtrackControl />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.16),transparent_42%)]" />
       <div className="relative z-10 flex max-w-md flex-col items-center gap-7 text-center" role="status">
         <div className="relative h-24 w-28" aria-hidden="true">

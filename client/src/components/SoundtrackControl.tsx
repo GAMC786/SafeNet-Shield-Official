@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 
 const REFERENCE_SOUNDTRACK_URL =
   "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav";
+const AUDIO_ELEMENT_ID = "safenet-startup-audio";
+const MUTED_STORAGE_KEY = "safenet-soundtrack-muted";
 /**
- * The reference experience starts its full soundtrack after an explicit
- * start interaction. Keep the same browser-safe behavior here: the complete
- * loop is loaded as an audio element, but playback never starts by itself.
+ * Try to start the complete loop as soon as the app shell mounts. Android's
+ * WebView allows that startup playback; browsers may reject it, so the
+ * control turns into an explicit tap-to-enable action instead.
  *
  * The soundtrack remains referenced from its public source URL rather than
  * copied into this project. The Rive companion uses Rive's CORS-enabled
@@ -17,30 +19,45 @@ const REFERENCE_SOUNDTRACK_URL =
 export function SoundtrackControl() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasAudioError, setHasAudioError] = useState(false);
+  const [needsUserGesture, setNeedsUserGesture] = useState(() => {
+    const existingAudio = document.getElementById(AUDIO_ELEMENT_ID);
+    return existingAudio instanceof HTMLAudioElement && existingAudio.paused && !existingAudio.muted;
+  });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
-    const audio = new Audio(REFERENCE_SOUNDTRACK_URL);
+    const audio =
+      document.getElementById(AUDIO_ELEMENT_ID) instanceof HTMLAudioElement
+        ? (document.getElementById(AUDIO_ELEMENT_ID) as HTMLAudioElement)
+        : new Audio(REFERENCE_SOUNDTRACK_URL);
     audio.loop = true;
     audio.preload = "auto";
+    audio.volume = 0.55;
+    audio.muted = window.localStorage.getItem(MUTED_STORAGE_KEY) === "true";
     audioRef.current = audio;
 
     const handleAudioError = () => {
       setHasAudioError(true);
       setIsPlaying(false);
     };
-    const handleAudioPlay = () => setIsPlaying(true);
+    const handleAudioPlay = () => {
+      setIsPlaying(true);
+      setNeedsUserGesture(false);
+    };
     const handleAudioPause = () => setIsPlaying(false);
 
     audio.addEventListener("error", handleAudioError);
     audio.addEventListener("play", handleAudioPlay);
     audio.addEventListener("pause", handleAudioPause);
+    void audio.play().catch(() => setNeedsUserGesture(true));
 
     return () => {
-      audio.pause();
+      if (!document.getElementById(AUDIO_ELEMENT_ID)) {
+        audio.pause();
+        audio.src = "";
+      }
       audio.removeEventListener("error", handleAudioError);
       audio.removeEventListener("play", handleAudioPlay);
       audio.removeEventListener("pause", handleAudioPause);
-      audio.src = "";
       audioRef.current = null;
     };
   }, []);
@@ -52,6 +69,8 @@ export function SoundtrackControl() {
       return;
     }
     audio.pause();
+    audio.muted = true;
+    window.localStorage.setItem(MUTED_STORAGE_KEY, "true");
     audio.currentTime = 0;
     setIsPlaying(false);
   };
@@ -62,22 +81,27 @@ export function SoundtrackControl() {
       return;
     }
 
-    if (isPlaying) {
+    if (isPlaying && !audio.muted) {
       stop();
       return;
     }
 
     setHasAudioError(false);
+    audio.muted = false;
     try {
       await audio.play();
+      window.localStorage.setItem(MUTED_STORAGE_KEY, "false");
+      setNeedsUserGesture(false);
     } catch {
-      setHasAudioError(true);
+      setNeedsUserGesture(true);
       setIsPlaying(false);
     }
   };
 
   const audioLabel = hasAudioError
     ? "Reference soundtrack unavailable"
+    : needsUserGesture
+      ? "Tap to enable soundtrack"
     : isPlaying
       ? "Pause background soundtrack"
       : "Play background soundtrack";
@@ -101,7 +125,13 @@ export function SoundtrackControl() {
         )}
         <Music2 className="h-3.5 w-3.5 opacity-70" />
         <span className="hidden sm:inline">
-          {hasAudioError ? "Unavailable" : "Soundtrack"}
+          {hasAudioError
+            ? "Unavailable"
+            : needsUserGesture
+              ? "Enable sound"
+              : isPlaying
+                ? "Mute"
+                : "Soundtrack"}
         </span>
       </Button>
     </div>

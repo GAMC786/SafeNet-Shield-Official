@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
+import android.webkit.WebSettings;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -21,6 +22,11 @@ public class MainActivity extends BridgeActivity {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
+        WebSettings webSettings = getBridge().getWebView().getSettings();
+        // Allow the SafeNet startup soundtrack to begin while the loader is
+        // visible. Browser builds still respect autoplay policy and expose a
+        // tap-to-enable fallback in the loader.
+        webSettings.setMediaPlaybackRequiresUserGesture(false);
 
         Window window = getWindow();
         // Keep the web content below system bars where the platform allows it.
