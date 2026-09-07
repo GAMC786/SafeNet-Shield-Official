@@ -376,6 +376,10 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     /android-release-smoke:\n\s+needs: build-android\n\s+if: startsWith\(github\.ref, 'refs\/tags\/v'\)/,
   );
   assert.match(workflow, /android-release-smoke:[\s\S]*?\n\s+runs-on: ubuntu-latest/);
+  assert.match(
+    workflow,
+    /android-release-smoke:[\s\S]*?\n\s+timeout-minutes: 30/,
+  );
   assert.match(workflow, /ANDROID_SMOKE_RESOLVER_MODE: public/);
   assert.match(workflow, /ANDROID_SMOKE_COVERAGE: hosted-emulator/);
   assert.match(workflow, /target: google_apis/);
@@ -402,6 +406,15 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   );
   assert.match(releaseSmokeStep, /continue-on-error: true/);
   assert.match(workflow, /needs: \[build-android, android-release-smoke\]/);
+  const releaseStart = workflow.indexOf("\n  release:");
+  assert.ok(releaseStart >= 0);
+  const releaseJob = workflow.slice(releaseStart);
+  assert.match(releaseJob, /if: >-\n\s+always\(\)/);
+  assert.match(releaseJob, /needs\.build-android\.result == 'success'/);
+  assert.match(
+    releaseJob,
+    /needs\.android-release-smoke\.result == 'success'[\s\S]*needs\.android-release-smoke\.result == 'failure'/,
+  );
   assert.match(
     workflow,
     /build-windows:\n\s+# Tagged releases.*\n\s+# Windows packaging lane.*\n\s+if: github\.event_name != 'schedule' && !startsWith\(github\.ref, 'refs\/tags\/v'\)/s,
