@@ -303,11 +303,18 @@ This project includes a GitHub Actions workflow that automatically builds APK an
    - `app-release.apk` — the signed app APK
    - `app-release-androidTest.apk` — the matching instrumentation test APK
    - `app-release.apk.sha256` — the signed app APK checksum
+   - `app-release-androidTest.apk.sha256` — the instrumentation APK checksum
 
-The two APKs are built and verified by the same tagged workflow run. For release
-verification, download both `app-release.apk` and
-`app-release-androidTest.apk` from the GitHub Release and pass them to the
-smoke-test script:
+The two APKs and their checksums are built and verified by the same tagged
+workflow run. For release verification, download both APKs and their matching
+checksum files from the GitHub Release. Check the instrumentation APK checksum
+from the directory containing the downloaded files:
+
+```bash
+sha256sum --check app-release-androidTest.apk.sha256
+```
+
+Then pass both APKs to the smoke-test script:
 
 ```bash
 ./scripts/android-smoke-test.sh \

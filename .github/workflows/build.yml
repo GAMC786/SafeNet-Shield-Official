@@ -1901,7 +1901,7 @@ jobs:
           name: SafeNet-DNS-Android-smoke-evidence-release
           path: artifacts/android-smoke-evidence
 
-      - name: Verify Android release APK
+      - name: Verify Android release APKs
         shell: bash
         run: |
           set -euo pipefail
@@ -1909,6 +1909,7 @@ jobs:
           apk="artifacts/android/app-release.apk"
           test_apk="artifacts/android-test/app-release-androidTest.apk"
           checksum_file="artifacts/android/app-release.apk.sha256"
+          test_checksum_file="artifacts/android-test/app-release-androidTest.apk.sha256"
           apk_count=$(find artifacts/android -maxdepth 1 -type f -name 'app-release.apk' | wc -l)
           test_apk_count=$(find artifacts/android-test -maxdepth 1 -type f -name 'app-release-androidTest.apk' | wc -l)
 
@@ -1942,13 +1943,20 @@ jobs:
             grep -F "package: name='com.safenet.dns.test'"
 
           checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
+          test_checksum="$(sha256sum "$test_apk" | cut -d ' ' -f1)"
           printf '%s  app-release.apk\n' "$checksum" > "$checksum_file"
+          printf '%s  app-release-androidTest.apk\n' "$test_checksum" > "$test_checksum_file"
           (
             cd artifacts/android
             sha256sum --check app-release.apk.sha256
           )
+          (
+            cd artifacts/android-test
+            sha256sum --check app-release-androidTest.apk.sha256
+          )
           unzip -l "$apk" | grep -F "assets/public/"
           echo "Verified $apk_count signed Android APK installer with versionCode 19, versionName $expected_version, and SHA-256 $checksum."
+          echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
 
       - name: Prepare release-linked Android smoke evidence
         shell: bash
@@ -1981,6 +1989,7 @@ jobs:
             artifacts/android/app-release.apk
             artifacts/android/app-release.apk.sha256
             artifacts/android-test/app-release-androidTest.apk
+            artifacts/android-test/app-release-androidTest.apk.sha256
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.tar.gz
             artifacts/release/SafeNet-DNS-Android-smoke-result.txt
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
