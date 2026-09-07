@@ -4,9 +4,10 @@ import { type InsertDnsServer, type DnsServer } from "@shared/schema";
 import { z } from "zod";
 import { apiFetch } from "@/lib/api";
 
-export function useDnsServers() {
+export function useDnsServers(enabled = true) {
   return useQuery({
     queryKey: [api.dns.list.path],
+    enabled,
     queryFn: async () => {
       const res = await apiFetch(api.dns.list.path, { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch DNS servers");

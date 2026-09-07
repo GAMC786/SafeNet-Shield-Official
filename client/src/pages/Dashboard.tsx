@@ -1,5 +1,5 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
-import { useSettings } from "@/hooks/use-settings";
+import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
@@ -9,10 +9,12 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 
 export default function Dashboard() {
-  const { data: stats } = useStats();
-  const { data: logs } = useLogs();
-  const { data: settings } = useSettings();
-  const { data: dnsServers } = useDnsServers();
+  const authStatus = useAuthStatus();
+  const canReadProtectedData = authStatus.data?.authenticated === true;
+  const { data: stats } = useStats(canReadProtectedData);
+  const { data: logs } = useLogs(canReadProtectedData);
+  const { data: settings } = useSettings(canReadProtectedData);
+  const { data: dnsServers } = useDnsServers(canReadProtectedData);
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -25,8 +27,8 @@ export default function Dashboard() {
     <div className="space-y-6">
       <Header 
         title="Command Center" 
-        subtitle="System Status: Online" 
-        status="active" 
+        subtitle={canReadProtectedData ? "System Status: Online" : "Sign in to load live network data"}
+        status={canReadProtectedData ? "active" : "warning"}
       />
 
       {/* Connection Status Bar */}
