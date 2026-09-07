@@ -448,7 +448,7 @@ for (const viewport of viewports) {
     const page = await browser.newPage({ viewport });
     await mockApi(page);
     await page.goto(`${baseUrl}/ddns`);
-      await page.getByRole("heading", { name: "DDNS" }).waitFor();
+    await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
     const activeToggle = page.getByRole("button", { name: "Disable home.example.com" });

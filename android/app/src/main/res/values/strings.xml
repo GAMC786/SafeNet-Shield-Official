@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SafeNet DNS</string>
-    <string name="title_activity_main">SafeNet DNS</string>
+    <string name="app_name">SafeNet Shield DNS Server+ (Official)</string>
+    <string name="title_activity_main">SafeNet Shield DNS Server+ (Official)</string>
     <string name="package_name">com.safenet.dns</string>
     <string name="custom_url_scheme">com.safenet.dns</string>
 </resources>

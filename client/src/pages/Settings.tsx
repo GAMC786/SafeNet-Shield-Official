@@ -480,11 +480,29 @@ export default function Settings() {
           </div>
         </CyberCard>
         
-        <div className="md:col-span-2 flex items-center justify-center p-4 rounded border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-sm gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          <span className="font-mono uppercase">
-            SafeNet DNS Server (Official) v{import.meta.env.VITE_APP_VERSION}
-          </span>
+        <div className="md:col-span-2 space-y-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm">
+          <div className="flex items-center justify-center gap-2 text-yellow-500">
+            <AlertTriangle className="w-4 h-4" />
+            <span className="font-mono uppercase">
+              SafeNet Shield DNS Server+ (Official) v1.0.20
+            </span>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
+            <img
+              src={wordmarkImage}
+              alt="SafeNet Inc."
+              className="h-7 w-auto max-w-[12rem] object-contain"
+            />
+            <span className="hidden text-muted-foreground sm:inline" aria-hidden="true">•</span>
+            <a
+              href="https://safenetinc.ca"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              Contact SafeNet Inc.
+            </a>
+          </div>
         </div>
       </div>
       {vpn.supported && (

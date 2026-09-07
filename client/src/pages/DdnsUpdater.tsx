@@ -173,7 +173,7 @@ export default function DdnsUpdater() {
   return (
     <div className="space-y-6">
       <Header
-          title="DDNS"
+          title="Dynamic DNS"
         subtitle="Auto-Update DNS Records"
       />
 

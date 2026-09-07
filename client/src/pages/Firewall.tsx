@@ -15,14 +15,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const GOOGLE_GMAIL_DOMAINS = [
-  "accounts.google.com",
-  "gmail.com",
-  "google.com",
-  "googleapis.com",
-  "gstatic.com",
-];
-
 export default function Firewall() {
   const { toast } = useToast();
   const { data: blocklists } = useBlocklists();
@@ -214,65 +206,6 @@ export default function Firewall() {
     );
   };
 
-  const handleAllowGoogleServices = async () => {
-    try {
-      let createdCount = 0;
-      let updatedCount = 0;
-      let unchangedCount = 0;
-
-      for (const domain of GOOGLE_GMAIL_DOMAINS) {
-        const existing = blocklists?.filter((item) => item.type === "domain" && item.content.toLowerCase() === domain) || [];
-        if (existing.length > 0) {
-          let changed = false;
-          for (const item of existing) {
-            if (item.action !== "allow" || !item.isActive) {
-              await updateBlock.mutateAsync({ id: item.id, data: { action: "allow", isActive: true } });
-              changed = true;
-            }
-          }
-          if (changed) {
-            updatedCount += 1;
-          } else {
-            unchangedCount += 1;
-          }
-        } else {
-          await createBlock.mutateAsync({
-            type: "domain",
-            content: domain,
-            category: "google-gmail",
-            action: "allow",
-            isActive: true,
-          });
-          createdCount += 1;
-        }
-      }
-
-      const changedCount = createdCount + updatedCount;
-      if (changedCount === 0) {
-        toast({
-          title: "Google and Gmail access already allowed",
-          description: "All required Google and Gmail DNS rules are already active.",
-        });
-        return;
-      }
-
-      toast({
-        title: "Google and Gmail access rules updated",
-        description: [
-          createdCount > 0 ? `${createdCount} rule${createdCount === 1 ? "" : "s"} added` : "",
-          updatedCount > 0 ? `${updatedCount} existing rule${updatedCount === 1 ? "" : "s"} enabled` : "",
-          unchangedCount > 0 ? `${unchangedCount} already active` : "",
-        ].filter(Boolean).join("; ") + ".",
-      });
-    } catch (error) {
-      toast({
-        title: "Google and Gmail access could not be allowed",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleDeleteRule = async (rule: FirewallRule) => {
     if (!window.confirm(`Delete the firewall rule "${rule.name}"?`)) return;
     try {
@@ -343,16 +276,6 @@ export default function Firewall() {
               Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
-            onClick={() => void handleAllowGoogleServices()}
-            disabled={createBlock.isPending || updateBlock.isPending}
-          >
-            <Check className="mr-2 h-4 w-4" />
-            Allow Google &amp; Gmail
-          </Button>
         </div>
       </CyberCard>
 
