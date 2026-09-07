@@ -1883,6 +1883,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release scripts
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Download Android artifact
         uses: actions/download-artifact@v4
         with:
@@ -1996,3 +2006,54 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published Stripe billing
+        id: stripe-production-smoke
+        shell: bash
+        env:
+          STRIPE_SMOKE_BASE_URL: ${{ secrets.STRIPE_SMOKE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          report_header="## Published Stripe billing"
+          smoke_log="$RUNNER_TEMP/stripe-production-smoke.log"
+
+          if [[ -z "${STRIPE_SMOKE_BASE_URL}" ]]; then
+            echo "::error title=Published Stripe billing configuration missing::STRIPE_SMOKE_BASE_URL is not configured."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** blocked"
+              echo "- **Finding:** The protected published deployment URL is not configured."
+              echo
+              echo "Configure the repository or environment secret STRIPE_SMOKE_BASE_URL. The URL is never printed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if node scripts/stripe-production-smoke.mjs >"$smoke_log" 2>&1; then
+            echo "Published Stripe billing smoke passed."
+            {
+              echo "$report_header"
+              echo
+              echo "- **Status:** healthy"
+              echo "- **Checks:** Billing readiness and unsigned webhook rejection passed."
+              echo
+              echo "The protected deployment URL was not printed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          failure_message="$(grep -F "Stripe production smoke failed:" "$smoke_log" | tail -n 1 || true)"
+          if [[ -z "$failure_message" ]]; then
+            failure_message="Stripe production smoke failed without a classified check result."
+          fi
+          echo "::error title=Published Stripe billing smoke failed::$failure_message"
+          {
+            echo "$report_header"
+            echo
+            echo "- **Status:** blocked"
+            echo "- **Finding:** \`$failure_message\`"
+            echo
+            echo "The protected deployment URL and response data were not printed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

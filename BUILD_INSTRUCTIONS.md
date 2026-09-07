@@ -190,8 +190,14 @@ npx electron-builder --win --x64 --publish never
 
 ### Verify published Stripe billing
 
-After publishing the web application, run the post-publish billing smoke check
-against the published HTTPS URL:
+The tagged release workflow runs the post-publish billing smoke check
+automatically after creating the GitHub Release. Configure the protected
+repository or environment secret `STRIPE_SMOKE_BASE_URL` with the published
+HTTPS origin before creating a release. The workflow passes that secret to the
+probe without printing it, and a missing secret or failed readiness/webhook
+check blocks the release job.
+
+To run the same check manually against a published HTTPS URL:
 
 ```bash
 STRIPE_SMOKE_BASE_URL=https://your-published-deployment.example.com npm run smoke:stripe
