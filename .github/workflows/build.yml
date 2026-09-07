@@ -1867,7 +1867,7 @@ jobs:
 
           expected_version="${GITHUB_REF_NAME#v}"
           "$aapt" dump badging "$apk" |
-            grep -F "package: name='com.safenet.dns' versionCode='12' versionName='$expected_version'"
+            grep -F "package: name='com.safenet.dns' versionCode='13' versionName='$expected_version'"
 
           checksum="$(sha256sum "$apk" | cut -d ' ' -f1)"
           printf '%s  app-release.apk\n' "$checksum" > "$checksum_file"
@@ -1876,7 +1876,7 @@ jobs:
             sha256sum --check app-release.apk.sha256
           )
           unzip -l "$apk" | grep -F "assets/public/"
-          echo "Verified $apk_count signed Android APK installer with versionCode 12, versionName $expected_version, and SHA-256 $checksum."
+          echo "Verified $apk_count signed Android APK installer with versionCode 13, versionName $expected_version, and SHA-256 $checksum."
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
