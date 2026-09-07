@@ -12,6 +12,7 @@ import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
+import { SoundtrackControl } from "@/components/SoundtrackControl";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -98,6 +99,7 @@ function MainLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row pb-24 md:pb-0 safe-area-inset">
       <Navigation />
+      <SoundtrackControl />
       
       {/* Scanline Effect */}
       <div className="scan-line" />

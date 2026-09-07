@@ -641,8 +641,8 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies with bounded retry
+        run: bash scripts/npm-ci-with-retry.sh
 
       - name: Check TypeScript
         run: npm run check
