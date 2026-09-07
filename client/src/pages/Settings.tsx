@@ -18,9 +18,11 @@ import { useSubscriptionStatus, useStartCheckout, useOpenBillingPortal } from "@
 import { getBillingRecovery } from "@/lib/billing-state";
 import { trackSubscriptionCheckoutReturn } from "@/lib/billing-analytics";
 import { Link } from "wouter";
+import { useAuth } from "@clerk/react";
 
 export default function Settings() {
   const authStatus = useAuthStatus();
+  const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } = useAuth();
   const isAuthenticated = authStatus.data?.authenticated === true;
   const { data: settings } = useSettings(isAuthenticated);
   const { data: dnsServers } = useDnsServers();
@@ -31,7 +33,7 @@ export default function Settings() {
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
-  const subscription = useSubscriptionStatus(isAuthenticated);
+  const subscription = useSubscriptionStatus(clerkLoaded && clerkSignedIn === true);
   const checkout = useStartCheckout();
   const billingPortal = useOpenBillingPortal();
   const billingRecovery = getBillingRecovery(subscription.data?.status ?? "none");
@@ -266,10 +268,10 @@ export default function Settings() {
           </div>
           {subscription.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Checking subscription…</div>
-          ) : !subscription.data?.signedIn ? (
+          ) : !clerkSignedIn || !subscription.data?.signedIn ? (
             <div className="space-y-3 rounded border border-white/10 bg-white/5 p-4">
               <p className="text-sm">Sign in with a SafeNet account to subscribe and restore access on another device.</p>
-              <Button asChild><Link href="/sign-in">Sign in to subscribe</Link></Button>
+              <Button asChild><Link href="/sign-in?redirect_url=%2Fsettings">Sign in to subscribe</Link></Button>
             </div>
           ) : (
             <div className="space-y-3 rounded border border-white/10 bg-white/5 p-4">

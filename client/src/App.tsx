@@ -258,19 +258,41 @@ export function StartupLoader() {
 }
 
 function SignInPage() {
+  const redirectUrl = getSafeAuthRedirect(`${basePath}/settings`);
+
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`}
+        forceRedirectUrl={redirectUrl}
+      />
     </div>
   );
 }
 
 function SignUpPage() {
+  const redirectUrl = getSafeAuthRedirect(`${basePath}/settings`);
+
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`}
+        forceRedirectUrl={redirectUrl}
+      />
     </div>
   );
+}
+
+function getSafeAuthRedirect(fallback: string) {
+  const requested = new URLSearchParams(window.location.search).get("redirect_url");
+  if (!requested || !requested.startsWith("/") || requested.startsWith("//")) {
+    return fallback;
+  }
+  return requested;
 }
 
 function ClerkQueryClientCacheInvalidator() {

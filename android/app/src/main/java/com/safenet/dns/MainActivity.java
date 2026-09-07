@@ -3,6 +3,7 @@ package com.safenet.dns;
 import android.os.Bundle;
 import android.view.Window;
 import android.webkit.CookieManager;
+import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -35,5 +36,15 @@ public class MainActivity extends BridgeActivity {
         insetsController.show(WindowInsetsCompat.Type.navigationBars());
         insetsController.setAppearanceLightStatusBars(false);
         insetsController.setAppearanceLightNavigationBars(false);
+    }
+
+    @Override
+    public void onBackPressed() {
+        WebView webView = getBridge().getWebView();
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+            return;
+        }
+        super.onBackPressed();
     }
 }
