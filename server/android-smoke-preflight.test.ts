@@ -120,14 +120,14 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
     apkOnlyWorkflow,
     /MOBILE_API_URL: https:\/\/safe-net-shield-official\.replit\.app/,
   );
-  assert.match(apkOnlyWorkflow, /Verify production manual PIN protection/);
+  assert.match(apkOnlyWorkflow, /Verify production auth bootstrap/);
   assert.match(
     apkOnlyWorkflow,
     /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/auth\/status"/,
   );
   assert.match(
     apkOnlyWorkflow,
-    /status\.authenticated !== false \|\| status\.pinRequired !== true/,
+    /typeof status\.authenticated !== 'boolean' \|\| status\.pinRequired !== false/,
   );
   assert.match(
     apkOnlyWorkflow,
