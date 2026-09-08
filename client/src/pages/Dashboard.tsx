@@ -1,13 +1,16 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
-import { useAuthStatus, useSettings } from "@/hooks/use-settings";
+import { useAuthStatus } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
+import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Activity, Shield, AlertTriangle, Wifi, Server, CheckCircle2, Gauge, Radio } from "lucide-react";
+import { EulaDialog } from "@/components/EulaDialog";
+import { Button } from "@/components/ui/button";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export default function Dashboard() {
   const authStatus = useAuthStatus();
@@ -16,8 +19,9 @@ export default function Dashboard() {
   const logsQuery = useLogs(canReadProtectedData);
   const { data: stats } = statsQuery;
   const { data: logs } = logsQuery;
-  const { data: settings } = useSettings(canReadProtectedData);
   const { data: dnsServers } = useDnsServers(canReadProtectedData);
+  const vpn = useSafeNetVpn();
+  const [eulaOpen, setEulaOpen] = useState(false);
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -48,6 +52,15 @@ export default function Dashboard() {
     });
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
+  const vpnCardState = !vpn.supported
+    ? "unsupported"
+    : vpn.status === null
+      ? "checking"
+      : vpn.status.running
+        ? "running"
+        : vpn.status.error
+          ? "error"
+          : "inactive";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -132,17 +145,60 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex flex-col justify-center items-center text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10 relative">
-            <div className="absolute inset-0 rounded-full border-t-2 border-primary animate-spin" />
-            <Wifi className="w-8 h-8 text-primary" />
+        <CyberCard
+          className="flex flex-col justify-center items-center text-center space-y-4"
+          data-testid="dashboard-vpn-card"
+          data-vpn-state={vpnCardState}
+        >
+          <div
+            className={`w-16 h-16 rounded-full flex items-center justify-center border relative ${
+              vpn.status?.running
+                ? "bg-green-500/10 border-green-500/30"
+                : "bg-white/5 border-white/10"
+            }`}
+          >
+            {vpn.status === null && vpn.supported ? (
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            ) : (
+              <ShieldCheck className={`w-8 h-8 ${vpn.status?.running ? "text-green-400" : "text-primary"}`} />
+            )}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">System Active</h3>
-            <p className="text-sm text-muted-foreground">Protection is running</p>
+            <h3 className="text-lg font-bold text-white">DNS Protection VPN</h3>
+            <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
+              {!vpn.supported
+                ? "Available in the SafeNet Android APK"
+                : vpn.status === null
+                  ? "Checking protection status…"
+                  : vpn.status.running
+                    ? "DNS protection is running"
+                    : vpn.status.error || "Protection is inactive · Enable in Settings"}
+            </p>
           </div>
+          {vpn.supported && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEulaOpen(true)}
+            >
+              View DNS VPN EULA
+            </Button>
+          )}
         </CyberCard>
       </div>
+
+      {vpn.supported && (
+        <EulaDialog
+          open={eulaOpen}
+          onOpenChange={setEulaOpen}
+          onAccept={async () => {
+            await vpn.acceptEula();
+            setEulaOpen(false);
+          }}
+          isAccepting={vpn.isBusy}
+        />
+      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">
