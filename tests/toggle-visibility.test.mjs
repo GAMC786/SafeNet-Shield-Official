@@ -248,7 +248,7 @@ function mockApi(
         });
         return;
       } else if (url.pathname === "/api/speedtest/upload" && method === "POST") {
-        response = { bytesReceived: 1500000, duration: 0.01, speedMbps: 1200 };
+        response = { bytesReceived: 4000000 };
       } else if (url.pathname === "/api/antivirus/feeds" && method === "GET") {
         response = threatFeeds;
       } else if (url.pathname.startsWith("/api/antivirus/feeds/") && method === "PATCH") {

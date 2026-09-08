@@ -720,7 +720,7 @@ export async function registerRoutes(
   });
 
   // === Speed Test ===
-  // Download test - returns random data for speed measurement
+  // Download test - returns uncached random data for client-side timing.
   app.get("/api/speedtest/download", (req, res) => {
     const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
     const maxSize = 10000000; // Max 10MB
@@ -751,17 +751,15 @@ export async function registerRoutes(
     sendChunk();
   });
 
-  // Upload test - receives data and measures speed
+  // Upload test - receives the full payload so the client can measure the
+  // complete request round trip with the same clock used for downloads.
   app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
-    const startTime = Date.now();
     const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    const duration = Math.max((Date.now() - startTime) / 1000, 0.001);
-    const speedMbps = (bytesReceived * 8) / (duration * 1000000);
-    res.json({ 
-      bytesReceived, 
-      duration, 
-      speedMbps: Math.round(speedMbps * 100) / 100 
-    });
+    if (bytesReceived === 0) {
+      return res.status(400).json({ message: "The upload payload was empty." });
+    }
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res.json({ bytesReceived });
   });
 
   // Ping test

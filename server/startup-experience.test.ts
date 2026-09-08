@@ -37,6 +37,7 @@ const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
 );
+const routesSource = readFileSync(path.join(process.cwd(), "server/routes.ts"), "utf8");
 const launchStyleSource = readFileSync(
   path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
   "utf8",
@@ -137,8 +138,12 @@ test("Measure Your Network identifies the ISP and reports measured packet loss",
   assert.match(speedTestSource, /button-refresh-network-profile/);
   assert.match(speedTestSource, /packetLoss: Math\.round\(\(failedLatencySamples \/ \(sample \+ 1\)\) \* 100\)/);
   assert.doesNotMatch(speedTestSource, /setResults\(\(current\) => \(\{ \.\.\.current, packetLoss: 0 \}\)\)/);
-  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=4000000/);
+  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=\$\{THROUGHPUT_TEST_BYTES\}/);
   assert.match(speedTestSource, /\/api\/speedtest\/upload/);
+  assert.match(speedTestSource, /THROUGHPUT_TEST_BYTES = 4_000_000/);
+  assert.match(speedTestSource, /bytesReceived !== uploadPayload\.byteLength/);
+  assert.match(routesSource, /return res\.json\(\{ bytesReceived \}\)/);
+  assert.doesNotMatch(routesSource, /const speedMbps =/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {
