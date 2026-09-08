@@ -9,17 +9,21 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, status }: HeaderProps) {
+  const isCommandCenter = title === "Command Center";
+
   return (
     <header className="flex items-start justify-between gap-3 mb-6 sm:mb-8 pb-4 border-b border-border/40">
       <div className="flex min-w-0 items-center gap-3">
-        <Link
-          href="/"
-          aria-label="Back to Dashboard"
-          title="Back to Dashboard"
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
+        {!isCommandCenter && (
+          <Link
+            href="/command-center"
+            aria-label="Back to Command Center"
+            title="Back to Command Center"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        )}
         <div className="min-w-0">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold font-display uppercase tracking-wider text-white">
           <span className="text-primary mr-2">/</span>

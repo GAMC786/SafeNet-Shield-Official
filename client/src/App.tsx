@@ -140,7 +140,7 @@ function MainLayout() {
 }
 
 function AppContent() {
-  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const { isSignedIn } = useAuth();
   const authStatus = useAuthStatus();
   const [startupLoaderComplete, setStartupLoaderComplete] = useState(false);
   const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
@@ -149,7 +149,6 @@ function AppContent() {
   const { data: settings } = settingsQuery;
   const isLoading =
     !startupLoaderComplete ||
-    !clerkLoaded ||
     authStatus.isLoading ||
     (isAuthenticated && (settingsQuery.isLoading || firewallConfigQuery.isLoading));
   const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);

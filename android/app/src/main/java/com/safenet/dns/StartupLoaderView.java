@@ -5,18 +5,15 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.Typeface;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 
 public final class StartupLoaderView extends View {
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint subtitlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path triangle = new Path();
     private final ValueAnimator pulseAnimator;
     private float pulse = 0.5f;
 
@@ -27,9 +24,6 @@ public final class StartupLoaderView extends View {
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
         backgroundPaint.setColor(Color.rgb(9, 11, 20));
-        linePaint.setColor(Color.argb(90, 239, 68, 68));
-        linePaint.setStyle(Paint.Style.STROKE);
-        linePaint.setStrokeWidth(2f);
         dotPaint.setColor(Color.rgb(239, 68, 68));
         dotPaint.setShadowLayer(22f, 0f, 0f, Color.argb(240, 239, 68, 68));
 
