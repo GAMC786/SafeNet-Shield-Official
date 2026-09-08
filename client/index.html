@@ -112,22 +112,6 @@
       .startup-loader-dot:nth-child(1) { top: 0; left: 17px; animation-delay: 0ms; }
       .startup-loader-dot:nth-child(2) { bottom: 0; left: 0; animation-delay: 180ms; }
       .startup-loader-dot:nth-child(3) { right: 0; bottom: 0; animation-delay: 360ms; }
-      #startup-soundtrack-toggle {
-        position: fixed;
-        top: 50%;
-        right: max(12px, env(safe-area-inset-right));
-        z-index: 2;
-        transform: translateY(-50%);
-        border: 1px solid rgba(148,163,184,.35);
-        border-radius: 10px;
-        background: rgba(15,23,42,.86);
-        color: #e2e8f0;
-        padding: 11px 13px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: .04em;
-        backdrop-filter: blur(10px);
-      }
       @keyframes startup-loader-dot-pulse {
         0%, 100% { transform: scale(.65); opacity: .45; }
         50% { transform: scale(1); opacity: 1; }
@@ -179,14 +163,6 @@
           <span class="startup-loader-dot"></span>
         </div>
       </div>
-      <button
-        id="startup-soundtrack-toggle"
-        type="button"
-        aria-label="Turn soundtrack on or off"
-        aria-pressed="false"
-      >
-        Soundtrack: Off
-      </button>
     </div>
     <div
       id="dashboard-fallback"
@@ -212,14 +188,6 @@
             <strong style="display:block;margin-top:8px;font-size:20px">Ready</strong>
           </div>
         </div>
-        <button
-          id="static-soundtrack-toggle"
-          type="button"
-          aria-label="Turn soundtrack on or off"
-          style="margin-top:20px;border:1px solid rgba(148,163,184,.35);border-radius:10px;background:rgba(15,23,42,.8);color:#e2e8f0;padding:11px 15px;font-size:14px"
-        >
-          Soundtrack: Off
-        </button>
       </div>
     </div>
     <div id="root"></div>
@@ -232,40 +200,6 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
-        const toggles = [
-          document.getElementById("startup-soundtrack-toggle"),
-          document.getElementById("static-soundtrack-toggle"),
-        ].filter((button) => button instanceof HTMLButtonElement);
-        const syncSoundtrack = () => {
-          toggles.forEach((toggle) => {
-            const isOn = !audio.muted && !audio.paused;
-            toggle.textContent = isOn
-              ? "Soundtrack: On"
-              : "Soundtrack: Off";
-            toggle.setAttribute("aria-pressed", String(isOn));
-          });
-        };
-        const toggleSoundtrack = () => {
-          if (audio.muted || audio.paused) {
-            audio.muted = false;
-            void audio.play().then(() => {
-              window.localStorage.setItem(mutedKey, "false");
-              syncSoundtrack();
-            }).catch(() => {
-              audio.muted = true;
-              syncSoundtrack();
-            });
-          } else {
-            audio.muted = true;
-            audio.pause();
-            window.localStorage.setItem(mutedKey, "true");
-            syncSoundtrack();
-          }
-        };
-        toggles.forEach((toggle) => toggle.addEventListener("click", toggleSoundtrack));
-        audio.addEventListener("play", syncSoundtrack);
-        audio.addEventListener("pause", syncSoundtrack);
-        audio.addEventListener("volumechange", syncSoundtrack);
         audio.addEventListener("ended", () => {
           audio.currentTime = 0;
           void audio.play().catch(() => undefined);
