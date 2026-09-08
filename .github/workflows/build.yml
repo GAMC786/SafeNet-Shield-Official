@@ -1722,6 +1722,110 @@ jobs:
             echo "- **Release-linked result:** [Download smoke result]($release_result_url)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  android-release-startup:
+    needs: build-android
+    if: startsWith(github.ref, 'refs/tags/v')
+    # A hosted emulator can miss the physical-device-only blank WebView
+    # regression. Run the signed APK on the dedicated Android runner and keep
+    # this gate separate from the network-heavy DNS smoke lane.
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_AVD_NAME: safenet-writable
+      ANDROID_SMOKE_VALIDATION_MODE: real-device
+      ANDROID_SMOKE_DEVICE_KIND: dedicated-device-runner
+      ANDROID_SMOKE_OUTPUT_DIR: android/app/build/reports/android-startup/latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Verify signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/artifacts/android/app-release.apk"
+          test -s "$apk" || {
+            echo "::error::Signed release APK is missing: $apk"
+            exit 1
+          }
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          test -n "$apksigner" && "$apksigner" verify --verbose "$apk"
+
+      - name: Check dedicated Android release runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          ./scripts/provision-android-runner.sh --check
+
+      - name: Start dedicated Android device
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/android/app/build/reports/android-startup/latest"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$sdk_root/emulator:$PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
+          adb start-server
+          adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' |
+            while read -r serial; do
+              adb -s "$serial" emu kill >/dev/null 2>&1 || true
+            done
+          emulator -avd "$ANDROID_AVD_NAME" \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -writable-system \
+            > "$GITHUB_WORKSPACE/android/app/build/reports/android-startup/latest/emulator.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/safenet-android-emulator.pid"
+          adb -s emulator-5554 wait-for-device
+          for _ in {1..180}; do
+            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = "1"
+
+      - name: Run signed APK startup check
+        id: android-release-startup-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/android-smoke-test.sh \
+            --startup-only \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --output "$GITHUB_WORKSPACE/android/app/build/reports/android-startup/latest" \
+            --serial emulator-5554
+
+      - name: Stop dedicated Android device
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$PATH"
+          adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+          if [[ -f "$RUNNER_TEMP/safenet-android-emulator.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/safenet-android-emulator.pid")" >/dev/null 2>&1 || true
+          fi
+
+      - name: Upload Android startup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-startup-evidence-release
+          path: android/app/build/reports/android-startup/latest
+          if-no-files-found: warn
+
   build-windows:
     # Tagged releases in this lane publish the Android APK only. Keep the
     # Windows packaging lane for non-tag builds without making it a release
@@ -1872,12 +1976,13 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, android-release-smoke]
+    needs: [build-android, android-release-smoke, android-release-startup]
     runs-on: ubuntu-latest
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.build-android.result == 'success' &&
+      needs.android-release-startup.result == 'success' &&
       (needs.android-release-smoke.result == 'success' ||
       needs.android-release-smoke.result == 'failure')
     permissions:

@@ -19,6 +19,7 @@ test_apk_path="${DEFAULT_TEST_APK}"
 serial="${ANDROID_SERIAL:-}"
 output_dir="${ANDROID_SMOKE_OUTPUT_DIR:-android/app/build/reports/android-smoke/latest}"
 preflight_only=false
+startup_only=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
@@ -79,6 +80,7 @@ Options:
   --serial ID      adb device/emulator serial (or set ANDROID_SERIAL)
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
   --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
+  --startup-only   Install the signed app APK and verify the native startup surface and WebView transition
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
 
@@ -115,6 +117,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --preflight)
             preflight_only=true
+            shift
+            ;;
+        --startup-only)
+            startup_only=true
             shift
             ;;
         --resolver-mode)
@@ -162,7 +168,8 @@ if [[ "$preflight_only" != true && "$(basename "$apk_path")" != "app-release.apk
     echo "ERROR: Android smoke tests require the explicitly named app-release.apk; got: $apk_path" >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
+if [[ "$preflight_only" != true && "$startup_only" != true &&
+    "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release-androidTest.apk; got: $test_apk_path" >&2
     exit 2
 fi
@@ -171,7 +178,7 @@ if [[ "$preflight_only" != true && ! -f "$apk_path" ]]; then
     echo "Build android/app/build/outputs/apk/release/app-release.apk first." >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && ! -f "$test_apk_path" ]]; then
+if [[ "$preflight_only" != true && "$startup_only" != true && ! -f "$test_apk_path" ]]; then
     echo "ERROR: Release instrumentation APK not found: $test_apk_path" >&2
     echo "Build app-release-androidTest.apk with assembleReleaseAndroidTest first." >&2
     exit 2
@@ -184,7 +191,11 @@ command -v adb >/dev/null 2>&1 || {
 mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/pin-smoke-evidence.txt "$output_dir"/result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
-    "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt
+    "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
+    "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
+    "$output_dir"/startup-initial-ui.xml "$output_dir"/startup-transition-ui.xml \
+    "$output_dir"/startup-failure-ui.xml "$output_dir"/startup-logcat.txt \
+    "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
@@ -409,7 +420,11 @@ if [[ -z "$apksigner_bin" ]]; then
     echo "Use an Android SDK runner with build-tools installed." >&2
     exit 2
 fi
-for signed_apk in "$apk_path" "$test_apk_path"; do
+signed_apks=("$apk_path")
+if [[ "$startup_only" != true ]]; then
+    signed_apks+=("$test_apk_path")
+fi
+for signed_apk in "${signed_apks[@]}"; do
     signature_report="$output_dir/$(basename "$signed_apk").signature.txt"
     if ! "$apksigner_bin" verify --verbose "$signed_apk" > "$signature_report" 2>&1; then
         echo "ERROR: $signed_apk is not a valid signed APK." >&2
@@ -467,9 +482,106 @@ remount_system() {
     return 1
 }
 
+capture_startup_ui() {
+    local evidence_name="$1"
+    timeout 30s adb "${adb_args[@]}" shell uiautomator dump /dev/tty \
+        > "$output_dir/$evidence_name" 2>&1 || true
+}
+
+capture_startup_screenshot() {
+    local evidence_name="$1"
+    timeout 30s adb "${adb_args[@]}" exec-out screencap -p \
+        > "$output_dir/$evidence_name" 2> "$output_dir/${evidence_name%.png}.error" || true
+}
+
+startup_failure() {
+    local message="$1"
+    capture_startup_ui startup-failure-ui.xml
+    capture startup-window-state.txt adb "${adb_args[@]}" shell dumpsys window windows
+    capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
+    {
+        printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$validation_mode" "$device_kind"
+        printf 'native_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
+            "$message"
+    } | tee "$output_dir/startup-result.txt" "$output_dir/result.txt" >&2
+    printf 'STARTUP_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
+    echo "Android startup check failed: $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_startup_check() {
+    local initial_ui
+    local transition_ui
+    local native_loader_seen=false
+    local webview_transitioned=false
+    local launch_output
+
+    echo "Launching signed SafeNet APK for native startup check..."
+    timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
+    install_release_apk "$apk_path" ||
+        startup_failure "the signed release APK could not be installed"
+    timeout 30s adb "${adb_args[@]}" shell am force-stop "$PACKAGE_NAME" || true
+    timeout 30s adb "${adb_args[@]}" logcat -c || true
+    launch_output="$(
+        timeout 45s adb "${adb_args[@]}" shell am start -W -n "$PACKAGE_NAME/.MainActivity" \
+            2>&1 || true
+    )"
+    printf '%s\n' "$launch_output" > "$output_dir/startup-launch.txt"
+
+    # The native loader is intentionally visible before the WebView can finish
+    # loading. Capture it before waiting for the normal WebView transition.
+    for _ in {1..30}; do
+        capture_startup_ui startup-initial-ui.xml
+        initial_ui="$(cat "$output_dir/startup-initial-ui.xml" 2>/dev/null || true)"
+        if grep -Fq 'content-desc="Connecting to SafeNet Shield DNS Server+"' <<<"$initial_ui"; then
+            native_loader_seen=true
+            capture_startup_screenshot startup-initial.png
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$native_loader_seen" != true ]]; then
+        capture_startup_screenshot startup-initial.png
+        startup_failure "the native startup loader was not visible after launching MainActivity"
+    fi
+
+    # MainActivity hides the opaque native surface only after the WebView has
+    # meaningful content. Require both the accessibility transition and a
+    # visible WebView node so a blank dark WebView cannot pass this check.
+    for _ in {1..60}; do
+        capture_startup_ui startup-transition-ui.xml
+        transition_ui="$(cat "$output_dir/startup-transition-ui.xml" 2>/dev/null || true)"
+        if ! grep -Fq 'content-desc="Connecting to SafeNet Shield DNS Server+"' <<<"$transition_ui" &&
+            grep -Fq 'class="android.webkit.WebView"' <<<"$transition_ui"; then
+            webview_transitioned=true
+            capture_startup_screenshot startup-transition.png
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$webview_transitioned" != true ]]; then
+        capture_startup_screenshot startup-transition.png
+        startup_failure "the WebView did not transition beyond the native startup loader"
+    fi
+
+    capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
+    {
+        printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$validation_mode" "$device_kind"
+        printf 'native_loader=PASS\nwebview_transition=PASS\nresult=PASS\n'
+    } | tee "$output_dir/startup-result.txt"
+    echo "Android startup check passed. Evidence: $output_dir"
+}
+
 echo "Installing release APKs on Android target $serial before fixture setup..."
 timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
 timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
+if [[ "$startup_only" == true ]]; then
+    run_startup_check
+    exit 0
+fi
 if ! install_release_apk "$apk_path"; then
     echo "ERROR: Release APK could not be installed after bounded retries." >&2
     exit 1

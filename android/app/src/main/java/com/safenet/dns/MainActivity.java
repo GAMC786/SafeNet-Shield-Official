@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.graphics.Color;
+import android.util.Log;
 import android.view.Window;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,6 +21,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private static final String STARTUP_TAG = "SafeNetStartup";
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
     private StartupLoaderView startupLoader;
     private Runnable startupLoaderCheck;
@@ -86,6 +88,7 @@ public class MainActivity extends BridgeActivity {
                 if (webContentReady && SystemClock.uptimeMillis() >= earliestHideTime) {
                     if (startupLoader != null) {
                         startupLoader.setVisibility(View.GONE);
+                        Log.i(STARTUP_TAG, "native_startup_loader=hidden web_content_ready=true");
                     }
                     return;
                 }
@@ -93,6 +96,7 @@ public class MainActivity extends BridgeActivity {
             }
         };
         startupHandler.post(startupLoaderCheck);
+        Log.i(STARTUP_TAG, "native_startup_loader=visible");
     }
 
     @Override

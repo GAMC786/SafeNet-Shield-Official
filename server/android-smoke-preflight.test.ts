@@ -409,12 +409,29 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     /--test-apk "\$GITHUB_WORKSPACE\/artifacts\/android-test\/app-release-androidTest\.apk"/,
   );
   assert.match(releaseSmokeStep, /continue-on-error: true/);
-  assert.match(workflow, /needs: \[build-android, android-release-smoke\]/);
+  assert.match(
+    workflow,
+    /needs: \[build-android, android-release-smoke, android-release-startup\]/,
+  );
+  const startupStart = workflow.indexOf("\n  android-release-startup:");
+  const startupJobEnd = workflow.indexOf("\n  build-windows:", startupStart);
+  assert.ok(startupStart >= 0);
+  assert.ok(startupJobEnd > startupStart);
+  const startupJob = workflow.slice(startupStart, startupJobEnd);
+  assert.match(
+    startupJob,
+    /runs-on: \[self-hosted, linux, x64, android-writable-system\]/,
+  );
+  assert.match(startupJob, /ANDROID_SMOKE_DEVICE_KIND: dedicated-device-runner/);
+  assert.match(startupJob, /--startup-only/);
+  assert.match(startupJob, /screencap|startup-evidence/);
+  assert.match(startupJob, /if: always\(\)/);
   const releaseStart = workflow.indexOf("\n  release:");
   assert.ok(releaseStart >= 0);
   const releaseJob = workflow.slice(releaseStart);
   assert.match(releaseJob, /if: >-\n\s+always\(\)/);
   assert.match(releaseJob, /needs\.build-android\.result == 'success'/);
+  assert.match(releaseJob, /needs\.android-release-startup\.result == 'success'/);
   assert.match(
     releaseJob,
     /needs\.android-release-smoke\.result == 'success'[\s\S]*needs\.android-release-smoke\.result == 'failure'/,
@@ -618,6 +635,22 @@ test("hosted emulator wrapper failure still reaches release evidence upload", ()
     /path: android\/app\/build\/reports\/android-smoke\/latest/,
   );
   assert.match(uploadStep, /if-no-files-found: warn/);
+});
+
+test("startup-only smoke lane requires the native surface and WebView transition evidence", () => {
+  assert.match(smokeScript, /--startup-only\s+Install the signed app APK/);
+  assert.match(smokeScript, /startup-initial\.png/);
+  assert.match(smokeScript, /startup-transition\.png/);
+  assert.match(
+    smokeScript,
+    /content-desc="Connecting to SafeNet Shield DNS Server\+"/,
+  );
+  assert.match(smokeScript, /class="android\.webkit\.WebView"/);
+  assert.match(smokeScript, /STARTUP_FAILURE/);
+  assert.match(smokeScript, /startup-failure-ui\.xml/);
+  assert.match(smokeScript, /startup-logcat\.txt/);
+  assert.match(mainActivity, /native_startup_loader=visible/);
+  assert.match(mainActivity, /native_startup_loader=hidden web_content_ready=true/);
 });
 
 test("release smoke summary script is extracted and passes Bash syntax validation", () => {

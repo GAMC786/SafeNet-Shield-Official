@@ -149,22 +149,25 @@ as `ENETUNREACH`, `UNRELATED_NETWORK_FAILURE`, or `NON_NETWORK_FAILURE` in
 `failure-category.txt`; `ENETUNREACH` is the original “network unreachable”
 regression and must not be treated as a generic resolver failure.
 
-Tagged releases run the same script on a dedicated self-hosted Linux runner
-with the `android-writable-system` label. That runner uses an AOSP ATD API 35
-image with KVM, `adb root`, writable system overlays, and passwordless `sudo`
-for the controlled resolver fixture. Provision it once with:
+Tagged releases run the hosted public-network DNS smoke lane plus a required
+startup gate on a dedicated self-hosted Linux runner with the
+`android-writable-system` label. The startup gate installs the signed APK,
+captures the native startup surface, and verifies that the WebView transitions
+beyond it. That runner uses an AOSP ATD API 35 image with KVM, `adb root`,
+writable system overlays, and passwordless `sudo` for the controlled resolver
+fixture. Provision it once with:
 
 ```bash
 ANDROID_SDK_ROOT="$HOME/Android/Sdk" ./scripts/provision-android-runner.sh
 ```
 
 Run `./scripts/provision-android-runner.sh --check` from the registered
-GitHub Actions runner account to verify its capabilities. The release job will
-wait for, and then require, this labeled runner; it will not substitute a
-hosted image that cannot install the temporary system CA. Manual and scheduled
-non-tag checks retain the hosted validation lane. A local run needs an Android
-SDK, `adb`, and an attached target; a host DNS lookup is not a substitute for
-these VPN checks.
+GitHub Actions runner account to verify its capabilities. The release startup
+job will wait for, and then require, this labeled runner; it will not substitute
+a hosted image for the real-device startup check. Manual and scheduled non-tag
+checks retain the hosted validation lane. A local run needs an Android SDK,
+`adb`, and an attached target; a host DNS lookup is not a substitute for these
+VPN or startup checks.
 
 ---
 
