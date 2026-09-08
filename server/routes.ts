@@ -720,26 +720,35 @@ export async function registerRoutes(
   });
 
   // === Speed Test ===
-  // Download test - returns random data for speed measurement
+  // Download test - returns uncached, incompressible data for client-side timing.
+  // Keep the standard payload ready so server-side random-data generation does
+  // not become part of the measured network throughput.
+  const standardSpeedTestPayload = Buffer.alloc(4_000_000, 0xa5);
   app.get("/api/speedtest/download", (req, res) => {
     const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
     const maxSize = 10000000; // Max 10MB
     const actualSize = Math.min(size, maxSize);
+    const payload = actualSize === standardSpeedTestPayload.length
+      ? standardSpeedTestPayload
+      : Buffer.alloc(actualSize, 0xa5);
     
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", actualSize);
+    res.setHeader("Content-Encoding", "identity");
+    res.setHeader("X-SpeedTest-Bytes", actualSize);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     
-    // Generate random data in chunks
+    // Stream the same bytes in both directions without compression or
+    // per-chunk payload generation affecting the timing.
     const chunkSize = 65536; // 64KB chunks
-    let remaining = actualSize;
+    let offset = 0;
     
     const sendChunk = () => {
-      while (remaining > 0) {
-        const size = Math.min(chunkSize, remaining);
-        const chunk = Buffer.alloc(size, Math.random() * 255);
+      while (offset < actualSize) {
+        const nextOffset = Math.min(offset + chunkSize, actualSize);
+        const chunk = payload.subarray(offset, nextOffset);
         const canContinue = res.write(chunk);
-        remaining -= size;
+        offset = nextOffset;
         if (!canContinue) {
           res.once("drain", sendChunk);
           return;
@@ -751,17 +760,16 @@ export async function registerRoutes(
     sendChunk();
   });
 
-  // Upload test - receives data and measures speed
+  // Upload test - receives the full payload so the client can measure the
+  // complete request round trip with the same clock used for downloads.
   app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
-    const startTime = Date.now();
     const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    const duration = Math.max((Date.now() - startTime) / 1000, 0.001);
-    const speedMbps = (bytesReceived * 8) / (duration * 1000000);
-    res.json({ 
-      bytesReceived, 
-      duration, 
-      speedMbps: Math.round(speedMbps * 100) / 100 
-    });
+    if (bytesReceived === 0) {
+      return res.status(400).json({ message: "The upload payload was empty." });
+    }
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("X-SpeedTest-Bytes", bytesReceived);
+    return res.json({ bytesReceived });
   });
 
   // Ping test
