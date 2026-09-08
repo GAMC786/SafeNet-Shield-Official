@@ -99,3 +99,10 @@ test("Android 12+ launch surface does not show the Shield Logo", () => {
   assert.match(launchStyleSource, /windowSplashScreenAnimatedIcon/);
   assert.match(launchStyleSource, /splash_transparent/);
 });
+
+test("the app content stays below system bars while scrolling", () => {
+  assert.match(appSource, /className="app-shell[^"]*safe-area-inset/);
+  assert.match(appSource, /className="app-content-scroll[^"]*min-h-0[^"]*overflow-y-auto/);
+  assert.match(soundtrackSource, /className="soundtrack-control fixed top-1\/2/);
+  assert.match(soundtrackSource, /-translate-y-1\/2/);
+});
