@@ -187,7 +187,7 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
   assert.match(settingsSource, /Android device-admin permission is not requested here/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
-  assert.match(manifestSource, /SafeNet Shield DNS Server\+ \(Official\) v1\.0\.59/);
+  assert.match(manifestSource, /SafeNet Shield DNS Server\+ \(Official\) v1\.0\.60/);
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
