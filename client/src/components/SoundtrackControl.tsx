@@ -148,7 +148,7 @@ export function SoundtrackControl() {
       : "Play background soundtrack";
 
   return (
-    <div className="soundtrack-control fixed top-1/2 z-40 flex -translate-y-1/2 items-center gap-2">
+    <div className="fixed right-3 top-3 z-40 flex items-center gap-2">
       <Button
         type="button"
         variant="outline"

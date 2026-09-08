@@ -15,6 +15,132 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Rajdhani:wght@300..700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@100..900&family=Oxanium:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <style>
+      #startup-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+        overflow: hidden;
+        background: #090b14;
+        color: #f8fafc;
+        font-family: Arial, sans-serif;
+        transition: opacity 220ms ease;
+      }
+      #startup-loader.is-complete {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .startup-loader-content {
+        display: flex;
+        width: min(100%, 420px);
+        max-height: 100%;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(10px, 1.8vh, 18px);
+        text-align: center;
+      }
+      .startup-loader-kicker {
+        margin: 0;
+        color: #94a3b8;
+        font-size: clamp(10px, 2.4vw, 13px);
+        font-weight: 700;
+        letter-spacing: .28em;
+        text-transform: uppercase;
+      }
+      .startup-loader-art {
+        display: block;
+        width: auto;
+        height: min(43dvh, 560px);
+        max-width: min(76vw, 360px);
+        object-fit: contain;
+        object-position: center;
+      }
+      .startup-loader-title {
+        margin: 0;
+        color: #f8fafc;
+        font-size: clamp(16px, 4.5vw, 24px);
+        font-weight: 700;
+        letter-spacing: .06em;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+      .startup-loader-progress {
+        width: min(100%, 330px);
+        height: 5px;
+        overflow: hidden;
+        border: 1px solid rgba(148,163,184,.25);
+        border-radius: 999px;
+        background: rgba(30,41,59,.8);
+      }
+      #startup-loader-progress-bar {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #dc2626, #f87171);
+        box-shadow: 0 0 14px rgba(248,113,113,.75);
+        transition: width 80ms linear;
+      }
+      #startup-loader-percentage {
+        min-width: 4ch;
+        color: #f87171;
+        font-family: monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: .12em;
+      }
+      .startup-loader-dots {
+        position: relative;
+        width: 44px;
+        height: 36px;
+        margin-top: 2px;
+      }
+      .startup-loader-dot {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ef4444;
+        box-shadow: 0 0 12px rgba(239,68,68,.9);
+        animation: startup-loader-dot-pulse 900ms ease-in-out infinite;
+      }
+      .startup-loader-dot:nth-child(1) { top: 0; left: 17px; animation-delay: 0ms; }
+      .startup-loader-dot:nth-child(2) { bottom: 0; left: 0; animation-delay: 180ms; }
+      .startup-loader-dot:nth-child(3) { right: 0; bottom: 0; animation-delay: 360ms; }
+      #startup-soundtrack-toggle {
+        position: fixed;
+        top: 50%;
+        right: max(12px, env(safe-area-inset-right));
+        z-index: 2;
+        transform: translateY(-50%);
+        border: 1px solid rgba(148,163,184,.35);
+        border-radius: 10px;
+        background: rgba(15,23,42,.86);
+        color: #e2e8f0;
+        padding: 11px 13px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        backdrop-filter: blur(10px);
+      }
+      @keyframes startup-loader-dot-pulse {
+        0%, 100% { transform: scale(.65); opacity: .45; }
+        50% { transform: scale(1); opacity: 1; }
+      }
+      @media (max-height: 600px) {
+        .startup-loader-content { gap: 7px; }
+        .startup-loader-art { height: min(34dvh, 250px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #startup-loader { transition: none; }
+        .startup-loader-dot { animation: none; opacity: 1; }
+      }
+    </style>
   </head>
   <body style="margin: 0; background: #090b14;">
     <audio
@@ -27,11 +153,47 @@
       src="https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav"
     ></audio>
     <div
+      id="startup-loader"
+      role="status"
+      aria-live="polite"
+      aria-label="Connecting to SafeNet Shield DNS Server+"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="0"
+    >
+      <div class="startup-loader-content">
+        <p class="startup-loader-kicker">SafeNet Shield</p>
+        <img
+          class="startup-loader-art"
+          src="/safenet-astronaut-loader-transparent.png"
+          alt="SafeNet astronaut standing on the moon"
+        />
+        <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
+        <div class="startup-loader-progress" aria-hidden="true">
+          <div id="startup-loader-progress-bar"></div>
+        </div>
+        <span id="startup-loader-percentage">0%</span>
+        <div class="startup-loader-dots" aria-label="Connecting">
+          <span class="startup-loader-dot"></span>
+          <span class="startup-loader-dot"></span>
+          <span class="startup-loader-dot"></span>
+        </div>
+      </div>
+      <button
+        id="startup-soundtrack-toggle"
+        type="button"
+        aria-label="Turn soundtrack on or off"
+        aria-pressed="false"
+      >
+        Soundtrack: Off
+      </button>
+    </div>
+    <div
       id="dashboard-fallback"
       role="status"
       aria-live="polite"
       aria-label="SafeNet Command Center"
-      style="min-height:100dvh;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;padding:max(28px, env(safe-area-inset-top)) 20px 28px;box-sizing:border-box"
+      style="min-height:100dvh;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;padding:28px 20px;box-sizing:border-box"
     >
       <div style="max-width:760px;margin:0 auto">
         <div style="margin-top:12px;font-size:30px;font-weight:700;letter-spacing:.08em">
@@ -70,15 +232,20 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
-        const toggle = document.getElementById("static-soundtrack-toggle");
+        const toggles = [
+          document.getElementById("startup-soundtrack-toggle"),
+          document.getElementById("static-soundtrack-toggle"),
+        ].filter((button) => button instanceof HTMLButtonElement);
         const syncSoundtrack = () => {
-          if (toggle) {
-            toggle.textContent = !audio.muted && !audio.paused
+          toggles.forEach((toggle) => {
+            const isOn = !audio.muted && !audio.paused;
+            toggle.textContent = isOn
               ? "Soundtrack: On"
               : "Soundtrack: Off";
-          }
+            toggle.setAttribute("aria-pressed", String(isOn));
+          });
         };
-        toggle?.addEventListener("click", () => {
+        const toggleSoundtrack = () => {
           if (audio.muted || audio.paused) {
             audio.muted = false;
             void audio.play().then(() => {
@@ -94,7 +261,8 @@
             window.localStorage.setItem(mutedKey, "true");
             syncSoundtrack();
           }
-        });
+        };
+        toggles.forEach((toggle) => toggle.addEventListener("click", toggleSoundtrack));
         audio.addEventListener("play", syncSoundtrack);
         audio.addEventListener("pause", syncSoundtrack);
         audio.addEventListener("volumechange", syncSoundtrack);

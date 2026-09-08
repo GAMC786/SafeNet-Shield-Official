@@ -68,7 +68,7 @@
     background-attachment: fixed;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
-    padding-top: 0;
+    padding-top: env(safe-area-inset-top);
     font-weight: 400;
     letter-spacing: 0.01em;
   }
@@ -135,23 +135,6 @@
 }
 
 @layer utilities {
-  .app-shell {
-    height: 100dvh;
-    min-height: 100dvh;
-    overflow: hidden;
-    padding-top: env(safe-area-inset-top);
-    box-sizing: border-box;
-  }
-
-  .app-content-scroll {
-    overscroll-behavior-y: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .soundtrack-control {
-    right: max(0.75rem, env(safe-area-inset-right));
-  }
-
   .safe-area-inset {
     padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
   }

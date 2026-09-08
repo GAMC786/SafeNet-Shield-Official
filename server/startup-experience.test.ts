@@ -44,6 +44,13 @@ const serviceWorkerSource = readFileSync(
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
+  assert.match(indexHtml, /id="startup-loader"/);
+  assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
+  assert.match(indexHtml, /safenet-astronaut-loader-transparent\.png/);
+  assert.match(indexHtml, /startup-loader-dot/);
+  assert.match(indexHtml, /id="startup-soundtrack-toggle"/);
+  assert.match(indexHtml, /top: 50%/);
+  assert.match(indexHtml, /toggles = \[/);
   assert.match(indexHtml, /Command Center/);
   assert.match(indexHtml, /Loading protected network status/);
   assert.match(indexHtml, /Network/);
@@ -52,12 +59,9 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="static-soundtrack-toggle"/);
   assert.match(indexHtml, /Soundtrack: On/);
   assert.match(indexHtml, /Soundtrack: Off/);
-  assert.doesNotMatch(indexHtml, /SafeNet Shield/);
-  assert.doesNotMatch(indexHtml, /safenet-astronaut-loader|safenet-loader|@keyframes/i);
-  assert.doesNotMatch(indexHtml, /startup-loader|boot-surface|Connecting to SafeNet|Loading secure server/i);
-  assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
-  assert.doesNotMatch(mainSource, /StartupLoader|startupLoader/i);
-  assert.doesNotMatch(androidMainActivity, /StartupLoader|startup_loader/i);
+  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
+  assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
+  assert.doesNotMatch(indexHtml, /boot-surface|Loading secure server/i);
 });
 
 test("packaged startup mounts immediately without waiting for Clerk configuration", () => {
@@ -102,13 +106,6 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
 test("Android 12+ launch surface does not show the Shield Logo", () => {
   assert.match(launchStyleSource, /windowSplashScreenAnimatedIcon/);
   assert.match(launchStyleSource, /splash_transparent/);
-});
-
-test("the app content stays below system bars while scrolling", () => {
-  assert.match(appSource, /className="app-shell[^"]*safe-area-inset/);
-  assert.match(appSource, /className="app-content-scroll[^"]*min-h-0[^"]*overflow-y-auto/);
-  assert.match(soundtrackSource, /className="soundtrack-control fixed top-1\/2/);
-  assert.match(soundtrackSource, /-translate-y-1\/2/);
 });
 
 test("updated web assets refresh without clearing app storage", () => {

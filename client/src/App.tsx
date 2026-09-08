@@ -111,7 +111,7 @@ const clerkAppearance = {
 
 function MainLayout() {
   return (
-    <div className="app-shell min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
+    <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
       <SoundtrackControl />
       <Navigation />
       
@@ -126,7 +126,7 @@ function MainLayout() {
            }} 
       />
 
-      <main className="app-content-scroll min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
+      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/command-center" component={Dashboard} />

@@ -40,6 +40,41 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
+const STARTUP_LOADER_DURATION_MS = 10_000;
+
+function startStartupLoader() {
+  const loader = document.getElementById("startup-loader");
+  const progressBar = document.getElementById("startup-loader-progress-bar");
+  const percentage = document.getElementById("startup-loader-percentage");
+  if (!loader || !progressBar || !percentage) {
+    return;
+  }
+
+  const startedAt = performance.now();
+  const updateProgress = () => {
+    const elapsed = performance.now() - startedAt;
+    const value = Math.min(
+      100,
+      Math.floor((elapsed / STARTUP_LOADER_DURATION_MS) * 100),
+    );
+    progressBar.style.width = `${value}%`;
+    percentage.textContent = `${value}%`;
+    loader.setAttribute("aria-valuenow", String(value));
+
+    if (value < 100) {
+      window.requestAnimationFrame(updateProgress);
+      return;
+    }
+
+    loader.classList.add("is-complete");
+    window.setTimeout(() => loader.remove(), 240);
+  };
+
+  window.requestAnimationFrame(updateProgress);
+}
+
+startStartupLoader();
+
 function hideDashboardFallback() {
   document.getElementById("dashboard-fallback")?.remove();
 }
