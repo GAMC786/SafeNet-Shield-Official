@@ -29,14 +29,14 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
-function hideBootSurface() {
-  document.getElementById("boot-surface")?.remove();
+function hideDashboardFallback() {
+  document.getElementById("dashboard-fallback")?.remove();
 }
 
 function renderStartupError(error: unknown) {
   const message =
     error instanceof Error ? error.message : "The secure app configuration could not be loaded.";
-  hideBootSurface();
+  hideDashboardFallback();
   root.render(
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#090b14] p-6 text-center text-foreground">
       <div className="max-w-md space-y-3">
@@ -95,9 +95,35 @@ async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
   }
 }
 
-void loadClerkConfig()
-  .then((clerkConfig) => {
-    hideBootSurface();
-    root.render(<App clerkConfig={clerkConfig} />);
-  })
-  .catch(renderStartupError);
+function isPackagedApp() {
+  return (
+    window.location.hostname === "localhost" &&
+    (window.location.protocol === "http:" || window.location.protocol === "https:")
+  );
+}
+
+function openDashboardOnLaunch() {
+  if (!isPackagedApp() || window.location.pathname === "/") {
+    return;
+  }
+  window.history.replaceState({}, "", "/");
+}
+
+openDashboardOnLaunch();
+
+const buildConfig = getBuildClerkConfig();
+if (buildConfig.publishableKey) {
+  hideDashboardFallback();
+  root.render(<App clerkConfig={buildConfig} />);
+} else if (isPackagedApp()) {
+  // Keep the static Command Center visible if a release was built without
+  // Clerk configuration. Never replace it with a blank or startup loader.
+  console.warn("SafeNet APK is missing its embedded Clerk publishable key.");
+} else {
+  void loadClerkConfig()
+    .then((clerkConfig) => {
+      hideDashboardFallback();
+      root.render(<App clerkConfig={clerkConfig} />);
+    })
+    .catch(renderStartupError);
+}

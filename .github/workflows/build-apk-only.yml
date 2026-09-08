@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MOBILE_API_URL: https://safe-net-shield-official.replit.app
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -128,7 +129,7 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
-          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='39' versionName='$APP_VERSION'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='41' versionName='$APP_VERSION'"
           if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
             echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
             exit 1

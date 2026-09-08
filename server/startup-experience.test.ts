@@ -20,24 +20,26 @@ const soundtrackSource = readFileSync(
 );
 
 test("the app mounts directly without a startup loader", () => {
-  assert.match(indexHtml, /id="boot-surface"/);
+  assert.match(indexHtml, /id="dashboard-fallback"/);
   assert.match(indexHtml, /Command Center/);
-  assert.doesNotMatch(indexHtml, /startup-loader|Connecting to SafeNet|Loading secure server/i);
+  assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
+  assert.doesNotMatch(indexHtml, /startup-loader|boot-surface|Connecting to SafeNet|Loading secure server/i);
   assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
   assert.doesNotMatch(mainSource, /StartupLoader|startupLoader/i);
   assert.doesNotMatch(androidMainActivity, /StartupLoader|startup_loader/i);
 });
 
-test("packaged startup cannot remain blank while Clerk configuration is unavailable", () => {
-  assert.match(mainSource, /AbortController/);
-  assert.match(mainSource, /12_000/);
-  assert.match(mainSource, /The SafeNet server did not respond within 12 seconds/);
-  assert.match(mainSource, /hideBootSurface/);
+test("packaged startup mounts immediately without waiting for Clerk configuration", () => {
+  assert.match(mainSource, /const buildConfig = getBuildClerkConfig\(\)/);
+  assert.match(mainSource, /root\.render\(<App clerkConfig=\{buildConfig\} \/>/);
+  assert.match(mainSource, /openDashboardOnLaunch/);
+  assert.match(mainSource, /else if \(isPackagedApp\(\)\)/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(indexHtml, /\bloop\b/);
+  assert.match(indexHtml, /\bautoplay\b/);
   assert.match(soundtrackSource, /audio\.loop\s*=\s*true/);
   assert.match(soundtrackSource, /addEventListener\("ended", handleAudioEnded\)/);
   assert.match(soundtrackSource, /audio\.currentTime\s*=\s*0/);

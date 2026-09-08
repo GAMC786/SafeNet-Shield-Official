@@ -38,10 +38,16 @@ export function getBuildClerkConfig(): ClerkRuntimeConfig {
     window.location.hostname,
     import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
   );
+  const apiOrigin =
+    typeof import.meta.env.VITE_API_URL === "string"
+      ? import.meta.env.VITE_API_URL.replace(/\/+$/, "")
+      : "";
 
   return {
     publishableKey: publishableKey || undefined,
-    proxyUrl: import.meta.env.VITE_CLERK_PROXY_URL || undefined,
+    proxyUrl:
+      import.meta.env.VITE_CLERK_PROXY_URL ||
+      (apiOrigin ? `${apiOrigin}/api/__clerk` : undefined),
   };
 }
 

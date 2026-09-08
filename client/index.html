@@ -20,24 +20,44 @@
     <audio
       id="safenet-soundtrack-audio"
       loop
+      autoplay
       preload="auto"
       playsinline
       aria-hidden="true"
       src="https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav"
     ></audio>
     <div
-      id="boot-surface"
-      role="status"
-      aria-live="polite"
-      style="display:flex;min-height:100dvh;align-items:center;justify-content:center;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;text-align:center"
+      id="dashboard-fallback"
+      aria-label="SafeNet Command Center"
+      style="min-height:100dvh;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;padding:28px 20px;box-sizing:border-box"
     >
-      <div>
+      <div style="max-width:760px;margin:0 auto">
         <div style="font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#60a5fa">
           SafeNet Shield
         </div>
-        <div style="margin-top:12px;font-size:24px;font-weight:700;letter-spacing:.08em">
+        <div style="margin-top:12px;font-size:30px;font-weight:700;letter-spacing:.08em">
           Command Center
         </div>
+        <div style="margin-top:10px;color:#94a3b8;font-size:15px">
+          Protected network status
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:28px">
+          <div style="border:1px solid rgba(96,165,250,.25);border-radius:14px;padding:18px;background:rgba(30,41,59,.55)">
+            <div style="color:#60a5fa;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Network</div>
+            <strong style="display:block;margin-top:8px;font-size:20px">Protected</strong>
+          </div>
+          <div style="border:1px solid rgba(52,211,153,.25);border-radius:14px;padding:18px;background:rgba(30,41,59,.55)">
+            <div style="color:#6ee7b7;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Soundtrack</div>
+            <strong id="static-soundtrack-status" style="display:block;margin-top:8px;font-size:20px">Ready</strong>
+          </div>
+        </div>
+        <button
+          id="static-soundtrack-toggle"
+          type="button"
+          style="margin-top:20px;border:1px solid rgba(148,163,184,.35);border-radius:10px;background:rgba(15,23,42,.8);color:#e2e8f0;padding:11px 15px;font-size:14px"
+        >
+          Soundtrack
+        </button>
       </div>
     </div>
     <div id="root"></div>
@@ -50,6 +70,29 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
+        const status = document.getElementById("static-soundtrack-status");
+        const toggle = document.getElementById("static-soundtrack-toggle");
+        const syncStatus = () => {
+          if (status) status.textContent = audio.muted ? "Muted" : audio.paused ? "Ready" : "Playing";
+        };
+        toggle?.addEventListener("click", () => {
+          if (audio.paused || audio.muted) {
+            audio.muted = false;
+            void audio.play().then(syncStatus).catch(syncStatus);
+          } else {
+            audio.muted = true;
+            audio.pause();
+            syncStatus();
+          }
+        });
+        audio.addEventListener("play", syncStatus);
+        audio.addEventListener("pause", syncStatus);
+        audio.addEventListener("volumechange", syncStatus);
+        audio.addEventListener("ended", () => {
+          audio.currentTime = 0;
+          void audio.play().catch(() => undefined);
+        });
+        syncStatus();
 
         const stopAudioForPageClose = () => {
           audio.pause();
