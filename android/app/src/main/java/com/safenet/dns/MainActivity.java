@@ -2,8 +2,13 @@ package com.safenet.dns;
 
 import android.os.Bundle;
 import android.graphics.Color;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.Window;
+import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
@@ -17,6 +22,10 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
+    private final Handler startupHandler = new Handler(Looper.getMainLooper());
+    private NativeStartupFallbackView startupFallback;
+    private Runnable startupCheck;
+    private long startupDeadline;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +46,7 @@ public class MainActivity extends BridgeActivity {
         // Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
+        installNativeFallback(webView);
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -64,8 +74,67 @@ public class MainActivity extends BridgeActivity {
         insetsController.setAppearanceLightNavigationBars(false);
     }
 
+    private void installNativeFallback(WebView webView) {
+        if (!(webView.getParent() instanceof ViewGroup)) {
+            return;
+        }
+
+        ViewGroup container = (ViewGroup) webView.getParent();
+        startupFallback = new NativeStartupFallbackView(this);
+        startupFallback.setVisibility(View.GONE);
+        startupFallback.setElevation(100f);
+        startupFallback.setOnClickListener(view -> {
+            view.setVisibility(View.GONE);
+            webView.reload();
+            beginStartupCheck(webView);
+        });
+        container.addView(
+                startupFallback,
+                new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
+        beginStartupCheck(webView);
+    }
+
+    private void beginStartupCheck(WebView webView) {
+        if (startupCheck != null) {
+            startupHandler.removeCallbacks(startupCheck);
+        }
+        startupDeadline = SystemClock.uptimeMillis() + 4500L;
+        startupCheck = new Runnable() {
+            @Override
+            public void run() {
+                webView.evaluateJavascript(
+                        "(function(){return !!document.querySelector('#root > *') || !!document.querySelector('#dashboard-fallback');})()",
+                        value -> {
+                            boolean pagePainted = "true".equals(value);
+                            if (pagePainted) {
+                                if (startupFallback != null) {
+                                    startupFallback.setVisibility(View.GONE);
+                                }
+                                return;
+                            }
+
+                            if (SystemClock.uptimeMillis() >= startupDeadline && startupFallback != null) {
+                                Log.e(TAG, "WebView did not paint SafeNet content; showing native fallback");
+                                startupFallback.setVisibility(View.VISIBLE);
+                            }
+                            startupHandler.postDelayed(this, 1000L);
+                        }
+                );
+            }
+        };
+        startupHandler.postDelayed(startupCheck, 1000L);
+    }
+
     @Override
     public void onDestroy() {
+        if (startupCheck != null) {
+            startupHandler.removeCallbacks(startupCheck);
+        }
+        startupFallback = null;
         stopSoundtrack();
         super.onDestroy();
     }

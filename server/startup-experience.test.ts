@@ -11,6 +11,13 @@ const androidMainActivity = readFileSync(
   ),
   "utf8",
 );
+const nativeFallbackSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/NativeStartupFallbackView.java",
+  ),
+  "utf8",
+);
 const indexHtml = readFileSync(path.join(clientRoot, "index.html"), "utf8");
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
@@ -49,6 +56,15 @@ test("the navigation panel is mounted without the old header arrow control", () 
   assert.match(appSource, /<Navigation \/>/);
   assert.match(navigationSource, /navItems/);
   assert.doesNotMatch(headerSource, /ArrowLeft|Back to Command Center/);
+});
+
+test("Android has an error-only native fallback instead of a permanent dark screen", () => {
+  assert.match(mainSource, /dashboard-fallback/);
+  assert.match(androidMainActivity, /installNativeFallback/);
+  assert.match(androidMainActivity, /WebView did not paint SafeNet content/);
+  assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.VISIBLE\)/);
+  assert.match(nativeFallbackSource, /COMMAND CENTER/);
+  assert.doesNotMatch(nativeFallbackSource, /triangle|shield|loader/i);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
