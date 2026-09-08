@@ -88,12 +88,102 @@ test("uses the caller's context for version mismatch errors", () => {
 
 test("both release workflows consume the shared metadata contract", async () => {
   const { readFile } = await import("node:fs/promises");
-  const workflows = await Promise.all([
-    readFile(new URL(".github/workflows/build-apk-only.yml", repositoryRoot), "utf8"),
+  const [buildGradle, apkOnlyWorkflow, releaseWorkflow] = await Promise.all([
+    readFile(new URL("android/app/build.gradle", repositoryRoot), "utf8"),
+    readFile(
+      new URL(".github/workflows/build-apk-only.yml", repositoryRoot),
+      "utf8",
+    ),
     readFile(new URL(".github/workflows/build.yml", repositoryRoot), "utf8"),
   ]);
 
-  for (const workflow of workflows) {
+  const versionCode = buildGradle.match(
+    /^\s*versionCode\s+([0-9]+)\s*$/m,
+  )?.[1];
+  const versionName = buildGradle.match(
+    /^\s*versionName\s+"([^"]+)"\s*$/m,
+  )?.[1];
+  assert.ok(versionCode, "android/app/build.gradle must define versionCode");
+  assert.ok(versionName, "android/app/build.gradle must define versionName");
+
+  const validators = [
+    {
+      name: "APK-only workflow",
+      workflow: apkOnlyWorkflow,
+      block: apkOnlyWorkflow.match(
+        /      - name: Verify APK and manual PIN bundle\n(?<block>[\s\S]*?)(?=\n      - name:)/,
+      )?.groups?.block,
+      versionNameVariable: "APP_VERSION",
+      versionCodeVariable: "APP_VERSION_CODE",
+      pinCheck: /grep -R -q "Secure Access Required" android\/app\/src\/main\/assets\/public/,
+      instrumentationPackage: null,
+    },
+    {
+      name: "tagged release workflow",
+      workflow: releaseWorkflow,
+      block: releaseWorkflow.match(
+        /      - name: Verify Android release APKs\n(?<block>[\s\S]*?)(?=\n      - name:)/,
+      )?.groups?.block,
+      versionNameVariable: "ANDROID_VERSION_NAME",
+      versionCodeVariable: "ANDROID_VERSION_CODE",
+      pinCheck: /unzip -l "\$apk" \| grep -F "assets\/public\/"/,
+      instrumentationPackage: /package: name='com\.safenet\.dns\.test'/,
+    },
+  ];
+
+  for (const validator of validators) {
+    assert.ok(validator.block, `${validator.name} verifier block is missing`);
+    const block = validator.block;
+
+    assert.match(
+      validator.workflow,
+      /bash scripts\/resolve-android-release-metadata\.sh/,
+      `${validator.name} must resolve metadata with the shared Gradle resolver`,
+    );
+    assert.match(
+      validator.workflow,
+      new RegExp(
+        String.raw`steps\.[^.]+\.outputs\.(?:version|version_name)\b`,
+      ),
+      `${validator.name} must consume resolver outputs`,
+    );
+    assert.doesNotMatch(
+      block,
+      /versionCode='[0-9]+'/,
+      `${validator.name} must not hardcode an APK versionCode`,
+    );
+    assert.doesNotMatch(
+      block,
+      /versionName='[0-9]+\.[0-9]+\.[0-9]+'/,
+      `${validator.name} must not hardcode an APK versionName`,
+    );
+    assert.match(
+      block,
+      /apksigner.*verify --verbose "\$apk"/,
+      `${validator.name} must verify the signed application APK`,
+    );
+    assert.match(
+      block,
+      new RegExp(
+        String.raw`package: name='com\.safenet\.dns' versionCode='\$${validator.versionCodeVariable}' versionName='\$${validator.versionNameVariable}'`,
+      ),
+      `${validator.name} must verify app package, versionCode, and versionName`,
+    );
+    assert.match(
+      block,
+      validator.pinCheck,
+      `${validator.name} must verify bundled PIN UI assets`,
+    );
+    if (validator.instrumentationPackage) {
+      assert.match(
+        block,
+        validator.instrumentationPackage,
+        `${validator.name} must verify the instrumentation package`,
+      );
+    }
+  }
+
+  for (const workflow of [apkOnlyWorkflow, releaseWorkflow]) {
     assert.match(workflow, /bash scripts\/resolve-android-release-metadata\.sh/);
     assert.doesNotMatch(
       workflow,
