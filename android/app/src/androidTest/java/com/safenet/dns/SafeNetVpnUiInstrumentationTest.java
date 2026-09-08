@@ -605,6 +605,69 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Timed out waiting for WebView condition: " + expression);
     }
 
+    private JSONObject callVpn(String expression) throws Exception {
+        return callVpn(expression, false);
+    }
+
+    private JSONObject callVpn(String expression, boolean handlePermission) throws Exception {
+        CountDownLatch completed = new CountDownLatch(1);
+        String[] rawResult = new String[1];
+        TestResultBridge resultBridge = new TestResultBridge(rawResult, completed);
+        String script =
+            "(async function() {" +
+                "try { return JSON.stringify({ok:true,value:await (" + expression + ")}); }" +
+                "catch (error) { return JSON.stringify({ok:false,message:String(error.message||error)," +
+                    "code:error.code||''}); }" +
+            "})()" +
+            ".then(function(value) { window.SafeNetVpnUiTestBridge.resolve(value); })" +
+            ".catch(function(error) { window.SafeNetVpnUiTestBridge.resolve(" +
+                "JSON.stringify({ok:false,message:String(error.message||error),code:error.code||''})); })";
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView webView = ((MainActivity) activity).getBridge().getWebView();
+            webView.addJavascriptInterface(resultBridge, "SafeNetVpnUiTestBridge");
+            webView.evaluateJavascript(script, null);
+        });
+
+        try {
+            if (handlePermission && VpnService.prepare(context) != null) {
+                grantVpnPermissionDialog();
+            }
+            if (!completed.await(JS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for SafeNetVpn bridge call: " + expression);
+            }
+            if (rawResult[0] == null) {
+                throw new AssertionError("SafeNetVpn bridge returned no result");
+            }
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                ((MainActivity) activity).getBridge().getWebView()
+                    .removeJavascriptInterface("SafeNetVpnUiTestBridge")
+            );
+        }
+        return new JSONObject(rawResult[0]);
+    }
+
+    private JSONObject startVpnWithPermission(String type, String primary, String secondary)
+        throws Exception {
+        JSONObject result = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.start(" +
+                "{\"type\":\"" + jsQuote(type) + "\",\"primaryAddress\":\"" +
+                jsQuote(primary) + "\",\"secondaryAddress\":\"" + jsQuote(secondary) + "\"})",
+            true
+        );
+        assertTrue(
+            "VPN start failed code=" + result.optString("code") +
+                " message=" + result.optString("message"),
+            result.optBoolean("ok", false)
+        );
+        return result;
+    }
+
+    private String jsQuote(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private JSONObject callWebView(String expression) throws Exception {
         CountDownLatch completed = new CountDownLatch(1);
         String[] rawResult = new String[1];

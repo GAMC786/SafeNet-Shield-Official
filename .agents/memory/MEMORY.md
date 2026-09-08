@@ -40,3 +40,4 @@
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
 - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
+- [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
