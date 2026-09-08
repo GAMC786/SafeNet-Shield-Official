@@ -32,19 +32,15 @@ jobs:
         run: |
           set -euo pipefail
           package_version="$(node --input-type=module -e "import fs from 'node:fs'; process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
-          android_version_name="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
-          android_version_code="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*$/\1/p' android/app/build.gradle | head -n 1)"
-          if [[ -z "$package_version" || -z "$android_version_name" || -z "$android_version_code" ]]; then
-            echo 'Could not resolve the app version metadata from package.json and android/app/build.gradle.' >&2
+          if [[ -z "$package_version" ]]; then
+            echo 'Could not resolve the app version metadata from package.json.' >&2
             exit 1
           fi
-          if [[ "$package_version" != "$android_version_name" ]]; then
-            echo "App version mismatch: package.json=$package_version, android/app/build.gradle=$android_version_name" >&2
-            exit 1
-          fi
-          echo "version=$android_version_name" >> "$GITHUB_OUTPUT"
-          echo "version_code=$android_version_code" >> "$GITHUB_OUTPUT"
-          echo "Verified Android release version: $android_version_name (versionCode $android_version_code)"
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$package_version" \
+            --expected-label package.json \
+            --mismatch-prefix "App version mismatch" \
+            --output "$GITHUB_OUTPUT"
 
       - name: Install dependencies with bounded retry
         id: npm_ci

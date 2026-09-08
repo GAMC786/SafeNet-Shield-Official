@@ -2022,22 +2022,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          android_version_name="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
-          android_version_code="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*$/\1/p' android/app/build.gradle | head -n 1)"
           expected_version="${GITHUB_REF_NAME#v}"
-          if [[ -z "$android_version_name" || -z "$android_version_code" ]]; then
-            echo 'Could not resolve versionName and versionCode from android/app/build.gradle.' >&2
+          if [[ -z "$expected_version" ]]; then
+            echo 'Could not resolve the release version from GITHUB_REF_NAME.' >&2
             exit 1
           fi
-          if [[ "$expected_version" != "$android_version_name" ]]; then
-            echo "Release version mismatch: tag=$expected_version, android/app/build.gradle=$android_version_name" >&2
-            exit 1
-          fi
-          {
-            echo "version_name=$android_version_name"
-            echo "version_code=$android_version_code"
-          } >> "$GITHUB_OUTPUT"
-          echo "Verified Android release metadata: versionName $android_version_name (versionCode $android_version_code)"
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$expected_version" \
+            --expected-label tag \
+            --mismatch-prefix "Release version mismatch" \
+            --output "$GITHUB_OUTPUT"
 
       - name: Verify Android release APKs
         shell: bash
