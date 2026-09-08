@@ -34,6 +34,7 @@
 - [Stripe startup coordination](stripe-startup-coordination.md) — autoscaled startup mutations share one database lock and backfill uses an explicit object selection.
 - [Published Stripe connector auth](published-stripe-connector-auth.md) — production must prefer the deployment token when both repl and deployment connector tokens are present.
 - [Reference soundtrack and Rive loading](reference-soundtrack-rive-loading.md) — the reference audio can stream after a user gesture, but its mainstage Rive file lacks cross-origin headers.
+- [ISP profile provider fallback](isp-profile-provider-fallback.md) — public-IP ISP metadata services can rate-limit; use a browser-safe fallback chain and label results as inferred.
 - [Replit analytics cold-load delivery](replit-analytics-cold-load.md) — async tracker injection can drop return events fired during the first Settings mount; queue them before relying on published analytics.
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
