@@ -28,3 +28,17 @@ mtime_ms = 1788569731258
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/37c569c2-96cd-4796-ab13-acc644b29db9/11b61750-e938-4cf9-8ea5-1425503d75e8"
 storage_version_token = "1788569786902005"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "vNUfDCNBEz1SxaHKH3FOA"
+uri = "file://artifacts/v1.0.46/app-release.apk"
+type = "unspecified"
+title = "SafeNet Android v1.0.46 APK"
+description = "Signed release APK built from v1.0.46. Local checks and hosted Android smoke passed; the separate dedicated-runner startup gate remains queued."
+logical_id = "3854e950-f472-445b-aea2-e14d8a8a18a6"
+content_hash = "sha256:c178a09448103854186799fc4f874e645020e5eb593df7a2e07dce5e31814e40"
+size = 4268112
+mtime_ms = 1788837100668
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/3854e950-f472-445b-aea2-e14d8a8a18a6/30fb7a38-e868-4264-9e9f-6e60f01fbf61"
+storage_version_token = "1788837107157443"
+content_type = "application/octet-stream"
