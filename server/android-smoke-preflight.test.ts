@@ -38,6 +38,22 @@ const androidAppGradle = readFileSync(
   path.resolve(process.cwd(), "android/app/build.gradle"),
   "utf8",
 );
+const androidReleaseMetadata = {
+  versionCode: androidAppGradle.match(
+    /^\s*versionCode\s+([0-9]+)\s*$/m,
+  )?.[1],
+  versionName: androidAppGradle.match(
+    /^\s*versionName\s+"([^"]+)"\s*$/m,
+  )?.[1],
+};
+assert.ok(
+  androidReleaseMetadata.versionCode,
+  "android/app/build.gradle must define versionCode",
+);
+assert.ok(
+  androidReleaseMetadata.versionName,
+  "android/app/build.gradle must define versionName",
+);
 
 function getStepBlock(stepName: string) {
   const stepStart = workflow.indexOf(`      - name: ${stepName}`);
@@ -451,6 +467,10 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   );
   assert.match(
     releaseVerifyStep,
+    /env:\n\s+ANDROID_VERSION_NAME: \$\{\{ steps\.android_release_metadata\.outputs\.version_name \}\}\n\s+ANDROID_VERSION_CODE: \$\{\{ steps\.android_release_metadata\.outputs\.version_code \}\}/,
+  );
+  assert.match(
+    releaseVerifyStep,
     /package: name='com\.safenet\.dns\.test'/,
   );
   assert.match(releaseVerifyStep, /metadata mismatch\. Expected badging/);
@@ -556,8 +576,8 @@ function runReleaseApkVerificationFixture({
         ...process.env,
         ANDROID_HOME: fixture.sdkRoot,
         ANDROID_SDK_ROOT: "",
-        ANDROID_VERSION_CODE: "52",
-        ANDROID_VERSION_NAME: "1.0.60",
+        ANDROID_VERSION_CODE: androidReleaseMetadata.versionCode,
+        ANDROID_VERSION_NAME: androidReleaseMetadata.versionName,
         MOCK_APP_BADGING: fixture.appBadging,
         MOCK_TEST_BADGING: fixture.testBadging,
         PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -582,8 +602,7 @@ test("release APK verification validates app and instrumentation badging indepen
   );
 
   const result = runReleaseApkVerificationFixture({
-    appBadging:
-       "package: name='com.safenet.dns' versionCode='52' versionName='1.0.60'",
+    appBadging: `package: name='com.safenet.dns' versionCode='${androidReleaseMetadata.versionCode}' versionName='${androidReleaseMetadata.versionName}'`,
     testBadging: [
       "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
@@ -596,8 +615,7 @@ test("release APK verification validates app and instrumentation badging indepen
 
 test("release APK verification clearly rejects instrumentation metadata drift", () => {
   const wrongPackage = runReleaseApkVerificationFixture({
-    appBadging:
-       "package: name='com.safenet.dns' versionCode='52' versionName='1.0.60'",
+    appBadging: `package: name='com.safenet.dns' versionCode='${androidReleaseMetadata.versionCode}' versionName='${androidReleaseMetadata.versionName}'`,
     testBadging:
       "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",
