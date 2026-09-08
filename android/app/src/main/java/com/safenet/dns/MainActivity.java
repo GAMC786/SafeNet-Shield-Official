@@ -81,9 +81,7 @@ public class MainActivity extends BridgeActivity {
 
         ViewGroup container = (ViewGroup) webView.getParent();
         startupFallback = new NativeStartupFallbackView(this);
-        // Keep the native artwork visible from the first frame. It is covered
-        // by the WebView only after the WebView proves it can paint content.
-        startupFallback.setVisibility(View.VISIBLE);
+        startupFallback.setVisibility(View.GONE);
         startupFallback.setElevation(100f);
         startupFallback.setOnClickListener(view -> {
             webView.reload();

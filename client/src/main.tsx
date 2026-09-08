@@ -117,7 +117,7 @@ if (buildConfig.publishableKey) {
   root.render(<App clerkConfig={buildConfig} />);
 } else if (isPackagedApp()) {
   // Keep the static Command Center visible if a release was built without
-  // Clerk configuration. Never replace it with a blank or startup loader.
+  // Clerk configuration. Never replace it with a blank surface.
   console.warn("SafeNet APK is missing its embedded Clerk publishable key.");
 } else {
   void loadClerkConfig()

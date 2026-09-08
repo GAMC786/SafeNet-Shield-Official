@@ -34,14 +34,14 @@ const soundtrackSource = readFileSync(
   "utf8",
 );
 
-test("the app mounts directly with the requested artwork loader fallback", () => {
+test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
-  assert.match(indexHtml, /safenet-astronaut-loader\.png/);
-  assert.match(indexHtml, /safenet-loader-dot/);
-  assert.match(indexHtml, /border-radius:\s*50%/);
-  assert.match(indexHtml, /#ef4444/);
-  assert.match(indexHtml, /max-height:\s*min/);
+  assert.match(indexHtml, /Command Center/);
+  assert.match(indexHtml, /Loading protected network status/);
+  assert.match(indexHtml, /Network/);
+  assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
+  assert.doesNotMatch(indexHtml, /safenet-astronaut-loader|safenet-loader|@keyframes/i);
   assert.doesNotMatch(indexHtml, /startup-loader|boot-surface|Connecting to SafeNet|Loading secure server/i);
   assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
   assert.doesNotMatch(mainSource, /StartupLoader|startupLoader/i);
@@ -62,16 +62,16 @@ test("the navigation panel is mounted without the old header arrow control", () 
   assert.doesNotMatch(headerSource, /ArrowLeft|Back to Command Center/);
 });
 
-test("Android shows the native loader immediately instead of a permanent dark screen", () => {
+test("Android keeps a Dashboard recovery state instead of a permanent dark screen", () => {
   assert.match(mainSource, /dashboard-fallback/);
   assert.match(androidMainActivity, /installNativeFallback/);
-  assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.VISIBLE\)/);
+  assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.GONE\)/);
   assert.match(androidMainActivity, /startupHandler\.post\(startupCheck\)/);
   assert.match(androidMainActivity, /WebView did not paint SafeNet content/);
-  assert.match(nativeFallbackSource, /public\/safenet-astronaut-loader\.png/);
-  assert.match(nativeFallbackSource, /drawTriangleDots/);
-  assert.match(nativeFallbackSource, /drawCircle/);
-  assert.match(nativeFallbackSource, /Color\.argb\(alpha, 239, 68, 68\)/);
+  assert.match(nativeFallbackSource, /COMMAND CENTER/);
+  assert.match(nativeFallbackSource, /drawCard/);
+  assert.match(nativeFallbackSource, /Tap anywhere to retry/);
+  assert.doesNotMatch(nativeFallbackSource, /safenet-astronaut|drawCircle|drawTriangleDots|ValueAnimator/i);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
