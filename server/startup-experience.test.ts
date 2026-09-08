@@ -33,6 +33,10 @@ const soundtrackSource = readFileSync(
   path.join(clientRoot, "src/components/SoundtrackControl.tsx"),
   "utf8",
 );
+const speedTestSource = readFileSync(
+  path.join(clientRoot, "src/pages/SpeedTest.tsx"),
+  "utf8",
+);
 const launchStyleSource = readFileSync(
   path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
   "utf8",
@@ -109,6 +113,19 @@ test("the soundtrack control is a centered right-side On/Off toggle", () => {
   assert.match(soundtrackSource, /Turn soundtrack off/);
   assert.match(soundtrackSource, /Turn soundtrack on/);
   assert.match(appSource, /<SoundtrackControl \/>/);
+});
+
+test("Measure Your Network identifies the ISP and reports measured packet loss", () => {
+  assert.match(speedTestSource, /https:\/\/ipapi\.co\/json\//);
+  assert.match(speedTestSource, /https:\/\/ipinfo\.io\/json/);
+  assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
+  assert.match(speedTestSource, /ISP-based connection profile/);
+  assert.match(speedTestSource, /public IP/);
+  assert.match(speedTestSource, /button-refresh-network-profile/);
+  assert.match(speedTestSource, /packetLoss: Math\.round\(\(failedLatencySamples \/ \(sample \+ 1\)\) \* 100\)/);
+  assert.doesNotMatch(speedTestSource, /setResults\(\(current\) => \(\{ \.\.\.current, packetLoss: 0 \}\)\)/);
+  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=4000000/);
+  assert.match(speedTestSource, /\/api\/speedtest\/upload/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {

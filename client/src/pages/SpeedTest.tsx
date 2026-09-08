@@ -3,10 +3,14 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Building2,
   CheckCircle2,
   Clock3,
   Download,
   Gauge,
+  Globe2,
+  Loader2,
+  MapPin,
   Pause,
   Play,
   RotateCcw,
@@ -26,6 +30,40 @@ interface SpeedResults {
   download: number | null;
   upload: number | null;
   packetLoss: number | null;
+}
+
+interface NetworkProfile {
+  isp: string | null;
+  publicIp: string | null;
+  location: string | null;
+  asn: string | null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseNetworkProfile(data: Record<string, unknown>): NetworkProfile {
+  const connection =
+    typeof data.connection === "object" && data.connection !== null
+      ? (data.connection as Record<string, unknown>)
+      : {};
+  const isp = stringValue(data.org) ?? stringValue(data.isp) ?? stringValue(connection.org);
+  const publicIp = stringValue(data.ip);
+  const location = [
+    stringValue(data.city),
+    stringValue(data.region),
+    stringValue(data.region_name),
+    stringValue(data.country_name) ?? stringValue(data.country),
+  ]
+    .filter((value): value is string => value !== null)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(", ") || null;
+  const asn = stringValue(data.asn) ?? stringValue(connection.asn);
+  if (!isp && !publicIp) {
+    throw new Error("The ISP profile did not return usable network information.");
+  }
+  return { isp, publicIp, location, asn };
 }
 
 const initialResults: SpeedResults = {
@@ -136,6 +174,10 @@ export default function SpeedTest() {
   const [results, setResults] = useState<SpeedResults>(initialResults);
   const [wavePoints, setWavePoints] = useState(initialWavePoints);
   const [error, setError] = useState<string | null>(null);
+  const [networkProfile, setNetworkProfile] = useState<NetworkProfile | null>(null);
+  const [networkProfileError, setNetworkProfileError] = useState<string | null>(null);
+  const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
+  const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
   const pausedRef = useRef(false);
   const runIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
@@ -149,6 +191,57 @@ export default function SpeedTest() {
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 7000);
+
+    const loadNetworkProfile = async () => {
+      setIsLoadingNetworkProfile(true);
+      setNetworkProfileError(null);
+      try {
+        const providers = [
+          "https://ipapi.co/json/",
+          "https://ipinfo.io/json",
+          "https://ipwho.is/",
+        ];
+        let lastError: Error | null = null;
+        for (const provider of providers) {
+          try {
+            const response = await fetch(provider, {
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            if (!response.ok) {
+              throw new Error(`ISP profile provider returned HTTP ${response.status}.`);
+            }
+            const profile = parseNetworkProfile((await response.json()) as Record<string, unknown>);
+            setNetworkProfile(profile);
+            return;
+          } catch (caughtError) {
+            if (isAbortError(caughtError)) throw caughtError;
+            lastError = caughtError instanceof Error ? caughtError : new Error("ISP profile request failed.");
+          }
+        }
+        throw lastError ?? new Error("No ISP profile provider returned usable network information.");
+      } catch (caughtError) {
+        if (isAbortError(caughtError)) return;
+        setNetworkProfileError(
+          caughtError instanceof Error ? caughtError.message : "The ISP profile could not be loaded.",
+        );
+        setNetworkProfile(null);
+      } finally {
+        window.clearTimeout(timeoutId);
+        setIsLoadingNetworkProfile(false);
+      }
+    };
+
+    void loadNetworkProfile();
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [networkProfileReloadKey]);
 
   const runSpeedTest = useCallback(async () => {
     const runId = ++runIdRef.current;
@@ -164,20 +257,34 @@ export default function SpeedTest() {
 
     try {
       const latencySamples: number[] = [];
+      let failedLatencySamples = 0;
       for (let sample = 0; sample < 5; sample += 1) {
         await waitIfPaused(runId);
-        const startedAt = performance.now();
-        const response = await fetch(`/api/speedtest/ping?sample=${sample}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("The latency check could not be completed.");
-        const latency = Math.max(1, Math.round(performance.now() - startedAt));
-        latencySamples.push(latency);
-        const average = Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length);
-        setResults((current) => ({ ...current, latency: average }));
-        appendWavePoint(0.35 + Math.min(latency / 180, 0.45));
+        try {
+          const startedAt = performance.now();
+          const response = await fetch(`/api/speedtest/ping?sample=${sample}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error("The latency check could not be completed.");
+          const latency = Math.max(1, Math.round(performance.now() - startedAt));
+          latencySamples.push(latency);
+          const average = Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length);
+          setResults((current) => ({ ...current, latency: average }));
+          appendWavePoint(0.35 + Math.min(latency / 180, 0.45));
+        } catch (caughtError) {
+          if (isAbortError(caughtError) || runId !== runIdRef.current) throw caughtError;
+          failedLatencySamples += 1;
+          appendWavePoint(0.12);
+        }
+        setResults((current) => ({
+          ...current,
+          packetLoss: Math.round((failedLatencySamples / (sample + 1)) * 100),
+        }));
         setProgress(Math.min(32, phaseProgress.latency + sample * 4));
+      }
+      if (latencySamples.length === 0) {
+        throw new Error("No latency samples were received from the SafeNet network.");
       }
 
       await waitIfPaused(runId);
@@ -227,7 +334,6 @@ export default function SpeedTest() {
       setProgress(94);
 
       await waitIfPaused(runId);
-      setResults((current) => ({ ...current, packetLoss: 0 }));
       setProgress(100);
       setPhase("complete");
       setIsRunning(false);
@@ -333,12 +439,12 @@ export default function SpeedTest() {
                 <BarChart3 className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Connection telemetry</p>
+               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">ISP-based connection telemetry</p>
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
             <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-              Run a quick local diagnostic for response time and throughput. The chart updates as each measurement completes.
+               Measure the connection from this device to SafeNet and identify the ISP associated with your public IP. The chart updates as each measurement completes.
             </p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
@@ -397,6 +503,89 @@ export default function SpeedTest() {
         </div>
       </CyberCard>
 
+      <CyberCard className="border-sky-400/20 bg-gradient-to-r from-sky-400/5 to-transparent">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-sky-400/15 p-3">
+              <Globe2 className="h-5 w-5 text-sky-300" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Network identity</p>
+              <h2 className="font-display text-lg font-bold text-white">ISP-based connection profile</h2>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                ISP details are inferred from this device&apos;s public IP. They are used for display only and are not stored.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setNetworkProfileReloadKey((current) => current + 1)}
+            disabled={isLoadingNetworkProfile}
+            data-testid="button-refresh-network-profile"
+          >
+            <RotateCcw className={cn("mr-2 h-4 w-4", isLoadingNetworkProfile && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+        {isLoadingNetworkProfile ? (
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-sky-300" />
+            Detecting your ISP and public network…
+          </div>
+        ) : networkProfileError ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-rose-300" role="alert">
+            <AlertTriangle className="h-4 w-4" />
+            <span>{networkProfileError}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-sky-300 hover:text-sky-200"
+              onClick={() => setNetworkProfileReloadKey((current) => current + 1)}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : networkProfile ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Building2 className="h-3.5 w-3.5 text-sky-300" />
+                ISP
+              </div>
+              <p className="mt-2 truncate font-mono text-sm font-bold text-white" title={networkProfile.isp ?? "Not provided"}>
+                {networkProfile.isp ?? "Not provided"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Globe2 className="h-3.5 w-3.5 text-sky-300" />
+                Public IP
+              </div>
+              <p className="mt-2 font-mono text-sm font-bold text-white">{networkProfile.publicIp ?? "Not provided"}</p>
+            </div>
+            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 text-sky-300" />
+                Location
+              </div>
+              <p className="mt-2 truncate font-mono text-sm font-bold text-white" title={networkProfile.location ?? "Not provided"}>
+                {networkProfile.location ?? "Not provided"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Wifi className="h-3.5 w-3.5 text-sky-300" />
+                Network ID
+              </div>
+              <p className="mt-2 font-mono text-sm font-bold text-white">{networkProfile.asn ?? "Not provided"}</p>
+            </div>
+          </div>
+        ) : null}
+      </CyberCard>
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <CyberCard className="min-w-0 p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -436,7 +625,7 @@ export default function SpeedTest() {
           <p className="font-mono text-2xl font-bold text-primary">
             {results.packetLoss === null ? "—" : `${100 - results.packetLoss}%`}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">Packet delivery</p>
+           <p className="mt-1 text-xs text-muted-foreground">Packet delivery</p>
         </CyberCard>
       </div>
 
@@ -454,7 +643,7 @@ export default function SpeedTest() {
             <p className="mt-1 font-mono text-sm font-bold capitalize text-primary">{phase}</p>
           </div>
           <div className="rounded-lg border border-border/50 bg-background/30 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Packet loss</p>
+             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ping packet loss</p>
             <p className="mt-1 font-mono text-sm font-bold text-primary">
               {results.packetLoss === null ? "Pending" : `${results.packetLoss}%`}
             </p>
