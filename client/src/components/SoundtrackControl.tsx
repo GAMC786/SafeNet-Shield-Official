@@ -7,9 +7,9 @@ const REFERENCE_SOUNDTRACK_URL =
 const AUDIO_ELEMENT_ID = "safenet-startup-audio";
 const MUTED_STORAGE_KEY = "safenet-soundtrack-muted";
 /**
- * Try to start the complete loop as soon as the app shell mounts. Android's
- * WebView allows that startup playback; browsers may reject it, so the
- * control turns into an explicit tap-to-enable action instead.
+ * Start the complete loop when the authenticated app shell mounts after the
+ * startup loader. Android's WebView allows that playback; browsers may reject
+ * it, so the control turns into an explicit tap-to-enable action instead.
  *
  * The soundtrack remains referenced from its public source URL rather than
  * copied into this project. The Rive companion uses Rive's CORS-enabled

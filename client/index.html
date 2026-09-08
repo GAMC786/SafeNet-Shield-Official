@@ -19,7 +19,6 @@
   <body style="margin: 0; background: #090b14;">
     <audio
       id="safenet-startup-audio"
-      autoplay
       loop
       preload="auto"
       playsinline
@@ -47,14 +46,6 @@
             </div>
             <div style="margin-top: 8px; font-size: 14px; color: #cbd5e1;">Loading secure server settings…</div>
           </div>
-          <button
-            id="safenet-startup-sound-toggle"
-            type="button"
-            aria-pressed="false"
-            style="border: 1px solid rgba(239,68,68,.35); border-radius: 999px; background: rgba(9,11,20,.72); color: #fecaca; cursor: pointer; padding: 9px 16px; font: 600 13px 'Rajdhani', Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase;"
-          >
-            Soundtrack: On
-          </button>
         </div>
       </div>
     </div>
@@ -84,8 +75,7 @@
     <script>
       (() => {
         const audio = document.getElementById("safenet-startup-audio");
-        const toggle = document.getElementById("safenet-startup-sound-toggle");
-        if (!audio || !toggle) return;
+        if (!(audio instanceof HTMLAudioElement)) return;
 
         const mutedKey = "safenet-soundtrack-muted";
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
@@ -97,41 +87,8 @@
           audio.currentTime = 0;
         };
 
-        const updateLabel = (needsGesture = false) => {
-          const muted = audio.muted || audio.paused;
-          toggle.textContent = needsGesture
-            ? "Tap to enable soundtrack"
-            : muted
-              ? "Soundtrack: Off"
-              : "Soundtrack: On";
-          toggle.setAttribute("aria-pressed", String(!muted));
-        };
-
-        toggle.addEventListener("click", () => {
-          if (audio.paused || audio.muted) {
-            audio.muted = false;
-            audio.play()
-              .then(() => {
-                window.localStorage.setItem(mutedKey, "false");
-                updateLabel();
-              })
-              .catch(() => updateLabel(true));
-          } else {
-            audio.pause();
-            audio.muted = true;
-            window.localStorage.setItem(mutedKey, "true");
-            updateLabel();
-          }
-        });
-
-        audio.addEventListener("play", () => updateLabel());
-        audio.addEventListener("pause", () => updateLabel());
         window.addEventListener("pagehide", stopAudioForPageClose);
         window.addEventListener("beforeunload", stopAudioForPageClose);
-        if (!savedMuted) {
-          audio.play().catch(() => updateLabel(true));
-        }
-        updateLabel();
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
