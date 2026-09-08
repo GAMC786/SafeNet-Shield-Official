@@ -42,3 +42,17 @@ mtime_ms = 1788837100668
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/3854e950-f472-445b-aea2-e14d8a8a18a6/30fb7a38-e868-4264-9e9f-6e60f01fbf61"
 storage_version_token = "1788837107157443"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "HpfXQcIHoYLpzJTGI85rR"
+uri = "file://artifacts/v1.0.47/app-release.apk"
+type = "unspecified"
+title = "SafeNet Android v1.0.47 APK"
+description = "Signed APK with the immediate Android boot surface and bounded Clerk startup timeout. Local checks and hosted Android smoke validation passed."
+logical_id = "096e9d79-6a87-4896-84db-5a424e406ffd"
+content_hash = "sha256:470039a284c3c96a2f857ceb79b32d311dc4ada784ad966113ea717f4e892c9d"
+size = 4268472
+mtime_ms = 1788839746679
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/096e9d79-6a87-4896-84db-5a424e406ffd/e5cc3bb5-155b-4ff1-973d-6c2ff3a9d5a8"
+storage_version_token = "1788839755656525"
+content_type = "application/octet-stream"
