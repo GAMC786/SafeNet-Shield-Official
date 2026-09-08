@@ -83,6 +83,7 @@ const phaseProgress: Record<TestPhase, number> = {
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
+const THROUGHPUT_TEST_BYTES = 4_000_000;
 
 function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
@@ -291,10 +292,13 @@ export default function SpeedTest() {
       setPhase("download");
       setProgress(phaseProgress.download);
       const downloadStartedAt = performance.now();
-      const downloadResponse = await fetch("/api/speedtest/download?size=4000000", {
+      const downloadResponse = await fetch(
+        `/api/speedtest/download?size=${THROUGHPUT_TEST_BYTES}`,
+        {
         cache: "no-store",
         signal: controller.signal,
-      });
+        },
+      );
       if (!downloadResponse.ok || !downloadResponse.body) {
         throw new Error("The download check could not be completed.");
       }
@@ -311,13 +315,20 @@ export default function SpeedTest() {
           setResults((current) => ({ ...current, download: speed }));
           appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
         }
-        setProgress(Math.min(68, 32 + (downloadedBytes / 4_000_000) * 36));
+         setProgress(
+           Math.min(68, 32 + (downloadedBytes / THROUGHPUT_TEST_BYTES) * 36),
+         );
+      }
+      if (downloadedBytes !== THROUGHPUT_TEST_BYTES) {
+        throw new Error(
+          `The download check received ${downloadedBytes} of ${THROUGHPUT_TEST_BYTES} expected bytes.`,
+        );
       }
 
       await waitIfPaused(runId);
       setPhase("upload");
       setProgress(phaseProgress.upload);
-      const uploadPayload = new Uint8Array(1_500_000);
+      const uploadPayload = new Uint8Array(THROUGHPUT_TEST_BYTES);
       uploadPayload.fill(83);
       const uploadStartedAt = performance.now();
       const uploadResponse = await fetch("/api/speedtest/upload", {
@@ -327,6 +338,14 @@ export default function SpeedTest() {
         signal: controller.signal,
       });
       if (!uploadResponse.ok) throw new Error("The upload check could not be completed.");
+      const uploadResult = (await uploadResponse.json()) as {
+        bytesReceived?: unknown;
+      };
+      if (uploadResult.bytesReceived !== uploadPayload.byteLength) {
+        throw new Error(
+          `The upload check received ${String(uploadResult.bytesReceived)} of ${uploadPayload.byteLength} expected bytes.`,
+        );
+      }
       const uploadElapsed = performance.now() - uploadStartedAt;
       const uploadSpeed = formatMbps(uploadPayload.byteLength, uploadElapsed);
       setResults((current) => ({ ...current, upload: uploadSpeed }));
