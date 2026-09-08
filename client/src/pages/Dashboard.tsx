@@ -4,11 +4,13 @@ import { useDnsServers } from "@/hooks/use-dns";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
+import { EulaDialog } from "@/components/EulaDialog";
+import { Button } from "@/components/ui/button";
 import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export default function Dashboard() {
   const authStatus = useAuthStatus();
@@ -19,6 +21,7 @@ export default function Dashboard() {
   const { data: logs } = logsQuery;
   const { data: dnsServers } = useDnsServers(canReadProtectedData);
   const vpn = useSafeNetVpn();
+  const [eulaOpen, setEulaOpen] = useState(false);
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -49,6 +52,15 @@ export default function Dashboard() {
     });
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
+  const vpnCardState = !vpn.supported
+    ? "unsupported"
+    : vpn.status === null
+      ? "checking"
+      : vpn.status.running
+        ? "running"
+        : vpn.status.error
+          ? "error"
+          : "inactive";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -133,7 +145,11 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex flex-col justify-center items-center text-center space-y-4">
+        <CyberCard
+          className="flex flex-col justify-center items-center text-center space-y-4"
+          data-testid="dashboard-vpn-card"
+          data-vpn-state={vpnCardState}
+        >
           <div
             className={`w-16 h-16 rounded-full flex items-center justify-center border relative ${
               vpn.status?.running
@@ -149,7 +165,7 @@ export default function Dashboard() {
           </div>
           <div>
             <h3 className="text-lg font-bold text-white">DNS Protection VPN</h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
               {!vpn.supported
                 ? "Available in the SafeNet Android APK"
                 : vpn.status === null
@@ -159,8 +175,30 @@ export default function Dashboard() {
                     : vpn.status.error || "Protection is inactive · Enable in Settings"}
             </p>
           </div>
+          {vpn.supported && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEulaOpen(true)}
+            >
+              View DNS VPN EULA
+            </Button>
+          )}
         </CyberCard>
       </div>
+
+      {vpn.supported && (
+        <EulaDialog
+          open={eulaOpen}
+          onOpenChange={setEulaOpen}
+          onAccept={async () => {
+            await vpn.acceptEula();
+            setEulaOpen(false);
+          }}
+          isAccepting={vpn.isBusy}
+        />
+      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">
