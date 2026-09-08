@@ -157,6 +157,60 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
+        waitForWebView(dashboardCardExpression("card !== null"));
+        waitForWebView(
+            dashboardCardExpression(
+                "['checking', 'inactive', 'error'].includes(card.getAttribute('data-vpn-state'))"
+            )
+        );
+
+        clickDashboardEula();
+        clickEulaAgreement();
+        clickEulaAccept();
+        waitForWebView("!Boolean(document.querySelector('[role=\"dialog\"]'))");
+        JSONObject started = startVpnWithPermission("plain", "1.1.1.1", "8.8.8.8");
+        assertTrue(
+            "The Dashboard lifecycle check could not start the native VPN",
+            started.getBoolean("ok")
+        );
+        waitForVpnState(true);
+        waitForWebView(dashboardCardExpression(
+            "'running' === card.getAttribute('data-vpn-state')"
+        ));
+        JSONObject runningCard = callWebView(dashboardStatusExpression(
+            "state: card.getAttribute('data-vpn-state'), " +
+                "text: status?.textContent || ''"
+        ));
+        assertEquals("running", runningCard.getString("state"));
+        assertTrue(
+            "The Dashboard must report active DNS protection while the native VPN runs",
+            runningCard.getString("text").contains("DNS protection is running")
+        );
+
+        JSONObject stopped = callVpn("window.Capacitor.Plugins.SafeNetVpn.stop()");
+        assertTrue("The native VPN stop call failed", stopped.getBoolean("ok"));
+        waitForVpnState(false);
+        waitForWebView(dashboardCardExpression(
+            "['inactive', 'error'].includes(card.getAttribute('data-vpn-state'))"
+        ));
+        JSONObject stoppedCard = callWebView(dashboardStatusExpression(
+            "state: card.getAttribute('data-vpn-state'), " +
+                "text: status?.textContent || ''"
+        ));
+        String stoppedText = stoppedCard.getString("text");
+        assertTrue(
+            "The Dashboard must report an inactive or error state after stopping the native VPN",
+            "inactive".equals(stoppedCard.getString("state")) ||
+                "error".equals(stoppedCard.getString("state"))
+        );
+        assertFalse(
+            "The Dashboard must not retain the running status after stopping the native VPN",
+            stoppedText.contains("DNS protection is running")
+        );
+    }
+
+    @Test
     public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
         openSettingsWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -382,6 +436,41 @@ public class SafeNetVpnUiInstrumentationTest {
                 "\"]');" +
             "return toggle !== null && (" + condition + ");" +
         "})()";
+    }
+
+    private String dashboardCardExpression(String condition) {
+        return "(() => {" +
+            "const card = document.querySelector('[data-testid=\"dashboard-vpn-card\"]');" +
+            "return " + condition + ";" +
+        "})()";
+    }
+
+    private String dashboardStatusExpression(String fields) {
+        return "(() => {" +
+            "const card = document.querySelector('[data-testid=\"dashboard-vpn-card\"]');" +
+            "const status = card?.querySelector('[data-testid=\"dashboard-vpn-status\"]');" +
+            "return {" + fields + "};" +
+        "})()";
+    }
+
+    private void clickDashboardEula() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const button = Array.from(document.querySelectorAll('button')).find((item) => " +
+                    "item.textContent.includes('View DNS VPN EULA'));" +
+                "if (!button) return false;" +
+                "button.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue(
+            "The Dashboard must expose the shared DNS VPN EULA action",
+            result.getBoolean("ok") && result.getBoolean("value")
+        );
+        waitForWebView(
+            "Boolean(document.querySelector('[role=\"dialog\"]')?.textContent.includes(" +
+                "'SafeNet DNS VPN End User License Agreement'))"
+        );
     }
 
     private void clickVpnSwitch() throws Exception {
