@@ -11,6 +11,7 @@ import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
 import { SoundtrackControl } from "@/components/SoundtrackControl";
+import { Navigation } from "@/components/Navigation";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -110,8 +111,9 @@ const clerkAppearance = {
 
 function MainLayout() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset">
+    <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
       <SoundtrackControl />
+      <Navigation />
       
       {/* Scanline Effect */}
       <div className="scan-line" />
@@ -124,7 +126,7 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 sm:p-6 lg:p-8 safe-area-inset-bottom">
+      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/command-center" component={Dashboard} />

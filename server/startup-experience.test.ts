@@ -14,6 +14,14 @@ const androidMainActivity = readFileSync(
 const indexHtml = readFileSync(path.join(clientRoot, "index.html"), "utf8");
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
+const headerSource = readFileSync(
+  path.join(clientRoot, "src/components/Header.tsx"),
+  "utf8",
+);
+const navigationSource = readFileSync(
+  path.join(clientRoot, "src/components/Navigation.tsx"),
+  "utf8",
+);
 const soundtrackSource = readFileSync(
   path.join(clientRoot, "src/components/SoundtrackControl.tsx"),
   "utf8",
@@ -34,6 +42,13 @@ test("packaged startup mounts immediately without waiting for Clerk configuratio
   assert.match(mainSource, /root\.render\(<App clerkConfig=\{buildConfig\} \/>/);
   assert.match(mainSource, /openDashboardOnLaunch/);
   assert.match(mainSource, /else if \(isPackagedApp\(\)\)/);
+});
+
+test("the navigation panel is mounted without the old header arrow control", () => {
+  assert.match(appSource, /import \{ Navigation \} from "@\/components\/Navigation"/);
+  assert.match(appSource, /<Navigation \/>/);
+  assert.match(navigationSource, /navItems/);
+  assert.doesNotMatch(headerSource, /ArrowLeft|Back to Command Center/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {

@@ -2,6 +2,7 @@ package com.safenet.dns;
 
 import android.os.Bundle;
 import android.graphics.Color;
+import android.util.Log;
 import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
@@ -15,14 +16,18 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "SafeNetWebView";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
         super.onCreate(savedInstanceState);
 
+        Log.i(TAG, "SafeNet activity created");
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         WebView webView = getBridge().getWebView();
+        Log.i(TAG, "Capacitor WebView created; url=" + webView.getUrl());
         webView.setBackgroundColor(Color.rgb(9, 11, 20));
         cookieManager.setAcceptThirdPartyCookies(webView, true);
         WebSettings webSettings = webView.getSettings();
@@ -32,6 +37,16 @@ public class MainActivity extends BridgeActivity {
         // Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
+        webView.postDelayed(
+                () -> Log.i(
+                        TAG,
+                        "WebView startup check; url=" + webView.getUrl() +
+                                ", title=" + webView.getTitle() +
+                                ", width=" + webView.getWidth() +
+                                ", height=" + webView.getHeight()
+                ),
+                5000
+        );
 
         Window window = getWindow();
         // Keep the web content below system bars where the platform allows it.
