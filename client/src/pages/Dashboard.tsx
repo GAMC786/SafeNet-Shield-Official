@@ -50,7 +50,7 @@ export default function Dashboard() {
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <Header 
         title="Command Center" 
         subtitle={canReadProtectedData ? "System Status: Online" : "Loading protected network status"}
@@ -89,12 +89,12 @@ export default function Dashboard() {
       </CyberCard>
 
       {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 lg:gap-6">
         <CyberCard glow className="bg-gradient-to-br from-primary/10 to-transparent border-primary/20">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-mono text-primary uppercase tracking-wider mb-1">Total Queries</p>
-              <h2 className="text-4xl font-display font-bold text-white text-shadow-glow">
+                <h2 className="text-3xl sm:text-4xl font-display font-bold text-white text-shadow-glow">
                 {stats?.totalQueries.toLocaleString() || "0"}
               </h2>
             </div>
@@ -115,7 +115,7 @@ export default function Dashboard() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-mono text-destructive uppercase tracking-wider mb-1">Threats Blocked</p>
-              <h2 className="text-4xl font-display font-bold text-white text-shadow-danger">
+                <h2 className="text-3xl sm:text-4xl font-display font-bold text-white text-shadow-danger">
                 {stats?.threatsBlocked.toLocaleString() || "0"}
               </h2>
             </div>
@@ -192,7 +192,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="h-[320px] w-full">
+        <div className="h-[240px] sm:h-[320px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>

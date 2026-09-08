@@ -77,7 +77,7 @@ public class MainActivity extends BridgeActivity {
                 )
         );
 
-        final long earliestHideTime = SystemClock.uptimeMillis() + 10_000L;
+        final long earliestHideTime = SystemClock.uptimeMillis() + 1_500L;
         startupLoaderCheck = new Runnable() {
             @Override
             public void run() {

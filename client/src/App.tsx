@@ -25,7 +25,7 @@ import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const STARTUP_LOADER_DURATION_MS = 10000;
+const STARTUP_LOADER_DURATION_MS = 1200;
 
 export type ClerkRuntimeConfig = {
   publishableKey?: string;
@@ -121,9 +121,10 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 p-3 sm:p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full safe-area-inset-bottom">
+      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 sm:p-6 lg:p-8 safe-area-inset-bottom">
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/command-center" component={Dashboard} />
           <Route path="/dns" component={DnsSettings} />
           <Route path="/ddns" component={DdnsUpdater} />
           <Route path="/speedtest" component={SpeedTest} />
@@ -228,12 +229,11 @@ export function StartupLoader() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.16),transparent_42%)]" />
       <div className="relative z-10 flex max-w-md flex-col items-center gap-7 text-center" role="status">
-        <div className="relative h-24 w-28" aria-hidden="true">
-          <div className="absolute left-1/2 top-1 h-20 w-20 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-red-500/30" />
+        <div className="relative h-16 w-24" aria-hidden="true">
           {[
-            "left-1/2 top-0 -translate-x-1/2",
-            "bottom-0 left-0",
-            "bottom-0 right-0",
+            "left-1/2 top-1 -translate-x-1/2",
+            "bottom-1 left-2",
+            "bottom-1 right-2",
           ].map((position, index) => (
             <span
               key={position}

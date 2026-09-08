@@ -10,7 +10,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, status }: HeaderProps) {
   return (
-    <header className="flex items-center justify-between mb-8 pb-4 border-b border-border/40">
+    <header className="flex items-start justify-between gap-3 mb-6 sm:mb-8 pb-4 border-b border-border/40">
       <div className="flex min-w-0 items-center gap-3">
         <Link
           href="/"
@@ -21,7 +21,7 @@ export function Header({ title, subtitle, status }: HeaderProps) {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="min-w-0">
-        <h1 className="text-2xl md:text-3xl font-bold font-display uppercase tracking-wider text-white">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold font-display uppercase tracking-wider text-white">
           <span className="text-primary mr-2">/</span>
           {title}
         </h1>

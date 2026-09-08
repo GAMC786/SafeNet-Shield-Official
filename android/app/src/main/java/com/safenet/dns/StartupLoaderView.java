@@ -58,28 +58,21 @@ public final class StartupLoaderView extends View {
 
         float centerX = getWidth() / 2f;
         float centerY = getHeight() / 2f - 74f;
-        float triangleSize = Math.min(80f, getWidth() * 0.22f);
-        float topY = centerY - triangleSize * 0.55f;
-        float bottomY = centerY + triangleSize * 0.55f;
-        float leftX = centerX - triangleSize * 0.7f;
-        float rightX = centerX + triangleSize * 0.7f;
-
-        triangle.reset();
-        triangle.moveTo(centerX, centerY + triangleSize * 0.35f);
-        triangle.lineTo(leftX, topY);
-        triangle.moveTo(centerX, centerY + triangleSize * 0.35f);
-        triangle.lineTo(rightX, topY);
-        canvas.drawPath(triangle, linePaint);
+        float dotOffset = Math.min(56f, getWidth() * 0.15f);
+        float topY = centerY - 28f;
+        float bottomY = centerY + 28f;
+        float leftX = centerX - dotOffset;
+        float rightX = centerX + dotOffset;
 
         float dotRadius = 8f;
         float pulseScale = 0.82f + (0.18f * (float) Math.sin(pulse * Math.PI));
         dotPaint.setAlpha(115 + (int) (140f * Math.sin(pulse * Math.PI)));
-        canvas.drawCircle(centerX, topY - 4f, dotRadius * pulseScale, dotPaint);
+        canvas.drawCircle(centerX, topY, dotRadius * pulseScale, dotPaint);
         canvas.drawCircle(leftX, bottomY, dotRadius * pulseScale, dotPaint);
         canvas.drawCircle(rightX, bottomY, dotRadius * pulseScale, dotPaint);
 
         titlePaint.setTextSize(Math.min(24f, getWidth() * 0.06f));
-        float titleY = centerY + triangleSize + 48f;
+        float titleY = centerY + 96f;
         canvas.drawText("CONNECTING TO", centerX, titleY, titlePaint);
         canvas.drawText("SAFENET SHIELD DNS", centerX, titleY + 32f, titlePaint);
         canvas.drawText("SERVER+", centerX, titleY + 64f, titlePaint);
