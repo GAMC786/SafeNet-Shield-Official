@@ -29,9 +29,14 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
+function hideBootSurface() {
+  document.getElementById("boot-surface")?.remove();
+}
+
 function renderStartupError(error: unknown) {
   const message =
     error instanceof Error ? error.message : "The secure app configuration could not be loaded.";
+  hideBootSurface();
   root.render(
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#090b14] p-6 text-center text-foreground">
       <div className="max-w-md space-y-3">
@@ -52,32 +57,47 @@ async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
     return buildConfig;
   }
 
-  const response = await fetch(resolveApiUrl("/api/auth/config"), {
-    credentials: "include",
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { publishableKey?: unknown; proxyUrl?: unknown; message?: unknown }
-    | null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch(resolveApiUrl("/api/auth/config"), {
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { publishableKey?: unknown; proxyUrl?: unknown; message?: unknown }
+      | null;
 
-  if (!response.ok || typeof payload?.publishableKey !== "string" || !payload.publishableKey) {
-    throw new Error(
-      typeof payload?.message === "string"
-        ? payload.message
-        : "The SafeNet server did not provide secure sign-in configuration.",
-    );
+    if (!response.ok || typeof payload?.publishableKey !== "string" || !payload.publishableKey) {
+      throw new Error(
+        typeof payload?.message === "string"
+          ? payload.message
+          : "The SafeNet server did not provide secure sign-in configuration.",
+      );
+    }
+
+    return {
+      publishableKey: payload.publishableKey,
+      proxyUrl:
+        typeof payload.proxyUrl === "string" && payload.proxyUrl.length > 0
+          ? payload.proxyUrl
+          : buildConfig.proxyUrl,
+    };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("The SafeNet server did not respond within 12 seconds.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-
-  return {
-    publishableKey: payload.publishableKey,
-    proxyUrl:
-      typeof payload.proxyUrl === "string" && payload.proxyUrl.length > 0
-        ? payload.proxyUrl
-        : buildConfig.proxyUrl,
-  };
 }
 
 void loadClerkConfig()
-  .then((clerkConfig) => root.render(<App clerkConfig={clerkConfig} />))
+  .then((clerkConfig) => {
+    hideBootSurface();
+    root.render(<App clerkConfig={clerkConfig} />);
+  })
   .catch(renderStartupError);

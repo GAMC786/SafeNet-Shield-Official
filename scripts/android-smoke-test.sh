@@ -80,7 +80,7 @@ Options:
   --serial ID      adb device/emulator serial (or set ANDROID_SERIAL)
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
   --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
-  --startup-only   Install the signed app APK and verify the native startup surface and WebView transition
+  --startup-only   Install the signed app APK and verify direct WebView startup
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
 

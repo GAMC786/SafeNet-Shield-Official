@@ -20,10 +20,19 @@ const soundtrackSource = readFileSync(
 );
 
 test("the app mounts directly without a startup loader", () => {
+  assert.match(indexHtml, /id="boot-surface"/);
+  assert.match(indexHtml, /Command Center/);
   assert.doesNotMatch(indexHtml, /startup-loader|Connecting to SafeNet|Loading secure server/i);
   assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
   assert.doesNotMatch(mainSource, /StartupLoader|startupLoader/i);
   assert.doesNotMatch(androidMainActivity, /StartupLoader|startup_loader/i);
+});
+
+test("packaged startup cannot remain blank while Clerk configuration is unavailable", () => {
+  assert.match(mainSource, /AbortController/);
+  assert.match(mainSource, /12_000/);
+  assert.match(mainSource, /The SafeNet server did not respond within 12 seconds/);
+  assert.match(mainSource, /hideBootSurface/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
