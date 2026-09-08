@@ -41,6 +41,10 @@ const launchStyleSource = readFileSync(
   path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
   "utf8",
 );
+const androidColorsSource = readFileSync(
+  path.resolve(process.cwd(), "android/app/src/main/res/values/colors.xml"),
+  "utf8",
+);
 const serviceWorkerSource = readFileSync(
   path.join(clientRoot, "src/service-worker.ts"),
   "utf8",
@@ -140,6 +144,15 @@ test("Measure Your Network identifies the ISP and reports measured packet loss",
 test("Android 12+ launch surface does not show the Shield Logo", () => {
   assert.match(launchStyleSource, /windowSplashScreenAnimatedIcon/);
   assert.match(launchStyleSource, /splash_transparent/);
+});
+
+test("Android keeps a visible black status bar with white icons", () => {
+  assert.match(androidColorsSource, /<color name="status_bar">#000000<\/color>/);
+  assert.match(launchStyleSource, /android:statusBarColor">@color\/status_bar/);
+  assert.match(launchStyleSource, /android:windowLightStatusBar">false/);
+  assert.match(androidMainActivity, /show\(WindowInsetsCompat\.Type\.statusBars\(\)\)/);
+  assert.match(androidMainActivity, /FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS/);
+  assert.match(indexHtml, /name="theme-color" content="#000000"/);
 });
 
 test("updated web assets refresh without clearing app storage", () => {

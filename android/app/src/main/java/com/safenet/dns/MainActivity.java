@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
@@ -42,7 +43,7 @@ public class MainActivity extends BridgeActivity {
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
-        // Allow the SafeNet soundtrack to begin when the app shell mounts.
+        // Allow the SafeNet soundtrack to begin after the startup loader.
         // Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
@@ -63,6 +64,8 @@ public class MainActivity extends BridgeActivity {
         // Android 15+ may enforce edge-to-edge for newer target SDKs, so the
         // web layer also declares safe-area padding in index.css.
         WindowCompat.setDecorFitsSystemWindows(window, true);
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         window.setStatusBarColor(ContextCompat.getColor(this, R.color.status_bar));
         window.setNavigationBarColor(ContextCompat.getColor(this, R.color.navigation_bar));
 

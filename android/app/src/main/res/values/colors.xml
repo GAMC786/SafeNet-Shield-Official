@@ -9,6 +9,6 @@
     <color name="splash_background">#0a0a0f</color>
     
     <!-- Status Bar -->
-    <color name="status_bar">#0a0a0f</color>
+    <color name="status_bar">#000000</color>
     <color name="navigation_bar">#0a0a0f</color>
 </resources>
