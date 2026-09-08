@@ -37,6 +37,7 @@ const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
 );
+const routesSource = readFileSync(path.join(process.cwd(), "server/routes.ts"), "utf8");
 const launchStyleSource = readFileSync(
   path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
   "utf8",
@@ -49,6 +50,21 @@ const serviceWorkerSource = readFileSync(
   path.join(clientRoot, "src/service-worker.ts"),
   "utf8",
 );
+const settingsSource = readFileSync(
+  path.join(clientRoot, "src/pages/Settings.tsx"),
+  "utf8",
+);
+const dashboardSource = readFileSync(
+  path.join(clientRoot, "src/pages/Dashboard.tsx"),
+  "utf8",
+);
+const manifestSource = readFileSync(
+  path.join(clientRoot, "public/manifest.json"),
+  "utf8",
+);
+const packageVersion = JSON.parse(
+  readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+).version as string;
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
@@ -137,8 +153,12 @@ test("Measure Your Network identifies the ISP and reports measured packet loss",
   assert.match(speedTestSource, /button-refresh-network-profile/);
   assert.match(speedTestSource, /packetLoss: Math\.round\(\(failedLatencySamples \/ \(sample \+ 1\)\) \* 100\)/);
   assert.doesNotMatch(speedTestSource, /setResults\(\(current\) => \(\{ \.\.\.current, packetLoss: 0 \}\)\)/);
-  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=4000000/);
+  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=\$\{THROUGHPUT_TEST_BYTES\}/);
   assert.match(speedTestSource, /\/api\/speedtest\/upload/);
+  assert.match(speedTestSource, /THROUGHPUT_TEST_BYTES = 4_000_000/);
+  assert.match(speedTestSource, /bytesReceived !== uploadPayload\.byteLength/);
+  assert.match(routesSource, /return res\.json\(\{ bytesReceived \}\)/);
+  assert.doesNotMatch(routesSource, /const speedMbps =/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {
@@ -161,4 +181,26 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.match(serviceWorkerSource, /safenet-dns-v3/);
   assert.match(serviceWorkerSource, /clients\.claim\(\)/);
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
+});
+
+test("Settings use the current package version and describe preference-only Android controls", () => {
+  assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
+  assert.match(settingsSource, /data-testid="settings-version"/);
+  assert.match(settingsSource, /settingsReady/);
+  assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
+  assert.match(settingsSource, /Android device-admin permission is not requested here/);
+  assert.doesNotMatch(settingsSource, /v1\.0\.20/);
+  assert.match(
+    manifestSource,
+    new RegExp(`SafeNet Shield DNS Server\\+ \\(Official\\) v${packageVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+  );
+  assert.doesNotMatch(manifestSource, /v1\.0\.20/);
+});
+
+test("the Dashboard reports DNS Protection VPN instead of generic system activity", () => {
+  assert.match(dashboardSource, /useSafeNetVpn/);
+  assert.match(dashboardSource, /DNS Protection VPN/);
+  assert.match(dashboardSource, /Available in the SafeNet Android APK/);
+  assert.match(dashboardSource, /DNS protection is running/);
+  assert.doesNotMatch(dashboardSource, /System Active/);
 });
