@@ -34,9 +34,10 @@ const soundtrackSource = readFileSync(
   "utf8",
 );
 
-test("the app mounts directly without a startup loader", () => {
+test("the app mounts directly with the requested artwork loader fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
-  assert.match(indexHtml, /Command Center/);
+  assert.match(indexHtml, /safenet-astronaut-loader\.png/);
+  assert.match(indexHtml, /safenet-loader-dot/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.doesNotMatch(indexHtml, /startup-loader|boot-surface|Connecting to SafeNet|Loading secure server/i);
   assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
@@ -63,8 +64,8 @@ test("Android has an error-only native fallback instead of a permanent dark scre
   assert.match(androidMainActivity, /installNativeFallback/);
   assert.match(androidMainActivity, /WebView did not paint SafeNet content/);
   assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.VISIBLE\)/);
-  assert.match(nativeFallbackSource, /COMMAND CENTER/);
-  assert.doesNotMatch(nativeFallbackSource, /triangle|shield|loader/i);
+  assert.match(nativeFallbackSource, /public\/safenet-astronaut-loader\.png/);
+  assert.match(nativeFallbackSource, /drawTriangularDots/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {

@@ -1,12 +1,19 @@
 package com.safenet.dns;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
+
+import java.io.InputStream;
 
 /**
  * Error-only fallback for devices where the Capacitor WebView never paints.
@@ -18,6 +25,11 @@ public final class NativeStartupFallbackView extends View {
     private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bodyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint accentPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint artworkPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Path triangle = new Path();
+    private final Bitmap artwork;
+    private final ValueAnimator dotAnimator;
+    private float dotPulse;
 
     public NativeStartupFallbackView(Context context) {
         super(context);
@@ -36,6 +48,15 @@ public final class NativeStartupFallbackView extends View {
         bodyPaint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         accentPaint.setColor(Color.rgb(96, 165, 250));
         accentPaint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        artwork = loadArtwork(context);
+        dotAnimator = ValueAnimator.ofFloat(0f, 1f);
+        dotAnimator.setDuration(1200L);
+        dotAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        dotAnimator.setInterpolator(new DecelerateInterpolator());
+        dotAnimator.addUpdateListener(animation -> {
+            dotPulse = (float) animation.getAnimatedValue();
+            invalidate();
+        });
     }
 
     @Override
@@ -43,40 +64,76 @@ public final class NativeStartupFallbackView extends View {
         super.onDraw(canvas);
         canvas.drawColor(backgroundPaint.getColor());
 
-        float padding = Math.max(24f, getWidth() * 0.08f);
         float centerX = getWidth() / 2f;
-        float titleSize = Math.min(30f, Math.max(22f, getWidth() * 0.07f));
-        titlePaint.setTextSize(titleSize);
-        titlePaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("COMMAND CENTER", centerX, Math.max(100f, getHeight() * 0.28f), titlePaint);
+        float maxWidth = Math.min(getWidth() * 0.78f, 390f);
+        float maxHeight = Math.min(getHeight() * 0.78f, 820f);
+        float artworkWidth = maxWidth;
+        float artworkHeight = artwork == null
+                ? 0f
+                : artwork.getHeight() * Math.min(maxWidth / artwork.getWidth(), maxHeight / artwork.getHeight());
+        if (artwork != null) {
+            artworkWidth = artwork.getWidth() * (artworkHeight / artwork.getHeight());
+            float left = centerX - artworkWidth / 2f;
+            float top = getHeight() / 2f - artworkHeight / 2f;
+            canvas.drawBitmap(
+                    artwork,
+                    null,
+                    new RectF(left, top, left + artworkWidth, top + artworkHeight),
+                    artworkPaint
+            );
+        }
 
-        bodyPaint.setTextSize(15f);
-        bodyPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("Protected network status", centerX, Math.max(132f, getHeight() * 0.28f + 32f), bodyPaint);
+        drawTriangularDots(canvas, centerX, getHeight() / 2f);
 
-        float cardTop = Math.max(190f, getHeight() * 0.42f);
-        float cardGap = 12f;
-        float cardWidth = (getWidth() - (padding * 2f) - cardGap) / 2f;
-        drawCard(canvas, new RectF(padding, cardTop, padding + cardWidth, cardTop + 104f), "NETWORK", "Ready");
-        drawCard(
-                canvas,
-                new RectF(padding + cardWidth + cardGap, cardTop, getWidth() - padding, cardTop + 104f),
-                "SOUNDTRACK",
-                "Available"
-        );
-
-        accentPaint.setTextSize(14f);
+        accentPaint.setTextSize(13f);
         accentPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("Tap anywhere to retry", centerX, cardTop + 160f, accentPaint);
+        canvas.drawText("Tap anywhere to retry", centerX, getHeight() - 44f, accentPaint);
     }
 
-    private void drawCard(Canvas canvas, RectF bounds, String label, String value) {
-        canvas.drawRoundRect(bounds, 14f, 14f, borderPaint);
-        bodyPaint.setTextSize(11f);
-        bodyPaint.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(label, bounds.left + 16f, bounds.top + 28f, bodyPaint);
-        titlePaint.setTextSize(19f);
-        titlePaint.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(value, bounds.left + 16f, bounds.top + 66f, titlePaint);
+    private void drawTriangularDots(Canvas canvas, float centerX, float centerY) {
+        float lift = 6f * (float) Math.sin(dotPulse * Math.PI);
+        int alpha = 120 + (int) (115f * Math.sin(dotPulse * Math.PI));
+        accentPaint.setColor(Color.argb(alpha, 96, 165, 250));
+        accentPaint.setShadowLayer(12f, 0f, 0f, Color.argb(alpha, 96, 165, 250));
+        drawTriangle(canvas, centerX, centerY - 24f - lift);
+        drawTriangle(canvas, centerX - 22f, centerY + 14f - lift);
+        drawTriangle(canvas, centerX + 22f, centerY + 14f - lift);
+        accentPaint.clearShadowLayer();
+    }
+
+    private void drawTriangle(Canvas canvas, float centerX, float centerY) {
+        triangle.reset();
+        triangle.moveTo(centerX, centerY - 9f);
+        triangle.lineTo(centerX - 9f, centerY + 7f);
+        triangle.lineTo(centerX + 9f, centerY + 7f);
+        triangle.close();
+        canvas.drawPath(triangle, accentPaint);
+    }
+
+    private Bitmap loadArtwork(Context context) {
+        try (InputStream stream = context.getAssets().open("public/safenet-astronaut-loader.png")) {
+            return BitmapFactory.decodeStream(stream);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (changedView != this) {
+            return;
+        }
+        if (visibility == VISIBLE) {
+            dotAnimator.start();
+        } else {
+            dotAnimator.cancel();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        dotAnimator.cancel();
+        super.onDetachedFromWindow();
     }
 }
