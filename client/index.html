@@ -40,6 +40,32 @@
       .safenet-loader-dot:nth-child(1) { left: 50%; top: 0; transform: translateX(-50%); }
       .safenet-loader-dot:nth-child(2) { left: 0; bottom: 0; animation-delay: .2s; }
       .safenet-loader-dot:nth-child(3) { right: 0; bottom: 0; animation-delay: .4s; }
+      .safenet-loader-frame {
+        position: relative;
+        width: min(100%, 430px);
+        height: min(calc(100dvh - 40px), 720px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .safenet-loader-artwork {
+        display: block;
+        width: min(100%, 360px);
+        max-width: calc(100vw - 40px);
+        height: auto;
+        max-height: min(100%, calc(100dvh - 40px));
+        object-fit: contain;
+        filter: drop-shadow(0 0 24px rgba(96,165,250,.16));
+      }
+      @media (max-height: 600px) {
+        .safenet-loader-frame {
+          height: calc(100dvh - 24px);
+        }
+        .safenet-loader-artwork {
+          max-width: calc(100vw - 24px);
+          max-height: calc(100dvh - 24px);
+        }
+      }
     </style>
   </head>
   <body style="margin: 0; background: #090b14;">
@@ -59,12 +85,12 @@
       aria-label="Loading SafeNet Command Center"
       style="min-height:100dvh;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;padding:20px;box-sizing:border-box"
     >
-      <div style="position:relative;width:min(100%,430px);height:min(calc(100dvh - 40px),720px);display:flex;align-items:center;justify-content:center">
+      <div class="safenet-loader-frame">
         <img
+          class="safenet-loader-artwork"
           src="/safenet-astronaut-loader.png"
           alt=""
           aria-hidden="true"
-          style="width:min(100%,360px);height:auto;max-height:100%;object-fit:contain;filter:drop-shadow(0 0 24px rgba(96,165,250,.16))"
         />
         <div class="safenet-loader-dots" aria-hidden="true">
           <span class="safenet-loader-dot"></span>

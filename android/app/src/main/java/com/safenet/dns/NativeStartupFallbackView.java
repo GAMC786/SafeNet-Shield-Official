@@ -7,7 +7,6 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.view.View;
@@ -107,9 +106,21 @@ public final class NativeStartupFallbackView extends View {
             return;
         }
         if (visibility == VISIBLE) {
-            dotAnimator.start();
+            startDots();
         } else {
             dotAnimator.cancel();
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        startDots();
+    }
+
+    private void startDots() {
+        if (!dotAnimator.isStarted()) {
+            dotAnimator.start();
         }
     }
 
