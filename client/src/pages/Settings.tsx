@@ -18,15 +18,24 @@ import { PinEntry } from "@/pages/PinEntry";
 export default function Settings() {
   const authStatus = useAuthStatus();
   const isAuthenticated = authStatus.data?.authenticated === true;
-  const { data: settings } = useSettings(isAuthenticated);
-  const { data: dnsServers } = useDnsServers();
-  const updateSettings = useUpdateSettings();
+  const {
+    data: settings,
+    isLoading: isLoadingSettings,
+    isError: isSettingsError,
+  } = useSettings(isAuthenticated);
   const vpn = useSafeNetVpn();
+  const {
+    data: dnsServers,
+    isLoading: isLoadingDnsServers,
+  } = useDnsServers(isAuthenticated && vpn.supported);
+  const updateSettings = useUpdateSettings();
   const { toast } = useToast();
   const [pin, setPin] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
+  const settingsReady = settings !== undefined && !isLoadingSettings;
+  const appVersion = import.meta.env.VITE_APP_VERSION;
 
   useEffect(() => {
     if (settings?.pinRecoveryEmail !== undefined) {
@@ -55,6 +64,9 @@ export default function Settings() {
   };
 
   const handleToggle = (key: string, checked: boolean) => {
+    if (!settingsReady) {
+      return;
+    }
     const label = settingLabels[key] || "Setting";
     if (key === "isPinEnabled" && checked && !settings?.pinConfigured) {
       toast({
@@ -87,7 +99,7 @@ export default function Settings() {
   };
 
   const handleSetPin = () => {
-    if (pin.length === 4) {
+    if (settingsReady && pin.length === 4) {
       updateSettings.mutate(
         { pinCode: pin, isPinEnabled: true },
         {
@@ -112,7 +124,7 @@ export default function Settings() {
 
   const handleSaveRecoveryEmail = () => {
     const email = recoveryEmail.trim();
-    if (!email || !email.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast({
         title: "Recovery email required",
         description: "Enter a valid email address so you can recover access if the PIN is forgotten.",
@@ -229,6 +241,17 @@ export default function Settings() {
         </div>
       </div>
 
+      {isSettingsError && (
+        <div role="alert" className="rounded border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          Saved settings could not be loaded. Controls are disabled until SafeNet can confirm the current values.
+        </div>
+      )}
+      {isLoadingSettings && (
+        <div role="status" className="rounded border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
+          Loading saved settings…
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Security Modules */}
         <CyberCard className="space-y-6">
@@ -247,7 +270,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.aiShieldEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("aiShieldEnabled", c)}
-               disabled={updateSettings.isPending}
+                disabled={!settingsReady || updateSettings.isPending}
               aria-label="AI Shield"
             />
           </div>
@@ -262,7 +285,7 @@ export default function Settings() {
             <Switch 
               checked={settings?.firewallEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("firewallEnabled", c)}
-               disabled={updateSettings.isPending}
+                disabled={!settingsReady || updateSettings.isPending}
               aria-label="App Firewall"
             />
           </div>
@@ -280,12 +303,14 @@ export default function Settings() {
               <Label className="text-base text-white font-medium flex items-center gap-2">
                 <Activity className="w-4 h-4 text-primary" /> Always-On VPN
               </Label>
-              <p className="text-xs text-muted-foreground">Prevent leaks when connection drops</p>
+              <p className="text-xs text-muted-foreground">
+                Saved as a preference; configure Android&apos;s system Always-on VPN separately
+              </p>
             </div>
             <Switch 
               checked={settings?.alwaysOnEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("alwaysOnEnabled", c)}
-               disabled={updateSettings.isPending}
+                disabled={!settingsReady || updateSettings.isPending}
               aria-label="Always-On VPN"
             />
           </div>
@@ -295,12 +320,14 @@ export default function Settings() {
               <Label className="text-base text-white font-medium flex items-center gap-2">
                 <Shield className="w-4 h-4 text-primary" /> Device Admin
               </Label>
-              <p className="text-xs text-muted-foreground">Prevent app uninstallation</p>
+              <p className="text-xs text-muted-foreground">
+                Saved as a preference; Android device-admin permission is not requested here
+              </p>
             </div>
             <Switch 
               checked={settings?.deviceAdminEnabled ?? false} 
               onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
-               disabled={updateSettings.isPending}
+                disabled={!settingsReady || updateSettings.isPending}
               aria-label="Device Admin"
             />
           </div>
@@ -321,7 +348,7 @@ export default function Settings() {
               <Switch
                 checked={vpn.status?.running ?? false}
                 onCheckedChange={(checked) => void handleVpnToggle(checked)}
-                disabled={vpn.isBusy || !activeDnsServer}
+                disabled={vpn.isBusy || !vpn.status || isLoadingDnsServers || !activeDnsServer}
                 aria-label="Enable DNS Protection VPN"
               />
             </div>
@@ -425,7 +452,7 @@ export default function Settings() {
               <Switch 
                 checked={settings?.isPinEnabled ?? false} 
                 onCheckedChange={(c) => handleToggle("isPinEnabled", c)}
-                disabled={updateSettings.isPending || (!settings?.pinConfigured && !(settings?.isPinEnabled ?? false))}
+                disabled={!settingsReady || updateSettings.isPending || (!settings?.pinConfigured && !(settings?.isPinEnabled ?? false))}
                 aria-label="PIN Protection"
               />
             </div>
@@ -439,11 +466,12 @@ export default function Settings() {
                   placeholder="****" 
                   value={pin}
                   onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  disabled={!settingsReady || updateSettings.isPending}
                   className="bg-background border-border font-mono tracking-widest text-center"
                 />
                 <Button 
                   onClick={handleSetPin}
-                  disabled={pin.length !== 4}
+                  disabled={!settingsReady || updateSettings.isPending || pin.length !== 4}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
                 >
                   Set PIN
@@ -466,13 +494,14 @@ export default function Settings() {
                 value={recoveryEmail}
                 onChange={(event) => setRecoveryEmail(event.target.value)}
                 placeholder="you@example.com"
+                disabled={!settingsReady || updateSettings.isPending}
                 className="bg-background border-border"
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleSaveRecoveryEmail}
-                disabled={updateSettings.isPending || !recoveryEmail.trim()}
+                disabled={!settingsReady || updateSettings.isPending || !recoveryEmail.trim()}
               >
                 Save recovery email
               </Button>
@@ -483,8 +512,8 @@ export default function Settings() {
         <div className="md:col-span-2 space-y-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm">
           <div className="flex items-center justify-center gap-2 text-yellow-500">
             <AlertTriangle className="w-4 h-4" />
-            <span className="font-mono uppercase">
-              SafeNet Shield DNS Server+ (Official) v1.0.20
+              <span className="font-mono uppercase" data-testid="settings-version">
+                SafeNet Shield DNS Server+ (Official) v{appVersion}
             </span>
           </div>
           <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
