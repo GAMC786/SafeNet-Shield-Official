@@ -117,6 +117,7 @@ jobs:
         run: ./gradlew assembleRelease
 
       - name: Verify APK and manual PIN bundle
+        id: verify-apk
         shell: bash
         env:
           APP_VERSION: ${{ steps.app_version.outputs.version }}
@@ -155,6 +156,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK only
+        id: upload-apk-only
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}
@@ -162,8 +164,36 @@ jobs:
           if-no-files-found: error
 
       - name: Upload APK SHA-256 checksum
+        id: upload-apk-sha256
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}-SHA256
           path: ${{ runner.temp }}/app-release.apk.sha256
           if-no-files-found: error
+
+      - name: Publish Android APK summary
+        if: always()
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
+          APK_VERIFICATION_OUTCOME: ${{ steps.verify-apk.outcome }}
+          APK_ARTIFACT_URL: ${{ steps.upload-apk-only.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          CHECKSUM_ARTIFACT_URL: ${{ steps.upload-apk-sha256.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+          version_name="${ANDROID_VERSION_NAME:-unresolved}"
+          version_code="${ANDROID_VERSION_CODE:-unresolved}"
+          apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
+          apk_url="${APK_ARTIFACT_URL:-unavailable}"
+          checksum_url="${CHECKSUM_ARTIFACT_URL:-unavailable}"
+          {
+            echo "## Android APK verification"
+            echo
+            echo "- **Resolved versionName:** \`$version_name\`"
+            echo "- **Resolved versionCode:** \`$version_code\`"
+            echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
+            echo "- **APK checksum:** [preserved SHA-256 artifact]($checksum_url)"
+            echo "- **Instrumentation APK verification:** \`not run in APK-only workflow\`"
+          } >> "$GITHUB_STEP_SUMMARY"
