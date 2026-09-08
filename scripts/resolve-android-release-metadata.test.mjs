@@ -113,10 +113,17 @@ test("both release workflows consume the shared metadata contract", async () => 
       block: apkOnlyWorkflow.match(
         /      - name: Verify APK and manual PIN bundle\n(?<block>[\s\S]*?)(?=\n      - name:)/,
       )?.groups?.block,
+      summaryBlock: apkOnlyWorkflow.match(
+        /      - name: Publish Android APK summary\n(?<block>[\s\S]*?)(?=\n      - name:|$)/,
+      )?.groups?.block,
       versionNameVariable: "APP_VERSION",
       versionCodeVariable: "APP_VERSION_CODE",
       pinCheck: /grep -R -q "Secure Access Required" android\/app\/src\/main\/assets\/public/,
       instrumentationPackage: null,
+      instrumentationSummaryRow:
+        /\*\*Instrumentation APK verification:\*\*.*not run in APK-only workflow/,
+      apkArtifactSource:
+        /APK_ARTIFACT_URL:\s+\$\{\{\s*steps\.upload-apk-only\.outputs\.artifact-url\s+\|\|\s+format\('\{0\}\/\{1\}\/actions\/runs\/\{2\}#artifacts',\s*github\.server_url,\s*github\.repository,\s*github\.run_id\)\s*\}\}/,
     },
     {
       name: "tagged release workflow",
@@ -124,16 +131,28 @@ test("both release workflows consume the shared metadata contract", async () => 
       block: releaseWorkflow.match(
         /      - name: Verify Android release APKs\n(?<block>[\s\S]*?)(?=\n      - name:)/,
       )?.groups?.block,
+      summaryBlock: releaseWorkflow.match(
+        /      - name: Publish Android release summary\n(?<block>[\s\S]*?)(?=\n      - name:|$)/,
+      )?.groups?.block,
       versionNameVariable: "ANDROID_VERSION_NAME",
       versionCodeVariable: "ANDROID_VERSION_CODE",
       pinCheck: /unzip -l "\$apk" \| grep -F "assets\/public\/"/,
       instrumentationPackage: /package: name='com\.safenet\.dns\.test'/,
+      instrumentationSummaryRow:
+        /\*\*Signed instrumentation APK verification:\*\*.*\$instrumentation_outcome.*preserved instrumentation artifact.*\$instrumentation_url/,
+      apkArtifactSource:
+        /APK_ARTIFACT_URL:\s+\$\{\{\s*needs\.build-android\.outputs\.android_apk_artifact_url\s+\|\|\s+format\('\{0\}\/\{1\}\/actions\/runs\/\{2\}#artifacts',\s*github\.server_url,\s*github\.repository,\s*github\.run_id\)\s*\}\}/,
     },
   ];
 
   for (const validator of validators) {
     assert.ok(validator.block, `${validator.name} verifier block is missing`);
     const block = validator.block;
+    assert.ok(
+      validator.summaryBlock,
+      `${validator.name} summary block is missing`,
+    );
+    const summaryBlock = validator.summaryBlock;
 
     assert.match(
       validator.workflow,
@@ -181,6 +200,37 @@ test("both release workflows consume the shared metadata contract", async () => 
         `${validator.name} must verify the instrumentation package`,
       );
     }
+
+    assert.match(
+      summaryBlock,
+      /Resolved versionName:\*\*.*\$version_name/,
+      `${validator.name} summary must include the resolved versionName`,
+    );
+    assert.match(
+      summaryBlock,
+      /Resolved versionCode:\*\*.*\$version_code/,
+      `${validator.name} summary must include the resolved versionCode`,
+    );
+    assert.match(
+      summaryBlock,
+      /Expected application package:\*\*.*com\.safenet\.dns/,
+      `${validator.name} summary must include the expected application package`,
+    );
+    assert.match(
+      summaryBlock,
+      /\*\*Signed application APK verification:\*\*.*\$apk_outcome.*preserved APK artifact.*\$apk_url/,
+      `${validator.name} summary must preserve the signed APK verification row and artifact link`,
+    );
+    assert.match(
+      summaryBlock,
+      validator.instrumentationSummaryRow,
+      `${validator.name} summary must preserve the instrumentation verification row`,
+    );
+    assert.match(
+      summaryBlock,
+      validator.apkArtifactSource,
+      `${validator.name} summary must source the APK link from an upload-artifact output or run-artifact fallback`,
+    );
   }
 
   for (const workflow of [apkOnlyWorkflow, releaseWorkflow]) {
