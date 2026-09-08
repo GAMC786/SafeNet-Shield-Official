@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.os.Bundle;
+import android.os.Build;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,9 +16,11 @@ import android.webkit.WebView;
 import android.webkit.WebSettings;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.view.ViewCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -59,15 +62,23 @@ public class MainActivity extends BridgeActivity {
                 5000
         );
 
+        configureSystemBars(webView);
+    }
+
+    private void configureSystemBars(WebView webView) {
         Window window = getWindow();
-        // Keep the web content below system bars where the platform allows it.
-        // Android 15+ may enforce edge-to-edge for newer target SDKs, so the
-        // web layer also declares safe-area padding in index.css.
-        WindowCompat.setDecorFitsSystemWindows(window, true);
+        // Android 15+ enforces edge-to-edge for newer target SDKs. Keep the
+        // status/navigation regions black and move WebView content below the
+        // live insets instead of allowing content to paint under white icons.
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-        window.setStatusBarColor(ContextCompat.getColor(this, R.color.status_bar));
-        window.setNavigationBarColor(ContextCompat.getColor(this, R.color.navigation_bar));
+        window.setStatusBarColor(Color.BLACK);
+        window.setNavigationBarColor(Color.BLACK);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
 
         WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(window, window.getDecorView());
@@ -75,6 +86,19 @@ public class MainActivity extends BridgeActivity {
         insetsController.show(WindowInsetsCompat.Type.navigationBars());
         insetsController.setAppearanceLightStatusBars(false);
         insetsController.setAppearanceLightNavigationBars(false);
+
+        if (webView.getParent() instanceof ViewGroup) {
+            ViewGroup container = (ViewGroup) webView.getParent();
+            container.setBackgroundColor(Color.BLACK);
+            ViewCompat.setOnApplyWindowInsetsListener(container, (view, insets) -> {
+                Insets systemBars = insets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                view.setPadding(0, systemBars.top, 0, systemBars.bottom);
+                return insets;
+            });
+            ViewCompat.requestApplyInsets(container);
+        }
     }
 
     private void installNativeFallback(WebView webView) {

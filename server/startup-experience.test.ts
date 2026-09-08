@@ -62,6 +62,9 @@ const manifestSource = readFileSync(
   path.join(clientRoot, "public/manifest.json"),
   "utf8",
 );
+const packageVersion = JSON.parse(
+  readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+).version as string;
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
@@ -187,7 +190,10 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
   assert.match(settingsSource, /Android device-admin permission is not requested here/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
-  assert.match(manifestSource, /SafeNet Shield DNS Server\+ \(Official\) v1\.0\.60/);
+  assert.match(
+    manifestSource,
+    new RegExp(`SafeNet Shield DNS Server\\+ \\(Official\\) v${packageVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+  );
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 

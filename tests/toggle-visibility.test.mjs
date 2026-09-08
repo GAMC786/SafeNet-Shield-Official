@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
 import { chromium } from "playwright";
 
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const packageVersion = JSON.parse(
+  readFileSync(path.join(rootDirectory, "package.json"), "utf8"),
+).version;
 const port = Number(process.env.UI_TEST_PORT || 4173);
 const baseUrl = process.env.UI_TEST_BASE_URL || `http://127.0.0.1:${port}`;
 const viewports = [
@@ -364,7 +368,7 @@ test("Settings keep controls safe while loading and show the current version", a
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
-    "SafeNet Shield DNS Server+ (Official) v1.0.60",
+    `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
   await page.close();
 });
