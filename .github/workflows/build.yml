@@ -2069,7 +2069,7 @@ jobs:
 
           require_badging \
             "$apk" \
-            "package: name='com.safenet.dns' versionCode='50' versionName='$expected_version'" \
+             "package: name='com.safenet.dns' versionCode='51' versionName='$expected_version'" \
             "Android application APK"
           require_badging \
             "$test_apk" \
@@ -2089,7 +2089,7 @@ jobs:
             sha256sum --check app-release-androidTest.apk.sha256
           )
           unzip -l "$apk" | grep -F "assets/public/"
-          echo "Verified $apk_count signed Android APK installer with versionCode 50, versionName $expected_version, and SHA-256 $checksum."
+           echo "Verified $apk_count signed Android APK installer with versionCode 51, versionName $expected_version, and SHA-256 $checksum."
           echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
 
       - name: Prepare release-linked Android smoke evidence
