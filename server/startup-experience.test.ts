@@ -33,6 +33,10 @@ const soundtrackSource = readFileSync(
   path.join(clientRoot, "src/components/SoundtrackControl.tsx"),
   "utf8",
 );
+const launchStyleSource = readFileSync(
+  path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
+  "utf8",
+);
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
@@ -41,6 +45,10 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Network/);
   assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
+  assert.match(indexHtml, /id="static-soundtrack-toggle"/);
+  assert.match(indexHtml, /Soundtrack: On/);
+  assert.match(indexHtml, /Soundtrack: Off/);
+  assert.doesNotMatch(indexHtml, /SafeNet Shield/);
   assert.doesNotMatch(indexHtml, /safenet-astronaut-loader|safenet-loader|@keyframes/i);
   assert.doesNotMatch(indexHtml, /startup-loader|boot-surface|Connecting to SafeNet|Loading secure server/i);
   assert.doesNotMatch(appSource, /StartupLoader|STARTUP_LOADER|startupLoader/i);
@@ -68,6 +76,7 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
   assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.GONE\)/);
   assert.match(androidMainActivity, /startupHandler\.post\(startupCheck\)/);
   assert.match(androidMainActivity, /WebView did not paint SafeNet content/);
+  assert.match(androidMainActivity, /resumeSoundtrack/);
   assert.match(nativeFallbackSource, /COMMAND CENTER/);
   assert.match(nativeFallbackSource, /drawCard/);
   assert.match(nativeFallbackSource, /Tap anywhere to retry/);
@@ -82,4 +91,11 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
   assert.match(soundtrackSource, /addEventListener\("ended", handleAudioEnded\)/);
   assert.match(soundtrackSource, /audio\.currentTime\s*=\s*0/);
   assert.match(soundtrackSource, /void audio\.play\(\)\.catch/);
+  assert.match(soundtrackSource, /setIsPlaying\(!audio\.paused && !audio\.muted\)/);
+  assert.match(soundtrackSource, /MUTED_STORAGE_KEY/);
+});
+
+test("Android 12+ launch surface does not show the Shield Logo", () => {
+  assert.match(launchStyleSource, /windowSplashScreenAnimatedIcon/);
+  assert.match(launchStyleSource, /splash_transparent/);
 });

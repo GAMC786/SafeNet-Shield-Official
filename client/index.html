@@ -34,9 +34,6 @@
       style="min-height:100dvh;background:#090b14;color:#f8fafc;font-family:Arial,sans-serif;padding:28px 20px;box-sizing:border-box"
     >
       <div style="max-width:760px;margin:0 auto">
-        <div style="font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#60a5fa">
-          SafeNet Shield
-        </div>
         <div style="margin-top:12px;font-size:30px;font-weight:700;letter-spacing:.08em">
           Command Center
         </div>
@@ -53,6 +50,14 @@
             <strong style="display:block;margin-top:8px;font-size:20px">Ready</strong>
           </div>
         </div>
+        <button
+          id="static-soundtrack-toggle"
+          type="button"
+          aria-label="Turn soundtrack on or off"
+          style="margin-top:20px;border:1px solid rgba(148,163,184,.35);border-radius:10px;background:rgba(15,23,42,.8);color:#e2e8f0;padding:11px 15px;font-size:14px"
+        >
+          Soundtrack: Off
+        </button>
       </div>
     </div>
     <div id="root"></div>
@@ -65,10 +70,39 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
+        const toggle = document.getElementById("static-soundtrack-toggle");
+        const syncSoundtrack = () => {
+          if (toggle) {
+            toggle.textContent = !audio.muted && !audio.paused
+              ? "Soundtrack: On"
+              : "Soundtrack: Off";
+          }
+        };
+        toggle?.addEventListener("click", () => {
+          if (audio.muted || audio.paused) {
+            audio.muted = false;
+            void audio.play().then(() => {
+              window.localStorage.setItem(mutedKey, "false");
+              syncSoundtrack();
+            }).catch(() => {
+              audio.muted = true;
+              syncSoundtrack();
+            });
+          } else {
+            audio.muted = true;
+            audio.pause();
+            window.localStorage.setItem(mutedKey, "true");
+            syncSoundtrack();
+          }
+        });
+        audio.addEventListener("play", syncSoundtrack);
+        audio.addEventListener("pause", syncSoundtrack);
+        audio.addEventListener("volumechange", syncSoundtrack);
         audio.addEventListener("ended", () => {
           audio.currentTime = 0;
           void audio.play().catch(() => undefined);
         });
+        syncSoundtrack();
 
         const stopAudioForPageClose = () => {
           audio.pause();

@@ -144,6 +144,12 @@ public class MainActivity extends BridgeActivity {
         super.onPause();
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        resumeSoundtrack();
+    }
+
     private void stopSoundtrack() {
         if (getBridge() == null || getBridge().getWebView() == null) {
             return;
@@ -151,6 +157,17 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().evaluateJavascript(
                 "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
                         "if(a){a.pause();a.currentTime=0;}})();",
+                null
+        );
+    }
+
+    private void resumeSoundtrack() {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+        getBridge().getWebView().evaluateJavascript(
+                "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
+                        "if(a&&!a.muted){void a.play().catch(()=>{});}})();",
                 null
         );
     }

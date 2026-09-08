@@ -78,6 +78,8 @@ export function SoundtrackControl() {
     audio.addEventListener("pause", handleAudioPause);
     audio.addEventListener("ended", handleAudioEnded);
     audio.addEventListener("volumechange", handleAudioVolumeChange);
+    setIsPlaying(!audio.paused && !audio.muted);
+    setNeedsUserGesture(audio.paused && !audio.muted);
     if (!savedMuted) {
       void audio.play().catch(() => setNeedsUserGesture(true));
     }
