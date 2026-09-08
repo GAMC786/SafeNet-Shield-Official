@@ -1,15 +1,20 @@
-import { ReactNode } from "react";
+import { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-interface CyberCardProps {
+interface CyberCardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
-  className?: string;
   glow?: boolean;
 }
 
-export function CyberCard({ children, className, glow = false }: CyberCardProps) {
+export function CyberCard({
+  children,
+  className,
+  glow = false,
+  ...props
+}: CyberCardProps) {
   return (
-    <div 
+    <div
+      {...props}
       className={cn(
         "glass-panel rounded-xl p-6 relative overflow-hidden transition-all duration-300 group",
         glow && "hover:shadow-[0_0_30px_rgba(59,130,246,0.15)] hover:border-primary/30",
