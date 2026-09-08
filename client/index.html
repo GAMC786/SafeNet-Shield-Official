@@ -20,6 +20,26 @@
         0%, 100% { transform: translateY(0) scale(.78); opacity: .45; }
         50% { transform: translateY(-8px) scale(1); opacity: 1; }
       }
+      .safenet-loader-dots {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: clamp(58px, 18vw, 78px);
+        height: clamp(46px, 14vw, 60px);
+        transform: translate(-50%, -50%);
+      }
+      .safenet-loader-dot {
+        position: absolute;
+        width: clamp(11px, 3.6vw, 16px);
+        height: clamp(11px, 3.6vw, 16px);
+        border-radius: 50%;
+        background: #ef4444;
+        box-shadow: 0 0 12px rgba(239, 68, 68, .9);
+        animation: safenet-loader-dot 1.2s ease-in-out infinite;
+      }
+      .safenet-loader-dot:nth-child(1) { left: 50%; top: 0; transform: translateX(-50%); }
+      .safenet-loader-dot:nth-child(2) { left: 0; bottom: 0; animation-delay: .2s; }
+      .safenet-loader-dot:nth-child(3) { right: 0; bottom: 0; animation-delay: .4s; }
     </style>
   </head>
   <body style="margin: 0; background: #090b14;">
@@ -46,13 +66,10 @@
           aria-hidden="true"
           style="width:min(100%,360px);height:auto;max-height:100%;object-fit:contain;filter:drop-shadow(0 0 24px rgba(96,165,250,.16))"
         />
-        <div
-          aria-hidden="true"
-          style="position:absolute;left:50%;top:50%;width:72px;height:54px;transform:translate(-50%,-50%)"
-        >
-          <span style="position:absolute;left:50%;top:0;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid #60a5fa;filter:drop-shadow(0 0 8px rgba(96,165,250,.9));animation:safenet-loader-dot 1.2s ease-in-out infinite"></span>
-          <span style="position:absolute;left:8px;bottom:0;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid #60a5fa;filter:drop-shadow(0 0 8px rgba(96,165,250,.9));animation:safenet-loader-dot 1.2s .2s ease-in-out infinite"></span>
-          <span style="position:absolute;right:8px;bottom:0;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid #60a5fa;filter:drop-shadow(0 0 8px rgba(96,165,250,.9));animation:safenet-loader-dot 1.2s .4s ease-in-out infinite"></span>
+        <div class="safenet-loader-dots" aria-hidden="true">
+          <span class="safenet-loader-dot"></span>
+          <span class="safenet-loader-dot"></span>
+          <span class="safenet-loader-dot"></span>
         </div>
       </div>
     </div>
