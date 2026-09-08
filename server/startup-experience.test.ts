@@ -96,6 +96,19 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
   assert.match(soundtrackSource, /void audio\.play\(\)\.catch/);
   assert.match(soundtrackSource, /setIsPlaying\(!audio\.paused && !audio\.muted\)/);
   assert.match(soundtrackSource, /MUTED_STORAGE_KEY/);
+  assert.doesNotMatch(indexHtml, /syncSoundtrack/);
+});
+
+test("the soundtrack control is a centered right-side On/Off toggle", () => {
+  assert.match(
+    soundtrackSource,
+    /fixed right-3 top-1\/2 z-40 flex -translate-y-1\/2/,
+  );
+  assert.match(soundtrackSource, /aria-pressed=\{isPlaying\}/);
+  assert.match(soundtrackSource, /Soundtrack: \$\{isPlaying && !isMuted \? "On" : "Off"\}/);
+  assert.match(soundtrackSource, /Turn soundtrack off/);
+  assert.match(soundtrackSource, /Turn soundtrack on/);
+  assert.match(appSource, /<SoundtrackControl \/>/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {

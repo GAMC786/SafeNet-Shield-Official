@@ -204,7 +204,6 @@
           audio.currentTime = 0;
           void audio.play().catch(() => undefined);
         });
-        syncSoundtrack();
 
         const stopAudioForPageClose = () => {
           audio.pause();

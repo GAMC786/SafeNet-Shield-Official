@@ -141,14 +141,14 @@ export function SoundtrackControl() {
 
   const audioLabel = hasAudioError
     ? "Reference soundtrack unavailable"
-    : needsUserGesture
-      ? "Tap to enable soundtrack"
     : isPlaying && !isMuted
-      ? "Pause background soundtrack"
-      : "Play background soundtrack";
+      ? "Turn soundtrack off"
+      : needsUserGesture
+        ? "Tap to turn soundtrack on"
+        : "Turn soundtrack on";
 
   return (
-    <div className="fixed right-3 top-3 z-40 flex items-center gap-2">
+    <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 items-center gap-2">
       <Button
         type="button"
         variant="outline"
@@ -157,7 +157,7 @@ export function SoundtrackControl() {
         aria-label={audioLabel}
         aria-pressed={isPlaying}
         title={audioLabel}
-        className="border-white/20 bg-black/40 text-slate-200 backdrop-blur-md hover:bg-black/60"
+        className="whitespace-nowrap border-white/20 bg-black/40 text-slate-200 backdrop-blur-md hover:bg-black/60"
       >
         {isPlaying && !isMuted ? (
           <Volume2 className="h-4 w-4" />
@@ -165,14 +165,10 @@ export function SoundtrackControl() {
           <VolumeX className="h-4 w-4" />
         )}
         <Music2 className="h-3.5 w-3.5 opacity-70" />
-        <span className="hidden sm:inline">
+         <span>
           {hasAudioError
             ? "Unavailable"
-            : needsUserGesture
-              ? "Enable sound"
-              : isPlaying && !isMuted
-                ? "Mute"
-                : "Soundtrack"}
+             : `Soundtrack: ${isPlaying && !isMuted ? "On" : "Off"}`}
         </span>
       </Button>
     </div>
