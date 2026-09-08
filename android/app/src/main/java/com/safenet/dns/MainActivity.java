@@ -167,7 +167,8 @@ public class MainActivity extends BridgeActivity {
         }
         getBridge().getWebView().evaluateJavascript(
                 "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
-                        "if(a&&!a.muted){void a.play().catch(()=>{});}})();",
+                        "if(!document.getElementById('startup-loader')&&a&&!a.muted)" +
+                        "{void a.play().catch(()=>{});}})();",
                 null
         );
     }

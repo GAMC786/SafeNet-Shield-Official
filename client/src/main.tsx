@@ -41,6 +41,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 const root = createRoot(document.getElementById("root")!);
 
 const STARTUP_LOADER_DURATION_MS = 10_000;
+const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 
 function startStartupLoader() {
   const loader = document.getElementById("startup-loader");
@@ -68,6 +69,9 @@ function startStartupLoader() {
 
     loader.classList.add("is-complete");
     window.setTimeout(() => loader.remove(), 240);
+    window.setTimeout(() => {
+      window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
+    }, 240);
   };
 
   window.requestAnimationFrame(updateProgress);

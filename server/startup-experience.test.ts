@@ -59,6 +59,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
   assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
+  assert.match(mainSource, /safenet:startup-complete/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);
   assert.doesNotMatch(indexHtml, /boot-surface|Loading secure server/i);
 });
@@ -93,8 +94,10 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(indexHtml, /\bloop\b/);
-  assert.match(indexHtml, /\bautoplay\b/);
+  assert.match(indexHtml, /preload="none"/);
   assert.match(soundtrackSource, /audio\.loop\s*=\s*true/);
+  assert.match(soundtrackSource, /STARTUP_COMPLETE_EVENT/);
+  assert.match(soundtrackSource, /startup-loader/);
   assert.match(soundtrackSource, /addEventListener\("ended", handleAudioEnded\)/);
   assert.match(soundtrackSource, /audio\.currentTime\s*=\s*0/);
   assert.match(soundtrackSource, /void audio\.play\(\)\.catch/);
@@ -103,16 +106,22 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
   assert.doesNotMatch(indexHtml, /syncSoundtrack/);
 });
 
-test("the soundtrack control is a centered right-side On/Off toggle", () => {
+test("the soundtrack control is a draggable right-side On/Off toggle", () => {
   assert.match(
     soundtrackSource,
-    /fixed right-3 top-1\/2 z-40 flex -translate-y-1\/2/,
+    /right-3 top-1\/2/,
   );
+  assert.match(soundtrackSource, /onPointerDown=\{handlePointerDown\}/);
+  assert.match(soundtrackSource, /onPointerMove=\{handlePointerMove\}/);
+  assert.match(soundtrackSource, /setPointerCapture/);
+  assert.match(soundtrackSource, /POSITION_STORAGE_KEY/);
+  assert.match(soundtrackSource, /clampPosition/);
   assert.match(soundtrackSource, /aria-pressed=\{isPlaying\}/);
   assert.match(soundtrackSource, /Soundtrack: \$\{isPlaying && !isMuted \? "On" : "Off"\}/);
   assert.match(soundtrackSource, /Turn soundtrack off/);
   assert.match(soundtrackSource, /Turn soundtrack on/);
   assert.match(appSource, /<SoundtrackControl \/>/);
+  assert.match(androidMainActivity, /!document\.getElementById\('startup-loader'\)/);
 });
 
 test("Measure Your Network identifies the ISP and reports measured packet loss", () => {

@@ -130,8 +130,7 @@
     <audio
       id="safenet-soundtrack-audio"
       loop
-      autoplay
-      preload="auto"
+      preload="none"
       playsinline
       aria-hidden="true"
       src="https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav"
@@ -201,6 +200,7 @@
         audio.volume = 0.55;
         audio.muted = savedMuted;
         audio.addEventListener("ended", () => {
+          if (document.getElementById("startup-loader")) return;
           audio.currentTime = 0;
           void audio.play().catch(() => undefined);
         });
