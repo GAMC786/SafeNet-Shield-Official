@@ -637,20 +637,17 @@ test("hosted emulator wrapper failure still reaches release evidence upload", ()
   assert.match(uploadStep, /if-no-files-found: warn/);
 });
 
-test("startup-only smoke lane requires the native surface and WebView transition evidence", () => {
+test("startup-only smoke lane requires direct WebView startup evidence", () => {
   assert.match(smokeScript, /--startup-only\s+Install the signed app APK/);
   assert.match(smokeScript, /startup-initial\.png/);
   assert.match(smokeScript, /startup-transition\.png/);
-  assert.match(
-    smokeScript,
-    /content-desc="Connecting to SafeNet Shield DNS Server\+"/,
-  );
   assert.match(smokeScript, /class="android\.webkit\.WebView"/);
+  assert.match(smokeScript, /native_loader=REMOVED/);
+  assert.doesNotMatch(smokeScript, /native startup loader was not visible/);
   assert.match(smokeScript, /STARTUP_FAILURE/);
   assert.match(smokeScript, /startup-failure-ui\.xml/);
   assert.match(smokeScript, /startup-logcat\.txt/);
-  assert.match(mainActivity, /native_startup_loader=visible/);
-  assert.match(mainActivity, /native_startup_loader=hidden web_content_ready=true/);
+  assert.doesNotMatch(mainActivity, /native_startup_loader|StartupLoaderView/);
 });
 
 test("release smoke summary script is extracted and passes Bash syntax validation", () => {

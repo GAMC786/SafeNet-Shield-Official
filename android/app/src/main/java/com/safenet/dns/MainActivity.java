@@ -1,14 +1,8 @@
 package com.safenet.dns;
 
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
 import android.graphics.Color;
-import android.util.Log;
 import android.view.Window;
-import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
@@ -21,11 +15,6 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private static final String STARTUP_TAG = "SafeNetStartup";
-    private final Handler startupHandler = new Handler(Looper.getMainLooper());
-    private StartupLoaderView startupLoader;
-    private Runnable startupLoaderCheck;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
@@ -39,11 +28,10 @@ public class MainActivity extends BridgeActivity {
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
-        // Allow the SafeNet soundtrack to begin after the web loader completes.
+        // Allow the SafeNet soundtrack to begin when the app shell mounts.
         // Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
-        installNativeStartupLoader(webView);
 
         Window window = getWindow();
         // Keep the web content below system bars where the platform allows it.
@@ -61,66 +49,24 @@ public class MainActivity extends BridgeActivity {
         insetsController.setAppearanceLightNavigationBars(false);
     }
 
-    private void installNativeStartupLoader(WebView webView) {
-        if (!(webView.getParent() instanceof ViewGroup)) {
-            return;
-        }
-
-        ViewGroup webViewContainer = (ViewGroup) webView.getParent();
-        startupLoader = new StartupLoaderView(this);
-        startupLoader.setClickable(false);
-        startupLoader.setFocusable(false);
-        startupLoader.setElevation(100f);
-        webViewContainer.addView(
-                startupLoader,
-                new ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                )
-        );
-
-        final long earliestHideTime = SystemClock.uptimeMillis() + 1_500L;
-        startupLoaderCheck = new Runnable() {
-            @Override
-            public void run() {
-                boolean webContentReady =
-                        webView.getProgress() >= 80 && webView.getContentHeight() > 0;
-                if (webContentReady && SystemClock.uptimeMillis() >= earliestHideTime) {
-                    if (startupLoader != null) {
-                        startupLoader.setVisibility(View.GONE);
-                        Log.i(STARTUP_TAG, "native_startup_loader=hidden web_content_ready=true");
-                    }
-                    return;
-                }
-                startupHandler.postDelayed(this, 120L);
-            }
-        };
-        startupHandler.post(startupLoaderCheck);
-        Log.i(STARTUP_TAG, "native_startup_loader=visible");
-    }
-
     @Override
     public void onDestroy() {
-        if (startupLoaderCheck != null) {
-            startupHandler.removeCallbacks(startupLoaderCheck);
-        }
-        startupLoader = null;
-        stopStartupAudio();
+        stopSoundtrack();
         super.onDestroy();
     }
 
     @Override
     public void onPause() {
-        stopStartupAudio();
+        stopSoundtrack();
         super.onPause();
     }
 
-    private void stopStartupAudio() {
+    private void stopSoundtrack() {
         if (getBridge() == null || getBridge().getWebView() == null) {
             return;
         }
         getBridge().getWebView().evaluateJavascript(
-                "(function(){const a=document.getElementById('safenet-startup-audio');" +
+                "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
                         "if(a){a.pause();a.currentTime=0;}})();",
                 null
         );

@@ -23,8 +23,8 @@
         <item name="android:windowLightNavigationBar">false</item>
     </style>
 
-    <!-- Use the normal dark activity window at launch. The HTML loader is the
-         only startup screen; do not keep a bitmap splash over the WebView. -->
+    <!-- Use the normal dark activity window at launch without a separate
+         native or HTML startup screen. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>

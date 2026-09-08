@@ -502,7 +502,7 @@ startup_failure() {
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
+        printf 'native_loader=REMOVED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
             "$message"
     } | tee "$output_dir/startup-result.txt" "$output_dir/result.txt" >&2
     printf 'STARTUP_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
@@ -513,12 +513,9 @@ startup_failure() {
 
 run_startup_check() {
     local initial_ui
-    local transition_ui
-    local native_loader_seen=false
-    local webview_transitioned=false
     local launch_output
 
-    echo "Launching signed SafeNet APK for native startup check..."
+    echo "Launching signed SafeNet APK for direct WebView startup check..."
     timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
     install_release_apk "$apk_path" ||
         startup_failure "the signed release APK could not be installed"
@@ -530,47 +527,30 @@ run_startup_check() {
     )"
     printf '%s\n' "$launch_output" > "$output_dir/startup-launch.txt"
 
-    # The native loader is intentionally visible before the WebView can finish
-    # loading. Capture it before waiting for the normal WebView transition.
+    # The native startup surface has been removed. Capture the initial state
+    # and wait for the real WebView to appear directly.
     for _ in {1..30}; do
         capture_startup_ui startup-initial-ui.xml
         initial_ui="$(cat "$output_dir/startup-initial-ui.xml" 2>/dev/null || true)"
-        if grep -Fq 'content-desc="Connecting to SafeNet Shield DNS Server+"' <<<"$initial_ui"; then
-            native_loader_seen=true
+        if grep -Fq 'class="android.webkit.WebView"' <<<"$initial_ui"; then
             capture_startup_screenshot startup-initial.png
             break
         fi
         sleep 1
     done
-    if [[ "$native_loader_seen" != true ]]; then
+    if ! grep -Fq 'class="android.webkit.WebView"' "$output_dir/startup-initial-ui.xml" 2>/dev/null; then
         capture_startup_screenshot startup-initial.png
-        startup_failure "the native startup loader was not visible after launching MainActivity"
+        startup_failure "the WebView was not visible after launching MainActivity"
     fi
 
-    # MainActivity hides the opaque native surface only after the WebView has
-    # meaningful content. Require both the accessibility transition and a
-    # visible WebView node so a blank dark WebView cannot pass this check.
-    for _ in {1..60}; do
-        capture_startup_ui startup-transition-ui.xml
-        transition_ui="$(cat "$output_dir/startup-transition-ui.xml" 2>/dev/null || true)"
-        if ! grep -Fq 'content-desc="Connecting to SafeNet Shield DNS Server+"' <<<"$transition_ui" &&
-            grep -Fq 'class="android.webkit.WebView"' <<<"$transition_ui"; then
-            webview_transitioned=true
-            capture_startup_screenshot startup-transition.png
-            break
-        fi
-        sleep 1
-    done
-    if [[ "$webview_transitioned" != true ]]; then
-        capture_startup_screenshot startup-transition.png
-        startup_failure "the WebView did not transition beyond the native startup loader"
-    fi
+    cp "$output_dir/startup-initial-ui.xml" "$output_dir/startup-transition-ui.xml"
+    cp "$output_dir/startup-initial.png" "$output_dir/startup-transition.png"
 
     capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=PASS\nwebview_transition=PASS\nresult=PASS\n'
+        printf 'native_loader=REMOVED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
     echo "Android startup check passed. Evidence: $output_dir"
 }

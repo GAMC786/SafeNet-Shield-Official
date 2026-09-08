@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
@@ -10,7 +10,6 @@ import { useAuthStatus, useSettings } from "@/hooks/use-settings";
 import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
-import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import { SoundtrackControl } from "@/components/SoundtrackControl";
 
 // Pages
@@ -25,8 +24,6 @@ import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const STARTUP_LOADER_DURATION_MS = 1200;
-
 export type ClerkRuntimeConfig = {
   publishableKey?: string;
   proxyUrl?: string;
@@ -142,15 +139,8 @@ function MainLayout() {
 function AppContent() {
   const { isSignedIn } = useAuth();
   const authStatus = useAuthStatus();
-  const [startupLoaderComplete, setStartupLoaderComplete] = useState(false);
   const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
   const settingsQuery = useSettings(isAuthenticated);
-  const firewallConfigQuery = useFirewallConfig(isAuthenticated);
-  const { data: settings } = settingsQuery;
-  const isLoading =
-    !startupLoaderComplete ||
-    authStatus.isLoading ||
-    (isAuthenticated && (settingsQuery.isLoading || firewallConfigQuery.isLoading));
   const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);
   const error = authStatus.error || (isAuthenticated ? settingsQuery.error : null);
   const refetch = () => {
@@ -160,18 +150,6 @@ function AppContent() {
     }
   };
   const isFetching = authStatus.isFetching || (isAuthenticated && settingsQuery.isFetching);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setStartupLoaderComplete(true);
-    }, STARTUP_LOADER_DURATION_MS);
-
-    return () => window.clearTimeout(timeout);
-  }, []);
-
-  if (isLoading) {
-    return <StartupLoader />;
-  }
 
   if (isError) {
     return (
@@ -215,41 +193,6 @@ function AppContent() {
   }
 
   return <MainLayout />;
-}
-
-export function StartupLoader() {
-  return (
-    <div
-      className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#090b14] p-6 text-foreground"
-      style={{
-        backgroundImage:
-          "radial-gradient(circle at center, rgba(239,68,68,0.16), transparent 42%)",
-      }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.16),transparent_42%)]" />
-      <div className="relative z-10 flex max-w-md flex-col items-center gap-7 text-center" role="status">
-        <div className="relative h-16 w-24" aria-hidden="true">
-          {[
-            "left-1/2 top-1 -translate-x-1/2",
-            "bottom-1 left-2",
-            "bottom-1 right-2",
-          ].map((position, index) => (
-            <span
-              key={position}
-              className={`absolute h-4 w-4 rounded-full bg-red-500 shadow-[0_0_22px_rgba(239,68,68,0.95)] animate-pulse ${position}`}
-              style={{ animationDelay: `${index * 180}ms` }}
-            />
-          ))}
-        </div>
-        <div className="space-y-2">
-          <h1 className="font-display text-xl tracking-[0.18em] text-white sm:text-2xl">
-            Connecting to SafeNet Shield DNS Server+
-          </h1>
-          <p className="text-sm text-slate-300">Loading secure server settings…</p>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function SignInPage() {

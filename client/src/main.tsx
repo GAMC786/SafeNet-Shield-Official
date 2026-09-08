@@ -1,7 +1,6 @@
 import { createRoot } from "react-dom/client";
 import App, {
   getBuildClerkConfig,
-  StartupLoader,
   type ClerkRuntimeConfig,
 } from "./App";
 import "./index.css";
@@ -29,7 +28,6 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 }
 
 const root = createRoot(document.getElementById("root")!);
-root.render(<StartupLoader />);
 
 function renderStartupError(error: unknown) {
   const message =

@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 
 const REFERENCE_SOUNDTRACK_URL =
   "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav";
-const AUDIO_ELEMENT_ID = "safenet-startup-audio";
+const AUDIO_ELEMENT_ID = "safenet-soundtrack-audio";
 const MUTED_STORAGE_KEY = "safenet-soundtrack-muted";
 /**
- * Start the complete loop when the authenticated app shell mounts after the
- * startup loader. Android's WebView allows that playback; browsers may reject
- * it, so the control turns into an explicit tap-to-enable action instead.
+ * Start the complete loop when the app shell mounts. Android's WebView allows
+ * that playback; browsers may reject it, so the control turns into an
+ * explicit tap-to-enable action instead.
  *
  * The soundtrack remains referenced from its public source URL rather than
  * copied into this project. The Rive companion uses Rive's CORS-enabled
@@ -55,6 +55,17 @@ export function SoundtrackControl() {
       setNeedsUserGesture(false);
     };
     const handleAudioPause = () => setIsPlaying(false);
+    const handleAudioEnded = () => {
+      // Keep the loop reliable across WebView implementations that emit an
+      // ended event even when the loop attribute is enabled.
+      if (!audio.muted) {
+        audio.currentTime = 0;
+        void audio.play().catch(() => {
+          setNeedsUserGesture(true);
+          setIsPlaying(false);
+        });
+      }
+    };
     const handleAudioVolumeChange = () => {
       setIsMuted(audio.muted);
       if (audio.muted) {
@@ -65,6 +76,7 @@ export function SoundtrackControl() {
     audio.addEventListener("error", handleAudioError);
     audio.addEventListener("play", handleAudioPlay);
     audio.addEventListener("pause", handleAudioPause);
+    audio.addEventListener("ended", handleAudioEnded);
     audio.addEventListener("volumechange", handleAudioVolumeChange);
     if (!savedMuted) {
       void audio.play().catch(() => setNeedsUserGesture(true));
@@ -78,6 +90,7 @@ export function SoundtrackControl() {
       audio.removeEventListener("error", handleAudioError);
       audio.removeEventListener("play", handleAudioPlay);
       audio.removeEventListener("pause", handleAudioPause);
+      audio.removeEventListener("ended", handleAudioEnded);
       audio.removeEventListener("volumechange", handleAudioVolumeChange);
       audioRef.current = null;
     };
