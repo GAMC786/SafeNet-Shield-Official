@@ -430,5 +430,13 @@ public class SafeNetPinInstrumentationTest {
                 new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
             );
         }
+
+        private static WebResourceResponse response(
+            int statusCode,
+            String body,
+            String mimeType
+        ) {
+            return response(statusCode, body, mimeType, Collections.emptyMap());
+        }
     }
 }
