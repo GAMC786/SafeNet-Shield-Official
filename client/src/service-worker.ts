@@ -1,4 +1,4 @@
-const CACHE_NAME = "safenet-dns-v2";
+const CACHE_NAME = "safenet-dns-v3";
 const urlsToCache = [
   "/",
   "/index.html",

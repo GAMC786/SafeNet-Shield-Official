@@ -9,9 +9,20 @@ import { resolveApiUrl } from "./lib/api";
 // Register the service worker for the production PWA only. A cache-first
 // service worker must not intercept Vite's development modules or HMR.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/service-worker.js").catch((err) => {
-    console.log("Service Worker registration failed:", err);
+  let reloadedForUpdatedWorker = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedForUpdatedWorker) {
+      return;
+    }
+    reloadedForUpdatedWorker = true;
+    window.location.reload();
   });
+  navigator.serviceWorker
+    .register("/service-worker.js")
+    .then((registration) => registration.update())
+    .catch((err) => {
+      console.log("Service Worker registration failed:", err);
+    });
 } else if (!import.meta.env.PROD && "serviceWorker" in navigator) {
   void navigator.serviceWorker.getRegistrations().then((registrations) => {
     return Promise.all(registrations.map((registration) => registration.unregister()));

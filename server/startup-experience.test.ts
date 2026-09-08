@@ -37,6 +37,10 @@ const launchStyleSource = readFileSync(
   path.resolve(process.cwd(), "android/app/src/main/res/values-v31/styles.xml"),
   "utf8",
 );
+const serviceWorkerSource = readFileSync(
+  path.join(clientRoot, "src/service-worker.ts"),
+  "utf8",
+);
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
@@ -105,4 +109,12 @@ test("the app content stays below system bars while scrolling", () => {
   assert.match(appSource, /className="app-content-scroll[^"]*min-h-0[^"]*overflow-y-auto/);
   assert.match(soundtrackSource, /className="soundtrack-control fixed top-1\/2/);
   assert.match(soundtrackSource, /-translate-y-1\/2/);
+});
+
+test("updated web assets refresh without clearing app storage", () => {
+  assert.match(mainSource, /addEventListener\("controllerchange"/);
+  assert.match(mainSource, /registration\.update\(\)/);
+  assert.match(serviceWorkerSource, /safenet-dns-v3/);
+  assert.match(serviceWorkerSource, /clients\.claim\(\)/);
+  assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
