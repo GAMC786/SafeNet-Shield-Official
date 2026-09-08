@@ -1,13 +1,8 @@
 package com.safenet.dns;
 
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
 import android.graphics.Color;
 import android.view.Window;
-import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
@@ -20,10 +15,6 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private final Handler startupHandler = new Handler(Looper.getMainLooper());
-    private StartupLoaderView startupLoader;
-    private Runnable startupLoaderCheck;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
@@ -41,7 +32,6 @@ public class MainActivity extends BridgeActivity {
         // visible. Browser builds still respect autoplay policy and expose a
         // tap-to-enable fallback in the loader.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
-        installNativeStartupLoader(webView);
 
         Window window = getWindow();
         // Keep the web content below system bars where the platform allows it.
@@ -59,48 +49,8 @@ public class MainActivity extends BridgeActivity {
         insetsController.setAppearanceLightNavigationBars(false);
     }
 
-    private void installNativeStartupLoader(WebView webView) {
-        if (!(webView.getParent() instanceof ViewGroup)) {
-            return;
-        }
-
-        ViewGroup webViewContainer = (ViewGroup) webView.getParent();
-        startupLoader = new StartupLoaderView(this);
-        startupLoader.setClickable(false);
-        startupLoader.setFocusable(false);
-        startupLoader.setElevation(100f);
-        webViewContainer.addView(
-                startupLoader,
-                new ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                )
-        );
-
-        final long earliestHideTime = SystemClock.uptimeMillis() + 10_000L;
-        startupLoaderCheck = new Runnable() {
-            @Override
-            public void run() {
-                boolean webContentReady =
-                        webView.getProgress() >= 80 && webView.getContentHeight() > 0;
-                if (webContentReady && SystemClock.uptimeMillis() >= earliestHideTime) {
-                    if (startupLoader != null) {
-                        startupLoader.setVisibility(View.GONE);
-                    }
-                    return;
-                }
-                startupHandler.postDelayed(this, 120L);
-            }
-        };
-        startupHandler.post(startupLoaderCheck);
-    }
-
     @Override
     public void onDestroy() {
-        if (startupLoaderCheck != null) {
-            startupHandler.removeCallbacks(startupLoaderCheck);
-        }
-        startupLoader = null;
         stopStartupAudio();
         super.onDestroy();
     }
