@@ -50,6 +50,18 @@ const serviceWorkerSource = readFileSync(
   path.join(clientRoot, "src/service-worker.ts"),
   "utf8",
 );
+const settingsSource = readFileSync(
+  path.join(clientRoot, "src/pages/Settings.tsx"),
+  "utf8",
+);
+const dashboardSource = readFileSync(
+  path.join(clientRoot, "src/pages/Dashboard.tsx"),
+  "utf8",
+);
+const manifestSource = readFileSync(
+  path.join(clientRoot, "public/manifest.json"),
+  "utf8",
+);
 
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
@@ -166,4 +178,23 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.match(serviceWorkerSource, /safenet-dns-v3/);
   assert.match(serviceWorkerSource, /clients\.claim\(\)/);
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
+});
+
+test("Settings use the current package version and describe preference-only Android controls", () => {
+  assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
+  assert.match(settingsSource, /data-testid="settings-version"/);
+  assert.match(settingsSource, /settingsReady/);
+  assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
+  assert.match(settingsSource, /Android device-admin permission is not requested here/);
+  assert.doesNotMatch(settingsSource, /v1\.0\.20/);
+  assert.match(manifestSource, /SafeNet Shield DNS Server\+ \(Official\) v1\.0\.59/);
+  assert.doesNotMatch(manifestSource, /v1\.0\.20/);
+});
+
+test("the Dashboard reports DNS Protection VPN instead of generic system activity", () => {
+  assert.match(dashboardSource, /useSafeNetVpn/);
+  assert.match(dashboardSource, /DNS Protection VPN/);
+  assert.match(dashboardSource, /Available in the SafeNet Android APK/);
+  assert.match(dashboardSource, /DNS protection is running/);
+  assert.doesNotMatch(dashboardSource, /System Active/);
 });

@@ -76,6 +76,8 @@ function mockApi(
     authenticated = true,
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
+    settingsDelayMs = 0,
+    dnsDelayMs = 0,
   } = {},
 ) {
   let settings = {
@@ -188,11 +190,17 @@ function mockApi(
           });
           return;
         }
+        if (settingsDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, settingsDelayMs));
+        }
         response = settings;
       } else if (url.pathname === "/api/settings" && method === "PUT") {
         settings = { ...settings, ...JSON.parse(request.postData() || "{}") };
         response = settings;
       } else if (url.pathname === "/api/dns" && method === "GET") {
+        if (dnsDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, dnsDelayMs));
+        }
         response = dnsServers;
       } else if (url.pathname === "/api/dns" && method === "POST") {
         const input = JSON.parse(request.postData() || "{}");
@@ -323,6 +331,8 @@ test("PIN does not block startup and still protects Settings recovery", async ()
 
   await page.goto(baseUrl);
   await page.getByRole("heading", { name: "Command Center" }).waitFor();
+   await page.getByRole("heading", { name: "DNS Protection VPN" }).waitFor();
+   await page.getByText("Available in the SafeNet Android APK", { exact: true }).waitFor();
   assert.equal(
     await page.getByText("Secure Access Required", { exact: true }).count(),
     0,
@@ -332,6 +342,52 @@ test("PIN does not block startup and still protects Settings recovery", async ()
   await page.getByRole("link", { name: "Settings" }).click();
   await page.getByText("Secure Access Required", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Forgot PIN? Recover by email" }).waitFor();
+  await page.close();
+});
+
+test("Settings keep controls safe while loading and show the current version", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, { settingsDelayMs: 12_000 });
+  await page.goto(`${baseUrl}/settings`);
+  await page.getByRole("heading", { name: "System Settings" }).waitFor();
+
+  for (const name of ["AI Shield", "App Firewall", "Always-On VPN", "Device Admin", "PIN Protection"]) {
+    assert.equal(
+      await page.getByRole("switch", { name }).isDisabled(),
+      true,
+      `${name} must be disabled until saved settings load`,
+    );
+  }
+  assert.equal(await page.getByRole("button", { name: "Set PIN" }).isDisabled(), true);
+  assert.equal(await page.getByLabel("PIN Recovery Email").isDisabled(), true);
+
+  await page.getByTestId("settings-version").waitFor();
+  assert.equal(
+    await page.getByTestId("settings-version").textContent(),
+    "SafeNet Shield DNS Server+ (Official) v1.0.59",
+  );
+  await page.close();
+});
+
+test("Settings PIN and recovery email actions validate and save safely", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/settings`);
+  await page.getByRole("heading", { name: "System Settings" }).waitFor();
+
+  const recoveryEmail = page.getByLabel("PIN Recovery Email");
+  await recoveryEmail.fill("not-an-email");
+  await page.getByRole("button", { name: "Save recovery email" }).click();
+  await page.getByText("Recovery email required", { exact: true }).waitFor();
+
+  await recoveryEmail.fill("owner@example.com");
+  await page.getByRole("button", { name: "Save recovery email" }).click();
+  await page.getByText("Recovery email saved", { exact: true }).waitFor();
+
+  await page.getByPlaceholder("****").fill("4826");
+  await page.getByRole("button", { name: "Set PIN" }).click();
+  await page.getByText("PIN updated", { exact: true }).waitFor();
+  assert.equal(await page.getByPlaceholder("****").inputValue(), "");
   await page.close();
 });
 
