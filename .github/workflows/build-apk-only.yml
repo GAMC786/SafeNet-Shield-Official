@@ -32,17 +32,19 @@ jobs:
         run: |
           set -euo pipefail
           package_version="$(node --input-type=module -e "import fs from 'node:fs'; process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
-          android_version="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
-          if [[ -z "$package_version" || -z "$android_version" ]]; then
-            echo 'Could not resolve the app version from package.json and android/app/build.gradle.' >&2
+          android_version_name="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
+          android_version_code="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*$/\1/p' android/app/build.gradle | head -n 1)"
+          if [[ -z "$package_version" || -z "$android_version_name" || -z "$android_version_code" ]]; then
+            echo 'Could not resolve the app version metadata from package.json and android/app/build.gradle.' >&2
             exit 1
           fi
-          if [[ "$package_version" != "$android_version" ]]; then
-            echo "App version mismatch: package.json=$package_version, android/app/build.gradle=$android_version" >&2
+          if [[ "$package_version" != "$android_version_name" ]]; then
+            echo "App version mismatch: package.json=$package_version, android/app/build.gradle=$android_version_name" >&2
             exit 1
           fi
-          echo "version=$package_version" >> "$GITHUB_OUTPUT"
-          echo "Verified Android release version: $package_version"
+          echo "version=$android_version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$android_version_code" >> "$GITHUB_OUTPUT"
+          echo "Verified Android release version: $android_version_name (versionCode $android_version_code)"
 
       - name: Install dependencies with bounded retry
         id: npm_ci
@@ -122,6 +124,7 @@ jobs:
         shell: bash
         env:
           APP_VERSION: ${{ steps.app_version.outputs.version }}
+          APP_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
         run: |
           set -euo pipefail
           apk=android/app/build/outputs/apk/release/app-release.apk
@@ -129,7 +132,7 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
-           "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='52' versionName='$APP_VERSION'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION'"
           if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
             echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
             exit 1
