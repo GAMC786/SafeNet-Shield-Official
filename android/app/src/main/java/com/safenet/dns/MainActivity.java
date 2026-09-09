@@ -150,19 +150,40 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void run() {
                 webView.evaluateJavascript(
-                        "(function(){return !!document.querySelector('#root > *') || !!document.querySelector('#dashboard-fallback');})()",
+                        "(function(){" +
+                                "const loader=document.getElementById('startup-loader');" +
+                                "const fallback=document.getElementById('dashboard-fallback');" +
+                                "const pagePainted=!!document.querySelector('#root > *')||!!fallback;" +
+                                "const controls=Array.from(document.querySelectorAll('button,[role=\"button\"]'))" +
+                                        ".filter((element)=>/soundtrack|volume|music/i.test(" +
+                                                "(element.getAttribute('aria-label')||'')+' '+element.textContent));" +
+                                "return 'pagePainted='+(pagePainted?'true':'false')+" +
+                                        "';loaderPresent='+(loader?'true':'false')+" +
+                                        "';loaderBusy='+(loader?(loader.getAttribute('aria-busy')||'none'):'none')+" +
+                                        "';loaderValue='+(loader?(loader.getAttribute('aria-valuenow')||'none'):'none')+" +
+                                        "';fallbackPresent='+(fallback?'true':'false')+" +
+                                        "';soundtrackControls='+controls.length;" +
+                        "})()",
                         value -> {
-                            boolean pagePainted = "true".equals(value);
+                            Log.i(TAG, "WebView startup state: " + value);
+                            boolean pagePainted = value.contains("pagePainted=true");
+                            boolean loaderPresent = value.contains("loaderPresent=true");
                             if (pagePainted) {
                                 if (startupFallback != null) {
                                     startupFallback.setVisibility(View.GONE);
                                 }
-                                return;
                             }
 
-                            if (SystemClock.uptimeMillis() >= startupDeadline && startupFallback != null) {
+                            if (!pagePainted &&
+                                    SystemClock.uptimeMillis() >= startupDeadline &&
+                                    startupFallback != null) {
                                 Log.e(TAG, "WebView did not paint SafeNet content; showing native fallback");
                                 startupFallback.setVisibility(View.VISIBLE);
+                            }
+
+                            if (!loaderPresent && pagePainted) {
+                                Log.i(TAG, "WebView startup handoff complete");
+                                return;
                             }
                             startupHandler.postDelayed(this, 1000L);
                         }

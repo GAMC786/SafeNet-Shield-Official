@@ -502,7 +502,7 @@ startup_failure() {
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=REMOVED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
+        printf 'native_loader=NOT_USED\nweb_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
             "$message"
     } | tee "$output_dir/startup-result.txt" "$output_dir/result.txt" >&2
     printf 'STARTUP_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
@@ -527,8 +527,9 @@ run_startup_check() {
     )"
     printf '%s\n' "$launch_output" > "$output_dir/startup-launch.txt"
 
-    # The native startup surface has been removed. Capture the initial state
-    # and wait for the real WebView to appear directly.
+    # Capture the first WebView frame, an in-progress loader frame, and the
+    # post-handoff frame. MainActivity logs the loader's DOM state while it
+    # waits for the timed progress and first React render to complete.
     for _ in {1..30}; do
         capture_startup_ui startup-initial-ui.xml
         initial_ui="$(cat "$output_dir/startup-initial-ui.xml" 2>/dev/null || true)"
@@ -543,14 +544,23 @@ run_startup_check() {
         startup_failure "the WebView was not visible after launching MainActivity"
     fi
 
-    cp "$output_dir/startup-initial-ui.xml" "$output_dir/startup-transition-ui.xml"
-    cp "$output_dir/startup-initial.png" "$output_dir/startup-transition.png"
+    sleep 4
+    capture_startup_ui startup-progress-ui.xml
+    capture_startup_screenshot startup-progress.png
+    cp "$output_dir/startup-progress-ui.xml" "$output_dir/startup-transition-ui.xml"
+    cp "$output_dir/startup-progress.png" "$output_dir/startup-transition.png"
+    sleep 7
+    capture_startup_ui startup-handoff-ui.xml
+    capture_startup_screenshot startup-handoff.png
 
     capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
+    if ! grep -Fq 'WebView startup handoff complete' "$output_dir/startup-logcat.txt"; then
+        startup_failure "the WebView startup loader did not report a completed handoff"
+    fi
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=REMOVED\nwebview_transition=PASS\nresult=PASS\n'
+        printf 'native_loader=NOT_USED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
     echo "Android startup check passed. Evidence: $output_dir"
 }
