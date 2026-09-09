@@ -41,6 +41,9 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 const root = createRoot(document.getElementById("root")!);
 
 const STARTUP_LOADER_DURATION_MS = 10_000;
+const STARTUP_CONFIG_RESPONSE_DELAY_MS = 10_500;
+const STARTUP_CONFIG_TEST_QUERY = "safenet-startup-test";
+const STARTUP_CONFIG_DELAYED_TEST_VALUE = "delayed-config";
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 let startupDurationComplete = false;
 let startupAppReady = false;
@@ -125,9 +128,19 @@ function renderStartupError(error: unknown) {
   markStartupAppReady();
 }
 
+function shouldDelayStartupConfigForTest() {
+  return (
+    isPackagedApp() &&
+    new URLSearchParams(window.location.search).get(STARTUP_CONFIG_TEST_QUERY) ===
+      STARTUP_CONFIG_DELAYED_TEST_VALUE
+  );
+}
+
 async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
   const buildConfig = getBuildClerkConfig();
-  if (buildConfig.publishableKey) {
+  const isDelayedConfigTest = shouldDelayStartupConfigForTest();
+
+  if (buildConfig.publishableKey && !isDelayedConfigTest) {
     return buildConfig;
   }
 
@@ -149,6 +162,16 @@ async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
         typeof payload?.message === "string"
           ? payload.message
           : "The SafeNet server did not provide secure sign-in configuration.",
+      );
+    }
+
+    // The Android instrumentation test uses this localhost-only query to
+    // emulate a slow secure configuration response. Delaying the handoff
+    // after the response is parsed keeps this hook deterministic without
+    // affecting normal browser or packaged startup.
+    if (isDelayedConfigTest) {
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, STARTUP_CONFIG_RESPONSE_DELAY_MS),
       );
     }
 
@@ -180,20 +203,19 @@ function openDashboardOnLaunch() {
   if (!isPackagedApp() || window.location.pathname === "/") {
     return;
   }
-  window.history.replaceState({}, "", "/");
+  window.history.replaceState(
+    {},
+    "",
+    `/${window.location.search}${window.location.hash}`,
+  );
 }
 
 openDashboardOnLaunch();
 
 const buildConfig = getBuildClerkConfig();
-if (buildConfig.publishableKey) {
+if (buildConfig.publishableKey && !shouldDelayStartupConfigForTest()) {
   hideDashboardFallback();
   root.render(<App clerkConfig={buildConfig} />);
-  markStartupAppReady();
-} else if (isPackagedApp()) {
-  // Keep the static Command Center visible if a release was built without
-  // Clerk configuration. Never replace it with a blank surface.
-  console.warn("SafeNet APK is missing its embedded Clerk publishable key.");
   markStartupAppReady();
 } else {
   void loadClerkConfig()
