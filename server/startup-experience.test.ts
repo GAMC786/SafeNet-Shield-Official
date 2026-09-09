@@ -102,7 +102,8 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Network/);
   assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
+  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*320/);
+  assert.match(mainSource, /STARTUP_LOADER_FADE_MS\s*=\s*180/);
   assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
   assert.match(mainSource, /safenet:startup-complete/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);
@@ -160,7 +161,7 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(indexHtml, /\bloop\b/);
-  assert.match(indexHtml, /preload="none"/);
+  assert.match(indexHtml, /preload="auto"/);
   assert.match(soundtrackSource, /audio\.loop\s*=\s*true/);
   assert.match(soundtrackSource, /STARTUP_COMPLETE_EVENT/);
   assert.match(soundtrackSource, /startup-loader/);
@@ -239,9 +240,9 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(settingsSource, /settingsReady/);
   assert.match(settingsSource, /opens Android(?:&apos;|')s Always-on VPN settings/);
-  assert.match(settingsSource, /Open Android security settings/);
   assert.match(settingsSource, /button-open-vpn-settings/);
-  assert.match(settingsSource, /button-set-pin/);
+  assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);
+  assert.doesNotMatch(settingsSource, /Device Admin|device-admin|deviceAdminEnabled|button-open-device-admin-settings|Open Android security settings/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
   assert.match(
     manifestSource,

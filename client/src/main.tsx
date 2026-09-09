@@ -40,28 +40,42 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
-const STARTUP_LOADER_DURATION_MS = 10_000;
+// Keep the first paint visible long enough to avoid a compositor flash, but do
+// not hold a ready app behind a decorative ten-second minimum.
+const STARTUP_LOADER_DURATION_MS = 320;
+const STARTUP_LOADER_FADE_MS = 180;
 const STARTUP_CONFIG_RESPONSE_DELAY_MS = 10_500;
 const STARTUP_CONFIG_TEST_QUERY = "safenet-startup-test";
 const STARTUP_CONFIG_DELAYED_TEST_VALUE = "delayed-config";
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 let startupDurationComplete = false;
 let startupAppReady = false;
+let startupHandoffScheduled = false;
 
 function completeStartupIfReady() {
   if (!startupDurationComplete || !startupAppReady) {
     return;
   }
   const loader = document.getElementById("startup-loader");
-  if (!loader || loader.classList.contains("is-complete")) {
+  if (
+    !loader ||
+    loader.classList.contains("is-complete") ||
+    startupHandoffScheduled
+  ) {
     return;
   }
-  loader.setAttribute("aria-busy", "false");
-  loader.classList.add("is-complete");
-  window.setTimeout(() => loader.remove(), 240);
-  window.setTimeout(() => {
-    window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
-  }, 240);
+  startupHandoffScheduled = true;
+  // Let the app commit and paint before fading the static shell. One owner and
+  // one frame handoff avoids the HTML loader, React tree, and native fallback
+  // flashing over each other.
+  window.requestAnimationFrame(() => {
+    loader.setAttribute("aria-busy", "false");
+    loader.classList.add("is-complete");
+    window.setTimeout(() => {
+      loader.remove();
+      window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
+    }, STARTUP_LOADER_FADE_MS);
+  });
 }
 
 function markStartupAppReady() {
@@ -106,7 +120,11 @@ function startStartupLoader() {
 startStartupLoader();
 
 function hideDashboardFallback() {
-  document.getElementById("dashboard-fallback")?.remove();
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      document.getElementById("dashboard-fallback")?.remove();
+    });
+  });
 }
 
 function renderStartupError(error: unknown) {

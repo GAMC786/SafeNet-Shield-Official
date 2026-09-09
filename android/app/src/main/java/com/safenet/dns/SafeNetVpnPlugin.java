@@ -153,6 +153,7 @@ public class SafeNetVpnPlugin extends Plugin {
         }
 
         String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
         if (primaryAddress == null || primaryAddress.trim().isEmpty()) {
@@ -160,7 +161,7 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
 
-        Intent serviceIntent = createServiceIntent(type, primaryAddress, secondaryAddress);
+        Intent serviceIntent = createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress);
         Intent permissionIntent = VpnService.prepare(getContext());
         if (permissionIntent != null) {
             startActivityForResult(call, permissionIntent, "vpnPermissionResult");
@@ -182,9 +183,10 @@ public class SafeNetVpnPlugin extends Plugin {
         }
 
         String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
-        startVpnService(createServiceIntent(type, primaryAddress, secondaryAddress));
+        startVpnService(createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress));
         resolveWhenStarted(call);
     }
 
@@ -505,10 +507,11 @@ public class SafeNetVpnPlugin extends Plugin {
         return result;
     }
 
-    private Intent createServiceIntent(String type, String primaryAddress, String secondaryAddress) {
+    private Intent createServiceIntent(String type, String ipVersion, String primaryAddress, String secondaryAddress) {
         String apiOrigin = getConfigApiOrigin();
         return new Intent(getContext(), SafeNetVpnService.class)
             .putExtra(SafeNetVpnService.EXTRA_TYPE, type)
+            .putExtra(SafeNetVpnService.EXTRA_IP_VERSION, ipVersion)
             .putExtra(SafeNetVpnService.EXTRA_PRIMARY, primaryAddress)
             .putExtra(SafeNetVpnService.EXTRA_SECONDARY, secondaryAddress == null ? "" : secondaryAddress)
             .putExtra(SafeNetVpnService.EXTRA_API_ORIGIN, apiOrigin)

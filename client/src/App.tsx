@@ -113,7 +113,6 @@ const clerkAppearance = {
 function MainLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
-      <SoundtrackControl />
       <Navigation />
       
       {/* Scanline Effect */}
@@ -291,6 +290,7 @@ function AppWithAuth({ clerkConfig }: { clerkConfig: ClerkRuntimeConfig }) {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <SoundtrackControl />
         <Switch>
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />

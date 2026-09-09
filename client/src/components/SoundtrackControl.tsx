@@ -133,7 +133,7 @@ export function SoundtrackControl() {
         ? (document.getElementById(AUDIO_ELEMENT_ID) as HTMLAudioElement)
         : new Audio(REFERENCE_SOUNDTRACK_URL);
     audio.loop = true;
-    audio.preload = "none";
+    audio.preload = "auto";
     audio.volume = 0.55;
     const savedMuted =
       window.localStorage.getItem(MUTED_STORAGE_KEY) === "true";
@@ -218,7 +218,6 @@ export function SoundtrackControl() {
     audio.muted = true;
     audio.pause();
     window.localStorage.setItem(MUTED_STORAGE_KEY, "true");
-    audio.currentTime = 0;
     setIsPlaying(false);
     setIsMuted(true);
   };
@@ -356,7 +355,7 @@ export function SoundtrackControl() {
         aria-label={audioLabel}
         aria-pressed={isPlaying}
         title={`${audioLabel}. Drag to reposition.`}
-        className="whitespace-nowrap border-white/20 bg-black/40 text-slate-200 backdrop-blur-md hover:bg-black/60"
+        className="whitespace-nowrap border-white/60 bg-black/60 text-slate-100 shadow-[0_0_18px_rgba(255,255,255,0.12)] backdrop-blur-md hover:border-white hover:bg-black/70"
       >
         {isPlaying && !isMuted ? (
           <Volume2 className="h-4 w-4" />

@@ -7,4 +7,4 @@ Render the startup loader before fetching runtime authentication configuration, 
 
 **Why:** A native WebView can finish its platform splash and resolve a fast configuration request before a loader that is only mounted after async initialization becomes visually observable. A JavaScript or asset-loading failure otherwise falls back to the WebView's white default background.
 
-**How to apply:** Keep the initial root render as the loader, mirror its critical dots/text in the static HTML, avoid network-dependent loader backgrounds, use runtime configuration loading afterward, and make the mounted loader duration explicit when changing startup UX.
+**How to apply:** Keep the initial root render as the loader, mirror its critical dots/text in the static HTML, avoid network-dependent loader backgrounds, use runtime configuration loading afterward, and use a short readiness-aware fade only after the app has committed. Native fallback removal must remain tied to confirmed WebView paint rather than DOM presence alone.

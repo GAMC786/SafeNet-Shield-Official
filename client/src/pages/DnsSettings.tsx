@@ -38,6 +38,36 @@ function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
 }
 
+function resolverAddressPlaceholder(type: DnsServer["type"], ipVersion: ResolverForm["ipVersion"]) {
+  if (type === "doh") return "https://dns.google/dns-query";
+  if (type === "dot") return "dns.google";
+  return ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1";
+}
+
+function isValidResolverAddress(
+  type: DnsServer["type"],
+  ipVersion: ResolverForm["ipVersion"],
+  address: string,
+) {
+  if (type === "plain") {
+    const version = ipVersion === "ipv6" ? 6 : 4;
+    if (typeof window !== "undefined" && window.location) {
+      const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(address);
+      const ipv6 = address.includes(":") && /^[0-9a-f:]+$/i.test(address);
+      return version === 4 ? ipv4 : ipv6;
+    }
+    return false;
+  }
+  if (type === "doh") {
+    try {
+      return new URL(address).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  return /^[a-z0-9.-]+(?::\d{1,5})?$/i.test(address) || address.includes(":");
+}
+
 export default function DnsSettings() {
   const { data: servers, isLoading, isError } = useDnsServers();
   const activateServer = useActivateDnsServer();
@@ -91,10 +121,29 @@ export default function DnsSettings() {
     event.preventDefault();
     const name = formData.name.trim();
     const primaryAddress = formData.primaryAddress.trim();
+    const secondaryAddress = formData.secondaryAddress.trim();
     if (!name || !primaryAddress) {
       toast({
         title: "Resolver details required",
         description: "Enter a resolver name and primary address.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!isValidResolverAddress(formData.type, formData.ipVersion, primaryAddress)) {
+      toast({
+        title: "Primary address does not match the selection",
+        description: formData.type === "plain"
+          ? `Enter a valid ${formData.ipVersion === "ipv6" ? "IPv6" : "IPv4"} address.`
+          : `Enter a valid ${resolverTypeLabel(formData.type)} endpoint.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (secondaryAddress && !isValidResolverAddress(formData.type, formData.ipVersion, secondaryAddress)) {
+      toast({
+        title: "Secondary address does not match the selection",
+        description: "Use the same protocol and address family as the primary resolver.",
         variant: "destructive",
       });
       return;
@@ -105,7 +154,7 @@ export default function DnsSettings() {
       type: formData.type,
       ipVersion: formData.ipVersion,
       primaryAddress,
-      secondaryAddress: formData.secondaryAddress.trim() || null,
+      secondaryAddress: secondaryAddress || null,
     };
 
     try {
@@ -206,7 +255,12 @@ export default function DnsSettings() {
               <Label>Protocol</Label>
               <Select
                 value={formData.type}
-                onValueChange={(value: DnsServer["type"]) => setFormData({ ...formData, type: value })}
+                onValueChange={(value: DnsServer["type"]) => setFormData({
+                  ...formData,
+                  type: value,
+                  primaryAddress: "",
+                  secondaryAddress: "",
+                })}
               >
                 <SelectTrigger data-testid="select-resolver-type">
                   <SelectValue />
@@ -222,7 +276,12 @@ export default function DnsSettings() {
               <Label>Address family</Label>
               <Select
                 value={formData.ipVersion}
-                onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({ ...formData, ipVersion: value })}
+                onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({
+                  ...formData,
+                  ipVersion: value,
+                  primaryAddress: "",
+                  secondaryAddress: "",
+                })}
               >
                 <SelectTrigger data-testid="select-resolver-ip-version">
                   <SelectValue />
@@ -243,7 +302,7 @@ export default function DnsSettings() {
                 data-testid="input-resolver-primary"
                 value={formData.primaryAddress}
                 onChange={(event) => setFormData({ ...formData, primaryAddress: event.target.value })}
-                 placeholder={formData.ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1"}
+                placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
                 required
               />
             </div>
@@ -254,7 +313,7 @@ export default function DnsSettings() {
                 data-testid="input-resolver-secondary"
                 value={formData.secondaryAddress}
                 onChange={(event) => setFormData({ ...formData, secondaryAddress: event.target.value })}
-                placeholder="Optional fallback address"
+                placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
               />
             </div>
             <Button type="submit" disabled={isSaving} className="w-full">

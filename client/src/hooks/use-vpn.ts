@@ -123,6 +123,7 @@ interface SafeNetVpnPlugin {
   acceptEula(options: { version: string }): Promise<VpnStatus>;
   start(options: {
     type: string;
+    ipVersion: "ipv4" | "ipv6";
     primaryAddress: string;
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
@@ -192,6 +193,7 @@ export function useSafeNetVpn() {
 
   const start = useCallback(async (options: {
     type: string;
+    ipVersion: "ipv4" | "ipv6";
     primaryAddress: string;
     secondaryAddress?: string | null;
   }) => {

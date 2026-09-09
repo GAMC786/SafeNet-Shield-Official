@@ -93,10 +93,8 @@ const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0
 const EDGE_MEASUREMENTS: MeasurementConfig[] = [
   { type: "latency", numPackets: 10 },
   { type: "download", bytes: 100_000, count: 3, bypassMinDuration: true },
-  { type: "download", bytes: 1_000_000, count: 4 },
   { type: "upload", bytes: 100_000, count: 3, bypassMinDuration: true },
   { type: "packetLoss", numPackets: 100, batchSize: 20, batchWaitTime: 20, responsesWaitTime: 1_000 },
-  { type: "download", bytes: 10_000_000, count: 2 },
 ];
 
 function formatMetric(value: number | null, unit: string) {
@@ -205,6 +203,7 @@ export default function SpeedTest() {
   const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
   const speedTestRef = useRef<InstanceType<typeof CloudflareSpeedTest> | null>(null);
+  const speedTestRunRef = useRef(0);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -275,6 +274,8 @@ export default function SpeedTest() {
   }, [networkProfileReloadKey]);
 
   const runSpeedTest = useCallback(() => {
+    const runId = ++speedTestRunRef.current;
+    const isCurrentRun = () => speedTestRunRef.current === runId;
     setError(null);
     setWarning(null);
     setResults(initialResults);
@@ -293,14 +294,18 @@ export default function SpeedTest() {
       logAimApiUrl: null,
     });
     engine.onPhaseChange = ({ measurement }) => {
+      if (!isCurrentRun()) return;
       const nextPhase = phaseForMeasurement(measurement.type);
       if (nextPhase) {
         setPhase(nextPhase);
         setProgress(phaseProgress[nextPhase]);
       }
     };
-    engine.onRunningChange = (running) => setIsRunning(running);
+    engine.onRunningChange = (running) => {
+      if (isCurrentRun()) setIsRunning(running);
+    };
     engine.onResultsChange = ({ type }) => {
+      if (!isCurrentRun()) return;
       applyCloudflareResults(engine.results);
       if (type === "download" || type === "upload") {
         const points =
@@ -314,18 +319,36 @@ export default function SpeedTest() {
       }
     };
     engine.onError = (message) => {
+      if (!isCurrentRun()) return;
       // Packet loss uses WebRTC TURN and can be unavailable on restricted
       // networks; preserve valid bandwidth results and report the limitation.
+      const isPacketLossFailure = /packet|turn|webrtc/i.test(message);
       const isUploadFailure = message.includes("__up");
       setWarning(
-        isUploadFailure
+        isPacketLossFailure
+          ? "Cloudflare packet-loss measurement was unavailable on this network. Latency and throughput results remain valid."
+          : isUploadFailure
           ? "Cloudflare upload measurement was unavailable on this network. The completed latency and download results remain valid."
           : "Cloudflare could not complete one network measurement. The completed results remain available.",
       );
-      setPhase("error");
-      setIsRunning(false);
+      if (isPacketLossFailure) {
+        const summary = engine.results.getSummary();
+        if (
+          typeof summary.latency === "number" &&
+          typeof summary.download === "number" &&
+          typeof summary.upload === "number"
+        ) {
+          setProgress(100);
+          setPhase("complete");
+          setIsRunning(false);
+        }
+      } else {
+        setPhase("error");
+        setIsRunning(false);
+      }
     };
     engine.onFinish = (finishedResults) => {
+      if (!isCurrentRun()) return;
       applyCloudflareResults(finishedResults);
       const summary = finishedResults.getSummary();
       if (
@@ -374,6 +397,7 @@ export default function SpeedTest() {
   }, [toast]);
 
   const resetTest = useCallback(() => {
+    speedTestRunRef.current += 1;
     speedTestRef.current?.pause();
     speedTestRef.current = null;
     setIsRunning(false);

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import { randomInt } from "node:crypto";
+import { isIP } from "node:net";
 import type { Server } from "http";
 import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
@@ -70,6 +71,38 @@ function isSecureDdnsUrl(value: string) {
     return new URL(value).protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+function validateDnsResolverAddresses(input: {
+  type?: string;
+  ipVersion?: string;
+  primaryAddress?: string;
+  secondaryAddress?: string | null;
+}) {
+  const type = input.type ?? "plain";
+  const ipVersion = input.ipVersion ?? "ipv4";
+  const expectedFamily = ipVersion === "ipv6" ? 6 : 4;
+  const addresses = [input.primaryAddress, input.secondaryAddress].filter(
+    (address): address is string => Boolean(address?.trim()),
+  );
+  if (!addresses.length) throw new Error("A primary DNS resolver address is required.");
+  if (type === "plain") {
+    for (const address of addresses) {
+      if (isIP(address.trim()) !== expectedFamily) {
+        throw new Error(`Every plain DNS address must be a valid ${ipVersion === "ipv6" ? "IPv6" : "IPv4"} address.`);
+      }
+    }
+    return;
+  }
+  for (const address of addresses) {
+    if (type === "doh") {
+      if (new URL(address).protocol !== "https:") {
+        throw new Error("DNS over HTTPS endpoints must use HTTPS.");
+      }
+    } else if (type === "dot" && !/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(address) && isIP(address) !== expectedFamily) {
+      throw new Error("DNS over TLS endpoints must be a hostname or a matching IP address.");
+    }
   }
 }
 
@@ -280,6 +313,7 @@ export async function registerRoutes(
   app.post(api.dns.create.path, async (req, res) => {
     try {
       const input = api.dns.create.input.parse(req.body);
+      validateDnsResolverAddresses(input);
       const server = await storage.createDnsServer(input);
       res.status(201).json(server);
     } catch (err) {
@@ -293,6 +327,12 @@ export async function registerRoutes(
   app.put(api.dns.update.path, async (req, res) => {
     try {
       const input = api.dns.update.input.parse(req.body);
+      const current = await storage.getDnsServers();
+      const existing = current.find((server) => server.id === Number(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "DNS resolver not found" });
+      }
+      validateDnsResolverAddresses({ ...existing, ...input });
       const server = await storage.updateDnsServer(Number(req.params.id), input);
       if (!server) {
         return res.status(404).json({ message: "DNS resolver not found" });
@@ -520,9 +560,10 @@ export async function registerRoutes(
 
   app.post("/api/ddns/:id/update", async (req, res) => {
     try {
+      const id = Number(req.params.id);
       const { clientIp } = req.body;
       const { checkAndUpdateDdns } = await import("./ddns-service");
-      const results = await checkAndUpdateDdns(clientIp, storage);
+      const results = await checkAndUpdateDdns(clientIp, storage, id);
       const failures = results.filter((result) => !result.success);
       if (failures.length > 0) {
         return res.status(502).json({

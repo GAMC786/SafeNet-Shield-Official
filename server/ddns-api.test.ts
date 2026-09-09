@@ -162,6 +162,25 @@ test("DDNS status refresh cadence is 500 milliseconds", async () => {
   assert.equal(DDNS_STATUS_REFRESH_INTERVAL_MS, 500);
 });
 
+test("DDNS connectivity rejects provider HTTP errors", async () => {
+  const { testDdnsConnection } = await import("./ddns-service");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "HEAD");
+    return new Response("provider unavailable", { status: 503 });
+  };
+
+  try {
+    const result = await testDdnsConnection("duckdns");
+    assert.equal(result.success, false);
+    if (!result.success) {
+      assert.match(result.error, /HTTP 503/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("DDNS scheduler does not write to a provider inside the configured interval", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
   const currentIp = "198.51.100.20";

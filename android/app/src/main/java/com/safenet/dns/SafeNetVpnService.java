@@ -48,6 +48,7 @@ import javax.net.ssl.SSLSocket;
 
 public class SafeNetVpnService extends VpnService {
     public static final String EXTRA_TYPE = "resolver_type";
+    public static final String EXTRA_IP_VERSION = "resolver_ip_version";
     public static final String EXTRA_PRIMARY = "resolver_primary";
     public static final String EXTRA_SECONDARY = "resolver_secondary";
     public static final String EXTRA_API_ORIGIN = "api_origin";
@@ -149,6 +150,7 @@ public class SafeNetVpnService extends VpnService {
         try {
             resolver = ResolverConfig.from(
                 intent.getStringExtra(EXTRA_TYPE),
+                intent.getStringExtra(EXTRA_IP_VERSION),
                 intent.getStringExtra(EXTRA_PRIMARY),
                 intent.getStringExtra(EXTRA_SECONDARY)
             );
@@ -981,17 +983,23 @@ public class SafeNetVpnService extends VpnService {
 
     private static final class ResolverConfig {
         private final String type;
+        private final String ipVersion;
         private final List<String> addresses;
 
-        private ResolverConfig(String type, List<String> addresses) {
+        private ResolverConfig(String type, String ipVersion, List<String> addresses) {
             this.type = type;
+            this.ipVersion = ipVersion;
             this.addresses = addresses;
         }
 
-        static ResolverConfig from(String type, String primary, String secondary) throws IOException {
+        static ResolverConfig from(String type, String ipVersion, String primary, String secondary) throws IOException {
             String normalizedType = type == null ? "plain" : type.trim().toLowerCase(Locale.US);
+            String normalizedIpVersion = ipVersion == null ? "ipv4" : ipVersion.trim().toLowerCase(Locale.US);
             if (!normalizedType.equals("plain") && !normalizedType.equals("doh") && !normalizedType.equals("dot")) {
                 throw new IOException("Unsupported DNS resolver type.");
+            }
+            if (!normalizedIpVersion.equals("ipv4") && !normalizedIpVersion.equals("ipv6")) {
+                throw new IOException("Unsupported DNS address family.");
             }
 
             List<String> addresses = new ArrayList<>();
@@ -1004,7 +1012,7 @@ public class SafeNetVpnService extends VpnService {
             if (addresses.isEmpty()) {
                 throw new IOException("Select an active DNS server before starting protection.");
             }
-            return new ResolverConfig(normalizedType, addresses);
+            return new ResolverConfig(normalizedType, normalizedIpVersion, addresses);
         }
 
         byte[] forward(byte[] query, SafeNetVpnService service) {
@@ -1052,7 +1060,7 @@ public class SafeNetVpnService extends VpnService {
         }
 
         private static byte[] forwardPlain(byte[] query, String address, SafeNetVpnService service) throws IOException {
-            InetAddress[] upstreams = service.resolveHost(address);
+            InetAddress[] upstreams = service.resolveHost(address, ipVersion);
             IOException last = null;
             for (InetAddress upstream : upstreams) {
                 try (DatagramSocket socket = new DatagramSocket()) {
@@ -1082,7 +1090,7 @@ public class SafeNetVpnService extends VpnService {
             String address,
             SafeNetVpnService service
         ) throws IOException {
-            InetAddress[] upstreams = service.resolveHost(address);
+            InetAddress[] upstreams = service.resolveHost(address, ipVersion);
             IOException last = null;
             for (InetAddress upstream : upstreams) {
                 try (Socket socket = service.openProtectedSocket(
@@ -1116,7 +1124,7 @@ public class SafeNetVpnService extends VpnService {
             throws IOException, GeneralSecurityException {
             Endpoint endpoint = Endpoint.forDot(address);
             try (Socket raw = service.openProtectedSocket(
-                service.resolveHost(endpoint.host),
+                service.resolveHost(endpoint.host, ipVersion),
                 endpoint.port
             )) {
                 SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
@@ -1158,7 +1166,7 @@ public class SafeNetVpnService extends VpnService {
                 path += "?" + uri.getRawQuery();
             }
             try (Socket raw = service.openProtectedSocket(
-                service.resolveHost(uri.getHost()),
+                service.resolveHost(uri.getHost(), ipVersion),
                 port
             )) {
                 SSLSocket socket = (SSLSocket) SSLContext.getDefault().getSocketFactory()
@@ -1277,15 +1285,20 @@ public class SafeNetVpnService extends VpnService {
         }
     }
 
-    private InetAddress[] resolveHost(String host) throws IOException {
+    private InetAddress[] resolveHost(String host, String ipVersion) throws IOException {
         String normalizedHost = host == null ? "" : host.trim();
         if (normalizedHost.isEmpty()) {
             throw new IOException("The DNS resolver hostname is empty.");
         }
+        int expectedLength = "ipv6".equals(ipVersion) ? 16 : 4;
 
         if (isIpLiteral(normalizedHost)) {
             try {
-                return new InetAddress[] { InetAddress.getByName(normalizedHost) };
+                InetAddress resolved = InetAddress.getByName(normalizedHost);
+                if (resolved.getAddress().length != expectedLength) {
+                    throw new IOException("The resolver address does not match the selected address family.");
+                }
+                return new InetAddress[] { resolved };
             } catch (UnknownHostException error) {
                 throw new IOException("The DNS resolver address is invalid.", error);
             }
@@ -1305,8 +1318,14 @@ public class SafeNetVpnService extends VpnService {
                 }
                 try {
                     InetAddress[] addresses = network.getAllByName(normalizedHost);
-                    if (addresses.length > 0) {
-                        return addresses;
+                    List<InetAddress> matching = new ArrayList<>();
+                    for (InetAddress address : addresses) {
+                        if (address.getAddress().length == expectedLength) {
+                            matching.add(address);
+                        }
+                    }
+                    if (!matching.isEmpty()) {
+                        return matching.toArray(new InetAddress[0]);
                     }
                 } catch (UnknownHostException ignored) {
                     // Try another underlying network before falling back.

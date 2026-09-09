@@ -84,7 +84,7 @@
         fill: none;
         stroke: rgba(255,255,255,.98);
         stroke-linejoin: round;
-        stroke-width: 2.4;
+        stroke-width: 3;
         vector-effect: non-scaling-stroke;
       }
       .startup-loader-overlay {
@@ -176,7 +176,7 @@
     <audio
       id="safenet-soundtrack-audio"
       loop
-      preload="none"
+      preload="auto"
       playsinline
       aria-hidden="true"
       src="https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav"
@@ -206,7 +206,7 @@
               aria-hidden="true"
               focusable="false"
             >
-              <path d="M450 179 L761 351 V642 C761 793 675 930 450 1052 C225 930 139 793 139 642 V351 Z" />
+              <path d="M450 187 L752 354 V638 C752 789 668 923 450 1041 C232 923 148 789 148 638 V354 Z" />
             </svg>
           </div>
         </div>
@@ -266,13 +266,6 @@
           void audio.play().catch(() => undefined);
         });
 
-        const stopAudioForPageClose = () => {
-          audio.pause();
-          audio.currentTime = 0;
-        };
-
-        window.addEventListener("pagehide", stopAudioForPageClose);
-        window.addEventListener("beforeunload", stopAudioForPageClose);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

@@ -2,12 +2,10 @@ import { useAuthStatus, useSettings, useUpdateSettings } from "@/hooks/use-setti
 import { AiShieldControls } from "@/components/AiShieldControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Smartphone, Lock, Activity, Eye, Zap, AlertTriangle, Loader2 } from "lucide-react";
+import { Shield, Smartphone, Activity, Eye, Zap, AlertTriangle, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { PinEntry } from "@/pages/PinEntry";
@@ -24,13 +22,11 @@ export default function Settings() {
   const updateSettings = useUpdateSettings();
   const androidSettings = useSafeNetVpn();
   const { toast } = useToast();
-  const [pin, setPin] = useState("");
-  const [recoveryEmail, setRecoveryEmail] = useState("");
   const settingsReady = settings !== undefined && !isLoadingSettings;
   const appVersion = import.meta.env.VITE_APP_VERSION;
 
   const openAndroidSettings = async (
-    target: "vpn" | "device-admin",
+    target: "vpn",
     label: string,
   ) => {
     try {
@@ -43,12 +39,6 @@ export default function Settings() {
       });
     }
   };
-
-  useEffect(() => {
-    if (settings?.pinRecoveryEmail !== undefined) {
-      setRecoveryEmail(settings.pinRecoveryEmail || "");
-    }
-  }, [settings?.pinRecoveryEmail]);
 
   if (authStatus.isLoading) {
     return (
@@ -66,8 +56,6 @@ export default function Settings() {
     aiShieldEnabled: "AI Shield",
     firewallEnabled: "Firewall protection",
     alwaysOnEnabled: "Always-on protection",
-    deviceAdminEnabled: "Device administrator access",
-    isPinEnabled: "PIN protection",
   };
 
   const handleToggle = (key: string, checked: boolean) => {
@@ -75,14 +63,6 @@ export default function Settings() {
       return;
     }
     const label = settingLabels[key] || "Setting";
-    if (key === "isPinEnabled" && checked && !settings?.pinConfigured) {
-      toast({
-        title: "Set a PIN first",
-        description: "Create a four-digit PIN before enabling PIN protection.",
-        variant: "destructive",
-      });
-      return;
-    }
     updateSettings.mutate(
       { [key]: checked },
       {
@@ -101,56 +81,6 @@ export default function Settings() {
             variant: "destructive",
           });
         },
-      },
-    );
-  };
-
-  const handleSetPin = () => {
-    if (settingsReady && pin.length === 4) {
-      updateSettings.mutate(
-        { pinCode: pin, isPinEnabled: true },
-        {
-          onSuccess: () => {
-            setPin("");
-            toast({
-              title: "PIN updated",
-              description: "PIN protection is enabled with your new code.",
-            });
-          },
-          onError: (error) => {
-            toast({
-              title: "PIN could not be updated",
-              description: error instanceof Error ? error.message : "Please try again.",
-              variant: "destructive",
-            });
-          },
-        },
-      );
-    }
-  };
-
-  const handleSaveRecoveryEmail = () => {
-    const email = recoveryEmail.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast({
-        title: "Recovery email required",
-        description: "Enter a valid email address so you can recover access if the PIN is forgotten.",
-        variant: "destructive",
-      });
-      return;
-    }
-    updateSettings.mutate(
-      { pinRecoveryEmail: email },
-      {
-        onSuccess: () => toast({
-          title: "Recovery email saved",
-          description: "SafeNet can now send PIN recovery codes to this address.",
-        }),
-        onError: (error) => toast({
-          title: "Recovery email could not be saved",
-          description: error instanceof Error ? error.message : "Please try again.",
-          variant: "destructive",
-        }),
       },
     );
   };
@@ -263,117 +193,12 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
-            <div className="space-y-1">
-              <Label className="text-base text-white font-medium flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" /> Device Admin
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Saves the preference and opens Android security settings. SafeNet never silently grants device-admin access.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <Switch
-                checked={settings?.deviceAdminEnabled ?? false}
-                onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
-                disabled={!settingsReady || updateSettings.isPending}
-                aria-label="Device Admin preference"
-                data-testid="switch-device-admin"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void openAndroidSettings("device-admin", "Device administrator settings")}
-                disabled={!androidSettings.supported}
-                data-testid="button-open-device-admin-settings"
-              >
-                Open Android security settings
-              </Button>
-            </div>
-          </div>
         </CyberCard>
 
         <div className="md:col-span-2">
           <AiShieldControls />
         </div>
 
-        {/* Access Control */}
-        <CyberCard className="md:col-span-2 space-y-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Lock className="w-6 h-6 text-primary" />
-            <h2 className="text-xl font-display font-bold">App Access Protection</h2>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="flex-1 flex items-center justify-between p-4 rounded bg-white/5 border border-white/5">
-              <div className="space-y-1">
-                <Label className="text-base text-white font-medium">PIN Protection</Label>
-                <p className="text-xs text-muted-foreground">Require PIN to open app</p>
-              </div>
-              <Switch 
-                checked={settings?.isPinEnabled ?? false} 
-                onCheckedChange={(c) => handleToggle("isPinEnabled", c)}
-                disabled={!settingsReady || updateSettings.isPending || (!settings?.pinConfigured && !(settings?.isPinEnabled ?? false))}
-                aria-label="PIN Protection"
-              />
-            </div>
-
-            <div className="flex-1 space-y-2">
-              <Label>Update PIN Code</Label>
-              <div className="flex gap-2">
-                <Input 
-                  aria-label="New four-digit PIN"
-                  type="password" 
-                  maxLength={4} 
-                  placeholder="****" 
-                  value={pin}
-                  onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
-                  disabled={!settingsReady || updateSettings.isPending}
-                  className="bg-background border-border font-mono tracking-widest text-center"
-                />
-                <Button 
-                  type="button"
-                  onClick={handleSetPin}
-                  disabled={!settingsReady || updateSettings.isPending || pin.length !== 4}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
-                  data-testid="button-set-pin"
-                >
-                  Set PIN
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2 border-t border-white/10 pt-5">
-            <Label htmlFor="pin-recovery-email">PIN Recovery Email</Label>
-            <p className="text-xs text-muted-foreground">
-              Saving this address only sets the destination. To generate a code,
-              choose “Forgot PIN?” on the access screen and select “Send recovery
-              code”. SafeNet never displays or emails the PIN itself.
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="pin-recovery-email"
-                type="email"
-                value={recoveryEmail}
-                onChange={(event) => setRecoveryEmail(event.target.value)}
-                placeholder="you@example.com"
-                disabled={!settingsReady || updateSettings.isPending}
-                className="bg-background border-border"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleSaveRecoveryEmail}
-                disabled={!settingsReady || updateSettings.isPending || !recoveryEmail.trim()}
-              >
-                Save recovery email
-              </Button>
-            </div>
-          </div>
-        </CyberCard>
-        
         <div className="md:col-span-2 space-y-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm">
           <div className="flex items-center justify-center gap-2 text-yellow-500">
             <AlertTriangle className="w-4 h-4" />

@@ -93,6 +93,12 @@ export async function testDdnsConnection(
       method: "HEAD",
       signal: AbortSignal.timeout(5000),
     });
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `${providerDisplayName(provider)} rejected the connectivity check (HTTP ${response.status}).`,
+      };
+    }
     return {
       success: true,
       message: `${providerDisplayName(provider)} is reachable (HTTP ${response.status}).`,
@@ -109,8 +115,16 @@ export async function testDdnsConnection(
 // Get current IP from public API
 export async function getCurrentPublicIp(): Promise<string> {
   try {
-    const response = await fetch("https://api.ipify.org?format=json");
+    const response = await fetch("https://api.ipify.org?format=json", {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new Error(`public IP service returned HTTP ${response.status}`);
+    }
     const data = await response.json() as { ip: string };
+    if (!data.ip || !/^(?:\d{1,3}\.){3}\d{1,3}$/.test(data.ip)) {
+      throw new Error("public IP service returned an invalid address");
+    }
     return data.ip;
   } catch (error) {
     console.error("Failed to get public IP:", error);
@@ -237,13 +251,14 @@ async function updateIpLink(hostname: string, ip: string, customUrl?: string | n
 export async function checkAndUpdateDdns(
   clientIp?: string,
   schedulerStorage: DdnsSchedulerStorage = storage,
+  targetUpdaterId?: number,
 ): Promise<DdnsUpdateAttempt[]> {
   const updaters = await schedulerStorage.getDdnsUpdaters();
   const currentIp = clientIp || await getCurrentPublicIp();
   const results: DdnsUpdateAttempt[] = [];
 
   for (const updater of updaters) {
-    if (!updater.isEnabled) continue;
+    if (!updater.isEnabled || (targetUpdaterId !== undefined && updater.id !== targetUpdaterId)) continue;
 
     // Check if update is needed
     const lastUpdate = updater.lastUpdateTime ? new Date(updater.lastUpdateTime).getTime() : 0;

@@ -195,6 +195,7 @@ export default function Dashboard() {
                 if (!activeResolver) return;
                 void vpn.start({
                   type: activeResolver.type,
+                  ipVersion: activeResolver.ipVersion,
                   primaryAddress: activeResolver.primaryAddress,
                   secondaryAddress: activeResolver.secondaryAddress,
                 }).catch(() => undefined);
@@ -233,6 +234,7 @@ export default function Dashboard() {
               setStartAfterEula(false);
               await vpn.start({
                 type: activeDns.type,
+                ipVersion: activeDns.ipVersion,
                 primaryAddress: activeDns.primaryAddress,
                 secondaryAddress: activeDns.secondaryAddress,
               });
