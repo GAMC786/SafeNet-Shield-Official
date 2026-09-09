@@ -13,6 +13,10 @@ export type DdnsUpdateResult =
   | { success: true }
   | { success: false; error: string };
 
+export type DdnsConnectivityResult =
+  | { success: true; message: string }
+  | { success: false; error: string };
+
 export type DdnsUpdateAttempt = DdnsUpdateResult & {
   updaterId: number;
   hostname: string;
@@ -40,10 +44,65 @@ function providerDisplayName(provider: string): string {
       return "Dynu";
     case "dnsomatic":
       return "DNS-O-MATIC";
+    case "cloudflare":
+      return "Cloudflare";
     case "iplink":
       return "IP Link";
     default:
       return provider;
+  }
+}
+
+export async function testDdnsConnection(
+  provider: string,
+  customUrl?: string | null,
+): Promise<DdnsConnectivityResult> {
+  let target: string;
+  switch (provider.toLowerCase()) {
+    case "duckdns":
+      target = "https://www.duckdns.org";
+      break;
+    case "noip":
+      target = "https://dynupdate.no-ip.com";
+      break;
+    case "dynu":
+      target = "https://api.dynu.com";
+      break;
+    case "cloudflare":
+      target = "https://api.cloudflare.com";
+      break;
+    case "dnsomatic":
+      target = "https://updates.dnsomatic.com";
+      break;
+    case "iplink":
+      if (!customUrl) {
+        return { success: false, error: "IP Link requires a custom URL" };
+      }
+      try {
+        target = new URL(customUrl).origin;
+      } catch {
+        return { success: false, error: "IP Link custom URL is invalid" };
+      }
+      break;
+    default:
+      return { success: false, error: `Unsupported DDNS provider: ${provider}` };
+  }
+
+  try {
+    const response = await fetch(target, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    });
+    return {
+      success: true,
+      message: `${providerDisplayName(provider)} is reachable (HTTP ${response.status}).`,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "request failed";
+    return {
+      success: false,
+      error: `Network error while contacting ${providerDisplayName(provider)}: ${detail}`,
+    };
   }
 }
 
@@ -231,13 +290,14 @@ export async function checkAndUpdateDdns(
   return results;
 }
 
-// Start periodic DDNS check (runs every 5 minutes)
+// Start periodic DDNS check. The scheduler wakes frequently so second-level
+// intervals are honored; each updater still enforces its own write interval.
 export function startDdnsScheduler(): NodeJS.Timer {
   const interval = setInterval(
     () => {
       checkAndUpdateDdns().catch((err) => console.error("DDNS scheduler error:", err));
     },
-    5 * 60 * 1000 // 5 minutes
+    1000
   );
 
   // Run immediately on startup

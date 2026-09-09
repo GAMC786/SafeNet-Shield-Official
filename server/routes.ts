@@ -537,6 +537,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/ddns/:id/test", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const updater = (await storage.getDdnsUpdaters()).find((entry) => entry.id === id);
+      if (!updater) {
+        return res.status(404).json({ message: "DDNS updater not found" });
+      }
+      const { testDdnsConnection } = await import("./ddns-service");
+      const result = await testDdnsConnection(updater.provider, updater.customUrl);
+      if (!result.success) {
+        return res.status(502).json({ message: result.error });
+      }
+      return res.json({
+        success: true,
+        provider: updater.provider,
+        hostname: updater.hostname,
+        message: "Provider endpoint is reachable. No DNS record was changed.",
+      });
+    } catch (error) {
+      return res.status(500).json({ message: "DDNS connectivity test failed" });
+    }
+  });
+
   // Update all DDNS with client-provided IP
   app.post("/api/ddns/update-all", async (req, res) => {
     try {
@@ -738,26 +761,10 @@ export async function registerRoutes(
     res.setHeader("X-SpeedTest-Bytes", actualSize);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     
-    // Stream the same bytes in both directions without compression or
-    // per-chunk payload generation affecting the timing.
-    const chunkSize = 65536; // 64KB chunks
-    let offset = 0;
-    
-    const sendChunk = () => {
-      while (offset < actualSize) {
-        const nextOffset = Math.min(offset + chunkSize, actualSize);
-        const chunk = payload.subarray(offset, nextOffset);
-        const canContinue = res.write(chunk);
-        offset = nextOffset;
-        if (!canContinue) {
-          res.once("drain", sendChunk);
-          return;
-        }
-      }
-      res.end();
-    };
-    
-    sendChunk();
+    // End with the complete fixed-length buffer. Streaming through the
+    // development proxy can be truncated before the drain callback fires,
+    // which makes the client measure a partial download.
+    res.end(payload);
   });
 
   // Upload test - receives the full payload so the client can measure the

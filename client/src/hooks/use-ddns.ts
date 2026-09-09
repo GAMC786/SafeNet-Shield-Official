@@ -152,3 +152,15 @@ export function useUpdateDdnsWithIp() {
     },
   });
 }
+
+export function useTestDdnsUpdater() {
+  return useMutation({
+    mutationFn: async (id: number) => {
+      try {
+        return await apiRequest("POST", `/api/ddns/${id}/test`);
+      } catch (error) {
+        throw getDdnsUpdateError(error);
+      }
+    },
+  });
+}

@@ -135,6 +135,20 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     assert.equal(invalidIntervalResponse.status, 400);
     assert.match((await invalidIntervalResponse.json()).message, /milliseconds/);
     assert.equal(providerRequests, 0);
+
+    globalThis.fetch = async (_input, init) => {
+      assert.equal(init?.method, "HEAD");
+      return new Response(null, { status: 204 });
+    };
+    const connectivityResponse = await request(`${baseUrl}/api/ddns/1/test`, {
+      method: "POST",
+      headers: { Origin: "https://localhost" },
+    });
+    assert.equal(connectivityResponse.status, 200);
+    const connectivityPayload = await connectivityResponse.json();
+    assert.equal(connectivityPayload.success, true);
+    assert.match(connectivityPayload.message, /No DNS record was changed/);
+    assert.equal("apiKey" in connectivityPayload, false);
   } finally {
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve, reject) => {

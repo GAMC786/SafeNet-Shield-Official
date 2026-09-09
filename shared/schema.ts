@@ -20,6 +20,7 @@ export const dnsServers = pgTable("dns_servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type", { enum: ["plain", "doh", "dot"] }).notNull(),
+  ipVersion: text("ip_version", { enum: ["ipv4", "ipv6"] }).notNull().default("ipv4"),
   primaryAddress: text("primary_address").notNull(),
   secondaryAddress: text("secondary_address"),
   isActive: boolean("is_active").default(false),

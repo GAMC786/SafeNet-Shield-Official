@@ -302,23 +302,16 @@ export default function SpeedTest() {
       if (!downloadResponse.ok || !downloadResponse.body) {
         throw new Error("The download check could not be completed.");
       }
-      const reader = downloadResponse.body.getReader();
-      let downloadedBytes = 0;
-      while (true) {
-        await waitIfPaused(runId);
-        const { done, value } = await reader.read();
-        if (done) break;
-        downloadedBytes += value.byteLength;
-        const elapsed = performance.now() - downloadStartedAt;
-        const speed = formatMbps(downloadedBytes, elapsed);
-        if (speed !== null) {
-          setResults((current) => ({ ...current, download: speed }));
-          appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
-        }
-         setProgress(
-           Math.min(68, 32 + (downloadedBytes / THROUGHPUT_TEST_BYTES) * 36),
-         );
-      }
+       await waitIfPaused(runId);
+       const downloadedPayload = await downloadResponse.arrayBuffer();
+       const downloadedBytes = downloadedPayload.byteLength;
+       const elapsed = performance.now() - downloadStartedAt;
+       const speed = formatMbps(downloadedBytes, elapsed);
+       if (speed !== null) {
+         setResults((current) => ({ ...current, download: speed }));
+         appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
+       }
+       setProgress(Math.min(68, 32 + (downloadedBytes / THROUGHPUT_TEST_BYTES) * 36));
       if (downloadedBytes !== THROUGHPUT_TEST_BYTES) {
         throw new Error(
           `The download check received ${downloadedBytes} of ${THROUGHPUT_TEST_BYTES} expected bytes.`,

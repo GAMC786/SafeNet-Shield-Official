@@ -73,7 +73,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchIsAccessibleAndUnavailableWithoutActiveResolver() throws Exception {
-        openSettingsWithoutActiveResolver();
+        openDashboardWithoutActiveResolver();
         waitForWebView(
             "Boolean(document.querySelector('[role=\"switch\"][aria-label=\"" +
                 VPN_SWITCH_LABEL +
@@ -105,7 +105,7 @@ public class SafeNetVpnUiInstrumentationTest {
             "})()"
         );
 
-        assertEquals("Settings must render exactly one VPN switch", 1, domState.getInt("count"));
+        assertEquals("Dashboard must render exactly one VPN switch", 1, domState.getInt("count"));
         assertEquals(VPN_SWITCH_LABEL, domState.getString("label"));
         assertEquals("switch", domState.getString("role"));
         assertEquals("false", domState.getString("checked"));
@@ -212,7 +212,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -250,7 +250,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -301,7 +301,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchRecoversWhenAndroidRevokesVpnAccess() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -378,7 +378,7 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
-    private void openSettingsWithoutActiveResolver() throws Exception {
+    private void openDashboardWithoutActiveResolver() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
                 "const originalFetch = window.fetch;" +
@@ -392,15 +392,15 @@ public class SafeNetVpnUiInstrumentationTest {
                     "}" +
                     "return originalFetch.call(this, input, init);" +
                 "};" +
-                "history.pushState({}, '', '/settings');" +
+                "history.pushState({}, '', '/');" +
                 "window.dispatchEvent(new PopStateEvent('popstate'));" +
                 "return true;" +
             "})()"
         );
-        assertTrue("Could not navigate to Settings in the WebView", result.getBoolean("ok"));
+        assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
     }
 
-    private void openSettingsWithActiveResolver() throws Exception {
+    private void openDashboardWithActiveResolver() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
                 "const originalFetch = window.fetch;" +
@@ -411,6 +411,7 @@ public class SafeNetVpnUiInstrumentationTest {
                             "id: 1," +
                             "name: 'SafeNet Test Resolver'," +
                             "type: 'plain'," +
+                            "ipVersion: 'ipv4'," +
                             "primaryAddress: '1.1.1.1'," +
                             "secondaryAddress: '8.8.8.8'," +
                             "isActive: true" +
@@ -421,12 +422,12 @@ public class SafeNetVpnUiInstrumentationTest {
                     "}" +
                     "return originalFetch.call(this, input, init);" +
                 "};" +
-                "history.pushState({}, '', '/settings');" +
+                "history.pushState({}, '', '/');" +
                 "window.dispatchEvent(new PopStateEvent('popstate'));" +
                 "return true;" +
             "})()"
         );
-        assertTrue("Could not navigate to Settings with an active resolver", result.getBoolean("ok"));
+        assertTrue("Could not navigate to the Dashboard with an active resolver", result.getBoolean("ok"));
     }
 
     private String vpnSwitchExpression(String condition) {

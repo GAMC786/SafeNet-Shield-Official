@@ -13,6 +13,7 @@ export async function setupVite(server: Server, app: Express) {
     middlewareMode: true,
     hmr: { server, path: "/vite-hmr", overlay: false },
     allowedHosts: true as const,
+    headers: { "Cache-Control": "no-store" },
   };
 
   const vite = await createViteServer({
@@ -49,7 +50,10 @@ export async function setupVite(server: Server, app: Express) {
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      res
+        .status(200)
+        .set({ "Content-Type": "text/html", "Cache-Control": "no-store" })
+        .end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);

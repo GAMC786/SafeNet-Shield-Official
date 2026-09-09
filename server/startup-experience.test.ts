@@ -58,6 +58,18 @@ const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
 );
+const dnsSettingsSource = readFileSync(
+  path.join(clientRoot, "src/pages/DnsSettings.tsx"),
+  "utf8",
+);
+const ddnsSource = readFileSync(
+  path.join(clientRoot, "src/pages/DdnsUpdater.tsx"),
+  "utf8",
+);
+const antivirusSource = readFileSync(
+  path.join(clientRoot, "src/pages/Antivirus.tsx"),
+  "utf8",
+);
 const manifestSource = readFileSync(
   path.join(clientRoot, "public/manifest.json"),
   "utf8",
@@ -200,7 +212,20 @@ test("Settings use the current package version and describe preference-only Andr
 test("the Dashboard reports DNS Protection VPN instead of generic system activity", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
   assert.match(dashboardSource, /DNS Protection VPN/);
+  assert.match(dashboardSource, /Enable DNS Protection VPN/);
+  assert.match(dashboardSource, /startAfterEula/);
   assert.match(dashboardSource, /Available in the SafeNet Android APK/);
   assert.match(dashboardSource, /DNS protection is running/);
   assert.doesNotMatch(dashboardSource, /System Active/);
+  assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
+});
+
+test("resolver, DDNS, and threat views expose the requested controls", () => {
+  assert.match(dnsSettingsSource, /ipVersion/);
+  assert.match(dnsSettingsSource, /IPv4/);
+  assert.match(dnsSettingsSource, /IPv6/);
+  assert.match(ddnsSource, /Update Interval \(seconds\)/);
+  assert.match(ddnsSource, /Test/);
+  assert.match(antivirusSource, /Threat mix/);
+  assert.match(antivirusSource, /Severity profile/);
 });
