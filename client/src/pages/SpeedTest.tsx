@@ -22,8 +22,12 @@ import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import CloudflareSpeedTest, {
+  type MeasurementType,
+  type Results as CloudflareResults,
+} from "@cloudflare/speedtest";
 
-type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
+type TestPhase = "idle" | "latency" | "download" | "upload" | "packetLoss" | "complete" | "error";
 
 interface SpeedResults {
   latency: number | null;
@@ -78,24 +82,34 @@ const phaseProgress: Record<TestPhase, number> = {
   latency: 12,
   download: 42,
   upload: 76,
+  packetLoss: 90,
   complete: 100,
   error: 0,
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
-const THROUGHPUT_TEST_BYTES = 4_000_000;
 
 function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
 }
 
-function formatMbps(bytes: number, elapsedMs: number) {
-  if (!bytes || elapsedMs <= 0) return null;
-  return Math.round((bytes * 8 / (elapsedMs / 1000) / 1_000_000) * 100) / 100;
+function roundedMbps(bitsPerSecond: number | undefined) {
+  if (typeof bitsPerSecond !== "number" || !Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) {
+    return null;
+  }
+  return Math.round((bitsPerSecond / 1_000_000) * 100) / 100;
 }
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+function phaseForMeasurement(type: MeasurementType): TestPhase | null {
+  if (type === "latency" || type === "latencyUnderLoad") return "latency";
+  if (type === "download") return "download";
+  if (type === "upload") return "upload";
+  if (type === "packetLoss" || type === "packetLossUnderLoad") return "packetLoss";
+  return null;
 }
 
 function WaveChart({
@@ -175,22 +189,28 @@ export default function SpeedTest() {
   const [results, setResults] = useState<SpeedResults>(initialResults);
   const [wavePoints, setWavePoints] = useState(initialWavePoints);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [networkProfile, setNetworkProfile] = useState<NetworkProfile | null>(null);
   const [networkProfileError, setNetworkProfileError] = useState<string | null>(null);
   const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
-  const pausedRef = useRef(false);
-  const runIdRef = useRef(0);
-  const controllerRef = useRef<AbortController | null>(null);
-
-  const waitIfPaused = useCallback(async (runId: number) => {
-    while (pausedRef.current && runId === runIdRef.current) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }, []);
+  const speedTestRef = useRef<InstanceType<typeof CloudflareSpeedTest> | null>(null);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
+  }, []);
+
+  const applyCloudflareResults = useCallback((cloudflareResults: CloudflareResults) => {
+    const summary = cloudflareResults.getSummary();
+    setResults((current) => ({
+      latency: typeof summary.latency === "number" ? Math.round(summary.latency) : current.latency,
+      download: roundedMbps(summary.download) ?? current.download,
+      upload: roundedMbps(summary.upload) ?? current.upload,
+      packetLoss:
+        typeof summary.packetLoss === "number"
+          ? Math.round(summary.packetLoss * 10000) / 100
+          : current.packetLoss,
+    }));
   }, []);
 
   useEffect(() => {
@@ -244,163 +264,99 @@ export default function SpeedTest() {
     };
   }, [networkProfileReloadKey]);
 
-  const runSpeedTest = useCallback(async () => {
-    const runId = ++runIdRef.current;
-    const controller = new AbortController();
-    controllerRef.current = controller;
+  const runSpeedTest = useCallback(() => {
     setError(null);
+    setWarning(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
     setHasStarted(true);
     setIsRunning(true);
     setPhase("latency");
     setProgress(phaseProgress.latency);
-
-    try {
-      const latencySamples: number[] = [];
-      let failedLatencySamples = 0;
-      for (let sample = 0; sample < 5; sample += 1) {
-        await waitIfPaused(runId);
-        try {
-          const startedAt = performance.now();
-          const response = await fetch(`/api/speedtest/ping?sample=${sample}`, {
-            cache: "no-store",
-            signal: controller.signal,
-          });
-          if (!response.ok) throw new Error("The latency check could not be completed.");
-          const latency = Math.max(1, Math.round(performance.now() - startedAt));
-          latencySamples.push(latency);
-          const average = Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length);
-          setResults((current) => ({ ...current, latency: average }));
-          appendWavePoint(0.35 + Math.min(latency / 180, 0.45));
-        } catch (caughtError) {
-          if (isAbortError(caughtError) || runId !== runIdRef.current) throw caughtError;
-          failedLatencySamples += 1;
-          appendWavePoint(0.12);
+    const engine = new CloudflareSpeedTest({
+      autoStart: false,
+      // Cloudflare's engine measures directly against its edge network and
+      // computes bandwidth from Resource Timing rather than response length.
+      // Keep final AIM logging off because this app only needs local results.
+      logAimApiUrl: null,
+    });
+    engine.onPhaseChange = ({ measurement }) => {
+      const nextPhase = phaseForMeasurement(measurement.type);
+      if (nextPhase) {
+        setPhase(nextPhase);
+        setProgress(phaseProgress[nextPhase]);
+      }
+    };
+    engine.onRunningChange = (running) => setIsRunning(running);
+    engine.onResultsChange = ({ type }) => {
+      applyCloudflareResults(engine.results);
+      if (type === "download" || type === "upload") {
+        const points =
+          type === "download"
+            ? engine.results.getDownloadBandwidthPoints()
+            : engine.results.getUploadBandwidthPoints();
+        const lastPoint = points.at(-1);
+        if (lastPoint) {
+          appendWavePoint(0.35 + Math.min(lastPoint.bps / 1_000_000_000, 0.6));
         }
-        setResults((current) => ({
-          ...current,
-          packetLoss: Math.round((failedLatencySamples / (sample + 1)) * 100),
-        }));
-        setProgress(Math.min(32, phaseProgress.latency + sample * 4));
       }
-      if (latencySamples.length === 0) {
-        throw new Error("No latency samples were received from the SafeNet network.");
+    };
+    engine.onError = (message) => {
+      // Packet loss uses WebRTC TURN and can be unavailable on restricted
+      // networks; preserve valid bandwidth results and report the limitation.
+      setWarning(message);
+    };
+    engine.onFinish = (finishedResults) => {
+      applyCloudflareResults(finishedResults);
+      const summary = finishedResults.getSummary();
+      if (
+        typeof summary.latency !== "number" ||
+        typeof summary.download !== "number" ||
+        typeof summary.upload !== "number"
+      ) {
+        const message = "Cloudflare could not complete all required edge measurements.";
+        setError(message);
+        setPhase("error");
+        setIsRunning(false);
+        toast({ title: "Speed test could not be completed", description: message, variant: "destructive" });
+        return;
       }
-
-      await waitIfPaused(runId);
-      setPhase("download");
-      setProgress(phaseProgress.download);
-      const downloadStartedAt = performance.now();
-      const downloadResponse = await fetch(
-        `/api/speedtest/download?size=${THROUGHPUT_TEST_BYTES}`,
-        {
-        cache: "no-store",
-        signal: controller.signal,
-        },
-      );
-      if (!downloadResponse.ok || !downloadResponse.body) {
-        throw new Error("The download check could not be completed.");
-      }
-       await waitIfPaused(runId);
-       const downloadedPayload = await downloadResponse.arrayBuffer();
-       const downloadedBytes = downloadedPayload.byteLength;
-       const elapsed = performance.now() - downloadStartedAt;
-       const speed = formatMbps(downloadedBytes, elapsed);
-       if (speed !== null) {
-         setResults((current) => ({ ...current, download: speed }));
-         appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
-       }
-       setProgress(Math.min(68, 32 + (downloadedBytes / THROUGHPUT_TEST_BYTES) * 36));
-      if (downloadedBytes !== THROUGHPUT_TEST_BYTES) {
-        throw new Error(
-          `The download check received ${downloadedBytes} of ${THROUGHPUT_TEST_BYTES} expected bytes.`,
-        );
-      }
-
-      await waitIfPaused(runId);
-      setPhase("upload");
-      setProgress(phaseProgress.upload);
-      const uploadPayload = new Uint8Array(THROUGHPUT_TEST_BYTES);
-      uploadPayload.fill(83);
-      const uploadStartedAt = performance.now();
-      const uploadResponse = await fetch("/api/speedtest/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: uploadPayload,
-        signal: controller.signal,
-      });
-      if (!uploadResponse.ok) throw new Error("The upload check could not be completed.");
-      const uploadResult = (await uploadResponse.json()) as {
-        bytesReceived?: unknown;
-      };
-      if (uploadResult.bytesReceived !== uploadPayload.byteLength) {
-        throw new Error(
-          `The upload check received ${String(uploadResult.bytesReceived)} of ${uploadPayload.byteLength} expected bytes.`,
-        );
-      }
-      const uploadElapsed = performance.now() - uploadStartedAt;
-      const uploadSpeed = formatMbps(uploadPayload.byteLength, uploadElapsed);
-      setResults((current) => ({ ...current, upload: uploadSpeed }));
-      appendWavePoint(0.78);
-      setProgress(94);
-
-      await waitIfPaused(runId);
       setProgress(100);
       setPhase("complete");
       setIsRunning(false);
       toast({
         title: "Speed test complete",
-        description: "Latency and throughput results are ready below.",
+        description: "Cloudflare edge latency and throughput results are ready below.",
       });
-    } catch (caughtError) {
-      if (isAbortError(caughtError) || runId !== runIdRef.current) return;
-      const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
-      setError(message);
-      setPhase("error");
-      setIsRunning(false);
-      toast({
-        title: "Speed test could not be completed",
-        description: message,
-        variant: "destructive",
-      });
-    } finally {
-      if (runId === runIdRef.current) {
-        controllerRef.current = null;
-      }
-    }
-  }, [appendWavePoint, toast, waitIfPaused]);
+    };
+    speedTestRef.current = engine;
+    engine.play();
+  }, [appendWavePoint, applyCloudflareResults, toast]);
 
   useEffect(() => {
     return () => {
-      runIdRef.current += 1;
-      controllerRef.current?.abort();
+      speedTestRef.current?.pause();
     };
   }, []);
 
   const startSpeedTest = useCallback(() => {
     if (hasStarted && !isRunning && phase !== "complete" && phase !== "error") {
-      pausedRef.current = false;
-      setIsRunning(true);
+      speedTestRef.current?.play();
       toast({ title: "Speed test resumed", description: "Continuing the network measurement." });
       return;
     }
-    pausedRef.current = false;
     toast({ title: "Speed test started", description: "Measuring latency and throughput." });
-    void runSpeedTest();
+    runSpeedTest();
   }, [hasStarted, isRunning, phase, runSpeedTest, toast]);
 
   const pauseSpeedTest = useCallback(() => {
-    pausedRef.current = true;
-    setIsRunning(false);
+    speedTestRef.current?.pause();
     toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
   }, [toast]);
 
   const resetTest = useCallback(() => {
-    runIdRef.current += 1;
-    pausedRef.current = false;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
+    speedTestRef.current?.pause();
+    speedTestRef.current = null;
     setIsRunning(false);
     setHasStarted(false);
     setPhase("idle");
@@ -408,6 +364,7 @@ export default function SpeedTest() {
     setResults(initialResults);
     setWavePoints(initialWavePoints);
     setError(null);
+    setWarning(null);
     toast({ title: "Speed test reset", description: "Previous measurements were cleared." });
   }, [toast]);
 
@@ -419,6 +376,7 @@ export default function SpeedTest() {
     latency: "Measuring latency",
     download: "Measuring download",
     upload: "Measuring upload",
+    packetLoss: "Measuring packet loss",
     complete: "Test complete",
     error: "Test interrupted",
   }[phase];
@@ -508,6 +466,11 @@ export default function SpeedTest() {
             {error && (
               <p className="text-xs text-rose-400" role="alert">
                 {error}
+              </p>
+            )}
+            {warning && !error && (
+              <p className="text-xs text-amber-300" role="status">
+                {warning}
               </p>
             )}
           </div>
@@ -655,7 +618,7 @@ export default function SpeedTest() {
             <p className="mt-1 font-mono text-sm font-bold capitalize text-primary">{phase}</p>
           </div>
           <div className="rounded-lg border border-border/50 bg-background/30 p-3">
-             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ping packet loss</p>
+             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Edge packet loss</p>
             <p className="mt-1 font-mono text-sm font-bold text-primary">
               {results.packetLoss === null ? "Pending" : `${results.packetLoss}%`}
             </p>
