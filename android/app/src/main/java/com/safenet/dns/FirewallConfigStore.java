@@ -55,7 +55,9 @@ final class FirewallConfigStore {
     static DnsFirewall load(Context context) {
         String encoded = preferences(context).getString(PREF_FIREWALL_CONFIG, null);
         if (encoded == null || encoded.trim().isEmpty()) {
-            return DnsFirewall.allowAll();
+            // A missing authenticated policy must never silently disable
+            // system-wide DNS blocking while the VPN is active.
+            return DnsFirewall.failClosed();
         }
         try {
             byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
