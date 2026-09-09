@@ -526,6 +526,27 @@ capture_startup_screenshot() {
         > "$output_dir/$evidence_name" 2> "$output_dir/${evidence_name%.png}.error" || true
 }
 
+verify_startup_evidence() {
+    local missing_evidence=()
+    local evidence_name
+    local required_evidence=(
+        startup-initial.png
+        startup-progress.png
+        startup-handoff.png
+        startup-logcat.txt
+    )
+
+    for evidence_name in "${required_evidence[@]}"; do
+        if [[ ! -s "$output_dir/$evidence_name" ]]; then
+            missing_evidence+=("$evidence_name")
+        fi
+    done
+
+    if (( ${#missing_evidence[@]} > 0 )); then
+        startup_failure "startup evidence is incomplete; missing or empty files: ${missing_evidence[*]}"
+    fi
+}
+
 startup_failure() {
     local message="$1"
     capture_startup_ui startup-failure-ui.xml
@@ -635,6 +656,7 @@ run_startup_check() {
     capture_startup_screenshot startup-handoff.png
 
     capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
+    verify_startup_evidence
     if ! grep -Fq 'WebView startup handoff complete' "$output_dir/startup-logcat.txt"; then
         startup_failure "the WebView startup loader did not report a completed handoff"
     fi

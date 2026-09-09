@@ -19,6 +19,27 @@ const startupCheckEnd = startupScript.indexOf(
 assert.notEqual(startupCheckStart, -1, "startup check function is missing");
 assert.notEqual(startupCheckEnd, -1, "startup check function boundary is missing");
 const startupCheck = startupScript.slice(startupCheckStart, startupCheckEnd);
+const startupEvidenceCheckStart = startupScript.indexOf(
+  "verify_startup_evidence() {",
+);
+const startupEvidenceCheckEnd = startupScript.indexOf(
+  "\nstartup_failure() {",
+  startupEvidenceCheckStart,
+);
+assert.notEqual(
+  startupEvidenceCheckStart,
+  -1,
+  "startup evidence completeness check is missing",
+);
+assert.notEqual(
+  startupEvidenceCheckEnd,
+  -1,
+  "startup evidence completeness check boundary is missing",
+);
+const startupEvidenceCheck = startupScript.slice(
+  startupEvidenceCheckStart,
+  startupEvidenceCheckEnd,
+);
 
 const startupJobStart = buildWorkflow.indexOf("  android-release-startup:");
 const startupJobEnd = buildWorkflow.indexOf("\n  build-windows:", startupJobStart);
@@ -43,6 +64,28 @@ test("Android startup check records the complete evidence contract", () => {
     startupCheck,
     /capture startup-logcat\.txt adb "\$\{adb_args\[@\]\}" shell logcat -d -t 600/,
     "startup check must capture bounded logcat evidence",
+  );
+  for (const evidence of [
+    "startup-initial.png",
+    "startup-progress.png",
+    "startup-handoff.png",
+    "startup-logcat.txt",
+  ]) {
+    assert.match(
+      startupEvidenceCheck,
+      new RegExp(`\\s${evidence.replace(".", "\\.")}\\s`),
+      `startup check must require ${evidence}`,
+    );
+  }
+  assert.match(
+    startupEvidenceCheck,
+    /if \[\[ ! -s "\$output_dir\/\$evidence_name" \]\]/,
+    "startup check must reject missing or empty evidence files",
+  );
+  assert.match(
+    startupEvidenceCheck,
+    /startup evidence is incomplete; missing or empty files:/,
+    "startup check must report incomplete evidence clearly",
   );
   assert.match(
     startupCheck,
@@ -97,5 +140,10 @@ test("dedicated Android startup job uploads its evidence directory", () => {
     startupJob,
     /--output "\$GITHUB_WORKSPACE\/android\/app\/build\/reports\/android-startup\/latest"/,
     "startup check output must match the uploaded evidence directory",
+  );
+  assert.match(
+    startupJob,
+    /path: android\/app\/build\/reports\/android-startup\/latest[\s\S]*?if-no-files-found: error/,
+    "startup evidence upload must fail when its directory is missing",
   );
 });
