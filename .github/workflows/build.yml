@@ -631,6 +631,8 @@ jobs:
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -689,7 +691,7 @@ jobs:
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
         env:
-          MOBILE_API_URL: https://safe-net-shield-official.replit.app
+          MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
 
       - name: Compile Android native sources before APK packaging
         shell: bash
@@ -792,6 +794,7 @@ jobs:
           # checks intentionally use public resolvers and are non-blocking.
           script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
         env:
+          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
           ANDROID_EMULATOR_API_LEVEL: 34
           ANDROID_EMULATOR_TARGET: google_apis
           ANDROID_EMULATOR_ARCH: x86_64

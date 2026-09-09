@@ -35,6 +35,10 @@ emulator_api_level="${ANDROID_EMULATOR_API_LEVEL:-$DEFAULT_EMULATOR_METADATA_VAL
 emulator_target="${ANDROID_EMULATOR_TARGET:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_arch="${ANDROID_EMULATOR_ARCH:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+clerk_origin="${ANDROID_SMOKE_CLERK_ORIGIN:-${MOBILE_API_URL:-}}"
+clerk_origin="${clerk_origin%/}"
+clerk_storage_state="${AUTH_SMOKE_STORAGE_STATE:-}"
+clerk_cookie_payload=""
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
@@ -104,6 +108,11 @@ Options:
   --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
+
+The full smoke lane also requires AUTH_SMOKE_STORAGE_STATE and
+ANDROID_SMOKE_CLERK_ORIGIN (or MOBILE_API_URL). The storage-state fixture is
+used only to seed a real Clerk session into the fresh WebView after the
+unauthenticated sign-in screen has been recorded.
 
 Fixture mode starts a controlled plain DNS, DoH, DoT, and HTTPS fixture on the
 emulator host (10.0.2.2 by default). Public mode uses external resolvers and
@@ -222,6 +231,8 @@ command -v adb >/dev/null 2>&1 || {
 
 mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
+    "$output_dir"/clerk-auth-instrumentation.log "$output_dir"/clerk-auth-logcat.txt \
+    "$output_dir"/clerk-auth-result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
@@ -248,6 +259,43 @@ capture() {
         echo "\$ $*"
         "$@" 2>&1 || echo "[command exited $?, evidence may be incomplete]"
     } > "$output_dir/$name"
+}
+
+prepare_clerk_session() {
+    if [[ -z "$clerk_origin" ]]; then
+        echo "ERROR: ANDROID_SMOKE_CLERK_ORIGIN or MOBILE_API_URL is required for Clerk smoke." >&2
+        return 1
+    fi
+    if [[ -z "$clerk_storage_state" ]]; then
+        echo "ERROR: AUTH_SMOKE_STORAGE_STATE is required for the Android Clerk smoke." >&2
+        return 1
+    fi
+    clerk_cookie_payload="$(
+        AUTH_SMOKE_STORAGE_STATE="$clerk_storage_state" node --input-type=module - <<'NODE'
+const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+let state;
+try {
+  state = JSON.parse(raw);
+} catch {
+  console.error("AUTH_SMOKE_STORAGE_STATE is not valid JSON.");
+  process.exit(1);
+}
+
+const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
+const lines = cookies
+  .filter((cookie) => typeof cookie?.name === "string" && typeof cookie?.value === "string")
+  .map((cookie) => `${cookie.name}=${cookie.value}`);
+if (lines.length === 0) {
+  console.error("AUTH_SMOKE_STORAGE_STATE does not contain browser cookies.");
+  process.exit(1);
+}
+process.stdout.write(Buffer.from(lines.join("\n"), "utf8").toString("base64"));
+NODE
+    )" || return 1
+    if [[ -z "$clerk_cookie_payload" ]]; then
+        echo "ERROR: AUTH_SMOKE_STORAGE_STATE did not produce a Clerk session." >&2
+        return 1
+    fi
 }
 
 fixture_failure() {
@@ -689,6 +737,37 @@ if ! install_release_apk "$test_apk_path"; then
     exit 1
 fi
 
+prepare_clerk_session || {
+    echo "Android Clerk smoke could not prepare a real storage-state session." >&2
+    exit 2
+}
+
+echo "Running fresh Android Clerk sign-in smoke..."
+set +e
+adb_run shell am instrument -w -r \
+    -e clerk-origin "$clerk_origin" \
+    -e clerk-cookie-base64 "$clerk_cookie_payload" \
+    -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/clerk-auth-instrumentation.log"
+clerk_auth_status="${PIPESTATUS[0]}"
+set -e
+capture clerk-auth-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+if [[ "$clerk_auth_status" -ne 0 ]] ||
+    ! grep -Fq 'CLERK_AUTH_SMOKE result=PASS' "$output_dir/clerk-auth-logcat.txt"; then
+    {
+        printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$validation_mode" "$device_kind"
+        printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=FAIL\nresult=FAIL\n'
+    } | tee "$output_dir/clerk-auth-result.txt" "$output_dir/result.txt" >&2
+    echo "Android Clerk sign-in smoke failed." >&2
+    exit "${clerk_auth_status:-1}"
+fi
+{
+    printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+        "$serial" "$apk_path" "$validation_mode" "$device_kind"
+    printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=PASS\nretained_after_reload=PASS\nlegacy_access_code=ABSENT\nresult=PASS\n'
+} | tee "$output_dir/clerk-auth-result.txt"
+
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(make_temp_dir)"
     fixture_ready="$fixture_tmp/ready.json"
@@ -858,6 +937,7 @@ echo "Running SafeNet DNS instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
     -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest \
+    -e preserve-auth-session true \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
@@ -903,7 +983,7 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
     "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then

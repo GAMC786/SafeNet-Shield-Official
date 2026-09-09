@@ -11,7 +11,10 @@ import android.content.Intent;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
+import android.util.Base64;
 import android.view.KeyEvent;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -46,6 +49,7 @@ import java.util.regex.Pattern;
 public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String VPN_SWITCH_LABEL = "Enable DNS Protection VPN";
+    private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
@@ -375,6 +379,207 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void startupLoaderWaitsForDelayedSecureConfiguration() throws Exception {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView webView = ((MainActivity) activity).getBridge().getWebView();
+            webView.loadUrl("https://localhost/?safenet-startup-test=delayed-config");
+        });
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "Boolean(document.getElementById('startup-loader'))"
+        );
+
+        JSONObject startup = callWebView(
+            "(() => {" +
+                "const samples = [];" +
+                "let startupCompleteEvents = 0;" +
+                "window.addEventListener('safenet:startup-complete', () => startupCompleteEvents++);" +
+                "const startedAt = performance.now();" +
+                "const readState = () => {" +
+                    "const loader = document.getElementById('startup-loader');" +
+                    "const style = loader ? getComputedStyle(loader) : null;" +
+                    "return {" +
+                        "elapsed: Math.round(performance.now() - startedAt)," +
+                        "loaderPresent: Boolean(loader)," +
+                        "loaderBusy: loader?.getAttribute('aria-busy')," +
+                        "value: loader ? Number(loader.getAttribute('aria-valuenow')) : null," +
+                        "opacity: style ? Number(style.opacity) : null," +
+                        "background: style?.backgroundColor," +
+                        "startupError: document.body.textContent.includes('could not start')" +
+                    "};" +
+                "};" +
+                "return new Promise((resolve) => {" +
+                    "const finish = (state) => window.setTimeout(() => resolve({" +
+                        "samples," +
+                        "handoffComplete: startupCompleteEvents > 0," +
+                        "rootReady: Boolean(document.querySelector('#root > *'))," +
+                        "fallbackRemoved: !document.getElementById('dashboard-fallback')," +
+                        "startupError: state.startupError" +
+                    "}), 300);" +
+                    "const sample = () => {" +
+                        "const state = readState();" +
+                        "samples.push(state);" +
+                        "if (!state.loaderPresent || samples.length >= " +
+                            STARTUP_LOADER_MAX_SAMPLES + ") {" +
+                            "finish(state);" +
+                        "} else {" +
+                            "window.setTimeout(sample, 125);" +
+                        "}" +
+                    "};" +
+                    "sample();" +
+                "});" +
+            "})()"
+        );
+
+        assertTrue("Delayed startup loader sampling failed: " + startup.optString("message"),
+            startup.optBoolean("ok", false));
+        JSONObject handoff = startup.getJSONObject("value");
+        JSONArray samples = handoff.getJSONArray("samples");
+        assertTrue("Expected delayed startup to produce multiple samples", samples.length() >= 3);
+
+        int previousValue = -1;
+        boolean sawOpaqueLoaderAtFullProgress = false;
+        for (int index = 0; index < samples.length(); index++) {
+            JSONObject sample = samples.getJSONObject(index);
+            if (!sample.getBoolean("loaderPresent")) {
+                continue;
+            }
+
+            int value = sample.getInt("value");
+            assertTrue("Delayed loader progress must be between 0 and 100: " + sample,
+                value >= 0 && value <= 100);
+            assertTrue("Delayed loader progress must never move backwards: " + samples,
+                value >= previousValue);
+            previousValue = value;
+            assertTrue("Delayed loader must remain opaque during startup: " + sample,
+                sample.getDouble("opacity") >= 0.99);
+            assertEquals("Delayed loader must use its opaque startup surface",
+                "rgb(9, 11, 20)", sample.getString("background"));
+
+            if (value == 100 && "true".equals(sample.optString("loaderBusy"))) {
+                sawOpaqueLoaderAtFullProgress = true;
+            }
+        }
+
+        assertTrue(
+            "The loader was not kept opaque while waiting for delayed secure configuration",
+            sawOpaqueLoaderAtFullProgress
+        );
+        assertTrue("The delayed startup must finish with the app mounted",
+            handoff.getBoolean("rootReady"));
+        assertFalse("Delayed secure configuration must not render the startup error",
+            handoff.getBoolean("startupError"));
+        assertTrue("The delayed startup handoff event must complete",
+            handoff.getBoolean("handoffComplete"));
+        assertTrue("The static fallback must be removed after delayed handoff",
+            handoff.getBoolean("fallbackRemoved"));
+    }
+
+    @Test
+    public void clerkSignInStartsFreshAndRetainsClerkSession() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            waitForWebView("document.body.innerText.includes('Command Center')");
+            JSONObject retainedState = callWebView(
+                "(() => {" +
+                    "const body = document.body.innerText;" +
+                    "return {" +
+                        "dashboard: body.includes('Command Center')," +
+                        "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
+                    "};" +
+                "})()"
+            );
+            assertTrue("The preserved Clerk session must reopen the dashboard",
+                retainedState.getBoolean("dashboard"));
+            assertFalse("The preserved Clerk session must not expose legacy access-code UI",
+                retainedState.getBoolean("legacyAccessCode"));
+            return;
+        }
+
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "/sign in to access safenet dns/i.test(document.body.innerText)"
+        );
+        JSONObject initialState = callWebView(
+            "(() => {" +
+                "const body = document.body.innerText;" +
+                "return {" +
+                    "signIn: /sign in to access safenet dns/i.test(body)," +
+                    "googleSignIn: /sign in with google/i.test(body)," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
+                    "path: window.location.pathname" +
+                "};" +
+            "})()"
+        );
+        assertTrue("A fresh Android WebView must start on Clerk sign-in",
+            initialState.getBoolean("signIn"));
+        assertFalse("Fresh Clerk sign-in must not expose legacy access-code UI",
+            initialState.getBoolean("legacyAccessCode"));
+
+        String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+        String clerkCookiePayload = instrumentationArguments().getString("clerk-cookie-base64");
+        assertNotNull("Android Clerk smoke requires a public Clerk session origin", clerkOrigin);
+        assertNotNull("Android Clerk smoke requires a Clerk storage-state session",
+            clerkCookiePayload);
+        assertTrue("Android Clerk smoke received an empty Clerk session",
+            clerkCookiePayload.length() > 0);
+        String clerkCookie = new String(
+            Base64.decode(clerkCookiePayload, Base64.DEFAULT),
+            java.nio.charset.StandardCharsets.UTF_8
+        );
+
+        setClerkSessionCookies(clerkOrigin, clerkCookie);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+
+        JSONObject authenticatedState = callWebView(
+            "(async () => {" +
+                "const body = document.body.innerText;" +
+                "const response = await fetch(" +
+                    JSONObject.quote(clerkOrigin + "/api/auth/status") +
+                    ", {cache: 'no-store', credentials: 'include'});" +
+                "const auth = await response.json();" +
+                "return {" +
+                    "dashboard: body.includes('Command Center')," +
+                    "authenticated: response.ok && auth.authenticated === true," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
+                    "cookiePresent: Boolean(document.cookie)" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The Clerk session must open the protected dashboard",
+            authenticatedState.getBoolean("dashboard"));
+        assertTrue("The backend must recognize the injected Clerk session",
+            authenticatedState.getBoolean("authenticated"));
+        assertFalse("The protected dashboard must not expose legacy access-code UI",
+            authenticatedState.getBoolean("legacyAccessCode"));
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+        JSONObject retainedState = callWebView(
+            "(() => {" +
+                "const body = document.body.innerText;" +
+                "return {" +
+                    "dashboard: body.includes('Command Center')," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The packaged WebView must retain the Clerk session after reload",
+            retainedState.getBoolean("dashboard"));
+        assertFalse("The retained Clerk session must not fall back to local access-code UI",
+            retainedState.getBoolean("legacyAccessCode"));
+        Log.i(
+            CLERK_AUTH_TAG,
+            "CLERK_AUTH_SMOKE result=PASS initial=SIGN_IN session=CLERK " +
+                "dashboard=PASS retained_after_reload=PASS legacy_access_code=ABSENT"
+        );
+    }
+
+    @Test
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
@@ -579,6 +784,9 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     private void clearTargetAppData() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            return;
+        }
         ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation()
             .executeShellCommand("pm clear " + PACKAGE_NAME);
@@ -810,6 +1018,30 @@ public class SafeNetVpnUiInstrumentationTest {
             "Boolean(window.Capacitor && window.Capacitor.Plugins && " +
                 "window.Capacitor.Plugins.SafeNetVpn)"
         );
+    }
+
+    private Bundle instrumentationArguments() {
+        return InstrumentationRegistry.getArguments();
+    }
+
+    private boolean hasInstrumentationArgument(String name) {
+        return instrumentationArguments().containsKey(name);
+    }
+
+    private void setClerkSessionCookies(String origin, String cookieLines) throws Exception {
+        String[] cookies = cookieLines.split("\\n");
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+            for (String cookie : cookies) {
+                String trimmedCookie = cookie.trim();
+                if (!trimmedCookie.isEmpty()) {
+                    cookieManager.setCookie(origin, trimmedCookie);
+                }
+            }
+            cookieManager.flush();
+        });
+        Thread.sleep(500);
     }
 
     private void waitForWebView(String expression) throws Exception {
