@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import CloudflareSpeedTest, {
+  type MeasurementConfig,
   type MeasurementType,
   type Results as CloudflareResults,
 } from "@cloudflare/speedtest";
@@ -88,6 +89,17 @@ const phaseProgress: Record<TestPhase, number> = {
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
+
+const EDGE_MEASUREMENTS: MeasurementConfig[] = [
+  { type: "latency", numPackets: 10 },
+  { type: "download", bytes: 100_000, count: 3, bypassMinDuration: true },
+  { type: "download", bytes: 1_000_000, count: 4 },
+  { type: "upload", bytes: 100_000, count: 3, bypassMinDuration: true },
+  { type: "packetLoss", numPackets: 100, batchSize: 20, batchWaitTime: 20, responsesWaitTime: 1_000 },
+  { type: "upload", bytes: 1_000_000, count: 4 },
+  { type: "download", bytes: 10_000_000, count: 2 },
+  { type: "upload", bytes: 10_000_000, count: 2 },
+];
 
 function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
@@ -275,6 +287,8 @@ export default function SpeedTest() {
     setProgress(phaseProgress.latency);
     const engine = new CloudflareSpeedTest({
       autoStart: false,
+      measurements: EDGE_MEASUREMENTS,
+      bandwidthFinishRequestDuration: 600,
       // Cloudflare's engine measures directly against its edge network and
       // computes bandwidth from Resource Timing rather than response length.
       // Keep final AIM logging off because this app only needs local results.
