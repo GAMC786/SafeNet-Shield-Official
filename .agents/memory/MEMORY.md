@@ -7,6 +7,7 @@
 - [Cross-platform Node test discovery](cross-platform-node-tests.md) — discover test files in Node instead of depending on shell wildcard expansion.
 - [Cross-platform CI diagnostics](ci-cross-platform-diagnostics.md) — emit bounded failure details as annotations when hosted runner logs are unavailable.
 - [GitHub artifact downloads](github-artifact-downloads.md) — the GitHub connector can list Actions artifacts but may forbid archive/log downloads; use the opaque CLI credential path for verification.
+- [GitHub Actions versus Releases](github-actions-release-distinction.md) — uploading an Actions artifact does not create a visible GitHub Release or attach APK assets.
 - [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
 - [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
@@ -18,6 +19,7 @@
 - [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
 - [Cloudflare speed test integration](cloudflare-speedtest-integration.md) — Cloudflare’s public test denies iframe embedding; use the official browser engine package for an in-app ad-free test.
+- [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
 - [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.
@@ -39,3 +41,5 @@
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
 - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
+- [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
+- [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
