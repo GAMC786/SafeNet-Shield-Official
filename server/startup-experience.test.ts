@@ -58,6 +58,22 @@ const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
 );
+const dnsSettingsSource = readFileSync(
+  path.join(clientRoot, "src/pages/DnsSettings.tsx"),
+  "utf8",
+);
+const ddnsSource = readFileSync(
+  path.join(clientRoot, "src/pages/DdnsUpdater.tsx"),
+  "utf8",
+);
+const antivirusSource = readFileSync(
+  path.join(clientRoot, "src/pages/Antivirus.tsx"),
+  "utf8",
+);
+const aiShieldSource = readFileSync(
+  path.join(clientRoot, "src/components/AiShieldControls.tsx"),
+  "utf8",
+);
 const manifestSource = readFileSync(
   path.join(clientRoot, "public/manifest.json"),
   "utf8",
@@ -151,12 +167,14 @@ test("Measure Your Network identifies the ISP and reports measured packet loss",
   assert.match(speedTestSource, /ISP-based connection profile/);
   assert.match(speedTestSource, /public IP/);
   assert.match(speedTestSource, /button-refresh-network-profile/);
-  assert.match(speedTestSource, /packetLoss: Math\.round\(\(failedLatencySamples \/ \(sample \+ 1\)\) \* 100\)/);
-  assert.doesNotMatch(speedTestSource, /setResults\(\(current\) => \(\{ \.\.\.current, packetLoss: 0 \}\)\)/);
-  assert.match(speedTestSource, /\/api\/speedtest\/download\?size=\$\{THROUGHPUT_TEST_BYTES\}/);
-  assert.match(speedTestSource, /\/api\/speedtest\/upload/);
-  assert.match(speedTestSource, /THROUGHPUT_TEST_BYTES = 4_000_000/);
-  assert.match(speedTestSource, /bytesReceived !== uploadPayload\.byteLength/);
+  assert.match(speedTestSource, /@cloudflare\/speedtest/);
+  assert.match(speedTestSource, /CloudflareSpeedTest/);
+  assert.match(speedTestSource, /summary\.packetLoss/);
+  assert.match(speedTestSource, /Math\.round\(summary\.packetLoss \* 10000\) \/ 100/);
+  assert.match(speedTestSource, /Cloudflare's engine measures directly against its edge network/);
+  assert.match(speedTestSource, /Packet loss uses WebRTC TURN/);
+  assert.doesNotMatch(speedTestSource, /THROUGHPUT_TEST_BYTES/);
+  assert.doesNotMatch(speedTestSource, /\/api\/speedtest\/(download|upload)/);
   assert.match(routesSource, /return res\.json\(\{ bytesReceived \}\)/);
   assert.doesNotMatch(routesSource, /const speedMbps =/);
 });
@@ -187,8 +205,10 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(settingsSource, /settingsReady/);
-  assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
-  assert.match(settingsSource, /Android device-admin permission is not requested here/);
+  assert.match(settingsSource, /opens Android(?:&apos;|')s Always-on VPN settings/);
+  assert.match(settingsSource, /Open Android security settings/);
+  assert.match(settingsSource, /button-open-vpn-settings/);
+  assert.match(settingsSource, /button-set-pin/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
   assert.match(
     manifestSource,
@@ -200,7 +220,23 @@ test("Settings use the current package version and describe preference-only Andr
 test("the Dashboard reports DNS Protection VPN instead of generic system activity", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
   assert.match(dashboardSource, /DNS Protection VPN/);
+  assert.match(dashboardSource, /Enable DNS Protection VPN/);
+  assert.match(dashboardSource, /startAfterEula/);
   assert.match(dashboardSource, /Available in the SafeNet Android APK/);
   assert.match(dashboardSource, /DNS protection is running/);
   assert.doesNotMatch(dashboardSource, /System Active/);
+  assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
+});
+
+test("resolver, DDNS, and threat views expose the requested controls", () => {
+  assert.match(dnsSettingsSource, /ipVersion/);
+  assert.match(dnsSettingsSource, /IPv4/);
+  assert.match(dnsSettingsSource, /IPv6/);
+  assert.match(ddnsSource, /Update Interval \(seconds\)/);
+  assert.match(ddnsSource, /Test/);
+  assert.match(antivirusSource, /Threat mix/);
+  assert.match(antivirusSource, /Severity profile/);
+  assert.match(appSource, /useFirewallConfig/);
+  assert.match(aiShieldSource, /button-start-ai-camera/);
+  assert.match(aiShieldSource, /button-start-ai-screen/);
 });

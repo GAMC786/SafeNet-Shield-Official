@@ -177,6 +177,14 @@ function mockApi(
   ];
 
   return Promise.all([
+    page.route("https://speed.cloudflare.com/turn-creds", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({ iceServers: [] }),
+      });
+    }),
     page.route("**/api/**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
