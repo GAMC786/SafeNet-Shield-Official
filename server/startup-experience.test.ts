@@ -95,6 +95,8 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
   assert.match(indexHtml, /safenet-astronaut-loader-transparent\.png/);
   assert.match(indexHtml, /startup-loader-dot/);
+  assert.match(indexHtml, /startup-loader-shield-stroke/);
+  assert.match(indexHtml, /stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);
   assert.match(indexHtml, /Loading protected network status/);
   assert.match(indexHtml, /Network/);
@@ -201,6 +203,9 @@ test("Measure Your Network identifies the ISP and reports measured packet loss",
   assert.match(speedTestSource, /Math\.round\(summary\.packetLoss \* 10000\) \/ 100/);
   assert.match(speedTestSource, /Cloudflare's engine measures directly against its edge network/);
   assert.match(speedTestSource, /Packet loss uses WebRTC TURN/);
+  assert.doesNotMatch(speedTestSource, /type: "upload", bytes: 1_000_000/);
+  assert.doesNotMatch(speedTestSource, /type: "upload", bytes: 10_000_000/);
+  assert.match(speedTestSource, /Cloudflare upload measurement was unavailable on this network/);
   assert.doesNotMatch(speedTestSource, /THROUGHPUT_TEST_BYTES/);
   assert.doesNotMatch(speedTestSource, /\/api\/speedtest\/(download|upload)/);
   assert.match(routesSource, /return res\.json\(\{ bytesReceived \}\)/);
@@ -267,4 +272,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(appSource, /useFirewallConfig/);
   assert.match(aiShieldSource, /button-start-ai-camera/);
   assert.match(aiShieldSource, /button-start-ai-screen/);
+  assert.match(aiShieldSource, /cameraEnabled/);
+  assert.match(aiShieldSource, /screenEnabled/);
+  assert.match(aiShieldSource, /\{cameraEnabled \? "Disable" : "Enable"\}/);
+  assert.match(aiShieldSource, /\{screenEnabled \? "Disable" : "Enable"\}/);
 });

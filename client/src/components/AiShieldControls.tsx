@@ -11,8 +11,8 @@ import {
   Eye,
   Loader2,
   Monitor,
+  Power,
   ShieldAlert,
-  Square,
 } from "lucide-react";
 
 function statePresentation(result: AiShieldResult | null) {
@@ -65,6 +65,9 @@ export function AiShieldControls() {
   const { toast } = useToast();
   const presentation = statePresentation(shield.status);
   const monitoring = shield.status?.monitoring ?? false;
+  const activeSource = shield.status?.source;
+  const cameraEnabled = monitoring && activeSource === "camera";
+  const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
 
@@ -153,36 +156,49 @@ export function AiShieldControls() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={() => void run(shield.startCamera)}
-              disabled={shield.isBusy || monitoring}
-              data-testid="button-start-ai-camera"
-            >
-              {shield.isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-              Monitor camera
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run(shield.startScreen)}
-              disabled={shield.isBusy || monitoring}
-              data-testid="button-start-ai-screen"
-            >
-              <Monitor className="mr-2 h-4 w-4" />
-              Monitor screen
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run(shield.stop)}
-              disabled={shield.isBusy || !monitoring}
-              data-testid="button-stop-ai-shield"
-            >
-              <Square className="mr-2 h-4 w-4" />
-              Stop
-            </Button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Camera className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Monitor camera</p>
+                  <p className="text-xs text-muted-foreground">Analyze consented camera frames</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={cameraEnabled ? "default" : "outline"}
+                onClick={() => void run(cameraEnabled ? shield.stop : shield.startCamera)}
+                disabled={shield.isBusy}
+                aria-pressed={cameraEnabled}
+                data-testid="button-start-ai-camera"
+              >
+                {shield.isBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Power className="mr-1.5 h-4 w-4" />}
+                {cameraEnabled ? "Disable" : "Enable"}
+              </Button>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Monitor className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Monitor screen</p>
+                  <p className="text-xs text-muted-foreground">Analyze consented screen pixels</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={screenEnabled ? "default" : "outline"}
+                onClick={() => void run(screenEnabled ? shield.stop : shield.startScreen)}
+                disabled={shield.isBusy}
+                aria-pressed={screenEnabled}
+                data-testid="button-start-ai-screen"
+              >
+                {shield.isBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Power className="mr-1.5 h-4 w-4" />}
+                {screenEnabled ? "Disable" : "Enable"}
+              </Button>
+            </div>
           </div>
 
           <div className={`rounded-md border p-3 ${presentation.className}`} data-testid="ai-shield-result">

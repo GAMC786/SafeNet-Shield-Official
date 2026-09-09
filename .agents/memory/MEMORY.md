@@ -19,6 +19,7 @@
 - [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
 - [Cloudflare speed test integration](cloudflare-speedtest-integration.md) — Cloudflare’s public test denies iframe embedding; use the official browser engine package for an in-app ad-free test.
+- [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
 - [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.

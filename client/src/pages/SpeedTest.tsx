@@ -96,9 +96,7 @@ const EDGE_MEASUREMENTS: MeasurementConfig[] = [
   { type: "download", bytes: 1_000_000, count: 4 },
   { type: "upload", bytes: 100_000, count: 3, bypassMinDuration: true },
   { type: "packetLoss", numPackets: 100, batchSize: 20, batchWaitTime: 20, responsesWaitTime: 1_000 },
-  { type: "upload", bytes: 1_000_000, count: 4 },
   { type: "download", bytes: 10_000_000, count: 2 },
-  { type: "upload", bytes: 10_000_000, count: 2 },
 ];
 
 function formatMetric(value: number | null, unit: string) {
@@ -318,7 +316,14 @@ export default function SpeedTest() {
     engine.onError = (message) => {
       // Packet loss uses WebRTC TURN and can be unavailable on restricted
       // networks; preserve valid bandwidth results and report the limitation.
-      setWarning(message);
+      const isUploadFailure = message.includes("__up");
+      setWarning(
+        isUploadFailure
+          ? "Cloudflare upload measurement was unavailable on this network. The completed latency and download results remain valid."
+          : "Cloudflare could not complete one network measurement. The completed results remain available.",
+      );
+      setPhase("error");
+      setIsRunning(false);
     };
     engine.onFinish = (finishedResults) => {
       applyCloudflareResults(finishedResults);
