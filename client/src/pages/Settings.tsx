@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { useState } from "react";
 
 export default function Settings() {
   const { isSignedIn } = useAuth();
@@ -26,7 +27,7 @@ export default function Settings() {
   const appVersion = import.meta.env.VITE_APP_VERSION;
 
   const openAndroidSettings = async (
-    target: "vpn",
+    target: "vpn" | "device-admin",
     label: string,
   ) => {
     try {
@@ -44,6 +45,7 @@ export default function Settings() {
     aiShieldEnabled: "AI Shield",
     firewallEnabled: "Firewall protection",
     alwaysOnEnabled: "Always-on protection",
+    deviceAdminEnabled: "Device administrator access",
   };
 
   const handleToggle = (key: string, checked: boolean) => {
@@ -181,6 +183,35 @@ export default function Settings() {
             </div>
           </div>
 
+          <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
+            <div className="space-y-1">
+              <Label className="text-base text-white font-medium flex items-center gap-2">
+                <Shield className="w-4 h-4 text-primary" /> Device Admin
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Saves the preference and opens Android security settings. SafeNet never silently grants device-admin access.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <Switch
+                checked={settings?.deviceAdminEnabled ?? false}
+                onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
+                disabled={!settingsReady || updateSettings.isPending}
+                aria-label="Device Admin preference"
+                data-testid="switch-device-admin"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void openAndroidSettings("device-admin", "Device administrator settings")}
+                disabled={!androidSettings.supported}
+                data-testid="button-open-device-admin-settings"
+              >
+                Open Android security settings
+              </Button>
+            </div>
+          </div>
         </CyberCard>
 
         <div className="md:col-span-2">

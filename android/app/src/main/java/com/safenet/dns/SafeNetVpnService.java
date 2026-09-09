@@ -1059,7 +1059,7 @@ public class SafeNetVpnService extends VpnService {
             return null;
         }
 
-        private static byte[] forwardPlain(byte[] query, String address, SafeNetVpnService service) throws IOException {
+        private byte[] forwardPlain(byte[] query, String address, SafeNetVpnService service) throws IOException {
             InetAddress[] upstreams = service.resolveHost(address, ipVersion);
             IOException last = null;
             for (InetAddress upstream : upstreams) {
@@ -1085,7 +1085,7 @@ public class SafeNetVpnService extends VpnService {
                 : last;
         }
 
-        private static byte[] forwardPlainTcp(
+        private byte[] forwardPlainTcp(
             byte[] query,
             String address,
             SafeNetVpnService service
@@ -1120,7 +1120,7 @@ public class SafeNetVpnService extends VpnService {
                 : last;
         }
 
-        private static byte[] forwardDot(byte[] query, String address, SafeNetVpnService service)
+        private byte[] forwardDot(byte[] query, String address, SafeNetVpnService service)
             throws IOException, GeneralSecurityException {
             Endpoint endpoint = Endpoint.forDot(address);
             try (Socket raw = service.openProtectedSocket(
@@ -1148,7 +1148,7 @@ public class SafeNetVpnService extends VpnService {
             }
         }
 
-        private static byte[] forwardDoh(byte[] query, String address, SafeNetVpnService service)
+        private byte[] forwardDoh(byte[] query, String address, SafeNetVpnService service)
             throws IOException, GeneralSecurityException {
             URI uri;
             try {

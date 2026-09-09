@@ -89,11 +89,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install pinned Android SDK packages
+      - name: Install and verify Android toolchain from Gradle pins
         shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Compile Android native sources before APK packaging
+        shell: bash
+        run: ./scripts/check-android-native-build.sh
 
       - name: Decode release keystore
         shell: bash

@@ -22,6 +22,7 @@
     "setup:workflow-lint": "node scripts/setup-workflow-lint.mjs",
     "android:setup": "./scripts/setup-android-sdk.sh",
     "android:setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android-sdk.ps1",
+    "android:check": "./scripts/check-android-native-build.sh",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

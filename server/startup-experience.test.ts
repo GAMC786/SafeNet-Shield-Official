@@ -240,9 +240,9 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(settingsSource, /settingsReady/);
   assert.match(settingsSource, /opens Android(?:&apos;|')s Always-on VPN settings/);
+  assert.match(settingsSource, /Open Android security settings/);
   assert.match(settingsSource, /button-open-vpn-settings/);
-  assert.doesNotMatch(settingsSource, /PinEntry|App Access Protection|verify-pin|pin-recovery|isPinEnabled/);
-  assert.doesNotMatch(settingsSource, /Device Admin|device-admin|deviceAdminEnabled|button-open-device-admin-settings|Open Android security settings/);
+  assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
   assert.match(
     manifestSource,

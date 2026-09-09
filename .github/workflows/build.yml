@@ -808,6 +808,10 @@ jobs:
         env:
           MOBILE_API_URL: https://safe-net-shield-official.replit.app
 
+      - name: Compile Android native sources before APK packaging
+        shell: bash
+        run: ./scripts/check-android-native-build.sh
+
       - name: Build debug APK
         if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
         working-directory: android

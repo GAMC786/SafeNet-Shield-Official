@@ -103,6 +103,19 @@ The debug APK will be at: `android/app/build/outputs/apk/debug/app-debug.apk`
 Gradle verifies that the validated mobile build marker exists. If it asks you to
 run `scripts/build-android.sh`, repeat Step 1 before building the APK.
 
+For the deterministic native validation used before release packaging, run this
+from the project root after Step 1:
+
+```bash
+npm run android:check
+```
+
+This runs `assembleDebug` with the pinned Android SDK and forces Java
+compilation. It includes `SafeNetVpnPlugin.java` and `SafeNetVpnService.java`,
+so resolver address-family forwarding must compile before a release APK is
+built. The command reads the SDK path from `ANDROID_SDK_ROOT`, `ANDROID_HOME`,
+or `android/local.properties`; do not commit `android/local.properties`.
+
 ### For Release APK (signed):
 1. Generate a keystore:
 ```bash
