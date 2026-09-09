@@ -7,4 +7,4 @@ GitHub-hosted Actions cannot resolve Replit package-firewall tarball URLs record
 
 **Why:** A tagged Android/Windows release failed during `npm ci` before any build because the lockfile pointed to `package-firewall.replit.local`.
 
-**How to apply:** Before triggering a GitHub release, check the lockfile for Replit-only resolved URLs and normalize them to a public registry or another runner-reachable source.
+**How to apply:** Before triggering a GitHub release, check the lockfile for Replit-only resolved URLs and normalize them to a public registry or another runner-reachable source. Also verify the tagged tree contains the same source-contract updates as the local tested tree; a stale remote branch can fail later at TypeScript or source tests.
