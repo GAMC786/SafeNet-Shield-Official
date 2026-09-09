@@ -7,7 +7,7 @@ import type { IStorage } from "./storage";
 process.env.DATABASE_URL ??= "postgres://logs-api-test";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??= "logs-api-test";
 
-test("Android activity ingest requires a Clerk-authenticated request", async () => {
+test("Android activity ingest is available without sign-in", async () => {
   const { registerRoutes } = await import("./routes");
   const { registerRequestOriginMiddleware } = await import("./request-origin");
   const records: Array<Record<string, unknown>> = [];
@@ -50,26 +50,10 @@ test("Android activity ingest requires a Clerk-authenticated request", async () 
     reason: "domain_blocklist",
   };
   try {
-    const unauthenticated = await fetch(url, {
-      method: "POST",
-      headers: {
-        Origin: "https://localhost",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    assert.equal(unauthenticated.status, 401);
-    assert.equal(records.length, 0);
-
-    const authStatus = await fetch(url.replace("/api/logs/ingest", "/api/auth/status"));
-    assert.equal(authStatus.status, 200);
-    assert.deepEqual(await authStatus.json(), { authenticated: false });
-
     const accepted = await fetch(url, {
       method: "POST",
       headers: {
         Origin: "https://localhost",
-        "x-test-user": "true",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),

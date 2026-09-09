@@ -31,25 +31,10 @@ export function useCreateDnsServer() {
         });
       let res = await createRequest();
 
-      // A long-lived Web tab can retain React state after the server session
-      // has expired or been replaced. Refresh the auth session once before
-      // reporting the create failure to the user.
-      if (res.status === 401) {
-        const authRes = await apiFetch(api.auth.status.path, { cache: "no-store" });
-        if (authRes.ok) {
-          const authStatus = api.auth.status.responses[200].parse(await authRes.json());
-          if (authStatus.authenticated) {
-            res = await createRequest();
-          }
-        }
-      }
-
       if (!res.ok) {
         const error = await res.json().catch(() => null);
         const message =
-          res.status === 401
-            ? "Your session expired. Refresh the page and try again."
-            : typeof error?.message === "string"
+          typeof error?.message === "string"
               ? error.message
               : res.status === 400
                 ? "Check the DNS server name and primary address."
@@ -68,11 +53,6 @@ export function useCreateDnsServer() {
         ),
       );
       void queryClient.invalidateQueries({ queryKey: [api.dns.list.path] });
-    },
-    onError: (error) => {
-      if (error instanceof Error && error.message.includes("session expired")) {
-        void queryClient.invalidateQueries({ queryKey: [api.auth.status.path] });
-      }
     },
   });
 }

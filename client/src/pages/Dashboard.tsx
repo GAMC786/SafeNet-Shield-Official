@@ -1,5 +1,4 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
-import { useAuthStatus } from "@/hooks/use-settings";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { Header } from "@/components/Header";
@@ -14,16 +13,15 @@ import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 
 export default function Dashboard() {
-  const authStatus = useAuthStatus();
-  const canReadProtectedData = authStatus.data?.authenticated === true;
-  const statsQuery = useStats(canReadProtectedData);
-  const logsQuery = useLogs(canReadProtectedData);
+  const statsQuery = useStats();
+  const logsQuery = useLogs();
   const { data: stats } = statsQuery;
   const { data: logs } = logsQuery;
-  const { data: dnsServers } = useDnsServers(canReadProtectedData);
+  const { data: dnsServers } = useDnsServers();
   const vpn = useSafeNetVpn();
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
+  const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -68,8 +66,8 @@ export default function Dashboard() {
     <div className="space-y-5 sm:space-y-6">
       <Header 
         title="Command Center" 
-        subtitle={canReadProtectedData ? "System Status: Online" : "Loading protected network status"}
-        status={canReadProtectedData ? "active" : "warning"}
+        subtitle={isServerAvailable ? "System Status: Online" : "Server connection unavailable"}
+        status={isServerAvailable ? "active" : "warning"}
       />
 
       {/* Connection Status Bar */}

@@ -8,7 +8,7 @@ import { SafeNetVpn } from "@/hooks/use-vpn";
 import { firewallConfigQueryKey } from "@/hooks/firewall-config-key";
 
 /**
- * Keeps Android's encrypted offline policy in step with the authenticated
+ * Keeps Android's encrypted offline policy in step with the server
  * server snapshot. A failed refresh intentionally leaves the last known
  * native policy in place.
  */

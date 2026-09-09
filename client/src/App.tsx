@@ -1,12 +1,8 @@
-import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/react";
-import { publishableKeyFromHost } from "@clerk/react/internal";
-import { shadcn } from "@clerk/themes";
-import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { useAuthStatus, useSettings } from "@/hooks/use-settings";
+import { useSettings } from "@/hooks/use-settings";
 import { AlertTriangle, Loader2, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
@@ -26,89 +22,6 @@ import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-export type ClerkRuntimeConfig = {
-  publishableKey?: string;
-  proxyUrl?: string;
-};
-
-// Resolve the key from the browser hostname so the same build works on
-// SafeNet's development and published domains. Packaged builds may not have a
-// compile-time key, in which case main.tsx loads this public configuration
-// from the HTTPS backend before mounting ClerkProvider.
-export function getBuildClerkConfig(): ClerkRuntimeConfig {
-  const publishableKey = publishableKeyFromHost(
-    window.location.hostname,
-    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-  );
-  const apiOrigin =
-    typeof import.meta.env.VITE_API_URL === "string"
-      ? import.meta.env.VITE_API_URL.replace(/\/+$/, "")
-      : "";
-
-  return {
-    publishableKey: publishableKey || undefined,
-    proxyUrl:
-      import.meta.env.VITE_CLERK_PROXY_URL ||
-      (apiOrigin ? `${apiOrigin}/api/__clerk` : undefined),
-  };
-}
-
-function stripBase(path: string): string {
-  return basePath && path.startsWith(basePath)
-    ? path.slice(basePath.length) || "/"
-    : path;
-}
-
-const clerkAppearance = {
-  theme: shadcn,
-  cssLayerName: "clerk",
-  options: {
-    logoPlacement: "inside" as const,
-    logoLinkUrl: basePath || "/",
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-    socialButtonsPlacement: "top" as const,
-    socialButtonsVariant: "blockButton" as const,
-  },
-  variables: {
-    colorPrimary: "#3b82f6",
-    colorForeground: "#f8fafc",
-    colorMutedForeground: "#94a3b8",
-    colorDanger: "#f87171",
-    colorBackground: "#0f172a",
-    colorInput: "#111c32",
-    colorInputForeground: "#f8fafc",
-    colorNeutral: "#334155",
-    fontFamily: "Space Grotesk, sans-serif",
-    borderRadius: "0.75rem",
-  },
-  elements: {
-    rootBox: "w-full flex justify-center",
-    cardBox: "bg-slate-900 rounded-2xl w-[440px] max-w-full overflow-hidden",
-    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    headerTitle: "text-white font-display tracking-wider",
-    headerSubtitle: "text-slate-300",
-    socialButtonsBlockButtonText: "text-white font-medium",
-    formFieldLabel: "text-slate-200",
-    footerActionLink: "text-blue-400 hover:text-blue-300",
-    footerActionText: "text-slate-300",
-    dividerText: "text-slate-400",
-    identityPreviewEditButton: "text-blue-400",
-    formFieldSuccessText: "text-emerald-400",
-    alertText: "text-red-300",
-    logoBox: "h-12",
-    logoImage: "max-h-12",
-    socialButtonsBlockButton: "border-slate-600 bg-slate-800 hover:bg-slate-700",
-    formButtonPrimary: "bg-blue-600 hover:bg-blue-500 text-white",
-    formFieldInput: "border-slate-600 bg-slate-800 text-white",
-    footerAction: "border-slate-700",
-    dividerLine: "bg-slate-700",
-    alert: "border-red-500/40 bg-red-950/40",
-    otpCodeFieldInput: "border-slate-600 bg-slate-800 text-white",
-    formFieldRow: "text-slate-200",
-    main: "bg-transparent",
-  },
-};
 
 function MainLayout() {
   return (
@@ -145,20 +58,12 @@ function MainLayout() {
 }
 
 function AppContent() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const authStatus = useAuthStatus();
-  const isAuthenticated = isSignedIn === true;
-  const settingsQuery = useSettings(isAuthenticated);
-  useFirewallConfig(isAuthenticated);
-  const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);
-  const error = authStatus.error || (isAuthenticated ? settingsQuery.error : null);
-  const refetch = () => {
-    void authStatus.refetch();
-    if (isAuthenticated) {
-      void settingsQuery.refetch();
-    }
-  };
-  const isFetching = authStatus.isFetching || (isAuthenticated && settingsQuery.isFetching);
+  const settingsQuery = useSettings();
+  useFirewallConfig();
+  const isError = settingsQuery.isError;
+  const error = settingsQuery.error;
+  const refetch = () => void settingsQuery.refetch();
+  const isFetching = settingsQuery.isFetching;
 
   if (isError) {
     return (
@@ -201,135 +106,17 @@ function AppContent() {
     );
   }
 
-  if (isLoaded && !isSignedIn) {
-    return <Redirect to={`${basePath}/sign-in`} />;
-  }
-
   return <MainLayout />;
 }
 
-function SignInPage() {
-  const redirectUrl = getSafeAuthRedirect(`${basePath}/settings`);
-
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
-      <SignIn
-        routing="path"
-        path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`}
-        forceRedirectUrl={redirectUrl}
-      />
-    </div>
-  );
-}
-
-function SignUpPage() {
-  const redirectUrl = getSafeAuthRedirect(`${basePath}/settings`);
-
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`}
-        forceRedirectUrl={redirectUrl}
-      />
-    </div>
-  );
-}
-
-function getSafeAuthRedirect(fallback: string) {
-  const requested = new URLSearchParams(window.location.search).get("redirect_url");
-  if (!requested || !requested.startsWith("/") || requested.startsWith("//")) {
-    return fallback;
-  }
-  return requested;
-}
-
-function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = useClerk();
-  const queryClient = useQueryClient();
-  const previousUserId = useRef<string | null | undefined>(undefined);
-
-  useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
-        queryClient.clear();
-      }
-      previousUserId.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, queryClient]);
-
-  return null;
-}
-
-function AppWithAuth({ clerkConfig }: { clerkConfig: ClerkRuntimeConfig }) {
-  const [, setLocation] = useLocation();
-
-  return (
-    <ClerkProvider
-      publishableKey={clerkConfig.publishableKey!}
-      proxyUrl={clerkConfig.proxyUrl}
-      appearance={clerkAppearance}
-      signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
-      localization={{
-        signIn: {
-          start: {
-            title: "Welcome back",
-            subtitle: "Sign in to access SafeNet DNS",
-          },
-        },
-        signUp: {
-          start: {
-            title: "Create your SafeNet account",
-            subtitle: "Secure your DNS workspace",
-          },
-        },
-      }}
-      routerPush={(to) => setLocation(stripBase(to))}
-      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
-    >
-      <QueryClientProvider client={queryClient}>
-        <ClerkQueryClientCacheInvalidator />
-        <SoundtrackControl />
-        <Switch>
-          <Route path="/sign-in/*?" component={SignInPage} />
-          <Route path="/sign-up/*?" component={SignUpPage} />
-          <Route component={AppContent} />
-        </Switch>
-        <Toaster />
-      </QueryClientProvider>
-    </ClerkProvider>
-  );
-}
-
-function StartupConfigurationError() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#090b14] p-6 text-center text-foreground">
-      <div className="max-w-md space-y-3">
-        <h1 className="font-display text-xl tracking-[0.12em] text-white">
-          SafeNet Shield could not start
-        </h1>
-        <p className="text-sm text-slate-300">
-          The app opened, but its secure sign-in configuration was unavailable.
-          Reinstall the latest APK after connecting to the internet.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function App({ clerkConfig = getBuildClerkConfig() }: { clerkConfig?: ClerkRuntimeConfig }) {
-  if (!clerkConfig.publishableKey) {
-    return <StartupConfigurationError />;
-  }
-
+function App() {
   return (
     <WouterRouter base={basePath}>
-      <AppWithAuth clerkConfig={clerkConfig} />
+      <QueryClientProvider client={queryClient}>
+        <SoundtrackControl />
+        <AppContent />
+        <Toaster />
+      </QueryClientProvider>
     </WouterRouter>
   );
 }

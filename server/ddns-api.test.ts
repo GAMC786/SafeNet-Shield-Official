@@ -71,7 +71,7 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
 
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
+  await registerRoutes(httpServer, app, storage, { seed: false });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -432,7 +432,7 @@ test("DDNS status exposes the latest failure without provider credentials", asyn
 
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
+  await registerRoutes(httpServer, app, storage, { seed: false });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -472,7 +472,7 @@ test("manual DDNS updates return a non-success response with provider failure de
 
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
+  await registerRoutes(httpServer, app, storage, { seed: false });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());

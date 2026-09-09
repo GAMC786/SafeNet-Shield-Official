@@ -1,10 +1,6 @@
 import { createRoot } from "react-dom/client";
-import App, {
-  getBuildClerkConfig,
-  type ClerkRuntimeConfig,
-} from "./App";
+import App from "./App";
 import "./index.css";
-import { resolveApiUrl } from "./lib/api";
 
 // Register the service worker for the production PWA only. A cache-first
 // service worker must not intercept Vite's development modules or HMR.
@@ -44,9 +40,6 @@ const root = createRoot(document.getElementById("root")!);
 // not hold a ready app behind a decorative ten-second minimum.
 const STARTUP_LOADER_DURATION_MS = 320;
 const STARTUP_LOADER_FADE_MS = 180;
-const STARTUP_CONFIG_RESPONSE_DELAY_MS = 10_500;
-const STARTUP_CONFIG_TEST_QUERY = "safenet-startup-test";
-const STARTUP_CONFIG_DELAYED_TEST_VALUE = "delayed-config";
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 let startupDurationComplete = false;
 let startupAppReady = false;
@@ -127,89 +120,6 @@ function hideDashboardFallback() {
   });
 }
 
-function renderStartupError(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "The secure app configuration could not be loaded.";
-  hideDashboardFallback();
-  root.render(
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#090b14] p-6 text-center text-foreground">
-      <div className="max-w-md space-y-3">
-        <h1 className="font-display text-xl tracking-[0.12em] text-white">
-          SafeNet Shield could not start
-        </h1>
-        <p className="text-sm text-slate-300">
-          {message}
-        </p>
-      </div>
-    </div>,
-  );
-  markStartupAppReady();
-}
-
-function shouldDelayStartupConfigForTest() {
-  return (
-    isPackagedApp() &&
-    new URLSearchParams(window.location.search).get(STARTUP_CONFIG_TEST_QUERY) ===
-      STARTUP_CONFIG_DELAYED_TEST_VALUE
-  );
-}
-
-async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
-  const buildConfig = getBuildClerkConfig();
-  const isDelayedConfigTest = shouldDelayStartupConfigForTest();
-
-  if (buildConfig.publishableKey && !isDelayedConfigTest) {
-    return buildConfig;
-  }
-
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await fetch(resolveApiUrl("/api/auth/config"), {
-      credentials: "include",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | { publishableKey?: unknown; proxyUrl?: unknown; message?: unknown }
-      | null;
-
-    if (!response.ok || typeof payload?.publishableKey !== "string" || !payload.publishableKey) {
-      throw new Error(
-        typeof payload?.message === "string"
-          ? payload.message
-          : "The SafeNet server did not provide secure sign-in configuration.",
-      );
-    }
-
-    // The Android instrumentation test uses this localhost-only query to
-    // emulate a slow secure configuration response. Delaying the handoff
-    // after the response is parsed keeps this hook deterministic without
-    // affecting normal browser or packaged startup.
-    if (isDelayedConfigTest) {
-      await new Promise((resolve) =>
-        window.setTimeout(resolve, STARTUP_CONFIG_RESPONSE_DELAY_MS),
-      );
-    }
-
-    return {
-      publishableKey: payload.publishableKey,
-      proxyUrl:
-        typeof payload.proxyUrl === "string" && payload.proxyUrl.length > 0
-          ? payload.proxyUrl
-          : buildConfig.proxyUrl,
-    };
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error("The SafeNet server did not respond within 12 seconds.");
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
 function isPackagedApp() {
   return (
     window.location.hostname === "localhost" &&
@@ -230,17 +140,6 @@ function openDashboardOnLaunch() {
 
 openDashboardOnLaunch();
 
-const buildConfig = getBuildClerkConfig();
-if (buildConfig.publishableKey && !shouldDelayStartupConfigForTest()) {
-  hideDashboardFallback();
-  root.render(<App clerkConfig={buildConfig} />);
-  markStartupAppReady();
-} else {
-  void loadClerkConfig()
-    .then((clerkConfig) => {
-      hideDashboardFallback();
-      root.render(<App clerkConfig={clerkConfig} />);
-      markStartupAppReady();
-    })
-    .catch(renderStartupError);
-}
+hideDashboardFallback();
+root.render(<App />);
+markStartupAppReady();

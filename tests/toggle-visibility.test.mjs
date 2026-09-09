@@ -77,7 +77,6 @@ async function startVite() {
 function mockApi(
   page,
   {
-    authenticated = true,
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
     settingsDelayMs = 0,
@@ -188,17 +187,7 @@ function mockApi(
       const method = request.method();
       let response;
 
-      if (url.pathname === "/api/auth/status") {
-        response = { authenticated };
-      } else if (url.pathname === "/api/settings" && method === "GET") {
-        if (!authenticated) {
-          await route.fulfill({
-            status: 401,
-            contentType: "application/json",
-            body: JSON.stringify({ message: "Authentication required" }),
-          });
-          return;
-        }
+      if (url.pathname === "/api/settings" && method === "GET") {
         if (settingsDelayMs) {
           await new Promise((resolve) => setTimeout(resolve, settingsDelayMs));
         }
@@ -455,7 +444,7 @@ for (const viewport of viewports) {
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
 
-    const browserVpn = page.getByRole("switch", { name: "DNS Protection VPN unavailable in web browser" });
+    const browserVpn = page.getByTestId("button-open-vpn-settings");
     assert.equal(await browserVpn.isDisabled(), true);
     await page.close();
   });
@@ -511,7 +500,7 @@ for (const viewport of viewports) {
     await page.getByRole("button", { name: "Add DDNS" }).click();
     await page.getByRole("heading", { name: "New DDNS Updater" }).waitFor();
     const intervalInput = page.locator('input[type="number"]');
-    assert.equal(await intervalInput.inputValue(), "3600000");
+    assert.equal(await intervalInput.inputValue(), "3600");
     await page.keyboard.press("Escape");
     await page.close();
   });

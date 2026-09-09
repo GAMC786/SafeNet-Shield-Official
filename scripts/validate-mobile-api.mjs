@@ -113,13 +113,13 @@ if (
 
 let response;
 try {
-  response = await fetch(new URL("/api/auth/status", url), {
+  response = await fetch(new URL("/api/settings", url), {
     signal: AbortSignal.timeout(20000),
     headers: { Accept: "application/json" },
     redirect: "manual",
   });
 } catch {
-  fail(`The mobile backend is not reachable at ${url.origin}/api/auth/status.`);
+  fail(`The mobile backend is not reachable at ${url.origin}/api/settings.`);
 }
 
 if (response.status >= 300 && response.status < 400) {
@@ -129,11 +129,11 @@ if (response.status >= 300 && response.status < 400) {
       "The published deployment protects the mobile API with Replit Shield. Set deployment visibility to Public and republish before building native clients.",
     );
   }
-  fail(`The mobile backend authentication endpoint returned HTTP ${response.status}.`);
+  fail(`The public mobile API returned HTTP ${response.status}.`);
 }
 
 if (!response.ok) {
-  fail(`The mobile backend authentication endpoint returned HTTP ${response.status}.`);
+  fail(`The public mobile API returned HTTP ${response.status}.`);
 }
 
 try {
@@ -141,12 +141,12 @@ try {
   if (
     typeof status !== "object" ||
     status === null ||
-    typeof status.authenticated !== "boolean"
+    typeof status.id !== "number"
   ) {
-    fail("The mobile backend authentication endpoint returned an invalid response.");
+    fail("The public mobile API returned an invalid settings response.");
   }
 } catch {
-  fail("The mobile backend authentication endpoint did not return valid JSON.");
+  fail("The public mobile API did not return valid JSON.");
 }
 
 process.stdout.write(url.origin);

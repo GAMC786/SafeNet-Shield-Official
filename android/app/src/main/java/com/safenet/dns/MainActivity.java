@@ -11,7 +11,6 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
 
@@ -37,12 +36,9 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         Log.i(TAG, "SafeNet activity created");
-        CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
         WebView webView = getBridge().getWebView();
         Log.i(TAG, "Capacitor WebView created; url=" + webView.getUrl());
         webView.setBackgroundColor(Color.rgb(9, 11, 20));
-        cookieManager.setAcceptThirdPartyCookies(webView, true);
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);

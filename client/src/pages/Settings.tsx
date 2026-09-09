@@ -1,4 +1,3 @@
-import { useAuth } from "@clerk/react";
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { AiShieldControls } from "@/components/AiShieldControls";
 import { Header } from "@/components/Header";
@@ -13,13 +12,11 @@ import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { useState } from "react";
 
 export default function Settings() {
-  const { isSignedIn } = useAuth();
-  const isAuthenticated = isSignedIn === true;
   const {
     data: settings,
     isLoading: isLoadingSettings,
     isError: isSettingsError,
-  } = useSettings(isAuthenticated);
+  } = useSettings();
   const updateSettings = useUpdateSettings();
   const androidSettings = useSafeNetVpn();
   const { toast } = useToast();
@@ -77,22 +74,10 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <div className="relative">
-        <Header
-          title="System Settings"
-          subtitle="Configuration & Security"
-        />
-        <div
-          className="pointer-events-none absolute right-0 top-0 hidden h-14 w-[220px] items-center justify-end overflow-hidden sm:flex"
-          aria-label="SafeNet Inc. brand"
-        >
-          <img
-            src={wordmarkImage}
-            alt="SafeNet Inc."
-            className="h-full w-full object-contain object-right"
-          />
-        </div>
-      </div>
+      <Header
+        title="System Settings"
+        subtitle="Configuration & Security"
+      />
 
       {isSettingsError && (
         <div role="alert" className="rounded border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
@@ -232,6 +217,13 @@ export default function Settings() {
             >
               Contact Us: Post@SafeNetInc.Ca
             </a>
+          </div>
+          <div className="flex items-center justify-center border-t border-yellow-500/10 pt-4">
+            <img
+              src={wordmarkImage}
+              alt="SafeNet Inc."
+              className="h-12 w-[220px] object-contain"
+            />
           </div>
         </div>
       </div>

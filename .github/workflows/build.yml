@@ -35,11 +35,6 @@ on:
         required: true
         default: false
         type: boolean
-      clerk_auth_health_check:
-        description: "Run the non-blocking Clerk fixture health check"
-        required: true
-        default: false
-        type: boolean
       android_startup_validation:
         description: "Run the signed APK startup handoff check on the dedicated Android runner"
         required: true
@@ -636,7 +631,6 @@ jobs:
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
-      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -655,117 +649,6 @@ jobs:
 
       - name: Run tests
         run: npm test
-
-      - name: Check Clerk authentication fixture health
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
-        shell: bash
-        env:
-          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
-          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
-          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
-          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
-          AUTH_SMOKE_HEALTH_CHECK: "true"
-        run: |
-          set -u
-          report_header="## Clerk authentication health"
-          renewal_guidance="Renew the non-production fixture locally with AUTH_SMOKE_BASE_URL=<test deployment URL> npm run test:auth:record, then replace the AUTH_SMOKE_STORAGE_STATE workspace/GitHub secret through the secret manager. Never commit, print, or paste the fixture JSON into logs or issues."
-
-          if [[ -z "${AUTH_SMOKE_BASE_URL}" ]]; then
-            echo "::warning title=Clerk auth configuration missing::Clerk auth health could not run because AUTH_SMOKE_BASE_URL is not configured."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** AUTH_SMOKE_BASE_URL is missing."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          has_fixture=false
-          has_google_credentials=false
-          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
-          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
-
-          if [[ "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ]]; then
-            echo "::warning title=Clerk auth configuration missing::Clerk auth health found neither a storage-state fixture nor Google test credentials."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** No supported non-production authentication configuration is available."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if ! npx playwright install --with-deps chromium >"$RUNNER_TEMP/auth-fixture-browser-install.log" 2>&1; then
-            echo "::warning title=Clerk auth health unavailable::The browser health check could not install its browser dependency."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** unavailable"
-              echo "- **Finding:** The scheduled browser dependency could not be installed; authentication state was not inspected."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if AUTH_SMOKE_HEALTH_CHECK=true npm run test:auth >"$RUNNER_TEMP/auth-fixture-health.log" 2>&1; then
-            echo "Clerk authentication configuration is healthy."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** healthy"
-              echo "- **Finding:** The configured non-production authentication session reached the SafeNet dashboard."
-              echo
-              echo "The health check used an isolated browser context and did not write session state to the repository."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          echo "::warning title=Clerk auth fixture needs renewal::The authentication health check could not authenticate; the fixture may be expired, revoked, malformed, or the non-production deployment may be unavailable."
-          {
-            echo "$report_header"
-            echo
-            echo "- **Status:** needs attention"
-            echo "- **Finding:** The configured authentication session did not reach the SafeNet dashboard. It may be expired, revoked, malformed, or the non-production deployment may be unavailable."
-            echo
-            echo "$renewal_guidance"
-            echo
-            echo "The session value was kept in the protected secret and the diagnostic output was not published."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run Clerk authentication browser smoke test
-        if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
-        shell: bash
-        env:
-          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
-          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
-          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
-          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          has_fixture=false
-          has_google_credentials=false
-          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
-          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
-
-          if [[ -z "${AUTH_SMOKE_BASE_URL}" || ( "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ) ]]; then
-            if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-              echo "::notice::Clerk auth smoke skipped because secure test configuration is unavailable to this pull request."
-              exit 0
-            fi
-            echo "::error::Clerk auth smoke requires AUTH_SMOKE_BASE_URL plus AUTH_SMOKE_STORAGE_STATE or both Google test credentials."
-            exit 1
-          fi
-
-          npx playwright install --with-deps chromium
-          npm run test:auth
 
       - name: Build web app
         run: npm run build

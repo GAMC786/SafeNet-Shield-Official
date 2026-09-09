@@ -19,9 +19,6 @@ import {
 import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
-import { createRequireAuthentication, getClerkUserId } from "./auth";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
-import { CLERK_PROXY_PATH, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -93,58 +90,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
   routeStorage?: IStorage,
-  options: {
-    seed?: boolean;
-    getUserId?: typeof getClerkUserId;
-  } = {},
+  options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
-  const resolveUserId = options.getUserId ?? getClerkUserId;
-
-  // These endpoints are the only unauthenticated API surface. They contain no
-  // settings, PIN, provider, or user data.
-  app.get(api.auth.config.path, (req, res) => {
-    const publishableKey = process.env.CLERK_PUBLISHABLE_KEY
-      ? publishableKeyFromHost(getClerkProxyHost(req) ?? "", process.env.CLERK_PUBLISHABLE_KEY)
-      : undefined;
-
-    if (!publishableKey) {
-      return res.status(503).json({
-        message: "Clerk publishable-key configuration is unavailable.",
-      });
-    }
-
-    const protocol = req.headers["x-forwarded-proto"]?.toString().split(",")[0]?.trim() || req.protocol;
-    const host = getClerkProxyHost(req);
-    if (!host) {
-      return res.status(503).json({
-        message: "SafeNet public host configuration is unavailable.",
-      });
-    }
-
-    res.setHeader("Cache-Control", "no-store");
-    return res.json({
-      publishableKey,
-      proxyUrl: `${protocol}://${host}${CLERK_PROXY_PATH}`,
-    });
-  });
-
-  app.get(api.auth.status.path, async (req, res) => {
-    // Keep authentication status uncached so Clerk sign-in changes are reflected
-    // immediately in the client.
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-
-    res.json({
-      authenticated: resolveUserId(req) !== null,
-    });
-  });
-
-  // Device reporters must present an authenticated Clerk session.
   app.post(
     api.logs.ingest.path,
-    createRequireAuthentication(resolveUserId),
     async (req, res) => {
       try {
         const input = api.logs.ingest.input.parse(req.body);
@@ -161,9 +111,6 @@ export async function registerRoutes(
       }
     },
   );
-
-  // Every remaining API route, including the AI integrations, requires Clerk.
-  app.use("/api", createRequireAuthentication(resolveUserId));
 
   // Register AI Integrations
   registerChatRoutes(app);

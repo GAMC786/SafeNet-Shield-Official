@@ -140,14 +140,14 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
     apkOnlyWorkflow,
     /MOBILE_API_URL: https:\/\/safe-net-shield-official\.replit\.app/,
   );
-  assert.match(apkOnlyWorkflow, /Verify production auth status/);
+  assert.match(apkOnlyWorkflow, /Verify production API availability/);
   assert.match(
     apkOnlyWorkflow,
-    /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/auth\/status"/,
+    /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/settings"/,
   );
   assert.match(
     apkOnlyWorkflow,
-    /typeof status\.authenticated !== 'boolean'/,
+    /typeof status\.id !== 'number'/,
   );
   assert.match(
     apkOnlyWorkflow,
@@ -203,13 +203,8 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   );
 });
 
-test("Android WebView accepts the production Clerk session cookie", () => {
-  assert.match(mainActivity, /CookieManager\.getInstance\(\)/);
-  assert.match(mainActivity, /setAcceptCookie\(true\)/);
-  assert.match(
-    mainActivity,
-    /setAcceptThirdPartyCookies\((?:getBridge\(\)\.getWebView\(\)|webView), true\)/,
-  );
+test("Android WebView starts without a sign-in cookie", () => {
+  assert.doesNotMatch(mainActivity, /setAcceptThirdPartyCookies/);
 });
 
 type PreflightFailureMode = "root" | "remount" | "cleanup-remains";

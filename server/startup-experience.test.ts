@@ -110,32 +110,15 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.doesNotMatch(indexHtml, /boot-surface|Loading secure server/i);
 });
 
-test("startup uses the build config immediately and fetches secure config otherwise", () => {
-  assert.match(mainSource, /const buildConfig = getBuildClerkConfig\(\)/);
-  assert.match(mainSource, /root\.render\(<App clerkConfig=\{buildConfig\} \/>/);
+test("startup renders the app without an authentication configuration", () => {
+  assert.match(mainSource, /root\.render\(<App \/>/);
   assert.match(mainSource, /openDashboardOnLaunch/);
-  assert.match(mainSource, /loadClerkConfig/);
-  assert.doesNotMatch(mainSource, /else if \(isPackagedApp\(\)\)/);
+  assert.doesNotMatch(mainSource, /loadClerkConfig|auth\/config|ClerkRuntimeConfig/);
 });
 
-test("delayed secure configuration keeps the startup handoff gated", () => {
-  assert.match(mainSource, /STARTUP_CONFIG_RESPONSE_DELAY_MS\s*=\s*10_500/);
-  assert.match(mainSource, /STARTUP_CONFIG_TEST_QUERY/);
-  assert.match(mainSource, /STARTUP_CONFIG_DELAYED_TEST_VALUE/);
-  assert.match(mainSource, /await new Promise\(\(resolve\) =>/);
-  assert.match(mainSource, /window\.history\.replaceState\([\s\S]*window\.location\.search/);
-  assert.match(
-    androidInstrumentationSource,
-    /startupLoaderWaitsForDelayedSecureConfiguration/,
-  );
-  assert.match(
-    androidInstrumentationSource,
-    /safenet-startup-test=delayed-config/,
-  );
-  assert.match(
-    androidInstrumentationSource,
-    /sawOpaqueLoaderAtFullProgress/,
-  );
+test("startup handoff is not gated by sign-in configuration", () => {
+  assert.doesNotMatch(mainSource, /STARTUP_CONFIG_RESPONSE_DELAY_MS|STARTUP_CONFIG_TEST_QUERY|STARTUP_CONFIG_DELAYED_TEST_VALUE/);
+  assert.match(mainSource, /hideDashboardFallback\(\);\s*root\.render\(<App \/>/);
 });
 
 test("the navigation panel is mounted without the old header arrow control", () => {
