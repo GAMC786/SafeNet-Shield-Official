@@ -1482,22 +1482,13 @@ jobs:
           ANDROID_EMULATOR_ARCH: x86_64
           ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
-      - name: Upload release Android smoke evidence
-        id: upload-release-android-smoke-evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SafeNet-DNS-Android-smoke-evidence-release
-          path: android/app/build/reports/android-smoke/latest
-          if-no-files-found: warn
-
       - name: Publish release Android smoke summary
         if: always()
         shell: bash
         env:
           SMOKE_STEP_OUTCOME: ${{ steps.android-release-dns-smoke.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          EVIDENCE_URL: ${{ steps.upload-release-android-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          EVIDENCE_URL: ${{ format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           RELEASE_EVIDENCE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-evidence.tar.gz
           RELEASE_RESULT_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-result.txt
         run: |
@@ -1564,6 +1555,15 @@ jobs:
             echo "- **Release-linked evidence:** [Download evidence archive]($release_evidence_url)"
             echo "- **Release-linked result:** [Download smoke result]($release_result_url)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release Android smoke evidence
+        id: upload-release-android-smoke-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-smoke-evidence-release
+          path: android/app/build/reports/android-smoke/latest
+          if-no-files-found: warn
 
   android-release-startup:
     needs: build-android
