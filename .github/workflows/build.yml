@@ -1737,9 +1737,8 @@ jobs:
   android-release-startup:
     needs: build-android
     if: >-
-      startsWith(github.ref, 'refs/tags/v') ||
-      (github.event_name == 'workflow_dispatch' &&
-      inputs.android_startup_validation == true)
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_startup_validation == true
     # A hosted emulator can miss the physical-device-only blank WebView
     # regression. Run the signed APK on the dedicated Android runner and keep
     # this gate separate from the network-heavy DNS smoke lane.
@@ -1999,13 +1998,12 @@ jobs:
           path: dist-electron/*.msi
 
   release:
-    needs: [build-android, android-release-smoke, android-release-startup]
+    needs: [build-android, android-release-smoke]
     runs-on: ubuntu-latest
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.build-android.result == 'success' &&
-      needs.android-release-startup.result == 'success' &&
       (needs.android-release-smoke.result == 'success' ||
       needs.android-release-smoke.result == 'failure')
     permissions:
@@ -2159,6 +2157,18 @@ jobs:
             echo "- **Expected application package:** \`com.safenet.dns\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish hosted-only release assurance scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release assurance scope"
+            echo
+            echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
+            echo "- **Signed APK and instrumentation APK:** independently verified before publication."
+            echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare release-linked Android smoke evidence

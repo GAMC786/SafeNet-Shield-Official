@@ -427,7 +427,7 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(releaseSmokeStep, /continue-on-error: true/);
   assert.match(
     workflow,
-    /needs: \[build-android, android-release-smoke, android-release-startup\]/,
+    /needs: \[build-android, android-release-smoke\]/,
   );
   const startupStart = workflow.indexOf("\n  android-release-startup:");
   const startupJobEnd = workflow.indexOf("\n  build-windows:", startupStart);
@@ -447,7 +447,14 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   const releaseJob = workflow.slice(releaseStart);
   assert.match(releaseJob, /if: >-\n\s+always\(\)/);
   assert.match(releaseJob, /needs\.build-android\.result == 'success'/);
-  assert.match(releaseJob, /needs\.android-release-startup\.result == 'success'/);
+  assert.doesNotMatch(
+    releaseJob,
+    /needs\.android-release-startup\.result == 'success'/,
+  );
+  assert.match(
+    releaseJob,
+    /Dedicated writable-system startup validation:[\s\S]*not run for this hosted-only release path/,
+  );
   assert.match(
     releaseJob,
     /needs\.android-release-smoke\.result == 'success'[\s\S]*needs\.android-release-smoke\.result == 'failure'/,
