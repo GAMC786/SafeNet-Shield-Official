@@ -11,10 +11,10 @@ mkdir -p "$diagnostics_directory"
 # Replit's package firewall URL is useful inside Replit but is not reachable
 # from a GitHub-hosted runner. Keep the lockfile's integrity hashes intact
 # while making its tarball sources available to the release runner.
-if grep -q 'package-firewall\.replit\.local/npm/' package-lock.json; then
+if grep -Eq 'package-firewall\.replit\.(local|internal)/npm/' package-lock.json; then
   echo "::warning::Normalizing Replit-only package tarball URLs for the hosted runner."
   sed -i \
-    's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' \
+    -E 's#http://package-firewall\.replit\.(local|internal)/npm/#https://registry.npmjs.org/#g' \
     package-lock.json
 fi
 

@@ -59,6 +59,10 @@ function createTestRunner({ failuresBeforeSuccess }) {
         resolved: "http://package-firewall.replit.local/npm/example/-/example-1.0.0.tgz",
         integrity: "sha512-example",
       },
+      "node_modules/internal-example": {
+        resolved: "http://package-firewall.replit.internal/npm/internal-example/-/internal-example-1.0.0.tgz",
+        integrity: "sha512-internal-example",
+      },
     },
   }));
   const stateFile = createFakeNpm(binDirectory, { failuresBeforeSuccess });
@@ -117,6 +121,12 @@ test("retries transient npm failures and records bounded diagnostics", () => {
       encoding: "utf8",
     }),
     /https:\/\/registry\.npmjs\.org\/example/,
+  );
+  assert.match(
+    execFileSync("cat", [join(directory, "package-lock.json")], {
+      encoding: "utf8",
+    }),
+    /https:\/\/registry\.npmjs\.org\/internal-example/,
   );
 });
 
