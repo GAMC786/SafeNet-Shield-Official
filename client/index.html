@@ -39,11 +39,12 @@
       .startup-loader-content {
         display: flex;
         width: min(100%, 420px);
+        height: 100%;
         max-height: 100%;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: clamp(10px, 1.8vh, 18px);
+        gap: clamp(8px, 1.5vh, 14px);
         text-align: center;
       }
       .startup-loader-kicker {
@@ -54,25 +55,61 @@
         letter-spacing: .28em;
         text-transform: uppercase;
       }
+      .startup-loader-stage {
+        position: relative;
+        display: grid;
+        width: min(88vw, 430px);
+        height: min(76dvh, 720px);
+        min-height: 0;
+        place-items: center;
+      }
       .startup-loader-art {
         display: block;
-        width: auto;
-        height: min(43dvh, 560px);
-        max-width: min(76vw, 360px);
+        width: 100%;
+        height: 100%;
         object-fit: contain;
         object-position: center;
       }
+      .startup-loader-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(7px, 1.4vh, 13px);
+        flex-direction: column;
+        padding: 10px 12px;
+        box-sizing: border-box;
+      }
+      .startup-loader-overlay::before {
+        position: absolute;
+        inset: 50% auto auto 50%;
+        width: min(84%, 340px);
+        height: min(42%, 260px);
+        border: 1px solid rgba(248,250,252,.18);
+        border-radius: 18px;
+        background: rgba(9,11,20,.72);
+        box-shadow: 0 10px 36px rgba(0,0,0,.28);
+        content: "";
+        transform: translate(-50%, -50%);
+        backdrop-filter: blur(2px);
+      }
+      .startup-loader-overlay > * {
+        position: relative;
+        z-index: 1;
+      }
       .startup-loader-title {
         margin: 0;
+        max-width: min(78vw, 330px);
         color: #f8fafc;
-        font-size: clamp(16px, 4.5vw, 24px);
+        font-size: clamp(14px, 3.8vw, 21px);
         font-weight: 700;
         letter-spacing: .06em;
         line-height: 1.25;
         text-transform: uppercase;
       }
       .startup-loader-progress {
-        width: min(100%, 330px);
+        width: min(78vw, 280px);
         height: 5px;
         overflow: hidden;
         border: 1px solid rgba(148,163,184,.25);
@@ -128,7 +165,9 @@
       }
       @media (max-height: 600px) {
         .startup-loader-content { gap: 7px; }
-        .startup-loader-art { height: min(34dvh, 250px); }
+        .startup-loader-stage { height: min(62dvh, 360px); }
+        .startup-loader-overlay { gap: 5px; }
+        .startup-loader-title { font-size: clamp(12px, 3.4vw, 17px); }
       }
       @media (prefers-reduced-motion: reduce) {
         #startup-loader { transition: none; }
@@ -158,20 +197,24 @@
     >
       <div class="startup-loader-content">
         <p class="startup-loader-kicker">SafeNet Shield</p>
-        <img
-          class="startup-loader-art"
-          src="/safenet-astronaut-loader-transparent.png"
-          alt="SafeNet astronaut standing on the moon"
-        />
-        <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
-        <div class="startup-loader-progress" aria-hidden="true">
-          <div id="startup-loader-progress-bar"></div>
-        </div>
-        <span id="startup-loader-percentage">0%</span>
-        <div class="startup-loader-dots" aria-label="Connecting">
-          <span class="startup-loader-dot"></span>
-          <span class="startup-loader-dot"></span>
-          <span class="startup-loader-dot"></span>
+        <div class="startup-loader-stage">
+          <img
+            class="startup-loader-art"
+            src="/safenet-astronaut-loader-transparent.png"
+            alt="SafeNet astronaut standing on the moon"
+          />
+          <div class="startup-loader-overlay">
+            <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
+            <div class="startup-loader-progress" aria-hidden="true">
+              <div id="startup-loader-progress-bar"></div>
+            </div>
+            <span id="startup-loader-percentage">0%</span>
+            <div class="startup-loader-dots" aria-label="Connecting">
+              <span class="startup-loader-dot"></span>
+              <span class="startup-loader-dot"></span>
+              <span class="startup-loader-dot"></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

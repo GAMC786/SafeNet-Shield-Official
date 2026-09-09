@@ -561,26 +561,31 @@ export default function Firewall() {
             {domains.map(item => (
               <div 
                 key={item.id} 
-                className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border transition-colors group ${
+                className={`flex min-w-0 items-center justify-between gap-3 p-3 rounded-lg bg-card/50 border transition-colors group ${
                     item.action === "block" ? "border-destructive/20 hover:border-destructive/40" : "border-primary/20 hover:border-primary/40"
                   } ${!item.isActive ? "opacity-50" : ""}`}
                 data-testid={`url-rule-${item.id}`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   {item.action === "block" ? (
-                    <X className="w-4 h-4 text-destructive" />
+                    <X className="w-4 h-4 shrink-0 text-destructive" />
                   ) : (
-                    <Check className="w-4 h-4 text-primary" />
+                    <Check className="w-4 h-4 shrink-0 text-primary" />
                   )}
-                  <span className="font-mono text-sm">{item.content}</span>
+                  <span
+                    className="min-w-0 flex-1 break-words font-mono text-sm [overflow-wrap:anywhere]"
+                    title={item.content}
+                  >
+                    {item.content}
+                  </span>
                   <Badge 
                     variant={item.action === "block" ? "destructive" : "default"} 
-                    className="text-[10px]"
+                    className="shrink-0 text-[10px]"
                   >
                     {item.action?.toUpperCase() || "BLOCK"}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
