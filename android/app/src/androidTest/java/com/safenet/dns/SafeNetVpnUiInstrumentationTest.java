@@ -22,11 +22,14 @@ import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.Until;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.rules.TestName;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -45,11 +48,14 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final String VPN_SWITCH_LABEL = "Enable DNS Protection VPN";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
+    private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
     private final UiDevice device =
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+    @Rule
+    public final TestName testName = new TestName();
     private Activity activity;
 
     @Before
@@ -61,7 +67,9 @@ public class SafeNetVpnUiInstrumentationTest {
         Intent launchIntent = new Intent(context, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
-        waitForCapacitorBridge();
+        if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName())) {
+            waitForCapacitorBridge();
+        }
     }
 
     @After
@@ -154,6 +162,154 @@ public class SafeNetVpnUiInstrumentationTest {
             "Keyboard navigation must not focus the disabled VPN switch",
             accessibleSwitch.isFocused()
         );
+    }
+
+    @Test
+    public void startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff() throws Exception {
+        JSONObject startup = callWebView(
+            "(() => {" +
+                "const samples = [];" +
+                "let startupCompleteEvents = 0;" +
+                "window.addEventListener('safenet:startup-complete', () => startupCompleteEvents++);" +
+                "const startedAt = performance.now();" +
+                "const readState = () => {" +
+                    "const loader = document.getElementById('startup-loader');" +
+                    "const fallback = document.getElementById('dashboard-fallback');" +
+                    "const soundtrack = Array.from(document.querySelectorAll('button,[role=\"button\"]'))" +
+                        ".filter((element) => /soundtrack|volume|music/i.test(" +
+                            "(element.getAttribute('aria-label') || '') + ' ' + element.textContent));" +
+                    "const style = loader ? getComputedStyle(loader) : null;" +
+                    "const fallbackStyle = fallback ? getComputedStyle(fallback) : null;" +
+                    "const controlStyles = soundtrack.map((element) => " +
+                        "getComputedStyle(element.parentElement || element));" +
+                    "const dots = loader ? Array.from(loader.querySelectorAll('.startup-loader-dot')) : [];" +
+                    "return {" +
+                        "elapsed: Math.round(performance.now() - startedAt)," +
+                        "loaderPresent: Boolean(loader)," +
+                        "loaderBusy: loader?.getAttribute('aria-busy')," +
+                        "value: loader ? Number(loader.getAttribute('aria-valuenow')) : null," +
+                        "opacity: style ? Number(style.opacity) : null," +
+                        "zIndex: style ? Number(style.zIndex) : null," +
+                        "background: style?.backgroundColor," +
+                        "fallbackPresent: Boolean(fallback)," +
+                        "fallbackVisible: Boolean(fallback && fallbackStyle && " +
+                            "fallbackStyle.display !== 'none' && fallbackStyle.visibility !== 'hidden')," +
+                        "fallbackZIndex: fallbackStyle ? Number(fallbackStyle.zIndex) || 0 : null," +
+                        "soundtrackCount: soundtrack.length," +
+                        "soundtrackZIndexes: controlStyles.map((controlStyle) => " +
+                            "Number(controlStyle.zIndex) || 0)," +
+                        "dotCount: dots.length," +
+                        "dotAnimations: dots.map((dot) => {" +
+                            "const dotStyle = getComputedStyle(dot);" +
+                            "return {" +
+                                "name: dotStyle.animationName," +
+                                "duration: dotStyle.animationDuration," +
+                                "iterationCount: dotStyle.animationIterationCount" +
+                            "};" +
+                        "})" +
+                    "};" +
+                "};" +
+                "return new Promise((resolve) => {" +
+                    "const finish = (state) => window.setTimeout(() => resolve({" +
+                        "samples," +
+                        "handoffComplete: startupCompleteEvents > 0," +
+                        "rootReady: Boolean(document.querySelector('#root > *'))," +
+                        "fallbackRemoved: !document.getElementById('dashboard-fallback')," +
+                        "soundtrackPresent: state.soundtrackCount > 0" +
+                    "}), 300);" +
+                    "const sample = () => {" +
+                        "const state = readState();" +
+                        "samples.push(state);" +
+                        "if (!state.loaderPresent || samples.length >= " +
+                            STARTUP_LOADER_MAX_SAMPLES + ") {" +
+                            "finish(state);" +
+                        "} else {" +
+                            "window.setTimeout(sample, 125);" +
+                        "}" +
+                    "};" +
+                    "sample();" +
+                "});" +
+            "})()"
+        );
+
+        assertTrue("Startup loader sampling failed: " + startup.optString("message"),
+            startup.optBoolean("ok", false));
+        JSONObject handoff = startup.getJSONObject("value");
+        JSONArray samples = handoff.getJSONArray("samples");
+        assertTrue("Expected multiple startup loader samples", samples.length() >= 3);
+
+        int previousValue = -1;
+        boolean sawFallbackUnderLoader = false;
+        boolean sawSoundtrackUnderLoader = false;
+        boolean sawCompletingLoader = false;
+        for (int index = 0; index < samples.length(); index++) {
+            JSONObject sample = samples.getJSONObject(index);
+            if (!sample.getBoolean("loaderPresent")) {
+                continue;
+            }
+
+            int value = sample.getInt("value");
+            assertTrue("Loader progress must be between 0 and 100: " + sample,
+                value >= 0 && value <= 100);
+            assertTrue(
+                "Loader progress must never move backwards: " + samples,
+                value >= previousValue
+            );
+            previousValue = value;
+
+            assertTrue("Loader must remain opaque during startup: " + sample,
+                sample.getDouble("opacity") >= 0.99);
+            assertEquals("Loader must use its opaque startup surface",
+                "rgb(9, 11, 20)", sample.getString("background"));
+            assertTrue("Loader must remain above the fallback: " + sample,
+                sample.getInt("zIndex") > sample.optInt("fallbackZIndex", 0));
+
+            if (sample.getBoolean("fallbackPresent")) {
+                assertTrue("Static fallback must remain underneath the loader: " + sample,
+                    sample.getBoolean("fallbackVisible"));
+                sawFallbackUnderLoader = true;
+            }
+
+            if (sample.getInt("soundtrackCount") > 0) {
+                JSONArray soundtrackZIndexes = sample.getJSONArray("soundtrackZIndexes");
+                for (int controlIndex = 0; controlIndex < soundtrackZIndexes.length(); controlIndex++) {
+                    assertTrue("Soundtrack controls must remain underneath the loader: " + sample,
+                        sample.getInt("zIndex") > soundtrackZIndexes.getInt(controlIndex));
+                }
+                sawSoundtrackUnderLoader = true;
+            }
+
+            assertEquals("Loader must expose all three red-dot animation elements",
+                3, sample.getInt("dotCount"));
+            JSONArray animations = sample.getJSONArray("dotAnimations");
+            for (int dotIndex = 0; dotIndex < animations.length(); dotIndex++) {
+                JSONObject animation = animations.getJSONObject(dotIndex);
+                assertEquals("Red dots must use the startup pulse animation",
+                    "startup-loader-dot-pulse", animation.getString("name"));
+                assertTrue("Red-dot animation must have a duration",
+                    !"0s".equals(animation.getString("duration")));
+                assertEquals("Red-dot animation must loop during startup",
+                    "infinite", animation.getString("iterationCount"));
+            }
+
+            if (value >= 100 || "false".equals(sample.optString("loaderBusy"))) {
+                sawCompletingLoader = true;
+            }
+        }
+
+        assertTrue("The loader never reached its completing state", sawCompletingLoader);
+        assertTrue("The soundtrack control was not observed underneath the loader",
+            sawSoundtrackUnderLoader);
+        assertTrue("The static fallback must be observed underneath the loader",
+            sawFallbackUnderLoader);
+        assertTrue("The app must be ready before the loader is removed",
+            handoff.getBoolean("rootReady"));
+        assertTrue("The loader handoff event must complete before the test finishes",
+            handoff.getBoolean("handoffComplete"));
+        assertTrue("The static fallback must be removed during the completed handoff",
+            handoff.getBoolean("fallbackRemoved"));
+        assertTrue("The soundtrack control must survive the loader handoff",
+            handoff.getBoolean("soundtrackPresent"));
     }
 
     @Test

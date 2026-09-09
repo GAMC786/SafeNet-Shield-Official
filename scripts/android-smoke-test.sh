@@ -502,7 +502,7 @@ startup_failure() {
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=NOT_USED\nweb_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
+        printf 'native_loader=REMOVED\nweb_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
             "$message"
     } | tee "$output_dir/startup-result.txt" "$output_dir/result.txt" >&2
     printf 'STARTUP_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
@@ -560,7 +560,7 @@ run_startup_check() {
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=NOT_USED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
+        printf 'native_loader=REMOVED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
     echo "Android startup check passed. Evidence: $output_dir"
 }
@@ -749,7 +749,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 echo "Running SafeNet DNS instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
-    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetPinInstrumentationTest \
+    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetPinInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
