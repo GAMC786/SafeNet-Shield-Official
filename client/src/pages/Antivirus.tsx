@@ -9,7 +9,7 @@ import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Bug, AlertTriangle, Database, Plus, Pencil, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Shield, Bug, AlertTriangle, Database, Plus, Pencil, Trash2, Check, RefreshCw, Settings, Activity, FileSearch, Smartphone, CheckCircle2, XCircle, AlertCircle, Loader2, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -132,6 +132,16 @@ export default function Antivirus() {
 
   const scanHistory = apkScanner.status?.scanHistory ?? [];
   const quarantine = apkScanner.status?.quarantine ?? [];
+  const recentThreats = events?.slice(0, 5) ?? [];
+  const threatTypeCounts = recentThreats.reduce<Record<string, number>>((counts, event) => {
+    counts[event.threatType] = (counts[event.threatType] || 0) + 1;
+    return counts;
+  }, {});
+  const severityCounts = recentThreats.reduce<Record<string, number>>((counts, event) => {
+    counts[event.severity] = (counts[event.severity] || 0) + 1;
+    return counts;
+  }, {});
+  const maxThreatTypeCount = Math.max(1, ...Object.values(threatTypeCounts));
 
   const resetFeedForm = () => {
     setNewFeed({ name: "", type: "malware", url: "", isEnabled: true });
@@ -670,25 +680,78 @@ export default function Antivirus() {
               </CyberCard>
 
               <CyberCard>
-                <h3 className="font-display text-lg tracking-wider mb-4">Recent Threats</h3>
-                <div className="space-y-2">
-                  {events?.slice(0, 5).map((event) => (
-                    <div key={event.id} className="flex items-center justify-between p-3 bg-background/50 rounded-lg" data-testid={`threat-event-${event.id}`}>
-                      <div className="flex items-center gap-3">
-                        <AlertTriangle className={`w-4 h-4 ${event.severity === 'critical' ? 'text-destructive' : 'text-yellow-500'}`} />
-                        <div>
-                          <p className="text-sm font-medium">{event.domain}</p>
-                          <p className="text-xs text-muted-foreground">{event.threatType}</p>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-lg bg-destructive/15 p-3">
+                    <BarChart3 className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-lg tracking-wider">Recent Threats</h3>
+                    <p className="text-xs text-muted-foreground">Infographic summary of the latest five detections</p>
+                  </div>
+                </div>
+                {recentThreats.length ? (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                        <div className="mb-3 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+                          <span>Threat mix</span>
+                          <Bug className="h-4 w-4 text-destructive" />
+                        </div>
+                        <div className="space-y-3">
+                          {Object.entries(threatTypeCounts).map(([type, count]) => (
+                            <div key={type}>
+                              <div className="mb-1 flex justify-between text-xs">
+                                <span className="capitalize text-foreground">{type}</span>
+                                <span className="font-mono text-muted-foreground">{count}</span>
+                              </div>
+                              <div className="h-2 overflow-hidden rounded-full bg-background/70">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400"
+                                  style={{ width: `${(count / maxThreatTypeCount) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <Badge className={getSeverityColor(event.severity || 'medium')} variant="secondary">
-                        {event.severity}
-                      </Badge>
+                      <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
+                        <div className="mb-3 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+                          <span>Severity profile</span>
+                          <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                        </div>
+                        <div className="flex h-24 items-end gap-2">
+                          {["critical", "high", "medium", "low"].map((severity) => (
+                            <div key={severity} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                              <div
+                                className={`w-full rounded-t ${severity === "critical" ? "bg-destructive" : severity === "high" ? "bg-orange-500" : severity === "medium" ? "bg-yellow-400" : "bg-sky-400"}`}
+                                style={{ height: `${Math.max(8, ((severityCounts[severity] || 0) / Math.max(1, recentThreats.length)) * 80)}px` }}
+                              />
+                              <span className="text-[9px] uppercase text-muted-foreground">{severity.slice(0, 4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  )) || (
-                    <p className="text-center text-muted-foreground py-4">No threats detected</p>
-                  )}
-                </div>
+                    <div className="mt-5 space-y-2">
+                      {recentThreats.map((event) => (
+                        <div key={event.id} className="flex items-center justify-between gap-3 rounded-lg bg-background/50 p-3" data-testid={`threat-event-${event.id}`}>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <AlertTriangle className={`h-4 w-4 shrink-0 ${event.severity === "critical" ? "text-destructive" : "text-yellow-500"}`} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{event.domain}</p>
+                              <p className="text-xs capitalize text-muted-foreground">{event.threatType} · {event.action}</p>
+                            </div>
+                          </div>
+                          <Badge className={getSeverityColor(event.severity || "medium")} variant="secondary">
+                            {event.severity}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="py-4 text-center text-muted-foreground">No threats detected</p>
+                )}
               </CyberCard>
             </TabsContent>
 

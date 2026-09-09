@@ -11,6 +11,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
+import { Switch } from "@/components/ui/switch";
 
 export default function Dashboard() {
   const authStatus = useAuthStatus();
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const { data: dnsServers } = useDnsServers(canReadProtectedData);
   const vpn = useSafeNetVpn();
   const [eulaOpen, setEulaOpen] = useState(false);
+  const [startAfterEula, setStartAfterEula] = useState(false);
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -175,7 +177,31 @@ export default function Dashboard() {
                     : vpn.status.error || "Protection is inactive · Enable in Settings"}
             </p>
           </div>
-          {vpn.supported && (
+          <div className="flex w-full flex-wrap items-center justify-center gap-3">
+            <Switch
+              checked={vpn.status?.running ?? false}
+              onCheckedChange={(checked) => {
+                if (!vpn.supported) return;
+                if (!checked) {
+                  void vpn.stop().catch(() => undefined);
+                  return;
+                }
+                if (!vpn.status?.eulaAccepted) {
+                  setStartAfterEula(true);
+                  setEulaOpen(true);
+                  return;
+                }
+                const activeResolver = activeDns;
+                if (!activeResolver) return;
+                void vpn.start({
+                  type: activeResolver.type,
+                  primaryAddress: activeResolver.primaryAddress,
+                  secondaryAddress: activeResolver.secondaryAddress,
+                }).catch(() => undefined);
+              }}
+              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
+              aria-label="Enable DNS Protection VPN"
+            />
             <Button
               type="button"
               variant="outline"
@@ -184,6 +210,14 @@ export default function Dashboard() {
             >
               View DNS VPN EULA
             </Button>
+          </div>
+          {vpn.status?.error && (
+            <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs">
+              <p role="alert" className="text-destructive">{vpn.status.error}</p>
+              <p className="mt-2 text-muted-foreground">
+                Recovery is available here: turn the switch off to stop the VPN, then turn it back on after selecting a working resolver.
+              </p>
+            </div>
           )}
         </CyberCard>
       </div>
@@ -195,6 +229,14 @@ export default function Dashboard() {
           onAccept={async () => {
             await vpn.acceptEula();
             setEulaOpen(false);
+            if (startAfterEula && activeDns) {
+              setStartAfterEula(false);
+              await vpn.start({
+                type: activeDns.type,
+                primaryAddress: activeDns.primaryAddress,
+                secondaryAddress: activeDns.secondaryAddress,
+              });
+            }
           }}
           isAccepting={vpn.isBusy}
         />

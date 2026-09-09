@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 type ResolverForm = {
   name: string;
   type: DnsServer["type"];
+  ipVersion: "ipv4" | "ipv6";
   primaryAddress: string;
   secondaryAddress: string;
 };
@@ -28,6 +29,7 @@ type ResolverForm = {
 const emptyResolver: ResolverForm = {
   name: "",
   type: "plain",
+  ipVersion: "ipv4",
   primaryAddress: "",
   secondaryAddress: "",
 };
@@ -62,6 +64,7 @@ export default function DnsSettings() {
     setFormData({
       name: server.name,
       type: server.type,
+      ipVersion: server.ipVersion,
       primaryAddress: server.primaryAddress,
       secondaryAddress: server.secondaryAddress || "",
     });
@@ -100,6 +103,7 @@ export default function DnsSettings() {
     const data = {
       name,
       type: formData.type,
+      ipVersion: formData.ipVersion,
       primaryAddress,
       secondaryAddress: formData.secondaryAddress.trim() || null,
     };
@@ -215,13 +219,31 @@ export default function DnsSettings() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Address family</Label>
+              <Select
+                value={formData.ipVersion}
+                onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({ ...formData, ipVersion: value })}
+              >
+                <SelectTrigger data-testid="select-resolver-ip-version">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ipv4">IPv4</SelectItem>
+                  <SelectItem value="ipv6">IPv6</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose whether this resolver uses IPv4 or IPv6 addresses.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="resolver-primary">Primary address</Label>
               <Input
                 id="resolver-primary"
                 data-testid="input-resolver-primary"
                 value={formData.primaryAddress}
                 onChange={(event) => setFormData({ ...formData, primaryAddress: event.target.value })}
-                placeholder="https://resolver.example/dns-query"
+                 placeholder={formData.ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1"}
                 required
               />
             </div>
@@ -281,6 +303,7 @@ export default function DnsSettings() {
                     {server.isCustom && <Badge variant="outline">Custom</Badge>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{resolverTypeLabel(server.type)}</p>
+                   <p className="mt-1 text-xs font-mono uppercase tracking-wider text-primary">{server.ipVersion}</p>
                   <p className="mt-1 break-all font-mono text-sm text-muted-foreground">
                     {server.primaryAddress}
                     {server.secondaryAddress && <span className="opacity-50"> • {server.secondaryAddress}</span>}

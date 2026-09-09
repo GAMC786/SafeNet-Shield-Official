@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { getConfiguredApiOrigin } from "@/lib/api";
 import { SoundtrackControl } from "@/components/SoundtrackControl";
 import { Navigation } from "@/components/Navigation";
+import { useFirewallConfig } from "@/hooks/use-firewall-config";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -149,6 +150,7 @@ function AppContent() {
   const authStatus = useAuthStatus();
   const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
   const settingsQuery = useSettings(isAuthenticated);
+  useFirewallConfig(isAuthenticated);
   const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);
   const error = authStatus.error || (isAuthenticated ? settingsQuery.error : null);
   const refetch = () => {

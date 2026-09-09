@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp } from "@/hooks/use-ddns";
+import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MS, DDNS_MIN_INTERVAL_MS, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,9 +22,11 @@ export default function DdnsUpdater() {
   const createUpdater = useCreateDdnsUpdater();
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
+  const testUpdater = useTestDdnsUpdater();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
+  const [testingUpdaterId, setTestingUpdaterId] = useState<number | null>(null);
   const activeDnsServer = dnsServers?.find((server) => server.isActive);
 
   const isAutoMode = Boolean(updaters?.length && updaters.every((updater) => updater.isEnabled !== false));
@@ -65,14 +67,14 @@ export default function DdnsUpdater() {
     provider: PublicDdnsUpdater["provider"];
     apiKey: string;
     customUrl: string;
-    updateInterval: number;
+    updateIntervalSeconds: number;
     isEnabled: boolean;
   }>({
     hostname: "",
     provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
     apiKey: "",
     customUrl: "",
-    updateInterval: DDNS_DEFAULT_INTERVAL_MS,
+    updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_MS / 1000,
     isEnabled: true,
   });
 
@@ -82,7 +84,7 @@ export default function DdnsUpdater() {
       provider: "duckdns",
       apiKey: "",
       customUrl: "",
-      updateInterval: DDNS_DEFAULT_INTERVAL_MS,
+      updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_MS / 1000,
       isEnabled: true,
     });
     setEditingUpdater(null);
@@ -100,7 +102,7 @@ export default function DdnsUpdater() {
       provider: updater.provider,
       apiKey: "",
       customUrl: "",
-      updateInterval: updater.updateInterval || DDNS_DEFAULT_INTERVAL_MS,
+      updateIntervalSeconds: Math.max(DDNS_MIN_INTERVAL_MS / 1000, Math.round((updater.updateInterval || DDNS_DEFAULT_INTERVAL_MS) / 1000)),
       isEnabled: updater.isEnabled !== false,
     });
     setIsOpen(true);
@@ -115,12 +117,16 @@ export default function DdnsUpdater() {
           id: editingUpdater.id,
           data: {
             ...updaterData,
+            updateInterval: Math.max(DDNS_MIN_INTERVAL_MS, Math.round(formData.updateIntervalSeconds * 1000)),
             ...(apiKey.trim() ? { apiKey } : {}),
             ...(customUrl.trim() ? { customUrl } : {}),
           },
         });
       } else {
-        await createUpdater.mutateAsync(formData);
+        await createUpdater.mutateAsync({
+          ...formData,
+          updateInterval: Math.max(DDNS_MIN_INTERVAL_MS, Math.round(formData.updateIntervalSeconds * 1000)),
+        });
       }
       setIsOpen(false);
       resetForm();
@@ -136,6 +142,25 @@ export default function DdnsUpdater() {
         description: error instanceof Error ? error.message : "Unable to save this DDNS updater.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleTestUpdater = async (updater: PublicDdnsUpdater) => {
+    setTestingUpdaterId(updater.id);
+    try {
+      const result = await testUpdater.mutateAsync(updater.id) as { message?: string };
+      toast({
+        title: "DDNS connectivity passed",
+        description: result.message || `${updater.provider.toUpperCase()} is reachable. No record was changed.`,
+      });
+    } catch (error) {
+      toast({
+        title: "DDNS connectivity failed",
+        description: error instanceof Error ? error.message : "The provider endpoint could not be reached.",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingUpdaterId(null);
     }
   };
 
@@ -311,15 +336,18 @@ export default function DdnsUpdater() {
               </div>
 
               <div className="space-y-2">
-                 <Label>Update Interval (milliseconds)</Label>
+                  <Label>Update Interval (seconds)</Label>
                 <Input
-                  value={formData.updateInterval}
-                  onChange={(e) => setFormData({ ...formData, updateInterval: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MS })}
+                   value={formData.updateIntervalSeconds}
+                   onChange={(e) => setFormData({ ...formData, updateIntervalSeconds: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MS / 1000 })}
                   type="number"
-                  min={DDNS_MIN_INTERVAL_MS}
-                  step="1000"
+                   min={DDNS_MIN_INTERVAL_MS / 1000}
+                   step="1"
                   className="bg-background border-border"
                 />
+                 <p className="text-xs text-muted-foreground">
+                   Provider writes are limited to this interval. Status refresh stays live every 500 ms.
+                 </p>
               </div>
 
                <Button
@@ -398,6 +426,17 @@ export default function DdnsUpdater() {
                )}
 
               <div className="flex gap-2">
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={() => void handleTestUpdater(updater)}
+                   disabled={testingUpdaterId !== null || updateUpdater.isPending}
+                   aria-label={`Test connectivity for ${updater.hostname}`}
+                   className="min-h-10 flex-1 border-sky-400/40 text-sky-300 hover:border-sky-300 hover:bg-sky-400/10"
+                 >
+                   {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
+                   Test
+                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
