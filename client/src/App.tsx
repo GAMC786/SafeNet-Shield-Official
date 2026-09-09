@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -145,9 +145,9 @@ function MainLayout() {
 }
 
 function AppContent() {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const authStatus = useAuthStatus();
-  const isAuthenticated = authStatus.data?.authenticated === true || isSignedIn === true;
+  const isAuthenticated = isSignedIn === true;
   const settingsQuery = useSettings(isAuthenticated);
   useFirewallConfig(isAuthenticated);
   const isError = authStatus.isError || (isAuthenticated && settingsQuery.isError);
@@ -199,6 +199,10 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  if (isLoaded && !isSignedIn) {
+    return <Redirect to={`${basePath}/sign-in`} />;
   }
 
   return <MainLayout />;

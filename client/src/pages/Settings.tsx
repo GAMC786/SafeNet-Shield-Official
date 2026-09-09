@@ -1,4 +1,5 @@
-import { useAuthStatus, useSettings, useUpdateSettings } from "@/hooks/use-settings";
+import { useAuth } from "@clerk/react";
+import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { AiShieldControls } from "@/components/AiShieldControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
@@ -8,12 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
-import { PinEntry } from "@/pages/PinEntry";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
 
 export default function Settings() {
-  const authStatus = useAuthStatus();
-  const isAuthenticated = authStatus.data?.authenticated === true;
+  const { isSignedIn } = useAuth();
+  const isAuthenticated = isSignedIn === true;
   const {
     data: settings,
     isLoading: isLoadingSettings,
@@ -39,18 +39,6 @@ export default function Settings() {
       });
     }
   };
-
-  if (authStatus.isLoading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center" role="status">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (authStatus.data && !isAuthenticated) {
-    return <PinEntry onSuccess={() => void authStatus.refetch()} />;
-  }
 
   const settingLabels: Record<string, string> = {
     aiShieldEnabled: "AI Shield",

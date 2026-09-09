@@ -5,9 +5,6 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startDdnsScheduler } from "./ddns-service";
-import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
 import { registerRequestOriginMiddleware } from "./request-origin";
 import {
   CLERK_PROXY_PATH,
@@ -28,31 +25,6 @@ app.use(
       process.env.CLERK_PUBLISHABLE_KEY,
     ),
   })),
-);
-
-const sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret) {
-  throw new Error("SESSION_SECRET must be set.");
-}
-
-const PostgresSessionStore = connectPgSimple(session);
-
-app.use(
-  session({
-    secret: sessionSecret,
-    store: new PostgresSessionStore({
-      pool,
-      createTableIfMissing: true,
-    }),
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 1000 * 60 * 60 * 12,
-    },
-  }),
 );
 
 declare module "http" {

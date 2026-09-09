@@ -48,6 +48,8 @@ export const accessLogs = pgTable("access_logs", {
 
 export const appSettings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
+  // Legacy PIN columns are retained for non-destructive database compatibility.
+  // The PIN feature is no longer part of the active application model or API.
   pinCode: text("pin_code"),
   pinRecoveryEmail: text("pin_recovery_email"),
   pinRecoveryCodeHash: text("pin_recovery_code_hash"),
@@ -140,7 +142,14 @@ export const activityLogSchema = z.object({
   status: z.enum(["allowed", "blocked"]),
   reason: z.string().trim().min(1).max(120).nullable().optional(),
 });
-export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
+export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({
+  id: true,
+  pinCode: true,
+  pinRecoveryEmail: true,
+  pinRecoveryCodeHash: true,
+  pinRecoveryCodeExpiresAt: true,
+  isPinEnabled: true,
+});
 export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({
   id: true,
   lastIpAddress: true,
@@ -153,14 +162,6 @@ export const insertFirewallRuleSchema = createInsertSchema(firewallRules).omit({
 // API response schemas intentionally exclude secrets stored in these tables.
 export const publicAppSettingsSchema = z.object({
   id: z.number(),
-  // Older published/mobile builds may receive a response created before this
-  // field existed. Defaulting the omitted field keeps those clients usable
-  // while new responses continue to return null when it is unset.
-  pinRecoveryEmail: z.string().nullable().default(null),
-  // Never expose the PIN itself; this only lets clients avoid enabling a PIN
-  // lock before a code has been configured.
-  pinConfigured: z.boolean().default(false),
-  isPinEnabled: z.boolean().nullable(),
   aiShieldEnabled: z.boolean().nullable(),
   alwaysOnEnabled: z.boolean().nullable(),
   deviceAdminEnabled: z.boolean().nullable(),

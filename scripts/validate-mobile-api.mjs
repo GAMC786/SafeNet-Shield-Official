@@ -141,8 +141,7 @@ try {
   if (
     typeof status !== "object" ||
     status === null ||
-    typeof status.authenticated !== "boolean" ||
-    typeof status.pinRequired !== "boolean"
+    typeof status.authenticated !== "boolean"
   ) {
     fail("The mobile backend authentication endpoint returned an invalid response.");
   }

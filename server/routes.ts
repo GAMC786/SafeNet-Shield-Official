@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import express from "express";
-import { randomInt } from "node:crypto";
 import { isIP } from "node:net";
 import type { Server } from "http";
 import { storage as defaultStorage, type IStorage } from "./storage";
@@ -20,36 +19,20 @@ import {
 import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
-import {
-  clearPinAttempts,
-  getPinRetryAfterSeconds,
-  recordFailedPinAttempt,
-  createRequireAuthentication,
-  createRequireExistingAuthentication,
-  getClerkUserId,
-} from "./auth";
-import { hashPin, isHashedPin, verifyPin } from "./pin-security";
+import { createRequireAuthentication, getClerkUserId } from "./auth";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
-import {
-  getGmailFailureStage,
-  PIN_RECOVERY_CODE_TTL_MS,
-  sendPinRecoveryCode,
-  sendPinSecurityNotification,
-} from "./gmail";
 import { CLERK_PROXY_PATH, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 
 function publicSettings(settings: AppSettings) {
   const {
     pinCode: _pinCode,
+    pinRecoveryEmail: _pinRecoveryEmail,
     pinRecoveryCodeHash: _pinRecoveryCodeHash,
     pinRecoveryCodeExpiresAt: _pinRecoveryCodeExpiresAt,
+    isPinEnabled: _isPinEnabled,
     ...safeSettings
   } = settings;
-  return {
-    ...safeSettings,
-    pinRecoveryEmail: safeSettings.pinRecoveryEmail ?? null,
-    pinConfigured: Boolean(settings.pinCode),
-  };
+  return safeSettings;
 }
 
 function publicDdnsUpdater(updater: DdnsUpdater) {
@@ -112,14 +95,11 @@ export async function registerRoutes(
   routeStorage?: IStorage,
   options: {
     seed?: boolean;
-    generatePinRecoveryCode?: () => string;
-    sendPinRecoveryCode?: (to: string, code: string) => Promise<void>;
+    getUserId?: typeof getClerkUserId;
   } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
-  const generatePinRecoveryCode =
-    options.generatePinRecoveryCode ?? (() => String(randomInt(100000, 1000000)));
-  const deliverPinRecoveryCode = options.sendPinRecoveryCode ?? sendPinRecoveryCode;
+  const resolveUserId = options.getUserId ?? getClerkUserId;
 
   // These endpoints are the only unauthenticated API surface. They contain no
   // settings, PIN, provider, or user data.
@@ -150,135 +130,21 @@ export async function registerRoutes(
   });
 
   app.get(api.auth.status.path, async (req, res) => {
-    // Authentication state changes after PIN verification. Prevent browsers
-    // and proxies from replaying the pre-verification 304 response.
+    // Keep authentication status uncached so Clerk sign-in changes are reflected
+    // immediately in the client.
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    const settings = await storage.getSettings();
-    const pinRequired = settings.isPinEnabled === true;
-    const clerkUserId = getClerkUserId(req);
-
-    if (!pinRequired) {
-      req.session.authenticated = true;
-    }
 
     res.json({
-      authenticated: req.session.authenticated === true || clerkUserId !== null,
-      pinRequired,
+      authenticated: resolveUserId(req) !== null,
     });
   });
 
-  app.post(api.settings.verifyPin.path, async (req, res) => {
-    const retryAfter = getPinRetryAfterSeconds(req);
-    if (retryAfter > 0) {
-      res.setHeader("Retry-After", retryAfter);
-      return res.status(429).json({
-        message: "Too many PIN attempts. Try again later.",
-      });
-    }
-
-    const parsed = api.settings.verifyPin.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: "PIN must contain exactly four digits." });
-    }
-
-    const settings = await storage.getSettings();
-    const valid = settings.isPinEnabled !== true || verifyPin(settings.pinCode, parsed.data.pin);
-
-    if (!valid) {
-      recordFailedPinAttempt(req);
-      return res.status(401).json({
-        valid: false,
-        message: "Invalid PIN",
-      });
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      req.session.regenerate((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      });
-    });
-    if (settings.pinCode && !isHashedPin(settings.pinCode)) {
-      await storage.updateSettings({ pinCode: hashPin(parsed.data.pin) });
-    }
-    req.session.authenticated = true;
-    clearPinAttempts(req);
-
-    res.json({ valid: true });
-  });
-
-  app.post("/api/settings/pin-recovery/request", async (req, res) => {
-    const parsed = api.settings.requestPinRecovery.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ sent: false, message: "Enter a valid recovery email address." });
-    }
-
-    const settings = await storage.getSettings();
-    const emailMatches = settings.pinRecoveryEmail?.toLowerCase() === parsed.data.email.toLowerCase();
-    if (emailMatches && settings.isPinEnabled === true) {
-      const code = generatePinRecoveryCode();
-      await storage.updateSettings({
-        pinRecoveryCodeHash: hashPin(code),
-        pinRecoveryCodeExpiresAt: new Date(Date.now() + PIN_RECOVERY_CODE_TTL_MS),
-      });
-      try {
-        await deliverPinRecoveryCode(parsed.data.email, code);
-      } catch (error) {
-        console.error(`PIN recovery email failed at Gmail ${getGmailFailureStage(error)} stage.`);
-        return res.status(502).json({ sent: false, message: "The recovery email could not be sent. Check the Gmail connection and try again." });
-      }
-    }
-
-    return res.json({
-      sent: true,
-      message: "If that address is configured for SafeNet, a recovery code will arrive shortly.",
-    });
-  });
-
-  app.post("/api/settings/pin-recovery/reset", async (req, res) => {
-    const retryAfter = getPinRetryAfterSeconds(req);
-    if (retryAfter > 0) {
-      res.setHeader("Retry-After", retryAfter);
-      return res.status(429).json({ message: "Too many recovery attempts. Try again later." });
-    }
-
-    const parsed = api.settings.resetPinRecovery.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ valid: false, message: "Enter the recovery email, six-digit code, and a four-digit PIN." });
-    }
-
-    const resetApplied = await storage.resetPinWithRecoveryCode(
-      parsed.data.email,
-      parsed.data.code,
-      parsed.data.pin,
-    );
-    if (!resetApplied) {
-      recordFailedPinAttempt(req);
-      return res.status(401).json({ valid: false, message: "The recovery code is invalid or expired." });
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      req.session.regenerate((error) => (error ? reject(error) : resolve()));
-    });
-    req.session.authenticated = true;
-    clearPinAttempts(req);
-    void sendPinSecurityNotification(parsed.data.email).catch((error) => {
-      console.error("PIN recovery notification failed:", error);
-    });
-    return res.json({ valid: true });
-  });
-
-  // Device reporters must present an already-authenticated web session. This
-  // route intentionally sits before the general middleware, which can
-  // bootstrap a session when PIN protection is disabled.
+  // Device reporters must present an authenticated Clerk session.
   app.post(
     api.logs.ingest.path,
-    createRequireExistingAuthentication(),
+    createRequireAuthentication(resolveUserId),
     async (req, res) => {
       try {
         const input = api.logs.ingest.input.parse(req.body);
@@ -296,9 +162,8 @@ export async function registerRoutes(
     },
   );
 
-  // Every remaining API route, including the AI integrations, requires either
-  // a Clerk session or the short-lived local PIN session created above.
-  app.use("/api", createRequireAuthentication(storage));
+  // Every remaining API route, including the AI integrations, requires Clerk.
+  app.use("/api", createRequireAuthentication(resolveUserId));
 
   // Register AI Integrations
   registerChatRoutes(app);
@@ -446,34 +311,7 @@ export async function registerRoutes(
   app.put(api.settings.update.path, async (req, res) => {
     try {
       const input = api.settings.update.input.parse(req.body);
-      if (typeof input.pinCode === "string" && !/^\d{4}$/.test(input.pinCode)) {
-        return res.status(400).json({ message: "PIN must contain exactly four digits." });
-      }
-      if (input.pinRecoveryEmail !== undefined && input.pinRecoveryEmail !== null) {
-        const email = z.string().email().safeParse(input.pinRecoveryEmail);
-        if (!email.success) {
-          return res.status(400).json({ message: "Recovery email must be a valid email address." });
-        }
-      }
-      const currentSettings = await storage.getSettings();
-      const nextPinCode = input.pinCode === undefined ? currentSettings.pinCode : input.pinCode;
-      const nextPinEnabled = input.isPinEnabled === undefined
-        ? currentSettings.isPinEnabled
-        : input.isPinEnabled;
-      if (nextPinEnabled === true && !nextPinCode) {
-        return res.status(400).json({
-          message: "Set a four-digit PIN before enabling PIN protection.",
-        });
-      }
-      const settings = await storage.updateSettings({
-        ...input,
-        ...(typeof input.pinCode === "string" ? { pinCode: hashPin(input.pinCode) } : {}),
-      });
-      if (typeof input.pinCode === "string" && settings.pinRecoveryEmail) {
-        void sendPinSecurityNotification(settings.pinRecoveryEmail).catch((error) => {
-          console.error("PIN security notification failed:", error);
-        });
-      }
+      const settings = await storage.updateSettings(input);
       res.json(publicSettings(settings));
     } catch (err) {
       throw err;

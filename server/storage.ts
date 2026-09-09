@@ -7,7 +7,6 @@ import {
 } from "@shared/schema";
 import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
 import { eq, desc, asc, count } from "drizzle-orm";
-import { hashPin, verifyPin } from "./pin-security";
 
 export interface IStorage {
   // DNS Servers
@@ -31,7 +30,6 @@ export interface IStorage {
   // Settings
   getSettings(): Promise<AppSettings>;
   updateSettings(updates: Partial<InsertAppSettings>): Promise<AppSettings>;
-  resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean>;
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
   createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
@@ -168,33 +166,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(appSettings.id, current.id))
       .returning();
     return updated;
-  }
-
-  async resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean> {
-    return await db.transaction(async (tx) => {
-      const [settings] = await tx.select().from(appSettings).for("update");
-      const valid =
-        settings?.isPinEnabled === true &&
-        settings.pinRecoveryEmail?.toLowerCase() === email.toLowerCase() &&
-        settings.pinRecoveryCodeExpiresAt !== null &&
-        settings.pinRecoveryCodeExpiresAt !== undefined &&
-        settings.pinRecoveryCodeExpiresAt.getTime() > Date.now() &&
-        verifyPin(settings.pinRecoveryCodeHash, code);
-
-      if (!valid || !settings) {
-        return false;
-      }
-
-      await tx.update(appSettings)
-        .set({
-          pinCode: hashPin(pin),
-          isPinEnabled: true,
-          pinRecoveryCodeHash: null,
-          pinRecoveryCodeExpiresAt: null,
-        })
-        .where(eq(appSettings.id, settings.id));
-      return true;
-    });
   }
 
   async getDdnsUpdaters(): Promise<DdnsUpdater[]> {

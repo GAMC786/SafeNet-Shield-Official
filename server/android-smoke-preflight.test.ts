@@ -140,14 +140,14 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
     apkOnlyWorkflow,
     /MOBILE_API_URL: https:\/\/safe-net-shield-official\.replit\.app/,
   );
-  assert.match(apkOnlyWorkflow, /Verify production auth bootstrap/);
+  assert.match(apkOnlyWorkflow, /Verify production auth status/);
   assert.match(
     apkOnlyWorkflow,
     /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/auth\/status"/,
   );
   assert.match(
     apkOnlyWorkflow,
-    /typeof status\.authenticated !== 'boolean' \|\| status\.pinRequired !== false/,
+    /typeof status\.authenticated !== 'boolean'/,
   );
   assert.match(
     apkOnlyWorkflow,
@@ -159,7 +159,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
     apkOnlyWorkflow,
     /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='\$APP_VERSION_CODE' versionName='\$APP_VERSION'"/,
   );
-  assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
+  assert.match(apkOnlyWorkflow, /name: Verify APK bundle/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
   assert.match(
     apkOnlyWorkflow,
@@ -203,7 +203,7 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   );
 });
 
-test("Android WebView accepts the production PIN session cookie", () => {
+test("Android WebView accepts the production Clerk session cookie", () => {
   assert.match(mainActivity, /CookieManager\.getInstance\(\)/);
   assert.match(mainActivity, /setAcceptCookie\(true\)/);
   assert.match(

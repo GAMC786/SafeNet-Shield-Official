@@ -86,9 +86,6 @@ function mockApi(
 ) {
   let settings = {
     id: 1,
-    pinRecoveryEmail: null,
-    pinConfigured: true,
-    isPinEnabled: true,
     aiShieldEnabled: true,
     alwaysOnEnabled: false,
     deviceAdminEnabled: false,
@@ -192,7 +189,7 @@ function mockApi(
       let response;
 
       if (url.pathname === "/api/auth/status") {
-        response = { authenticated, pinRequired: true };
+        response = { authenticated };
       } else if (url.pathname === "/api/settings" && method === "GET") {
         if (!authenticated) {
           await route.fulfill({
@@ -337,69 +334,24 @@ function mockApi(
   ]);
 }
 
-test("PIN does not block startup and still protects Settings recovery", async () => {
-  const page = await browser.newPage({ viewport: viewports[0] });
-  await mockApi(page, { authenticated: false });
-
-  await page.goto(baseUrl);
-  await page.getByRole("heading", { name: "Command Center" }).waitFor();
-   await page.getByRole("heading", { name: "DNS Protection VPN" }).waitFor();
-   await page.getByText("Available in the SafeNet Android APK", { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText("Secure Access Required", { exact: true }).count(),
-    0,
-    "startup should not show the PIN gate",
-  );
-
-  await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByText("Secure Access Required", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Forgot PIN? Recover by email" }).waitFor();
-  await page.close();
-});
-
 test("Settings keep controls safe while loading and show the current version", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
 
-  for (const name of ["AI Shield", "App Firewall", "Always-On VPN", "Device Admin", "PIN Protection"]) {
+  for (const name of ["AI Shield", "App Firewall", "Always-On VPN"]) {
     assert.equal(
       await page.getByRole("switch", { name }).isDisabled(),
       true,
       `${name} must be disabled until saved settings load`,
     );
   }
-  assert.equal(await page.getByRole("button", { name: "Set PIN" }).isDisabled(), true);
-  assert.equal(await page.getByLabel("PIN Recovery Email").isDisabled(), true);
-
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
     `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
-  await page.close();
-});
-
-test("Settings PIN and recovery email actions validate and save safely", async () => {
-  const page = await browser.newPage({ viewport: viewports[0] });
-  await mockApi(page);
-  await page.goto(`${baseUrl}/settings`);
-  await page.getByRole("heading", { name: "System Settings" }).waitFor();
-
-  const recoveryEmail = page.getByLabel("PIN Recovery Email");
-  await recoveryEmail.fill("not-an-email");
-  await page.getByRole("button", { name: "Save recovery email" }).click();
-  await page.getByText("Recovery email required", { exact: true }).waitFor();
-
-  await recoveryEmail.fill("owner@example.com");
-  await page.getByRole("button", { name: "Save recovery email" }).click();
-  await page.getByText("Recovery email saved", { exact: true }).waitFor();
-
-  await page.getByPlaceholder("****").fill("4826");
-  await page.getByRole("button", { name: "Set PIN" }).click();
-  await page.getByText("PIN updated", { exact: true }).waitFor();
-  assert.equal(await page.getByPlaceholder("****").inputValue(), "");
   await page.close();
 });
 
@@ -456,8 +408,6 @@ for (const viewport of viewports) {
       ["AI Shield", "true"],
       ["App Firewall", "false"],
       ["Always-On VPN", "false"],
-      ["Device Admin", "false"],
-      ["PIN Protection", "true"],
     ]);
     const backgroundColors = new Set();
 
@@ -499,8 +449,6 @@ for (const viewport of viewports) {
     for (const [name, expectedState] of [
       ["AI Shield", "false"],
       ["Always-On VPN", "true"],
-      ["Device Admin", "true"],
-      ["PIN Protection", "false"],
     ]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();

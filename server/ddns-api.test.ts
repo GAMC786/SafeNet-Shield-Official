@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
-import session from "express-session";
 import type { AppSettings, DdnsUpdater, InsertDdnsUpdater } from "@shared/schema";
 import type { IStorage } from "./storage";
 
@@ -11,8 +10,6 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??= "ddns-smoke-test";
 
 const testSettings: AppSettings = {
   id: 1,
-  pinCode: null,
-  isPinEnabled: false,
   aiShieldEnabled: false,
   alwaysOnEnabled: false,
   deviceAdminEnabled: false,
@@ -72,16 +69,9 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
   const httpServer = createServer(app);
   const storage = createTestStorage();
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -440,16 +430,9 @@ test("DDNS status exposes the latest failure without provider credentials", asyn
   });
   await storage.updateDdnsFailureInfo(updater.id, "DuckDNS rejected the update (HTTP 401): token expired");
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -487,16 +470,9 @@ test("manual DDNS updates return a non-success response with provider failure de
     updateInterval: 1000,
   });
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "ddns-test-user" });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());

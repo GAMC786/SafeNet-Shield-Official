@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
-import session from "express-session";
 import type { IStorage } from "./storage";
 
 process.env.DATABASE_URL ??= "postgres://dns-smoke-test";
@@ -44,11 +43,6 @@ function createTestStorage(): IStorage {
   return {
     getSettings: async () => ({
       id: 1,
-      pinCode: null,
-      pinRecoveryEmail: null,
-      pinRecoveryCodeHash: null,
-      pinRecoveryCodeExpiresAt: null,
-      isPinEnabled: false,
       aiShieldEnabled: false,
       alwaysOnEnabled: false,
       deviceAdminEnabled: false,
@@ -130,15 +124,9 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
   const httpServer = createServer(app);
   const storage = createTestStorage();
 
-  app.use(session({
-    secret: "dns-api-smoke-test",
-    resave: false,
-    saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: "lax" },
-  }));
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, { seed: false, getUserId: () => "dns-test-user" });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -175,8 +163,6 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
       assert.equal(firewallConfig.settings.firewallEnabled, false);
       assert.equal(firewallConfig.rules[0].action, "deny");
       assert.equal(firewallConfig.blocklists[0].content, "blocked.example");
-      assert.equal("pinCode" in firewallConfig.settings, false);
-
       const createResponse = await request("/api/dns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

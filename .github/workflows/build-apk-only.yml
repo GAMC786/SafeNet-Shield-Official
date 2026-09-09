@@ -56,17 +56,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Verify production auth bootstrap
+      - name: Verify production auth status
         shell: bash
         run: |
           set -euo pipefail
           response="$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "$MOBILE_API_URL/api/auth/status")"
           RESPONSE="$response" node --input-type=module <<'NODE'
           const status = JSON.parse(process.env.RESPONSE);
-          if (typeof status.authenticated !== 'boolean' || status.pinRequired !== false) {
-            throw new Error(`Production startup PIN prompt is not disabled: ${JSON.stringify(status)}`);
+          if (typeof status.authenticated !== 'boolean') {
+            throw new Error(`Production auth status response is invalid: ${JSON.stringify(status)}`);
           }
-          console.log('Production startup PIN prompt is disabled; Settings PIN UI is validated in the APK bundle.');
+          console.log('Production Clerk auth status endpoint is available.');
           NODE
 
       - name: Build web assets and sync Android
@@ -116,7 +116,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
-      - name: Verify APK and manual PIN bundle
+      - name: Verify APK bundle
         id: verify-apk
         shell: bash
         env:
@@ -130,10 +130,6 @@ jobs:
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
           "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION'"
-          if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
-            echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
-            exit 1
-          fi
           stat -c '%n %s bytes' "$apk"
 
       - name: Generate APK SHA-256 checksum

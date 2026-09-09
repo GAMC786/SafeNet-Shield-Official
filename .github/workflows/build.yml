@@ -40,11 +40,6 @@ on:
         required: true
         default: false
         type: boolean
-      pin_recovery_email_delivery:
-        description: "Run the non-blocking non-production PIN recovery mailbox check"
-        required: true
-        default: false
-        type: boolean
       android_startup_validation:
         description: "Run the signed APK startup handoff check on the dedicated Android runner"
         required: true
@@ -660,60 +655,6 @@ jobs:
 
       - name: Run tests
         run: npm test
-
-      - name: Check controlled PIN recovery email delivery
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pin_recovery_email_delivery == true)
-        continue-on-error: true
-        shell: bash
-        env:
-          PIN_RECOVERY_EMAIL_SMOKE: "true"
-          PIN_RECOVERY_SMOKE_EMAIL: ${{ secrets.PIN_RECOVERY_SMOKE_EMAIL }}
-        run: |
-          set -u
-          report_header="## PIN recovery email delivery"
-          if [[ -z "${PIN_RECOVERY_SMOKE_EMAIL}" ]]; then
-            echo "::warning title=PIN recovery mailbox configuration missing::The controlled check was not run because PIN_RECOVERY_SMOKE_EMAIL is not configured."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** The non-production mailbox secret is missing."
-              echo
-              echo "Configure PIN_RECOVERY_SMOKE_EMAIL with a non-production mailbox. The address and message contents are never printed."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          smoke_log="$RUNNER_TEMP/pin-recovery-email-smoke.log"
-          if node --import tsx --test server/pin-api.test.ts >"$smoke_log" 2>&1; then
-            echo "PIN recovery email delivery check passed."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** healthy"
-              echo "- **Finding:** The recovery message was found in the configured non-production mailbox, and the delivered code was rejected after expiry."
-              echo
-              echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          stage="unknown"
-          if grep -q "Gmail configuration stage" "$smoke_log"; then
-            stage="configuration"
-          elif grep -q "Gmail delivery stage" "$smoke_log"; then
-            stage="delivery"
-          fi
-          echo "::warning title=PIN recovery email delivery needs attention::The controlled check failed at the ${stage} stage. Inspect the Gmail connection or non-production delivery path without publishing mailbox contents."
-          {
-            echo "$report_header"
-            echo
-            echo "- **Status:** needs attention"
-            echo "- **Finding:** The controlled check failed at the **${stage}** stage. The failure log was kept in the runner workspace and was not published."
-            echo
-            echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
 
       - name: Check Clerk authentication fixture health
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
@@ -1587,7 +1528,7 @@ jobs:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
     # Hosted fallback for public repositories: this validates APK installation,
-    # PIN-gated WebView relaunch/recovery, instrumentation, and public-network
+    # WebView relaunch, instrumentation, and public-network
     # DNS behavior, but cannot validate
     # writable-system trust changes or adb-root-only behavior.
     runs-on: ubuntu-latest

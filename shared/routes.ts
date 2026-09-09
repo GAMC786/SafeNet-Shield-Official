@@ -44,7 +44,6 @@ export const api = {
       responses: {
         200: z.object({
           authenticated: z.boolean(),
-          pinRequired: z.boolean(),
         }),
       },
     },
@@ -179,39 +178,6 @@ export const api = {
       input: insertAppSettingsSchema.partial(),
       responses: {
         200: publicAppSettingsSchema,
-      },
-    },
-    verifyPin: {
-      method: 'POST' as const,
-      path: '/api/settings/verify-pin',
-      input: z.object({ pin: z.string().regex(/^\d{4}$/) }),
-      responses: {
-        200: z.object({ valid: z.boolean() }),
-        401: z.object({ valid: z.literal(false), message: z.string() }),
-        429: z.object({ message: z.string() }),
-      },
-    },
-    requestPinRecovery: {
-      method: 'POST' as const,
-      path: '/api/settings/pin-recovery/request',
-      input: z.object({ email: z.string().email() }),
-      responses: {
-        200: z.object({ sent: z.boolean(), message: z.string() }),
-      },
-    },
-    resetPinRecovery: {
-      method: 'POST' as const,
-      path: '/api/settings/pin-recovery/reset',
-      input: z.object({
-        email: z.string().email(),
-        code: z.string().regex(/^\d{6}$/),
-        pin: z.string().regex(/^\d{4}$/),
-      }),
-      responses: {
-        200: z.object({ valid: z.literal(true) }),
-        400: errorSchemas.validation,
-        401: z.object({ valid: z.literal(false), message: z.string() }),
-        429: z.object({ message: z.string() }),
       },
     },
   },

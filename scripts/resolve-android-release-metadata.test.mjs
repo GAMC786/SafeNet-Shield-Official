@@ -111,14 +111,13 @@ test("both release workflows consume the shared metadata contract", async () => 
       name: "APK-only workflow",
       workflow: apkOnlyWorkflow,
       block: apkOnlyWorkflow.match(
-        /      - name: Verify APK and manual PIN bundle\n(?<block>[\s\S]*?)(?=\n      - name:)/,
+        /      - name: Verify APK bundle\n(?<block>[\s\S]*?)(?=\n      - name:)/,
       )?.groups?.block,
       summaryBlock: apkOnlyWorkflow.match(
         /      - name: Publish Android APK summary\n(?<block>[\s\S]*?)(?=\n      - name:|$)/,
       )?.groups?.block,
       versionNameVariable: "APP_VERSION",
       versionCodeVariable: "APP_VERSION_CODE",
-      pinCheck: /grep -R -q "Secure Access Required" android\/app\/src\/main\/assets\/public/,
       instrumentationPackage: null,
       instrumentationSummaryRow:
         /\*\*Instrumentation APK verification:\*\*.*not run in APK-only workflow/,
@@ -136,7 +135,7 @@ test("both release workflows consume the shared metadata contract", async () => 
       )?.groups?.block,
       versionNameVariable: "ANDROID_VERSION_NAME",
       versionCodeVariable: "ANDROID_VERSION_CODE",
-      pinCheck: /unzip -l "\$apk" \| grep -F "assets\/public\/"/,
+      bundleCheck: /unzip -l "\$apk" \| grep -F "assets\/public\/"/,
       instrumentationPackage: /package: name='com\.safenet\.dns\.test'/,
       instrumentationSummaryRow:
         /\*\*Signed instrumentation APK verification:\*\*.*\$instrumentation_outcome.*preserved instrumentation artifact.*\$instrumentation_url/,
@@ -188,11 +187,13 @@ test("both release workflows consume the shared metadata contract", async () => 
       ),
       `${validator.name} must verify app package, versionCode, and versionName`,
     );
-    assert.match(
-      block,
-      validator.pinCheck,
-      `${validator.name} must verify bundled PIN UI assets`,
-    );
+    if (validator.bundleCheck) {
+      assert.match(
+        block,
+        validator.bundleCheck,
+        `${validator.name} must verify the bundled web assets`,
+      );
+    }
     if (validator.instrumentationPackage) {
       assert.match(
         block,
