@@ -2216,3 +2216,92 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-published-android-release:
+    needs: release
+    if: needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout tagged release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install and verify Android toolchain from Gradle pins
+        shell: bash
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Resolve expected Android release metadata
+        id: android_release_metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_version="${GITHUB_REF_NAME#v}"
+          test -n "$expected_version" || {
+            echo "::error::Could not resolve the release version from GITHUB_REF_NAME."
+            exit 1
+          }
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$expected_version" \
+            --expected-label tag \
+            --mismatch-prefix "Published release version mismatch" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download formal GitHub Release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_dir="$GITHUB_WORKSPACE/published-release-assets"
+          mkdir -p "$release_dir"
+          assets=(
+            app-release.apk
+            app-release.apk.sha256
+            app-release-androidTest.apk
+            app-release-androidTest.apk.sha256
+            SafeNet-DNS-Android-smoke-evidence.tar.gz
+            SafeNet-DNS-Android-smoke-result.txt
+            SafeNet-DNS-Android-smoke-evidence.sha256
+          )
+          for asset in "${assets[@]}"; do
+            if ! gh release download "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" \
+              --dir "$release_dir" \
+              --clobber; then
+              echo "::error title=Missing GitHub Release asset::$asset was not downloadable from release $GITHUB_REF_NAME."
+              exit 1
+            fi
+            test -s "$release_dir/$asset" || {
+              echo "::error title=Empty GitHub Release asset::$asset was downloaded empty."
+              exit 1
+            }
+          done
+
+      - name: Verify published Android Release assets
+        id: verify_published_android_release
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.android_release_metadata.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.android_release_metadata.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-android-release-assets.sh \
+            --assets-dir "$GITHUB_WORKSPACE/published-release-assets" \
+            --expected-version "$ANDROID_VERSION_NAME" \
+            --expected-version-code "$ANDROID_VERSION_CODE" \
+            --sdk-root "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
