@@ -11,6 +11,7 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="preload" as="image" href="/safenet-astronaut-loader-transparent.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Rajdhani:wght@300..700&display=swap" rel="stylesheet">
@@ -79,12 +80,14 @@
         background: rgba(30,41,59,.8);
       }
       #startup-loader-progress-bar {
-        width: 0%;
+        width: 100%;
         height: 100%;
         border-radius: inherit;
         background: linear-gradient(90deg, #dc2626, #f87171);
         box-shadow: 0 0 14px rgba(248,113,113,.75);
-        transition: width 80ms linear;
+        transform: scaleX(0);
+        transform-origin: left center;
+        will-change: transform;
       }
       #startup-loader-percentage {
         min-width: 4ch;
@@ -93,6 +96,9 @@
         font-size: 14px;
         font-weight: 700;
         letter-spacing: .12em;
+      }
+      #startup-loader[aria-busy="true"] .startup-loader-content {
+        animation: startup-loader-content-in 260ms ease-out both;
       }
       .startup-loader-dots {
         position: relative;
@@ -116,12 +122,17 @@
         0%, 100% { transform: scale(.65); opacity: .45; }
         50% { transform: scale(1); opacity: 1; }
       }
+      @keyframes startup-loader-content-in {
+        from { opacity: .92; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       @media (max-height: 600px) {
         .startup-loader-content { gap: 7px; }
         .startup-loader-art { height: min(34dvh, 250px); }
       }
       @media (prefers-reduced-motion: reduce) {
         #startup-loader { transition: none; }
+        #startup-loader[aria-busy="true"] .startup-loader-content { animation: none; }
         .startup-loader-dot { animation: none; opacity: 1; }
       }
     </style>
@@ -143,6 +154,7 @@
       aria-valuemin="0"
       aria-valuemax="100"
       aria-valuenow="0"
+      aria-busy="true"
     >
       <div class="startup-loader-content">
         <p class="startup-loader-kicker">SafeNet Shield</p>

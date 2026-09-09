@@ -70,6 +70,10 @@ const antivirusSource = readFileSync(
   path.join(clientRoot, "src/pages/Antivirus.tsx"),
   "utf8",
 );
+const aiShieldSource = readFileSync(
+  path.join(clientRoot, "src/components/AiShieldControls.tsx"),
+  "utf8",
+);
 const manifestSource = readFileSync(
   path.join(clientRoot, "public/manifest.json"),
   "utf8",
@@ -199,8 +203,10 @@ test("Settings use the current package version and describe preference-only Andr
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(settingsSource, /settingsReady/);
-  assert.match(settingsSource, /Android(?:&apos;|')s system Always-on VPN separately/);
-  assert.match(settingsSource, /Android device-admin permission is not requested here/);
+  assert.match(settingsSource, /opens Android(?:&apos;|')s Always-on VPN settings/);
+  assert.match(settingsSource, /Open Android security settings/);
+  assert.match(settingsSource, /button-open-vpn-settings/);
+  assert.match(settingsSource, /button-set-pin/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
   assert.match(
     manifestSource,
@@ -228,4 +234,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsSource, /Test/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
+  assert.match(appSource, /useFirewallConfig/);
+  assert.match(aiShieldSource, /button-start-ai-camera/);
+  assert.match(aiShieldSource, /button-start-ai-screen/);
 });

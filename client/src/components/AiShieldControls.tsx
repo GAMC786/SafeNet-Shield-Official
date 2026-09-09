@@ -72,15 +72,16 @@ export function AiShieldControls() {
     try {
       const result = await action();
       if (result.state === "permission_denied" || result.state === "capture_unavailable" || result.state === "model_unavailable") {
+        const resultPresentation = statePresentation(result);
         toast({
-          title: presentation.label,
+          title: resultPresentation.label,
           description: result.message,
           variant: result.state === "model_unavailable" ? "destructive" : "default",
         });
       }
     } catch (actionError) {
       toast({
-        title: "AI Shield could not start",
+        title: "AI Shield action could not complete",
         description: actionError instanceof Error ? actionError.message : "Please try again.",
         variant: "destructive",
       });
@@ -154,6 +155,7 @@ export function AiShieldControls() {
 
           <div className="flex flex-wrap gap-2">
             <Button
+              type="button"
               onClick={() => void run(shield.startCamera)}
               disabled={shield.isBusy || monitoring}
               data-testid="button-start-ai-camera"
@@ -162,6 +164,7 @@ export function AiShieldControls() {
               Monitor camera
             </Button>
             <Button
+              type="button"
               variant="outline"
               onClick={() => void run(shield.startScreen)}
               disabled={shield.isBusy || monitoring}
@@ -171,6 +174,7 @@ export function AiShieldControls() {
               Monitor screen
             </Button>
             <Button
+              type="button"
               variant="outline"
               onClick={() => void run(shield.stop)}
               disabled={shield.isBusy || !monitoring}

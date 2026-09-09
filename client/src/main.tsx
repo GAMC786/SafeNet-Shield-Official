@@ -42,6 +42,29 @@ const root = createRoot(document.getElementById("root")!);
 
 const STARTUP_LOADER_DURATION_MS = 10_000;
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
+let startupDurationComplete = false;
+let startupAppReady = false;
+
+function completeStartupIfReady() {
+  if (!startupDurationComplete || !startupAppReady) {
+    return;
+  }
+  const loader = document.getElementById("startup-loader");
+  if (!loader || loader.classList.contains("is-complete")) {
+    return;
+  }
+  loader.setAttribute("aria-busy", "false");
+  loader.classList.add("is-complete");
+  window.setTimeout(() => loader.remove(), 240);
+  window.setTimeout(() => {
+    window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
+  }, 240);
+}
+
+function markStartupAppReady() {
+  startupAppReady = true;
+  completeStartupIfReady();
+}
 
 function startStartupLoader() {
   const loader = document.getElementById("startup-loader");
@@ -54,11 +77,14 @@ function startStartupLoader() {
   const startedAt = performance.now();
   const updateProgress = () => {
     const elapsed = performance.now() - startedAt;
-    const value = Math.min(
-      100,
-      Math.floor((elapsed / STARTUP_LOADER_DURATION_MS) * 100),
+    const progress = Math.min(
+      1,
+      elapsed / STARTUP_LOADER_DURATION_MS,
     );
-    progressBar.style.width = `${value}%`;
+    const value = Math.floor(
+      progress * 100,
+    );
+    progressBar.style.transform = `scaleX(${progress})`;
     percentage.textContent = `${value}%`;
     loader.setAttribute("aria-valuenow", String(value));
 
@@ -67,11 +93,8 @@ function startStartupLoader() {
       return;
     }
 
-    loader.classList.add("is-complete");
-    window.setTimeout(() => loader.remove(), 240);
-    window.setTimeout(() => {
-      window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
-    }, 240);
+    startupDurationComplete = true;
+    completeStartupIfReady();
   };
 
   window.requestAnimationFrame(updateProgress);
@@ -99,6 +122,7 @@ function renderStartupError(error: unknown) {
       </div>
     </div>,
   );
+  markStartupAppReady();
 }
 
 async function loadClerkConfig(): Promise<ClerkRuntimeConfig> {
@@ -165,15 +189,18 @@ const buildConfig = getBuildClerkConfig();
 if (buildConfig.publishableKey) {
   hideDashboardFallback();
   root.render(<App clerkConfig={buildConfig} />);
+  markStartupAppReady();
 } else if (isPackagedApp()) {
   // Keep the static Command Center visible if a release was built without
   // Clerk configuration. Never replace it with a blank surface.
   console.warn("SafeNet APK is missing its embedded Clerk publishable key.");
+  markStartupAppReady();
 } else {
   void loadClerkConfig()
     .then((clerkConfig) => {
       hideDashboardFallback();
       root.render(<App clerkConfig={clerkConfig} />);
+      markStartupAppReady();
     })
     .catch(renderStartupError);
 }
