@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
-import { DDNS_DEFAULT_INTERVAL_MS, DDNS_MIN_INTERVAL_MS, type PublicDdnsUpdater } from "@shared/schema";
+import { DDNS_DEFAULT_INTERVAL_SECONDS, DDNS_MIN_INTERVAL_SECONDS, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2 } from "lucide-react";
@@ -74,7 +74,7 @@ export default function DdnsUpdater() {
     provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
     apiKey: "",
     customUrl: "",
-    updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_MS / 1000,
+    updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_SECONDS,
     isEnabled: true,
   });
 
@@ -84,7 +84,7 @@ export default function DdnsUpdater() {
       provider: "duckdns",
       apiKey: "",
       customUrl: "",
-      updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_MS / 1000,
+      updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_SECONDS,
       isEnabled: true,
     });
     setEditingUpdater(null);
@@ -102,7 +102,7 @@ export default function DdnsUpdater() {
       provider: updater.provider,
       apiKey: "",
       customUrl: "",
-      updateIntervalSeconds: Math.max(DDNS_MIN_INTERVAL_MS / 1000, Math.round((updater.updateInterval || DDNS_DEFAULT_INTERVAL_MS) / 1000)),
+      updateIntervalSeconds: Math.max(DDNS_MIN_INTERVAL_SECONDS, updater.updateInterval || DDNS_DEFAULT_INTERVAL_SECONDS),
       isEnabled: updater.isEnabled !== false,
     });
     setIsOpen(true);
@@ -117,7 +117,7 @@ export default function DdnsUpdater() {
           id: editingUpdater.id,
           data: {
             ...updaterData,
-            updateInterval: Math.max(DDNS_MIN_INTERVAL_MS, Math.round(formData.updateIntervalSeconds * 1000)),
+            updateInterval: Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(formData.updateIntervalSeconds)),
             ...(apiKey.trim() ? { apiKey } : {}),
             ...(customUrl.trim() ? { customUrl } : {}),
           },
@@ -125,7 +125,7 @@ export default function DdnsUpdater() {
       } else {
         await createUpdater.mutateAsync({
           ...formData,
-          updateInterval: Math.max(DDNS_MIN_INTERVAL_MS, Math.round(formData.updateIntervalSeconds * 1000)),
+          updateInterval: Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(formData.updateIntervalSeconds)),
         });
       }
       setIsOpen(false);
@@ -339,9 +339,9 @@ export default function DdnsUpdater() {
                   <Label>Update Interval (seconds)</Label>
                 <Input
                    value={formData.updateIntervalSeconds}
-                   onChange={(e) => setFormData({ ...formData, updateIntervalSeconds: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MS / 1000 })}
+                   onChange={(e) => setFormData({ ...formData, updateIntervalSeconds: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_SECONDS })}
                   type="number"
-                   min={DDNS_MIN_INTERVAL_MS / 1000}
+                   min={DDNS_MIN_INTERVAL_SECONDS}
                    step="1"
                   className="bg-background border-border"
                 />

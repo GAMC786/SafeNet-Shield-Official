@@ -121,9 +121,9 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     const httpsPayload = await httpsResponse.json();
     assert.equal(httpsPayload.provider, "iplink");
     assert.equal(httpsPayload.updateInterval, 123456);
-    const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 999);
+    const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 0);
     assert.equal(invalidIntervalResponse.status, 400);
-    assert.match((await invalidIntervalResponse.json()).message, /milliseconds/);
+    assert.match((await invalidIntervalResponse.json()).message, /second/);
     assert.equal(providerRequests, 0);
 
     globalThis.fetch = async (_input, init) => {

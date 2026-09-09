@@ -13,7 +13,9 @@ import {
   firewallConfigSchema,
   insertAntivirusSettingsSchema,
   insertFirewallRuleSchema,
+  DDNS_DEFAULT_INTERVAL_SECONDS,
   DDNS_DEFAULT_INTERVAL_MS,
+  DDNS_MIN_INTERVAL_SECONDS,
   DDNS_MIN_INTERVAL_MS,
 } from "@shared/schema";
 import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
@@ -42,7 +44,9 @@ function publicDdnsUpdater(updater: DdnsUpdater) {
     lastFailureMessage: updater.lastFailureMessage,
     lastFailureTime: updater.lastFailureTime,
     isEnabled: updater.isEnabled,
-    updateInterval: updater.updateInterval,
+    updateInterval: updater.updateInterval === null
+      ? DDNS_DEFAULT_INTERVAL_SECONDS
+      : Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(updater.updateInterval / 1000)),
   };
 }
 
@@ -287,10 +291,10 @@ export async function registerRoutes(
       if (provider !== "iplink" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MS).safeParse(updateInterval);
+       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_SECONDS).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MS} milliseconds`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_SECONDS} second`,
          });
        }
        const updater = await storage.createDdnsUpdater({
@@ -298,7 +302,9 @@ export async function registerRoutes(
         provider,
         apiKey: apiKey || "",
         customUrl: customUrl || null,
-         updateInterval: parsedInterval.success ? parsedInterval.data : DDNS_DEFAULT_INTERVAL_MS,
+          updateInterval: parsedInterval.success
+            ? parsedInterval.data * 1000
+            : DDNS_DEFAULT_INTERVAL_MS,
         isEnabled: isEnabled !== false,
       });
       res.status(201).json(publicDdnsUpdater(updater));
@@ -314,10 +320,10 @@ export async function registerRoutes(
       if (customUrl !== undefined && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MS).safeParse(updateInterval);
+       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_SECONDS).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MS} milliseconds`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_SECONDS} second`,
          });
        }
        const updater = await storage.updateDdnsUpdater(id, {
@@ -325,7 +331,9 @@ export async function registerRoutes(
         ...(provider && { provider }),
         ...(apiKey !== undefined && { apiKey }),
         ...(customUrl !== undefined && { customUrl }),
-         ...(updateInterval !== undefined && { updateInterval: parsedInterval.data }),
+          ...(updateInterval !== undefined && parsedInterval.success
+            ? { updateInterval: parsedInterval.data * 1000 }
+            : {}),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
       res.json(publicDdnsUpdater(updater));

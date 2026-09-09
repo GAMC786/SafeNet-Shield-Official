@@ -159,7 +159,7 @@ function mockApi(
       lastIpAddress: null,
       lastUpdateTime: null,
       isEnabled: true,
-      updateInterval: 3600000,
+      updateInterval: 3600,
     },
     {
       id: 2,
@@ -168,7 +168,7 @@ function mockApi(
       lastIpAddress: null,
       lastUpdateTime: null,
       isEnabled: false,
-      updateInterval: 3600000,
+      updateInterval: 3600,
     },
   ];
 

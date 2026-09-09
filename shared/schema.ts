@@ -2,8 +2,11 @@ import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const DDNS_DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
-export const DDNS_MIN_INTERVAL_MS = 1000;
+export const DDNS_DEFAULT_INTERVAL_SECONDS = 60 * 60;
+export const DDNS_MIN_INTERVAL_SECONDS = 1;
+export const DDNS_SCHEDULER_INTERVAL_SECONDS = 1;
+export const DDNS_DEFAULT_INTERVAL_MS = DDNS_DEFAULT_INTERVAL_SECONDS * 1000;
+export const DDNS_MIN_INTERVAL_MS = DDNS_MIN_INTERVAL_SECONDS * 1000;
 
 // === TABLE DEFINITIONS ===
 
@@ -73,7 +76,7 @@ export const ddnsUpdaters = pgTable("ddns_updaters", {
   lastFailureMessage: text("last_failure_message"),
   lastFailureTime: timestamp("last_failure_time"),
   isEnabled: boolean("is_enabled").default(true),
-  updateInterval: integer("update_interval").default(DDNS_DEFAULT_INTERVAL_MS), // milliseconds
+  updateInterval: integer("update_interval").default(DDNS_DEFAULT_INTERVAL_MS), // internal milliseconds
 });
 
 export const firewallRules = pgTable("firewall_rules", {

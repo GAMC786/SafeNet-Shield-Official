@@ -1,5 +1,9 @@
 import { storage } from "./storage";
-import { DDNS_DEFAULT_INTERVAL_MS } from "@shared/schema";
+import {
+  DDNS_DEFAULT_INTERVAL_SECONDS,
+  DDNS_MIN_INTERVAL_SECONDS,
+  DDNS_SCHEDULER_INTERVAL_SECONDS,
+} from "@shared/schema";
 import type { IStorage } from "./storage";
 
 type DdnsSchedulerStorage = Pick<
@@ -261,11 +265,19 @@ export async function checkAndUpdateDdns(
     if (!updater.isEnabled || (targetUpdaterId !== undefined && updater.id !== targetUpdaterId)) continue;
 
     // Check if update is needed
-    const lastUpdate = updater.lastUpdateTime ? new Date(updater.lastUpdateTime).getTime() : 0;
-    const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdate; // in milliseconds
+    const lastUpdateSeconds = updater.lastUpdateTime
+      ? Math.floor(new Date(updater.lastUpdateTime).getTime() / 1000)
+      : 0;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const timeSinceLastUpdateSeconds = nowSeconds - lastUpdateSeconds;
+    const updateIntervalSeconds = updater.updateInterval === null
+      ? DDNS_DEFAULT_INTERVAL_SECONDS
+      : Math.max(
+          DDNS_MIN_INTERVAL_SECONDS,
+          Math.ceil(updater.updateInterval / 1000),
+        );
 
-    if (timeSinceLastUpdate < (updater.updateInterval ?? DDNS_DEFAULT_INTERVAL_MS)) {
+    if (timeSinceLastUpdateSeconds < updateIntervalSeconds) {
       continue; // Respect the configured provider write interval
     }
 
@@ -305,14 +317,14 @@ export async function checkAndUpdateDdns(
   return results;
 }
 
-// Start periodic DDNS check. The scheduler wakes frequently so second-level
-// intervals are honored; each updater still enforces its own write interval.
+// Start periodic DDNS check. All scheduler decisions use seconds; the
+// millisecond conversion is isolated to the legacy persistence boundary.
 export function startDdnsScheduler(): NodeJS.Timer {
   const interval = setInterval(
     () => {
       checkAndUpdateDdns().catch((err) => console.error("DDNS scheduler error:", err));
     },
-    1000
+    DDNS_SCHEDULER_INTERVAL_SECONDS * 1000
   );
 
   // Run immediately on startup
