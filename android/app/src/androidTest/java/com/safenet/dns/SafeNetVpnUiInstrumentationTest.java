@@ -22,11 +22,14 @@ import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.Until;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.rules.TestName;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -45,11 +48,14 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final String VPN_SWITCH_LABEL = "Enable DNS Protection VPN";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
+    private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
     private final UiDevice device =
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+    @Rule
+    public final TestName testName = new TestName();
     private Activity activity;
 
     @Before
@@ -61,7 +67,10 @@ public class SafeNetVpnUiInstrumentationTest {
         Intent launchIntent = new Intent(context, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
-        waitForCapacitorBridge();
+        if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName()) &&
+            !"startupLoaderWaitsForDelayedSecureConfiguration".equals(testName.getMethodName())) {
+            waitForCapacitorBridge();
+        }
     }
 
     @After
@@ -73,7 +82,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchIsAccessibleAndUnavailableWithoutActiveResolver() throws Exception {
-        openSettingsWithoutActiveResolver();
+        openDashboardWithoutActiveResolver();
         waitForWebView(
             "Boolean(document.querySelector('[role=\"switch\"][aria-label=\"" +
                 VPN_SWITCH_LABEL +
@@ -105,7 +114,7 @@ public class SafeNetVpnUiInstrumentationTest {
             "})()"
         );
 
-        assertEquals("Settings must render exactly one VPN switch", 1, domState.getInt("count"));
+        assertEquals("Dashboard must render exactly one VPN switch", 1, domState.getInt("count"));
         assertEquals(VPN_SWITCH_LABEL, domState.getString("label"));
         assertEquals("switch", domState.getString("role"));
         assertEquals("false", domState.getString("checked"));
@@ -154,6 +163,313 @@ public class SafeNetVpnUiInstrumentationTest {
             "Keyboard navigation must not focus the disabled VPN switch",
             accessibleSwitch.isFocused()
         );
+    }
+
+    @Test
+    public void startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff() throws Exception {
+        JSONObject startup = callWebView(
+            "(() => {" +
+                "const samples = [];" +
+                "let startupCompleteEvents = 0;" +
+                "window.addEventListener('safenet:startup-complete', () => startupCompleteEvents++);" +
+                "const startedAt = performance.now();" +
+                "const readState = () => {" +
+                    "const loader = document.getElementById('startup-loader');" +
+                    "const fallback = document.getElementById('dashboard-fallback');" +
+                    "const soundtrack = Array.from(document.querySelectorAll('button,[role=\"button\"]'))" +
+                        ".filter((element) => /soundtrack|volume|music/i.test(" +
+                            "(element.getAttribute('aria-label') || '') + ' ' + element.textContent));" +
+                    "const style = loader ? getComputedStyle(loader) : null;" +
+                    "const fallbackStyle = fallback ? getComputedStyle(fallback) : null;" +
+                    "const controlStyles = soundtrack.map((element) => " +
+                        "getComputedStyle(element.parentElement || element));" +
+                    "const dots = loader ? Array.from(loader.querySelectorAll('.startup-loader-dot')) : [];" +
+                    "return {" +
+                        "elapsed: Math.round(performance.now() - startedAt)," +
+                        "loaderPresent: Boolean(loader)," +
+                        "loaderBusy: loader?.getAttribute('aria-busy')," +
+                        "value: loader ? Number(loader.getAttribute('aria-valuenow')) : null," +
+                        "opacity: style ? Number(style.opacity) : null," +
+                        "zIndex: style ? Number(style.zIndex) : null," +
+                        "background: style?.backgroundColor," +
+                        "fallbackPresent: Boolean(fallback)," +
+                        "fallbackVisible: Boolean(fallback && fallbackStyle && " +
+                            "fallbackStyle.display !== 'none' && fallbackStyle.visibility !== 'hidden')," +
+                        "fallbackZIndex: fallbackStyle ? Number(fallbackStyle.zIndex) || 0 : null," +
+                        "soundtrackCount: soundtrack.length," +
+                        "soundtrackZIndexes: controlStyles.map((controlStyle) => " +
+                            "Number(controlStyle.zIndex) || 0)," +
+                         "viewport: {" +
+                             "width: window.innerWidth," +
+                             "height: window.innerHeight" +
+                         "}," +
+                         "bounds: {" +
+                             "title: elementBounds(loader?.querySelector('.startup-loader-title'))," +
+                             "progress: elementBounds(loader?.querySelector('.startup-loader-progress'))," +
+                             "percentage: elementBounds(loader?.querySelector('#startup-loader-percentage'))," +
+                             "dots: elementBounds(loader?.querySelector('.startup-loader-dots'))" +
+                         "}," +
+                        "dotCount: dots.length," +
+                        "dotAnimations: dots.map((dot) => {" +
+                            "const dotStyle = getComputedStyle(dot);" +
+                            "return {" +
+                                "name: dotStyle.animationName," +
+                                "duration: dotStyle.animationDuration," +
+                                "iterationCount: dotStyle.animationIterationCount" +
+                            "};" +
+                        "})" +
+                    "};" +
+                "};" +
+                 "const elementBounds = (element) => {" +
+                     "if (!element) return null;" +
+                     "const rect = element.getBoundingClientRect();" +
+                     "return {" +
+                         "left: rect.left," +
+                         "top: rect.top," +
+                         "right: rect.right," +
+                         "bottom: rect.bottom," +
+                         "width: rect.width," +
+                         "height: rect.height" +
+                     "};" +
+                 "};" +
+                "return new Promise((resolve) => {" +
+                    "const finish = (state) => window.setTimeout(() => resolve({" +
+                        "samples," +
+                        "handoffComplete: startupCompleteEvents > 0," +
+                        "rootReady: Boolean(document.querySelector('#root > *'))," +
+                        "fallbackRemoved: !document.getElementById('dashboard-fallback')," +
+                        "soundtrackPresent: state.soundtrackCount > 0" +
+                    "}), 300);" +
+                    "const sample = () => {" +
+                        "const state = readState();" +
+                        "samples.push(state);" +
+                        "if (!state.loaderPresent || samples.length >= " +
+                            STARTUP_LOADER_MAX_SAMPLES + ") {" +
+                            "finish(state);" +
+                        "} else {" +
+                            "window.setTimeout(sample, 125);" +
+                        "}" +
+                    "};" +
+                    "sample();" +
+                "});" +
+            "})()"
+        );
+
+        assertTrue("Startup loader sampling failed: " + startup.optString("message"),
+            startup.optBoolean("ok", false));
+        JSONObject handoff = startup.getJSONObject("value");
+        JSONArray samples = handoff.getJSONArray("samples");
+        assertTrue("Expected multiple startup loader samples", samples.length() >= 3);
+
+        int previousValue = -1;
+        boolean sawFallbackUnderLoader = false;
+        boolean sawSoundtrackUnderLoader = false;
+        boolean sawCompletingLoader = false;
+        for (int index = 0; index < samples.length(); index++) {
+            JSONObject sample = samples.getJSONObject(index);
+            if (!sample.getBoolean("loaderPresent")) {
+                continue;
+            }
+
+            int value = sample.getInt("value");
+            assertTrue("Loader progress must be between 0 and 100: " + sample,
+                value >= 0 && value <= 100);
+            assertTrue(
+                "Loader progress must never move backwards: " + samples,
+                value >= previousValue
+            );
+            previousValue = value;
+
+            assertTrue("Loader must remain opaque during startup: " + sample,
+                sample.getDouble("opacity") >= 0.99);
+            assertEquals("Loader must use its opaque startup surface",
+                "rgb(9, 11, 20)", sample.getString("background"));
+            assertTrue("Loader must remain above the fallback: " + sample,
+                sample.getInt("zIndex") > sample.optInt("fallbackZIndex", 0));
+             assertStartupElementBounds(sample);
+
+            if (sample.getBoolean("fallbackPresent")) {
+                assertTrue("Static fallback must remain underneath the loader: " + sample,
+                    sample.getBoolean("fallbackVisible"));
+                sawFallbackUnderLoader = true;
+            }
+
+            if (sample.getInt("soundtrackCount") > 0) {
+                JSONArray soundtrackZIndexes = sample.getJSONArray("soundtrackZIndexes");
+                for (int controlIndex = 0; controlIndex < soundtrackZIndexes.length(); controlIndex++) {
+                    assertTrue("Soundtrack controls must remain underneath the loader: " + sample,
+                        sample.getInt("zIndex") > soundtrackZIndexes.getInt(controlIndex));
+                }
+                sawSoundtrackUnderLoader = true;
+            }
+
+            assertEquals("Loader must expose all three red-dot animation elements",
+                3, sample.getInt("dotCount"));
+            JSONArray animations = sample.getJSONArray("dotAnimations");
+            for (int dotIndex = 0; dotIndex < animations.length(); dotIndex++) {
+                JSONObject animation = animations.getJSONObject(dotIndex);
+                assertEquals("Red dots must use the startup pulse animation",
+                    "startup-loader-dot-pulse", animation.getString("name"));
+                assertTrue("Red-dot animation must have a duration",
+                    !"0s".equals(animation.getString("duration")));
+                assertEquals("Red-dot animation must loop during startup",
+                    "infinite", animation.getString("iterationCount"));
+            }
+
+            if (value >= 100 || "false".equals(sample.optString("loaderBusy"))) {
+                sawCompletingLoader = true;
+            }
+        }
+
+        assertTrue("The loader never reached its completing state", sawCompletingLoader);
+        assertTrue("The soundtrack control was not observed underneath the loader",
+            sawSoundtrackUnderLoader);
+        assertTrue("The static fallback must be observed underneath the loader",
+            sawFallbackUnderLoader);
+        assertTrue("The app must be ready before the loader is removed",
+            handoff.getBoolean("rootReady"));
+        assertTrue("The loader handoff event must complete before the test finishes",
+            handoff.getBoolean("handoffComplete"));
+        assertTrue("The static fallback must be removed during the completed handoff",
+            handoff.getBoolean("fallbackRemoved"));
+        assertTrue("The soundtrack control must survive the loader handoff",
+            handoff.getBoolean("soundtrackPresent"));
+    }
+
+    private void assertStartupElementBounds(JSONObject sample) throws Exception {
+        JSONObject viewport = sample.getJSONObject("viewport");
+        double viewportWidth = viewport.getDouble("width");
+        double viewportHeight = viewport.getDouble("height");
+        JSONObject bounds = sample.getJSONObject("bounds");
+
+        for (String elementName : new String[] {"title", "percentage", "progress", "dots"}) {
+            JSONObject rect = bounds.optJSONObject(elementName);
+            assertNotNull(
+                "Startup " + elementName + " must be present while the loader is visible: " + sample,
+                rect
+            );
+            assertTrue(
+                "Startup " + elementName + " must have visible width: " + sample,
+                rect.getDouble("width") > 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must have visible height: " + sample,
+                rect.getDouble("height") > 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the left edge: " + sample,
+                rect.getDouble("left") >= 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the top edge: " + sample,
+                rect.getDouble("top") >= 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the right edge: " + sample,
+                rect.getDouble("right") <= viewportWidth
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the bottom edge: " + sample,
+                rect.getDouble("bottom") <= viewportHeight
+            );
+        }
+    }
+
+    @Test
+    public void startupLoaderWaitsForDelayedSecureConfiguration() throws Exception {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView webView = ((MainActivity) activity).getBridge().getWebView();
+            webView.loadUrl("https://localhost/?safenet-startup-test=delayed-config");
+        });
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "Boolean(document.getElementById('startup-loader'))"
+        );
+
+        JSONObject startup = callWebView(
+            "(() => {" +
+                "const samples = [];" +
+                "let startupCompleteEvents = 0;" +
+                "window.addEventListener('safenet:startup-complete', () => startupCompleteEvents++);" +
+                "const startedAt = performance.now();" +
+                "const readState = () => {" +
+                    "const loader = document.getElementById('startup-loader');" +
+                    "const style = loader ? getComputedStyle(loader) : null;" +
+                    "return {" +
+                        "elapsed: Math.round(performance.now() - startedAt)," +
+                        "loaderPresent: Boolean(loader)," +
+                        "loaderBusy: loader?.getAttribute('aria-busy')," +
+                        "value: loader ? Number(loader.getAttribute('aria-valuenow')) : null," +
+                        "opacity: style ? Number(style.opacity) : null," +
+                        "background: style?.backgroundColor," +
+                        "startupError: document.body.textContent.includes('could not start')" +
+                    "};" +
+                "};" +
+                "return new Promise((resolve) => {" +
+                    "const finish = (state) => window.setTimeout(() => resolve({" +
+                        "samples," +
+                        "handoffComplete: startupCompleteEvents > 0," +
+                        "rootReady: Boolean(document.querySelector('#root > *'))," +
+                        "fallbackRemoved: !document.getElementById('dashboard-fallback')," +
+                        "startupError: state.startupError" +
+                    "}), 300);" +
+                    "const sample = () => {" +
+                        "const state = readState();" +
+                        "samples.push(state);" +
+                        "if (!state.loaderPresent || samples.length >= " +
+                            STARTUP_LOADER_MAX_SAMPLES + ") {" +
+                            "finish(state);" +
+                        "} else {" +
+                            "window.setTimeout(sample, 125);" +
+                        "}" +
+                    "};" +
+                    "sample();" +
+                "});" +
+            "})()"
+        );
+
+        assertTrue("Delayed startup loader sampling failed: " + startup.optString("message"),
+            startup.optBoolean("ok", false));
+        JSONObject handoff = startup.getJSONObject("value");
+        JSONArray samples = handoff.getJSONArray("samples");
+        assertTrue("Expected delayed startup to produce multiple samples", samples.length() >= 3);
+
+        int previousValue = -1;
+        boolean sawOpaqueLoaderAtFullProgress = false;
+        for (int index = 0; index < samples.length(); index++) {
+            JSONObject sample = samples.getJSONObject(index);
+            if (!sample.getBoolean("loaderPresent")) {
+                continue;
+            }
+
+            int value = sample.getInt("value");
+            assertTrue("Delayed loader progress must be between 0 and 100: " + sample,
+                value >= 0 && value <= 100);
+            assertTrue("Delayed loader progress must never move backwards: " + samples,
+                value >= previousValue);
+            previousValue = value;
+            assertTrue("Delayed loader must remain opaque during startup: " + sample,
+                sample.getDouble("opacity") >= 0.99);
+            assertEquals("Delayed loader must use its opaque startup surface",
+                "rgb(9, 11, 20)", sample.getString("background"));
+
+            if (value == 100 && "true".equals(sample.optString("loaderBusy"))) {
+                sawOpaqueLoaderAtFullProgress = true;
+            }
+        }
+
+        assertTrue(
+            "The loader was not kept opaque while waiting for delayed secure configuration",
+            sawOpaqueLoaderAtFullProgress
+        );
+        assertTrue("The delayed startup must finish with the app mounted",
+            handoff.getBoolean("rootReady"));
+        assertFalse("Delayed secure configuration must not render the startup error",
+            handoff.getBoolean("startupError"));
+        assertTrue("The delayed startup handoff event must complete",
+            handoff.getBoolean("handoffComplete"));
+        assertTrue("The static fallback must be removed after delayed handoff",
+            handoff.getBoolean("fallbackRemoved"));
     }
 
     @Test
@@ -212,7 +528,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -250,7 +566,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -301,7 +617,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void vpnSwitchRecoversWhenAndroidRevokesVpnAccess() throws Exception {
-        openSettingsWithActiveResolver();
+        openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
 
         clickVpnSwitch();
@@ -378,7 +694,7 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
-    private void openSettingsWithoutActiveResolver() throws Exception {
+    private void openDashboardWithoutActiveResolver() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
                 "const originalFetch = window.fetch;" +
@@ -392,15 +708,15 @@ public class SafeNetVpnUiInstrumentationTest {
                     "}" +
                     "return originalFetch.call(this, input, init);" +
                 "};" +
-                "history.pushState({}, '', '/settings');" +
+                "history.pushState({}, '', '/');" +
                 "window.dispatchEvent(new PopStateEvent('popstate'));" +
                 "return true;" +
             "})()"
         );
-        assertTrue("Could not navigate to Settings in the WebView", result.getBoolean("ok"));
+        assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
     }
 
-    private void openSettingsWithActiveResolver() throws Exception {
+    private void openDashboardWithActiveResolver() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
                 "const originalFetch = window.fetch;" +
@@ -411,6 +727,7 @@ public class SafeNetVpnUiInstrumentationTest {
                             "id: 1," +
                             "name: 'SafeNet Test Resolver'," +
                             "type: 'plain'," +
+                            "ipVersion: 'ipv4'," +
                             "primaryAddress: '1.1.1.1'," +
                             "secondaryAddress: '8.8.8.8'," +
                             "isActive: true" +
@@ -421,12 +738,12 @@ public class SafeNetVpnUiInstrumentationTest {
                     "}" +
                     "return originalFetch.call(this, input, init);" +
                 "};" +
-                "history.pushState({}, '', '/settings');" +
+                "history.pushState({}, '', '/');" +
                 "window.dispatchEvent(new PopStateEvent('popstate'));" +
                 "return true;" +
             "})()"
         );
-        assertTrue("Could not navigate to Settings with an active resolver", result.getBoolean("ok"));
+        assertTrue("Could not navigate to the Dashboard with an active resolver", result.getBoolean("ok"));
     }
 
     private String vpnSwitchExpression(String condition) {
@@ -603,6 +920,69 @@ public class SafeNetVpnUiInstrumentationTest {
             Thread.sleep(250);
         }
         throw new AssertionError("Timed out waiting for WebView condition: " + expression);
+    }
+
+    private JSONObject callVpn(String expression) throws Exception {
+        return callVpn(expression, false);
+    }
+
+    private JSONObject callVpn(String expression, boolean handlePermission) throws Exception {
+        CountDownLatch completed = new CountDownLatch(1);
+        String[] rawResult = new String[1];
+        TestResultBridge resultBridge = new TestResultBridge(rawResult, completed);
+        String script =
+            "(async function() {" +
+                "try { return JSON.stringify({ok:true,value:await (" + expression + ")}); }" +
+                "catch (error) { return JSON.stringify({ok:false,message:String(error.message||error)," +
+                    "code:error.code||''}); }" +
+            "})()" +
+            ".then(function(value) { window.SafeNetVpnUiTestBridge.resolve(value); })" +
+            ".catch(function(error) { window.SafeNetVpnUiTestBridge.resolve(" +
+                "JSON.stringify({ok:false,message:String(error.message||error),code:error.code||''})); })";
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView webView = ((MainActivity) activity).getBridge().getWebView();
+            webView.addJavascriptInterface(resultBridge, "SafeNetVpnUiTestBridge");
+            webView.evaluateJavascript(script, null);
+        });
+
+        try {
+            if (handlePermission && VpnService.prepare(context) != null) {
+                grantVpnPermissionDialog();
+            }
+            if (!completed.await(JS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for SafeNetVpn bridge call: " + expression);
+            }
+            if (rawResult[0] == null) {
+                throw new AssertionError("SafeNetVpn bridge returned no result");
+            }
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                ((MainActivity) activity).getBridge().getWebView()
+                    .removeJavascriptInterface("SafeNetVpnUiTestBridge")
+            );
+        }
+        return new JSONObject(rawResult[0]);
+    }
+
+    private JSONObject startVpnWithPermission(String type, String primary, String secondary)
+        throws Exception {
+        JSONObject result = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.start(" +
+                "{\"type\":\"" + jsQuote(type) + "\",\"primaryAddress\":\"" +
+                jsQuote(primary) + "\",\"secondaryAddress\":\"" + jsQuote(secondary) + "\"})",
+            true
+        );
+        assertTrue(
+            "VPN start failed code=" + result.optString("code") +
+                " message=" + result.optString("message"),
+            result.optBoolean("ok", false)
+        );
+        return result;
+    }
+
+    private String jsQuote(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private JSONObject callWebView(String expression) throws Exception {
