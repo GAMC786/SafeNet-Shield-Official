@@ -67,6 +67,11 @@ public class MainActivity extends BridgeActivity {
 
     private void configureSystemBars(WebView webView) {
         Window window = getWindow();
+        // Explicitly opt out of fullscreen flags. This keeps the Android
+        // status bar present during both the native launch surface and the
+        // WebView handoff, including devices that restore window flags.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
         // Android 15+ enforces edge-to-edge for newer target SDKs. Keep the
         // status/navigation regions black and move WebView content below the
         // live insets instead of allowing content to paint under white icons.
@@ -99,6 +104,18 @@ public class MainActivity extends BridgeActivity {
             });
             ViewCompat.requestApplyInsets(container);
         }
+    }
+
+    private void restoreSystemBars() {
+        Window window = getWindow();
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+        WindowInsetsControllerCompat insetsController =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        insetsController.show(WindowInsetsCompat.Type.statusBars());
+        insetsController.show(WindowInsetsCompat.Type.navigationBars());
+        insetsController.setAppearanceLightStatusBars(false);
+        insetsController.setAppearanceLightNavigationBars(false);
     }
 
     private void installNativeFallback(WebView webView) {
@@ -174,7 +191,16 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        restoreSystemBars();
         resumeSoundtrack();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            restoreSystemBars();
+        }
     }
 
     private void stopSoundtrack() {
