@@ -51,6 +51,34 @@ test("Android startup check records the complete evidence contract", () => {
   );
 });
 
+test("dedicated startup job samples the loader at a compact emulator height", () => {
+  assert.match(
+    startupScript,
+    /COMPACT_STARTUP_WM_SIZE="480x640"/,
+    "compact startup sampling must use a small-height emulator display",
+  );
+  assert.match(
+    startupScript,
+    /shell wm size "\$COMPACT_STARTUP_WM_SIZE"/,
+    "compact startup sampling must apply the compact display size",
+  );
+  assert.match(
+    startupScript,
+    /SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff/,
+    "compact startup sampling must run the existing startup sampling case",
+  );
+  assert.match(
+    startupScript,
+    /restore_compact_wm_size/,
+    "compact startup sampling must restore the emulator display size",
+  );
+  assert.match(
+    startupJob,
+    /--compact-startup[\s\S]*?--test-apk/,
+    "the dedicated startup job must invoke compact sampling with its test APK",
+  );
+});
+
 test("dedicated Android startup job uploads its evidence directory", () => {
   const evidenceDirectory =
     "android/app/build/reports/android-startup/latest";

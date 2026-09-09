@@ -199,6 +199,16 @@ public class SafeNetVpnUiInstrumentationTest {
                         "soundtrackCount: soundtrack.length," +
                         "soundtrackZIndexes: controlStyles.map((controlStyle) => " +
                             "Number(controlStyle.zIndex) || 0)," +
+                         "viewport: {" +
+                             "width: window.innerWidth," +
+                             "height: window.innerHeight" +
+                         "}," +
+                         "bounds: {" +
+                             "title: elementBounds(loader?.querySelector('.startup-loader-title'))," +
+                             "progress: elementBounds(loader?.querySelector('.startup-loader-progress'))," +
+                             "percentage: elementBounds(loader?.querySelector('#startup-loader-percentage'))," +
+                             "dots: elementBounds(loader?.querySelector('.startup-loader-dots'))" +
+                         "}," +
                         "dotCount: dots.length," +
                         "dotAnimations: dots.map((dot) => {" +
                             "const dotStyle = getComputedStyle(dot);" +
@@ -210,6 +220,18 @@ public class SafeNetVpnUiInstrumentationTest {
                         "})" +
                     "};" +
                 "};" +
+                 "const elementBounds = (element) => {" +
+                     "if (!element) return null;" +
+                     "const rect = element.getBoundingClientRect();" +
+                     "return {" +
+                         "left: rect.left," +
+                         "top: rect.top," +
+                         "right: rect.right," +
+                         "bottom: rect.bottom," +
+                         "width: rect.width," +
+                         "height: rect.height" +
+                     "};" +
+                 "};" +
                 "return new Promise((resolve) => {" +
                     "const finish = (state) => window.setTimeout(() => resolve({" +
                         "samples," +
@@ -264,6 +286,7 @@ public class SafeNetVpnUiInstrumentationTest {
                 "rgb(9, 11, 20)", sample.getString("background"));
             assertTrue("Loader must remain above the fallback: " + sample,
                 sample.getInt("zIndex") > sample.optInt("fallbackZIndex", 0));
+             assertStartupElementBounds(sample);
 
             if (sample.getBoolean("fallbackPresent")) {
                 assertTrue("Static fallback must remain underneath the loader: " + sample,
@@ -311,6 +334,45 @@ public class SafeNetVpnUiInstrumentationTest {
             handoff.getBoolean("fallbackRemoved"));
         assertTrue("The soundtrack control must survive the loader handoff",
             handoff.getBoolean("soundtrackPresent"));
+    }
+
+    private void assertStartupElementBounds(JSONObject sample) throws Exception {
+        JSONObject viewport = sample.getJSONObject("viewport");
+        double viewportWidth = viewport.getDouble("width");
+        double viewportHeight = viewport.getDouble("height");
+        JSONObject bounds = sample.getJSONObject("bounds");
+
+        for (String elementName : new String[] {"title", "percentage", "progress", "dots"}) {
+            JSONObject rect = bounds.optJSONObject(elementName);
+            assertNotNull(
+                "Startup " + elementName + " must be present while the loader is visible: " + sample,
+                rect
+            );
+            assertTrue(
+                "Startup " + elementName + " must have visible width: " + sample,
+                rect.getDouble("width") > 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must have visible height: " + sample,
+                rect.getDouble("height") > 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the left edge: " + sample,
+                rect.getDouble("left") >= 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the top edge: " + sample,
+                rect.getDouble("top") >= 0
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the right edge: " + sample,
+                rect.getDouble("right") <= viewportWidth
+            );
+            assertTrue(
+                "Startup " + elementName + " must not extend past the bottom edge: " + sample,
+                rect.getDouble("bottom") <= viewportHeight
+            );
+        }
     }
 
     @Test

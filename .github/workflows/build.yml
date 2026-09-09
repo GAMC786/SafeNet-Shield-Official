@@ -1762,6 +1762,12 @@ jobs:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
+      - name: Download release instrumentation APK for startup sampling
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
       - name: Verify signed release APK
         shell: bash
         run: |
@@ -1810,14 +1816,16 @@ jobs:
           done
           test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = "1"
 
-      - name: Run signed APK startup check
+      - name: Run signed APK startup checks
         id: android-release-startup-check
         shell: bash
         run: |
           set -euo pipefail
           ./scripts/android-smoke-test.sh \
             --startup-only \
+            --compact-startup \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
             --output "$GITHUB_WORKSPACE/android/app/build/reports/android-startup/latest" \
             --serial emulator-5554
 

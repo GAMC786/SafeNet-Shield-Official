@@ -13,6 +13,7 @@ readonly FIXTURE_DOT_PORT=853
 readonly FIXTURE_HTTP_PORT=18080
 readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
+readonly COMPACT_STARTUP_WM_SIZE="480x640"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -20,6 +21,7 @@ serial="${ANDROID_SERIAL:-}"
 output_dir="${ANDROID_SMOKE_OUTPUT_DIR:-android/app/build/reports/android-smoke/latest}"
 preflight_only=false
 startup_only=false
+compact_startup=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
@@ -36,13 +38,31 @@ emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADA
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
+compact_wm_override=""
+compact_wm_size_applied=false
 openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
+adb_args=()
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
 fi
 
+restore_compact_wm_size() {
+    if [[ "$compact_wm_size_applied" != true ]] ||
+        ! command -v adb >/dev/null 2>&1; then
+        return
+    fi
+
+    if [[ -n "$compact_wm_override" ]]; then
+        timeout 30s adb "${adb_args[@]}" shell wm size "$compact_wm_override" >/dev/null 2>&1 || true
+    else
+        timeout 30s adb "${adb_args[@]}" shell wm size reset >/dev/null 2>&1 || true
+    fi
+    compact_wm_size_applied=false
+}
+
 cleanup_fixture() {
+    restore_compact_wm_size
     if [[ -n "$fixture_pid" ]] && kill -0 "$fixture_pid" 2>/dev/null; then
         kill "$fixture_pid" 2>/dev/null || true
         wait "$fixture_pid" 2>/dev/null || true
@@ -81,6 +101,7 @@ Options:
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
   --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
   --startup-only   Install the signed app APK and verify direct WebView startup
+  --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
 
@@ -123,6 +144,10 @@ while [[ $# -gt 0 ]]; do
             startup_only=true
             shift
             ;;
+        --compact-startup)
+            compact_startup=true
+            shift
+            ;;
         --resolver-mode)
             [[ $# -ge 2 ]] || { echo "ERROR: --resolver-mode requires fixture or public." >&2; exit 2; }
             resolver_mode="$2"
@@ -150,6 +175,10 @@ if [[ "$validation_mode" != "hosted-emulator-reduced" &&
     echo "ERROR: ANDROID_SMOKE_VALIDATION_MODE must be hosted-emulator-reduced, hosted-emulator-full, or real-device; got: $validation_mode" >&2
     exit 2
 fi
+if [[ "$compact_startup" == true && "$startup_only" != true ]]; then
+    echo "ERROR: --compact-startup requires --startup-only." >&2
+    exit 2
+fi
 if [[ -z "$device_kind" ]]; then
     echo "ERROR: ANDROID_SMOKE_DEVICE_KIND must not be empty." >&2
     exit 2
@@ -168,7 +197,8 @@ if [[ "$preflight_only" != true && "$(basename "$apk_path")" != "app-release.apk
     echo "ERROR: Android smoke tests require the explicitly named app-release.apk; got: $apk_path" >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && "$startup_only" != true &&
+if [[ "$preflight_only" != true &&
+    ( "$startup_only" != true || "$compact_startup" == true ) &&
     "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release-androidTest.apk; got: $test_apk_path" >&2
     exit 2
@@ -178,7 +208,9 @@ if [[ "$preflight_only" != true && ! -f "$apk_path" ]]; then
     echo "Build android/app/build/outputs/apk/release/app-release.apk first." >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && "$startup_only" != true && ! -f "$test_apk_path" ]]; then
+if [[ "$preflight_only" != true &&
+    ( "$startup_only" != true || "$compact_startup" == true ) &&
+    ! -f "$test_apk_path" ]]; then
     echo "ERROR: Release instrumentation APK not found: $test_apk_path" >&2
     echo "Build app-release-androidTest.apk with assembleReleaseAndroidTest first." >&2
     exit 2
@@ -195,14 +227,14 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/pin-smoke-evidence.txt "$o
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
     "$output_dir"/startup-initial-ui.xml "$output_dir"/startup-transition-ui.xml \
     "$output_dir"/startup-failure-ui.xml "$output_dir"/startup-logcat.txt \
-    "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt
+    "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt \
+    "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
 } > "$output_dir/coverage.txt"
 
-adb_args=()
 if [[ -n "$serial" ]]; then
     adb_args=(-s "$serial")
 fi
@@ -421,7 +453,7 @@ if [[ -z "$apksigner_bin" ]]; then
     exit 2
 fi
 signed_apks=("$apk_path")
-if [[ "$startup_only" != true ]]; then
+if [[ "$startup_only" != true || "$compact_startup" == true ]]; then
     signed_apks+=("$test_apk_path")
 fi
 for signed_apk in "${signed_apks[@]}"; do
@@ -511,6 +543,55 @@ startup_failure() {
     exit 1
 }
 
+compact_startup_failure() {
+    local message="$1"
+    restore_compact_wm_size
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'compact_wm_size=%s\nsampling=RECORDED\nresult=FAIL\nmessage=%s\n' \
+            "$COMPACT_STARTUP_WM_SIZE" "$message"
+    } | tee "$output_dir/compact-startup-result.txt" >&2
+    echo "Android compact startup sampling failed: $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_compact_startup_sampling() {
+    local wm_size_output
+    local compact_status
+
+    echo "Running startup sampling on compact Android viewport $COMPACT_STARTUP_WM_SIZE..."
+    wm_size_output="$(timeout 30s adb "${adb_args[@]}" shell wm size 2>/dev/null | tr -d '\r' || true)"
+    compact_wm_override="$(sed -n 's/^Override size: //p' <<<"$wm_size_output" | head -n 1)"
+    if ! timeout 30s adb "${adb_args[@]}" shell wm size "$COMPACT_STARTUP_WM_SIZE"; then
+        compact_startup_failure "the emulator display could not be set to $COMPACT_STARTUP_WM_SIZE"
+    fi
+    compact_wm_size_applied=true
+
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/compact-startup-instrumentation.log"
+    compact_status="${PIPESTATUS[0]}"
+    set -e
+
+    restore_compact_wm_size
+    if [[ "$compact_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/compact-startup-instrumentation.log"; then
+        compact_startup_failure "the compact startup sampling test failed"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'compact_wm_size=%s\nsampling=RECORDED\nresult=PASS\n' \
+            "$COMPACT_STARTUP_WM_SIZE"
+    } | tee "$output_dir/compact-startup-result.txt"
+}
+
 run_startup_check() {
     local initial_ui
     local launch_output
@@ -570,6 +651,11 @@ timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || tr
 timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
 if [[ "$startup_only" == true ]]; then
     run_startup_check
+    if [[ "$compact_startup" == true ]]; then
+        install_release_apk "$test_apk_path" ||
+            startup_failure "the release instrumentation APK could not be installed for compact startup sampling"
+        run_compact_startup_sampling
+    fi
     exit 0
 fi
 if ! install_release_apk "$apk_path"; then
