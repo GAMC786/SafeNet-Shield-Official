@@ -49,7 +49,15 @@ async function startVite() {
     [viteBin, "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: rootDirectory,
-      env: { ...process.env, NODE_ENV: "test" },
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        VITE_SPEEDTEST_DOWNLOAD_SECONDS: process.env.VITE_SPEEDTEST_DOWNLOAD_SECONDS || "0.2",
+        VITE_SPEEDTEST_UPLOAD_SECONDS: process.env.VITE_SPEEDTEST_UPLOAD_SECONDS || "0.2",
+        VITE_SPEEDTEST_PING_COUNT: process.env.VITE_SPEEDTEST_PING_COUNT || "2",
+        VITE_SPEEDTEST_UPLOAD_BYTES: process.env.VITE_SPEEDTEST_UPLOAD_BYTES || "32000",
+        VITE_SPEEDTEST_REQUEST_TIMEOUT_MS: process.env.VITE_SPEEDTEST_REQUEST_TIMEOUT_MS || "500",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -79,6 +87,8 @@ function mockApi(
   {
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
+    libreSpeedResponses = [],
+    libreSpeedPingDelayMs = 0,
     settingsDelayMs = 0,
     dnsDelayMs = 0,
   } = {},
@@ -152,6 +162,17 @@ function mockApi(
   };
   let ddnsUpdateAttempt = 0;
   let threatFeedUpdateAttempt = 0;
+  const usedLibreSpeedResponses = new Set();
+  const nextLibreSpeedResponse = (pathname, method) => {
+    const responseIndex = libreSpeedResponses.findIndex((candidate, index) =>
+      !usedLibreSpeedResponses.has(index) &&
+      (!candidate.path || candidate.path === pathname) &&
+      (!candidate.method || candidate.method === method),
+    );
+    if (responseIndex < 0) return null;
+    usedLibreSpeedResponses.add(responseIndex);
+    return libreSpeedResponses[responseIndex];
+  };
   const updaters = [
     {
       id: 1,
@@ -243,6 +264,37 @@ function mockApi(
         }
         antivirusSettings = { ...antivirusSettings, ...update };
         response = antivirusSettings;
+      } else if (url.pathname.startsWith("/api/speedtest/librespeed/")) {
+        const configuredResponse = nextLibreSpeedResponse(url.pathname, method);
+        if (configuredResponse?.delayMs || (method === "GET" && url.pathname.endsWith("/empty.php") && libreSpeedPingDelayMs)) {
+          await new Promise((resolve) => setTimeout(resolve, configuredResponse?.delayMs || libreSpeedPingDelayMs));
+        }
+        if (configuredResponse?.hang) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+        if (configuredResponse) {
+          await route.fulfill({
+            status: configuredResponse.status ?? 200,
+            contentType: configuredResponse.contentType ?? "application/json",
+            body: configuredResponse.body ?? "",
+          });
+          return;
+        }
+        if (url.pathname.endsWith("/garbage.php")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/octet-stream",
+            headers: { "cache-control": "no-store" },
+            body: Buffer.alloc(250_000, 0xa5),
+          });
+          return;
+        }
+        if (url.pathname.endsWith("/getIP.php")) {
+          response = { processedString: "198.51.100.24", rawIspInfo: "" };
+        } else {
+          await route.fulfill({ status: 204, body: "" });
+          return;
+        }
       } else if (url.pathname === "/api/speedtest/ping" && method === "GET") {
         await new Promise((resolve) => setTimeout(resolve, 50));
         response = { timestamp: Date.now() };
@@ -319,6 +371,27 @@ function mockApi(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({}),
+      }),
+    ),
+    page.route("https://ipapi.co/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", org: "SafeNet Test ISP", city: "Test City", country_name: "Testland" }),
+      }),
+    ),
+    page.route("https://ipinfo.io/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", org: "SafeNet Test ISP", city: "Test City", country: "Testland" }),
+      }),
+    ),
+    page.route("https://ipwho.is/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", connection: { org: "SafeNet Test ISP" }, city: "Test City", country: "Testland" }),
       }),
     ),
   ]);
@@ -794,5 +867,76 @@ test("the ISP-based Measure Your Network UI uses LibreSpeed without an external 
     [],
     `speed test should not log console errors: ${consoleErrors.join("; ")}`,
   );
+  await page.close();
+});
+
+test("Measure Your Network completes LibreSpeed phases and supports pause and resume", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  const requestedPaths = [];
+  await mockApi(page, { libreSpeedPingDelayMs: 250 });
+  page.on("request", (request) => {
+    if (request.url().includes("/api/speedtest/librespeed/")) {
+      requestedPaths.push(new URL(request.url()).pathname);
+    }
+  });
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByRole("heading", { name: "Speed Test" }).waitFor();
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByTestId("button-pause-speedtest").waitFor();
+  await page.getByTestId("button-pause-speedtest").click();
+  await page.getByTestId("button-start-speedtest").waitFor();
+  assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Resume Test/);
+  assert.equal(await page.getByText("Paused", { exact: true }).count(), 1);
+
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 10_000 });
+  assert.notEqual(await page.getByTestId("text-ping-result").textContent(), "—", "latency result should be populated");
+  assert.notEqual(await page.getByTestId("text-download-result").textContent(), "—", "download result should be populated");
+  assert.notEqual(await page.getByTestId("text-upload-result").textContent(), "—", "upload result should be populated");
+  assert.ok(await page.getByTestId("text-download-result").evaluate((element) => Number.parseFloat(element.textContent) > 0), "download result should be positive");
+  assert.ok(await page.getByTestId("text-upload-result").evaluate((element) => Number.parseFloat(element.textContent) > 0), "upload result should be positive");
+  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/getIP.php"));
+  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/garbage.php"));
+  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/empty.php"));
+  await page.close();
+});
+
+test("Measure Your Network reports LibreSpeed endpoint errors and retries successfully", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, {
+    libreSpeedResponses: [{
+      path: "/api/speedtest/librespeed/getIP.php",
+      method: "GET",
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "measurement backend unavailable" }),
+    }],
+  });
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByRole("alert").filter({ hasText: "LibreSpeed endpoint returned HTTP 503." }).waitFor();
+  assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Retry Test/);
+
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 10_000 });
+  await page.close();
+});
+
+test("Measure Your Network fails clearly when a LibreSpeed endpoint stalls", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, {
+    libreSpeedResponses: [{
+      path: "/api/speedtest/librespeed/getIP.php",
+      method: "GET",
+      hang: true,
+    }],
+  });
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByRole("alert").filter({ hasText: /LibreSpeed endpoint timed out after \d+ms\./ }).waitFor({ timeout: 5_000 });
+  assert.match(await page.getByText("Test interrupted", { exact: true }).textContent(), /Test interrupted/);
   await page.close();
 });

@@ -33,6 +33,8 @@ export interface LibreSpeedClientOptions {
   pingCount?: number;
   downloadStreams?: number;
   uploadStreams?: number;
+  uploadBytes?: number;
+  requestTimeoutMs?: number;
   onUpdate?: (status: LibreSpeedStatus) => void;
   onEnd?: (aborted: boolean) => void;
   onError?: (error: Error) => void;
@@ -78,6 +80,8 @@ export class LibreSpeedClient {
       pingCount: options.pingCount ?? 10,
       downloadStreams: options.downloadStreams ?? 5,
       uploadStreams: options.uploadStreams ?? 3,
+      uploadBytes: options.uploadBytes ?? 2_000_000,
+      requestTimeoutMs: options.requestTimeoutMs ?? 10_000,
     };
   }
 
@@ -112,6 +116,7 @@ export class LibreSpeedClient {
       const request = new XMLHttpRequest();
       this.activeRequests.add(request);
       request.open(method, withRandomQuery(url), true);
+      request.timeout = this.options.requestTimeoutMs;
       request.setRequestHeader("Cache-Control", "no-cache");
       if (method === "POST") request.setRequestHeader("Content-Encoding", "identity");
       request.onload = () => {
@@ -125,6 +130,10 @@ export class LibreSpeedClient {
       request.onerror = () => {
         this.activeRequests.delete(request);
         reject(new Error("The LibreSpeed measurement request failed."));
+      };
+      request.ontimeout = () => {
+        this.activeRequests.delete(request);
+        reject(new Error(`LibreSpeed endpoint timed out after ${this.options.requestTimeoutMs}ms.`));
       };
       request.onabort = () => {
         this.activeRequests.delete(request);
@@ -228,9 +237,10 @@ export class LibreSpeedClient {
     let measuredStartedAt = 0;
     let measurementStarted = false;
     let finished = false;
-    const uploadBytes = new Uint8Array(2_000_000);
-    if (direction === "upload") uploadBytes.fill(83);
-    const payload = direction === "upload" ? new Blob([uploadBytes], { type: "application/octet-stream" }) : undefined;
+    let timer: number | null = null;
+    const uploadPayload = new Uint8Array(this.options.uploadBytes);
+    if (direction === "upload") uploadPayload.fill(83);
+    const payload = direction === "upload" ? new Blob([uploadPayload], { type: "application/octet-stream" }) : undefined;
     const path = this.url(direction === "download" ? this.options.downloadPath : this.options.uploadPath);
 
     return new Promise<{ speed: number }>((resolve, reject) => {
@@ -238,6 +248,10 @@ export class LibreSpeedClient {
         if (finished) return;
         finished = true;
         this.cancelCurrentTransfer = null;
+        if (timer !== null) {
+          window.clearTimeout(timer);
+          this.timers.delete(timer);
+        }
         if (!measurementStarted || measuredBytes <= 0) {
           reject(new Error(`LibreSpeed ${direction} test received no measurable data.`));
           return;
@@ -250,6 +264,18 @@ export class LibreSpeedClient {
         finished = true;
         this.cancelCurrentTransfer = null;
         reject(new Error("The LibreSpeed measurement was aborted."));
+      };
+      const fail = (error: Error) => {
+        if (finished) return;
+        finished = true;
+        this.cancelCurrentTransfer = null;
+        if (timer !== null) {
+          window.clearTimeout(timer);
+          this.timers.delete(timer);
+        }
+        this.activeRequests.forEach((request) => request.abort());
+        this.activeRequests.clear();
+        reject(error);
       };
       this.cancelCurrentTransfer = cancel;
       const launch = () => {
@@ -279,6 +305,7 @@ export class LibreSpeedClient {
           }
         };
         request.open(direction === "download" ? "GET" : "POST", withRandomQuery(path), true);
+        request.timeout = this.options.requestTimeoutMs;
         request.setRequestHeader("Cache-Control", "no-cache");
         request.setRequestHeader("Content-Encoding", "identity");
         if (direction === "download") {
@@ -289,6 +316,10 @@ export class LibreSpeedClient {
         }
         request.onload = () => {
           this.activeRequests.delete(request);
+          if (request.status < 200 || request.status >= 300) {
+            fail(new Error(`LibreSpeed endpoint returned HTTP ${request.status}.`));
+            return;
+          }
           if (direction === "download" && request.response instanceof ArrayBuffer && previousBytes === 0) {
             update(request.response.byteLength);
           } else if (direction === "upload" && payload && previousBytes === 0) {
@@ -298,14 +329,19 @@ export class LibreSpeedClient {
         };
         request.onerror = () => {
           this.activeRequests.delete(request);
-          if (!finished && performance.now() - startedAt < totalDuration) launch();
+          fail(new Error("The LibreSpeed measurement request failed."));
+        };
+        request.ontimeout = () => {
+          this.activeRequests.delete(request);
+          fail(new Error(`LibreSpeed endpoint timed out after ${this.options.requestTimeoutMs}ms.`));
         };
         request.onabort = () => this.activeRequests.delete(request);
         request.send(payload);
       };
       for (let index = 0; index < streams; index += 1) launch();
-      const timer = window.setTimeout(() => {
-        this.timers.delete(timer);
+      timer = window.setTimeout(() => {
+        const timerId = timer;
+        if (timerId !== null) this.timers.delete(timerId);
         this.activeRequests.forEach((request) => request.abort());
         this.activeRequests.clear();
         complete();

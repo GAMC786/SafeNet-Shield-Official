@@ -8,3 +8,9 @@ Keep the SafeNet measurement UI as the presentation layer and use same-origin Li
 **Why:** A separate embedded LibreSpeed page would replace SafeNet’s controls, while a registry-only dependency can fail during build setup.
 
 **How to apply:** Preserve the existing result shape and controls, keep the transport endpoints same-origin, and treat download/upload/ping endpoint behavior as a compatibility contract. Do not shorten the transfer windows or remove the warm-up period without revalidating accuracy.
+
+Browser-mocked XHRs may not emit upload progress events even when the request body is sent successfully, so bounded UI checks need a completed-payload fallback for upload results.
+
+**Why:** Playwright route interception exposed a false zero-upload result that a real browser/server exchange did not reproduce.
+
+**How to apply:** Keep the fallback scoped to successful timed transfers; endpoint HTTP errors and request timeouts must still surface as measurement failures.

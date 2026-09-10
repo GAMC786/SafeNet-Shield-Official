@@ -27,6 +27,10 @@ import { LibreSpeedClient, type LibreSpeedStatus } from "@/lib/librespeed-client
 
 type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
 
+function configuredNumber(value: string | undefined, fallback: number, minimum: number) {
+  const configured = Number(value);
+  return Number.isFinite(configured) && configured >= minimum ? configured : fallback;
+}
 interface SpeedResults {
   latency: number | null;
   download: number | null;
@@ -158,10 +162,10 @@ export default function SpeedTest() {
   const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
   const pausedRef = useRef(false);
+  const measurementErrorRef = useRef(false);
   const runIdRef = useRef(0);
   const libreSpeedRef = useRef<LibreSpeedClient | null>(null);
   const lastWaveUpdateRef = useRef(0);
-  const measurementErrorRef = useRef(false);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -207,6 +211,7 @@ export default function SpeedTest() {
 
   const runSpeedTest = useCallback(async () => {
     const runId = ++runIdRef.current;
+    measurementErrorRef.current = false;
     setError(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
@@ -223,9 +228,11 @@ export default function SpeedTest() {
         uploadPath: "/api/speedtest/librespeed/empty.php",
         pingPath: "/api/speedtest/librespeed/empty.php",
         getIpPath: "/api/speedtest/librespeed/getIP.php",
-        downloadSeconds: 8,
-        uploadSeconds: 8,
-        pingCount: 10,
+        downloadSeconds: measurementConfig.downloadSeconds,
+        uploadSeconds: measurementConfig.uploadSeconds,
+        pingCount: measurementConfig.pingCount,
+        uploadBytes: measurementConfig.uploadBytes,
+        requestTimeoutMs: measurementConfig.requestTimeoutMs,
         onUpdate: (status: LibreSpeedStatus) => {
           if (runId !== runIdRef.current) return;
           const latency = numericStatus(status.pingStatus);
@@ -289,6 +296,7 @@ export default function SpeedTest() {
     } catch (caughtError) {
       if (runId !== runIdRef.current) return;
       const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
+      measurementErrorRef.current = true;
       setError(message);
       setPhase("error");
       setIsRunning(false);
@@ -320,6 +328,7 @@ export default function SpeedTest() {
   const resetTest = () => {
     runIdRef.current += 1;
     pausedRef.current = false;
+    measurementErrorRef.current = false;
     libreSpeedRef.current?.abort();
     libreSpeedRef.current = null;
     setIsRunning(false);
@@ -432,3 +441,11 @@ export default function SpeedTest() {
     </div>
   );
 }
+
+const measurementConfig = {
+  downloadSeconds: configuredNumber(import.meta.env.VITE_SPEEDTEST_DOWNLOAD_SECONDS, 8, 0.05),
+  uploadSeconds: configuredNumber(import.meta.env.VITE_SPEEDTEST_UPLOAD_SECONDS, 8, 0.05),
+  pingCount: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_PING_COUNT, 10, 1)),
+  uploadBytes: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_UPLOAD_BYTES, 2_000_000, 1_024)),
+  requestTimeoutMs: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_REQUEST_TIMEOUT_MS, 10_000, 100)),
+};
