@@ -92,6 +92,35 @@ test("Android startup check records the complete evidence contract", () => {
     /web_loader=RECORDED\\nwebview_transition=PASS\\nresult=PASS\\n/,
     "startup check must record the successful loader handoff markers",
   );
+  assert.match(
+    startupCheck,
+    /run_media_smoke/,
+    "startup check must run the packaged OpenSpeedTest and soundtrack smoke",
+  );
+  assert.match(
+    startupScript,
+    /MEDIA_SMOKE result=PASS/,
+    "the Android smoke script must require the packaged media pass marker",
+  );
+});
+
+test("tagged release smoke runs and uploads packaged media evidence", () => {
+  const releaseSmokeStart = buildWorkflow.indexOf("  android-release-smoke:");
+  const releaseSmokeEnd = buildWorkflow.indexOf("\n  android-release-startup:", releaseSmokeStart);
+  assert.notEqual(releaseSmokeStart, -1, "tagged Android release smoke job is missing");
+  assert.notEqual(releaseSmokeEnd, -1, "tagged Android release smoke job boundary is missing");
+  const releaseSmokeJob = buildWorkflow.slice(releaseSmokeStart, releaseSmokeEnd);
+
+  assert.match(
+    releaseSmokeJob,
+    /scripts\/android-smoke-test\.sh[\s\S]*app-release-androidTest\.apk/,
+    "tagged release smoke must invoke the signed APK smoke script with instrumentation",
+  );
+  assert.match(
+    releaseSmokeJob,
+    /path: android\/app\/build\/reports\/android-smoke\/latest/,
+    "tagged release smoke must upload packaged media evidence",
+  );
 });
 
 test("dedicated startup job samples the loader at a compact emulator height", () => {

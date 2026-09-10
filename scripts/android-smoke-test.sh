@@ -104,7 +104,7 @@ Options:
   --serial ID      adb device/emulator serial (or set ANDROID_SERIAL)
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
   --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
-  --startup-only   Install the signed app APK and verify direct WebView startup
+  --startup-only   Install the signed app APK and verify startup plus packaged media
   --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
@@ -207,7 +207,7 @@ if [[ "$preflight_only" != true && "$(basename "$apk_path")" != "app-release.apk
     exit 2
 fi
 if [[ "$preflight_only" != true &&
-    ( "$startup_only" != true || "$compact_startup" == true ) &&
+    "$startup_only" != true &&
     "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release-androidTest.apk; got: $test_apk_path" >&2
     exit 2
@@ -218,7 +218,7 @@ if [[ "$preflight_only" != true && ! -f "$apk_path" ]]; then
     exit 2
 fi
 if [[ "$preflight_only" != true &&
-    ( "$startup_only" != true || "$compact_startup" == true ) &&
+    "$startup_only" != true &&
     ! -f "$test_apk_path" ]]; then
     echo "ERROR: Release instrumentation APK not found: $test_apk_path" >&2
     echo "Build app-release-androidTest.apk with assembleReleaseAndroidTest first." >&2
@@ -239,7 +239,9 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/startup-initial-ui.xml "$output_dir"/startup-transition-ui.xml \
     "$output_dir"/startup-failure-ui.xml "$output_dir"/startup-logcat.txt \
     "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt \
-    "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt
+    "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
+    "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
+    "$output_dir"/media-smoke-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
@@ -626,6 +628,55 @@ compact_startup_failure() {
     exit 1
 }
 
+media_smoke_failure() {
+    local message="$1"
+    capture media-smoke-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'speedtest_frame=FAIL\nfull_page_fallback=FAIL\nsoundtrack=FAIL\nresult=FAIL\nmessage=%s\n' \
+            "$message"
+    } | tee "$output_dir/media-smoke-result.txt" "$output_dir/result.txt" >&2
+    printf '%s\n' 'NON_NETWORK_FAILURE' | tee "$output_dir/failure-category.txt" >&2
+    echo "Android packaged media smoke failed: $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_media_smoke() {
+    local media_status
+    local preserve_auth_args=()
+
+    if [[ "$startup_only" != true ]]; then
+        preserve_auth_args=(-e preserve-auth-session true)
+    fi
+
+    echo "Running packaged OpenSpeedTest and soundtrack smoke..."
+    set +e
+    adb_run shell am instrument -w -r \
+        "${preserve_auth_args[@]}" \
+        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/media-smoke-instrumentation.log"
+    media_status="${PIPESTATUS[0]}"
+    set -e
+    capture media-smoke-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+
+    if [[ "$media_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/media-smoke-instrumentation.log" ||
+        ! grep -Fq 'MEDIA_SMOKE result=PASS' "$output_dir/media-smoke-logcat.txt"; then
+        media_smoke_failure "the packaged OpenSpeedTest or soundtrack check did not pass"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'speedtest_frame=PASS\nfull_page_fallback=PASS\nsoundtrack=PLAYING\nresult=PASS\n'
+    } | tee "$output_dir/media-smoke-result.txt"
+    echo "Android packaged media smoke passed. Evidence: $output_dir"
+}
+
 run_compact_startup_sampling() {
     local wm_size_output
     local compact_status
@@ -713,6 +764,10 @@ run_startup_check() {
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
         printf 'native_loader=REMOVED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
+    if ! install_release_apk "$test_apk_path"; then
+        media_smoke_failure "the release instrumentation APK could not be installed"
+    fi
+    run_media_smoke
     echo "Android startup check passed. Evidence: $output_dir"
 }
 
@@ -722,8 +777,6 @@ timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 
 if [[ "$startup_only" == true ]]; then
     run_startup_check
     if [[ "$compact_startup" == true ]]; then
-        install_release_apk "$test_apk_path" ||
-            startup_failure "the release instrumentation APK could not be installed for compact startup sampling"
         run_compact_startup_sampling
     fi
     exit 0
@@ -767,6 +820,8 @@ fi
         "$serial" "$apk_path" "$validation_mode" "$device_kind"
     printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=PASS\nretained_after_reload=PASS\nlegacy_access_code=ABSENT\nresult=PASS\n'
 } | tee "$output_dir/clerk-auth-result.txt"
+
+run_media_smoke
 
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(make_temp_dir)"

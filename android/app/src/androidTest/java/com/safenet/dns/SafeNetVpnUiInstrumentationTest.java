@@ -476,6 +476,122 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void packagedSpeedTestAndSoundtrackSurviveAndroidPolicies() throws Exception {
+        waitForWebView(
+            "document.getElementById('startup-loader') === null && " +
+                "document.readyState === 'complete'"
+        );
+
+        JSONObject navigation = callWebView(
+            "(() => {" +
+                "const link = Array.from(document.querySelectorAll('a')).find((item) => " +
+                    "item.textContent.includes('Speed Test'));" +
+                "if (!link) return false;" +
+                "link.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The packaged app must expose the Speed Test navigation item",
+            navigation.optBoolean("value", false));
+
+        waitForWebView(
+            "Boolean(document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]')) && " +
+                "document.body.innerText.includes('Live connection test')"
+        );
+        waitForWebView(
+            "(() => {" +
+                "const frame = document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]');" +
+                "return Boolean(frame) && frame.offsetHeight >= 560 && " +
+                    "document.body.innerText.includes('Ready');" +
+            "})()"
+        );
+
+        JSONObject testPanel = callWebView(
+            "(() => {" +
+                "const frame = document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]');" +
+                "const fallback = Array.from(document.querySelectorAll('a')).find((item) => " +
+                    "item.textContent.includes('Open full test'));" +
+                "return {" +
+                    "framePresent: Boolean(frame)," +
+                    "frameLoaded: document.body.innerText.includes('Ready')," +
+                    "frameVisible: Boolean(frame && frame.offsetHeight >= 560 && " +
+                        "frame.offsetWidth > 0)," +
+                    "frameSrc: frame?.getAttribute('src') || ''," +
+                    "fallbackPresent: Boolean(fallback)," +
+                    "fallbackHref: fallback?.getAttribute('href') || ''," +
+                    "fallbackTarget: fallback?.getAttribute('target') || ''" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The OpenSpeedTest iframe must be present", testPanel.getBoolean("framePresent"));
+        assertTrue("The OpenSpeedTest iframe must report a completed load",
+            testPanel.getBoolean("frameLoaded"));
+        assertTrue("The OpenSpeedTest iframe must have a visible Android viewport",
+            testPanel.getBoolean("frameVisible"));
+        assertEquals(
+            "https://openspeedtest.com/speedtest?darkmode=1",
+            testPanel.getString("frameSrc")
+        );
+        assertTrue("The Speed Test screen must expose its full-page fallback",
+            testPanel.getBoolean("fallbackPresent"));
+        assertEquals(
+            "https://openspeedtest.com/speedtest?darkmode=1",
+            testPanel.getString("fallbackHref")
+        );
+        assertEquals("_blank", testPanel.getString("fallbackTarget"));
+
+        JSONObject preparedAudio = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "if (!(audio instanceof HTMLAudioElement)) return false;" +
+                "audio.muted = false;" +
+                "audio.pause();" +
+                "audio.currentTime = 0;" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The packaged app must keep its startup soundtrack element",
+            preparedAudio.optBoolean("value", false));
+
+        // This tap exercises the same Android user-interaction path that
+        // releases WebView media playback when autoplay is restricted.
+        device.click(device.getDisplayWidth() / 2, Math.max(80, device.getDisplayHeight() / 5));
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "return audio instanceof HTMLAudioElement && !audio.paused && !audio.muted && " +
+                    "audio.currentTime > 0;" +
+            "})()"
+        );
+
+        JSONObject soundtrack = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "return {" +
+                    "present: audio instanceof HTMLAudioElement," +
+                    "playing: Boolean(audio && !audio.paused && !audio.muted)," +
+                    "loop: Boolean(audio?.loop)," +
+                    "startupLoaderPresent: Boolean(document.getElementById('startup-loader'))," +
+                    "currentTime: audio?.currentTime || 0" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The startup soundtrack must be playing after the Android tap",
+            soundtrack.getBoolean("playing"));
+        assertTrue("The startup soundtrack must remain looped",
+            soundtrack.getBoolean("loop"));
+        assertFalse("The startup soundtrack must not leave the startup shell visible",
+            soundtrack.getBoolean("startupLoaderPresent"));
+        assertTrue("The startup soundtrack must advance past its initial position",
+            soundtrack.getDouble("currentTime") > 0);
+        Log.i(
+            "SafeNetMediaSmoke",
+            "MEDIA_SMOKE result=PASS speedtest_frame=PASS full_page_fallback=PASS " +
+                "soundtrack=PLAYING after_android_tap=PASS"
+        );
+    }
+
+    @Test
     public void clerkSignInStartsFreshAndRetainsClerkSession() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
             waitForWebView("document.body.innerText.includes('Command Center')");
