@@ -47,3 +47,4 @@
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts and returns seconds at the API/UI boundary while persistence and scheduler timing remain milliseconds.
 - [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
+- [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
