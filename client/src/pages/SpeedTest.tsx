@@ -25,8 +25,6 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LibreSpeedClient, type LibreSpeedStatus } from "@/lib/librespeed-client";
 
-const GOOGLE_SPEED_TEST_URL = "https://fiber.google.com/speedtest/";
-
 type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
 
 interface SpeedResults {
@@ -163,6 +161,7 @@ export default function SpeedTest() {
   const runIdRef = useRef(0);
   const libreSpeedRef = useRef<LibreSpeedClient | null>(null);
   const lastWaveUpdateRef = useRef(0);
+  const measurementErrorRef = useRef(false);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -215,6 +214,7 @@ export default function SpeedTest() {
     setIsRunning(true);
     setPhase("latency");
     setProgress(phaseProgress.latency);
+    measurementErrorRef.current = false;
 
     try {
       const client = new LibreSpeedClient({
@@ -236,6 +236,7 @@ export default function SpeedTest() {
             latency: latency ?? current.latency,
             download: download ?? current.download,
             upload: upload ?? current.upload,
+            packetLoss: status.testState === 2 ? status.packetLoss : current.packetLoss,
           }));
           if (status.testState === 2) {
             setPhase("latency");
@@ -262,13 +263,13 @@ export default function SpeedTest() {
           if (runId !== runIdRef.current) return;
           if (aborted) {
             if (pausedRef.current) return;
+            if (measurementErrorRef.current) return;
             setError("The LibreSpeed measurement was interrupted.");
             setPhase("error");
             setIsRunning(false);
             toast({ title: "Speed test could not be completed", description: "The measurement was interrupted.", variant: "destructive" });
             return;
           }
-          setResults((current) => ({ ...current, packetLoss: 0 }));
           setProgress(100);
           setPhase("complete");
           setIsRunning(false);
@@ -276,6 +277,7 @@ export default function SpeedTest() {
         },
         onError: (measurementError) => {
           if (runId !== runIdRef.current) return;
+          measurementErrorRef.current = true;
           setError(measurementError.message);
           setPhase("error");
           setIsRunning(false);
@@ -356,9 +358,6 @@ export default function SpeedTest() {
                 <Button size="lg" onClick={pauseSpeedTest} variant="outline" className="px-8" data-testid="button-pause-speedtest"><Pause className="mr-2 h-5 w-5" />Pause Test</Button>
               )}
               {(phase === "complete" || phase === "error") && <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest"><RotateCcw className="mr-2 h-4 w-4" />Reset</Button>}
-              <Button type="button" size="lg" variant="outline" asChild data-testid="button-google-speedtest">
-                <a href={GOOGLE_SPEED_TEST_URL} target="_blank" rel="noreferrer">Google Speed Test</a>
-              </Button>
             </div>
             <p className="text-xs text-muted-foreground">Google&apos;s official Fiber speed test opens in a separate tab because Google does not permit this page to be embedded.</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">

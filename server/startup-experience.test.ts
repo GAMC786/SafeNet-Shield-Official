@@ -151,15 +151,15 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /!document\.getElementById\('startup-loader'\)/);
 });
 
-test("Measure Your Network keeps ISP profiling and uses the official Google test", () => {
+test("Measure Your Network keeps ISP profiling and uses the LibreSpeed transport", () => {
   assert.match(speedTestSource, /ISP-based connection telemetry/);
   assert.match(speedTestSource, /Measure your network/);
   assert.match(speedTestSource, /https:\/\/ipapi\.co\/json\//);
   assert.match(speedTestSource, /https:\/\/ipinfo\.io\/json/);
   assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
-  assert.match(speedTestSource, /https:\/\/fiber\.google\.com\/speedtest\//);
-  assert.match(speedTestSource, /Google Speed Test/);
-  assert.doesNotMatch(speedTestSource, /@cloudflare\/speedtest|CloudflareSpeedTest|openspeedtest\.com/);
+  assert.match(speedTestSource, /librespeed\/garbage\.php/);
+  assert.match(speedTestSource, /librespeed\/empty\.php/);
+  assert.doesNotMatch(speedTestSource, /fiber\.google\.com|Google Speed Test/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {

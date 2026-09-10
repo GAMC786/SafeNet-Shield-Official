@@ -19,6 +19,7 @@ export interface LibreSpeedStatus {
   dlProgress: number;
   ulProgress: number;
   pingProgress: number;
+  packetLoss: number;
 }
 
 export interface LibreSpeedClientOptions {
@@ -47,6 +48,7 @@ const EMPTY_STATUS: LibreSpeedStatus = {
   dlProgress: 0,
   ulProgress: 0,
   pingProgress: 0,
+  packetLoss: 0,
 };
 
 function withRandomQuery(url: string) {
@@ -66,6 +68,7 @@ export class LibreSpeedClient {
   private timers = new Set<number>();
   private aborted = false;
   private ended = false;
+  private cancelCurrentTransfer: (() => void) | null = null;
 
   constructor(options: LibreSpeedClientOptions) {
     this.options = {
@@ -87,6 +90,8 @@ export class LibreSpeedClient {
     this.aborted = true;
     this.activeRequests.forEach((request) => request.abort());
     this.activeRequests.clear();
+    this.cancelCurrentTransfer?.();
+    this.cancelCurrentTransfer = null;
     this.timers.forEach((timer) => window.clearTimeout(timer));
     this.timers.clear();
   }
@@ -148,6 +153,7 @@ export class LibreSpeedClient {
         pingStatus: parseStatus(ping.average),
         jitterStatus: parseStatus(ping.jitter),
         pingProgress: 1,
+        packetLoss: ping.packetLoss,
       });
 
       const download = await this.runTransfer("download");
@@ -177,6 +183,7 @@ export class LibreSpeedClient {
   private async runPing() {
     this.emit({ testState: 2, pingProgress: 0 });
     const samples: number[] = [];
+    let failedSamples = 0;
     const count = this.options.pingCount;
     for (let index = 0; index < count; index += 1) {
       if (this.aborted) throw new Error("The LibreSpeed measurement was aborted.");
@@ -184,23 +191,43 @@ export class LibreSpeedClient {
       try {
         await this.request("GET", this.url(this.options.pingPath));
         samples.push(Math.max(1, performance.now() - startedAt));
+      } catch (error) {
+        if (this.aborted) throw error;
+        failedSamples += 1;
       } finally {
-        this.emit({ pingProgress: (index + 1) / count });
+        this.emit({
+          pingProgress: (index + 1) / count,
+          packetLoss: ((failedSamples / (index + 1)) * 100),
+        });
       }
     }
     if (!samples.length) throw new Error("LibreSpeed did not receive a latency sample.");
-    const average = samples.reduce((total, sample) => total + sample, 0) / samples.length;
-    const jitter = samples.length > 1
-      ? samples.slice(1).reduce((total, sample, index) => total + Math.abs(sample - samples[index]), 0) / (samples.length - 1)
-      : 0;
-    return { average, jitter };
+    // LibreSpeed reports the best post-warmup RTT and a weighted jitter
+    // signal rather than averaging slow outliers into the connection latency.
+    const measuredSamples = samples.length > 1 ? samples.slice(1) : samples;
+    const average = Math.min(...measuredSamples);
+    let jitter = 0;
+    for (let index = 1; index < measuredSamples.length; index += 1) {
+      const instantaneous = Math.abs(measuredSamples[index] - measuredSamples[index - 1]);
+      jitter = index === 1
+        ? instantaneous
+        : instantaneous > jitter
+          ? jitter * 0.3 + instantaneous * 0.7
+          : jitter * 0.8 + instantaneous * 0.2;
+    }
+    return { average, jitter, packetLoss: (failedSamples / count) * 100 };
   }
 
   private runTransfer(direction: "download" | "upload") {
     const duration = (direction === "download" ? this.options.downloadSeconds : this.options.uploadSeconds) * 1000;
+    const graceDuration = direction === "download" ? 1500 : 3000;
+    const totalDuration = duration + graceDuration;
     const streams = direction === "download" ? this.options.downloadStreams : this.options.uploadStreams;
     const startedAt = performance.now();
     let totalBytes = 0;
+    let measuredBytes = 0;
+    let measuredStartedAt = 0;
+    let measurementStarted = false;
     let finished = false;
     const uploadBytes = new Uint8Array(2_000_000);
     if (direction === "upload") uploadBytes.fill(83);
@@ -211,9 +238,21 @@ export class LibreSpeedClient {
       const complete = () => {
         if (finished) return;
         finished = true;
-        const elapsed = Math.max(performance.now() - startedAt, 1);
-        resolve({ speed: (totalBytes * 8) / (elapsed / 1000) / 1_000_000 });
+        this.cancelCurrentTransfer = null;
+        if (!measurementStarted || measuredBytes <= 0) {
+          reject(new Error(`LibreSpeed ${direction} test received no measurable data.`));
+          return;
+        }
+        const elapsed = Math.max(performance.now() - measuredStartedAt, 1);
+        resolve({ speed: (measuredBytes * 8 * 1.06) / (elapsed / 1000) / 1_000_000 });
       };
+      const cancel = () => {
+        if (finished) return;
+        finished = true;
+        this.cancelCurrentTransfer = null;
+        reject(new Error("The LibreSpeed measurement was aborted."));
+      };
+      this.cancelCurrentTransfer = cancel;
       const launch = () => {
         if (finished || this.aborted) return;
         const request = new XMLHttpRequest();
@@ -223,9 +262,18 @@ export class LibreSpeedClient {
           const delta = Math.max(0, bytes - previousBytes);
           previousBytes = bytes;
           totalBytes += delta;
-          const elapsed = Math.max(performance.now() - startedAt, 1);
-          const progress = Math.min((performance.now() - startedAt) / duration, 1);
-          const speed = (totalBytes * 8) / (elapsed / 1000) / 1_000_000;
+          const now = performance.now();
+          if (!measurementStarted && now - startedAt >= graceDuration) {
+            measurementStarted = true;
+            measuredStartedAt = now;
+            measuredBytes = 0;
+          }
+          if (measurementStarted) measuredBytes += delta;
+          const elapsed = Math.max(measurementStarted ? now - measuredStartedAt : now - startedAt, 1);
+          const speed = measurementStarted
+            ? (measuredBytes * 8 * 1.06) / (elapsed / 1000) / 1_000_000
+            : 0;
+          const progress = Math.min((now - startedAt) / totalDuration, 1);
           if (direction === "download") {
             this.emit({ testState: 1, dlStatus: parseStatus(speed), dlProgress: progress });
           } else {
@@ -243,6 +291,11 @@ export class LibreSpeedClient {
         }
         request.onload = () => {
           this.activeRequests.delete(request);
+          if (direction === "download" && request.response instanceof ArrayBuffer && previousBytes === 0) {
+            update(request.response.byteLength);
+          } else if (direction === "upload" && payload && previousBytes === 0) {
+            update(payload.size);
+          }
           if (!finished && performance.now() - startedAt < duration) launch();
         };
         request.onerror = () => {
@@ -258,11 +311,11 @@ export class LibreSpeedClient {
         this.activeRequests.forEach((request) => request.abort());
         this.activeRequests.clear();
         complete();
-      }, duration);
+      }, totalDuration);
       this.timers.add(timer);
       if (this.aborted) {
         window.clearTimeout(timer);
-        reject(new Error("The LibreSpeed measurement was aborted."));
+        cancel();
       }
     });
   }
