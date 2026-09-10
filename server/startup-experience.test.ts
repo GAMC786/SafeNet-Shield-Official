@@ -91,8 +91,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
   assert.match(indexHtml, /safenet-astronaut-loader-transparent\.png/);
   assert.match(indexHtml, /startup-loader-dot/);
-  assert.match(indexHtml, /startup-loader-shield-stroke/);
-  assert.match(indexHtml, /stroke: rgba\(255,255,255,.98\)/);
+  assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);
   assert.match(indexHtml, /Loading protected network status/);
   assert.match(indexHtml, /Network/);
@@ -152,11 +151,15 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /!document\.getElementById\('startup-loader'\)/);
 });
 
-test("OpenSpeedTest is the only speed-test engine", () => {
-  assert.match(speedTestSource, /openspeedtest\.com\/speedtest\?darkmode=1/);
-  assert.match(speedTestSource, /OpenSpeedTest engine/);
-  assert.match(speedTestSource, /data-testid="openspeedtest-frame"/);
-  assert.doesNotMatch(speedTestSource, /@cloudflare\/speedtest|CloudflareSpeedTest/);
+test("Measure Your Network keeps ISP profiling and uses the official Google test", () => {
+  assert.match(speedTestSource, /ISP-based connection telemetry/);
+  assert.match(speedTestSource, /Measure your network/);
+  assert.match(speedTestSource, /https:\/\/ipapi\.co\/json\//);
+  assert.match(speedTestSource, /https:\/\/ipinfo\.io\/json/);
+  assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
+  assert.match(speedTestSource, /https:\/\/fiber\.google\.com\/speedtest\//);
+  assert.match(speedTestSource, /Google Speed Test/);
+  assert.doesNotMatch(speedTestSource, /@cloudflare\/speedtest|CloudflareSpeedTest|openspeedtest\.com/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {
@@ -187,6 +190,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /settingsReady/);
   assert.match(settingsSource, /Prevent DNS Overrides/);
   assert.match(settingsSource, /switch-prevent-dns-overrides/);
+  assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
   assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);

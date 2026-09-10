@@ -2,7 +2,7 @@ import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { AiShieldControls } from "@/components/AiShieldControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Eye, AlertTriangle, LockKeyhole } from "lucide-react";
+import { Shield, AlertTriangle, LockKeyhole } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -20,7 +20,6 @@ export default function Settings() {
   const appVersion = import.meta.env.VITE_APP_VERSION;
 
   const settingLabels: Record<string, string> = {
-    aiShieldEnabled: "AI Shield",
     preventDnsOverrides: "Prevent DNS Overrides",
   };
 
@@ -75,22 +74,6 @@ export default function Settings() {
           <div className="flex items-center gap-3 mb-6">
             <Shield className="w-6 h-6 text-primary" />
             <h2 className="text-xl font-display font-bold">Security Modules</h2>
-          </div>
-
-           <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
-            <div className="space-y-1">
-              <Label className="text-base text-white font-medium flex items-center gap-2">
-                <Eye className="w-4 h-4 text-primary" /> AI Shield
-              </Label>
-              <p className="text-xs text-muted-foreground max-w-[200px]">Server-side DNS threat labels; camera and screen analysis is a separate Android-only control below.</p>
-            </div>
-            <Switch 
-              checked={settings?.aiShieldEnabled ?? false} 
-              onCheckedChange={(c) => handleToggle("aiShieldEnabled", c)}
-                disabled={!settingsReady || updateSettings.isPending}
-              aria-label="AI Shield"
-                data-testid="switch-ai-shield"
-            />
           </div>
 
           <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">

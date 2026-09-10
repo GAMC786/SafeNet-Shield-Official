@@ -18,7 +18,6 @@
 - [Playwright failure simulation](playwright-failure-simulation.md) — simulate client request failures with invalid JSON when strict no-console assertions would treat mocked HTTP errors as browser errors.
 - [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
-- [Cloudflare speed test integration](cloudflare-speedtest-integration.md) — Cloudflare’s public test denies iframe embedding; use the official browser engine package for an in-app ad-free test.
 - [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
@@ -46,4 +45,4 @@
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
 - [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts and returns seconds at the API/UI boundary while persistence and scheduler timing remain milliseconds.
-- [OpenSpeedTest integration](openspeedtest-integration.md) — embed the official browser engine with a matching full-page fallback; do not invent a public JSON API.
+- [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.

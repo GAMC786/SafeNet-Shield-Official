@@ -330,7 +330,7 @@ test("Settings keep controls safe while loading and show the current version", a
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
 
-  for (const name of ["AI Shield", "Prevent DNS Overrides"]) {
+  for (const name of ["Prevent DNS Overrides"]) {
     assert.equal(
       await page.getByRole("switch", { name }).isDisabled(),
       true,
@@ -394,10 +394,7 @@ for (const viewport of viewports) {
     await page.getByRole("heading", { name: "System Settings" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const expectedStates = new Map([
-      ["AI Shield", "true"],
-      ["Prevent DNS Overrides", "true"],
-    ]);
+    const expectedStates = new Map([["Prevent DNS Overrides", "true"]]);
     const backgroundColors = new Set();
 
     for (const [name, expectedState] of expectedStates) {
@@ -417,7 +414,7 @@ for (const viewport of viewports) {
       backgroundColors.add(colors.background);
     }
 
-    assert.ok(backgroundColors.size >= 2, "checked and unchecked switches must have distinguishable colors");
+    assert.ok(backgroundColors.size >= 1, "the remaining settings switch must have a visible color");
 
     const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
     await focusWithKeyboard(page, dnsOverrides);
@@ -435,10 +432,7 @@ for (const viewport of viewports) {
     }
     assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
 
-    for (const [name, expectedState] of [
-      ["AI Shield", "false"],
-      ["Prevent DNS Overrides", "true"],
-    ]) {
+    for (const [name, expectedState] of [["Prevent DNS Overrides", "true"]]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
@@ -774,7 +768,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("OpenSpeedTest is available with a reliable full-page fallback", async () => {
+test("the ISP-based Measure Your Network UI exposes the Google speed test", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -788,14 +782,11 @@ test("OpenSpeedTest is available with a reliable full-page fallback", async () =
   await page.getByRole("heading", { name: "Speed Test" }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop");
 
-  const frame = page.getByTestId("openspeedtest-frame");
-  await frame.waitFor();
-  assert.match(await frame.getAttribute("src"), /^https:\/\/openspeedtest\.com\/speedtest/);
-  const fullTestLink = page.getByRole("link", { name: "Open full test" }).first();
+  await page.getByText("Measure your network", { exact: true }).waitFor();
+  await page.getByTestId("speedtest-wave-chart").waitFor();
+  const fullTestLink = page.getByRole("link", { name: "Google Speed Test" });
   assert.equal(await fullTestLink.getAttribute("target"), "_blank");
-  assert.match(await fullTestLink.getAttribute("href"), /^https:\/\/openspeedtest\.com\/speedtest/);
-  await page.getByTestId("button-refresh-speedtest").click();
-  await frame.waitFor();
+  assert.equal(await fullTestLink.getAttribute("href"), "https://fiber.google.com/speedtest/");
 
   assert.deepEqual(
     pageErrors,
