@@ -624,6 +624,35 @@ export async function registerRoutes(
     res.json({ timestamp: Date.now() });
   });
 
+  // LibreSpeed-compatible same-origin endpoints. The React page uses the
+  // LibreSpeed measurement pattern while keeping SafeNet's existing UI.
+  app.get("/api/speedtest/librespeed/garbage.php", (req, res) => {
+    const size = Math.min(Math.max(Number.parseInt(String(req.query.size ?? "4000000"), 10) || 4_000_000, 256_000), 10_000_000);
+    const payload = size === standardSpeedTestPayload.length
+      ? standardSpeedTestPayload
+      : Buffer.alloc(size, 0xa5);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", payload.length);
+    res.setHeader("Content-Encoding", "identity");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("X-SpeedTest-Bytes", payload.length);
+    res.end(payload);
+  });
+
+  app.all(
+    "/api/speedtest/librespeed/empty.php",
+    express.raw({ type: "*/*", limit: "64mb" }),
+    (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.status(204).end();
+    },
+  );
+
+  app.get("/api/speedtest/librespeed/getIP.php", (req, res) => {
+    const clientIp = String(req.ip ?? "").replace(/^::ffff:/, "");
+    res.json({ processedString: clientIp, rawIspInfo: "" });
+  });
+
   // === SEED DATA ===
   if (options.seed !== false) {
     await seedDatabase(storage);

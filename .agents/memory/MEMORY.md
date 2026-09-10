@@ -46,3 +46,4 @@
 - [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts and returns seconds at the API/UI boundary while persistence and scheduler timing remain milliseconds.
 - [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
+- [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.

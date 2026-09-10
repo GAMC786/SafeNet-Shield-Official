@@ -23,6 +23,7 @@ import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { LibreSpeedClient, type LibreSpeedStatus } from "@/lib/librespeed-client";
 
 const GOOGLE_SPEED_TEST_URL = "https://fiber.google.com/speedtest/";
 
@@ -91,13 +92,13 @@ function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
 }
 
-function formatMbps(bytes: number, elapsedMs: number) {
-  if (!bytes || elapsedMs <= 0) return null;
-  return Math.round((bytes * 8 / (elapsedMs / 1000) / 1_000_000) * 100) / 100;
-}
-
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+function numericStatus(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
@@ -160,7 +161,8 @@ export default function SpeedTest() {
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
   const pausedRef = useRef(false);
   const runIdRef = useRef(0);
-  const controllerRef = useRef<AbortController | null>(null);
+  const libreSpeedRef = useRef<LibreSpeedClient | null>(null);
+  const lastWaveUpdateRef = useRef(0);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -204,14 +206,8 @@ export default function SpeedTest() {
     };
   }, [networkProfileReloadKey]);
 
-  const waitIfPaused = useCallback(async (runId: number) => {
-    while (pausedRef.current && runId === runIdRef.current) await new Promise((resolve) => setTimeout(resolve, 100));
-  }, []);
-
   const runSpeedTest = useCallback(async () => {
     const runId = ++runIdRef.current;
-    const controller = new AbortController();
-    controllerRef.current = controller;
     setError(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
@@ -221,86 +217,92 @@ export default function SpeedTest() {
     setProgress(phaseProgress.latency);
 
     try {
-      const latencySamples: number[] = [];
-      let failedLatencySamples = 0;
-      for (let sample = 0; sample < 5; sample += 1) {
-        await waitIfPaused(runId);
-        try {
-          const startedAt = performance.now();
-          const response = await fetch(`/api/speedtest/ping?sample=${sample}`, { cache: "no-store", signal: controller.signal });
-          if (!response.ok) throw new Error("The latency check could not be completed.");
-          const latency = Math.max(1, Math.round(performance.now() - startedAt));
-          latencySamples.push(latency);
-          setResults((current) => ({ ...current, latency: Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length) }));
-          appendWavePoint(0.35 + Math.min(latency / 180, 0.45));
-        } catch (caughtError) {
-          if (isAbortError(caughtError) || runId !== runIdRef.current) throw caughtError;
-          failedLatencySamples += 1;
-          appendWavePoint(0.12);
-        }
-        setResults((current) => ({ ...current, packetLoss: Math.round((failedLatencySamples / (sample + 1)) * 100) }));
-        setProgress(Math.min(32, phaseProgress.latency + sample * 4));
-      }
-      if (!latencySamples.length) throw new Error("No latency samples were received from the SafeNet network.");
-
-      await waitIfPaused(runId);
-      setPhase("download");
-      setProgress(phaseProgress.download);
-      const downloadStartedAt = performance.now();
-      const downloadResponse = await fetch("/api/speedtest/download?size=4000000", { cache: "no-store", signal: controller.signal });
-      if (!downloadResponse.ok || !downloadResponse.body) throw new Error("The download check could not be completed.");
-      const reader = downloadResponse.body.getReader();
-      let downloadedBytes = 0;
-      while (true) {
-        await waitIfPaused(runId);
-        const { done, value } = await reader.read();
-        if (done) break;
-        downloadedBytes += value.byteLength;
-        const speed = formatMbps(downloadedBytes, performance.now() - downloadStartedAt);
-        if (speed !== null) {
-          setResults((current) => ({ ...current, download: speed }));
-          appendWavePoint(0.42 + Math.min(speed / 500, 0.5));
-        }
-        setProgress(Math.min(68, 32 + (downloadedBytes / 4_000_000) * 36));
-      }
-
-      await waitIfPaused(runId);
-      setPhase("upload");
-      setProgress(phaseProgress.upload);
-      const uploadPayload = new Uint8Array(1_500_000);
-      uploadPayload.fill(83);
-      const uploadStartedAt = performance.now();
-      const uploadResponse = await fetch("/api/speedtest/upload", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: uploadPayload, signal: controller.signal });
-      if (!uploadResponse.ok) throw new Error("The upload check could not be completed.");
-      setResults((current) => ({ ...current, upload: formatMbps(uploadPayload.byteLength, performance.now() - uploadStartedAt) }));
-      appendWavePoint(0.78);
-      setProgress(94);
-      await waitIfPaused(runId);
-      setProgress(100);
-      setPhase("complete");
-      setIsRunning(false);
-      toast({ title: "Speed test complete", description: "Latency and throughput results are ready below." });
+      const client = new LibreSpeedClient({
+        baseUrl: window.location.origin,
+        downloadPath: "/api/speedtest/librespeed/garbage.php",
+        uploadPath: "/api/speedtest/librespeed/empty.php",
+        pingPath: "/api/speedtest/librespeed/empty.php",
+        getIpPath: "/api/speedtest/librespeed/getIP.php",
+        downloadSeconds: 8,
+        uploadSeconds: 8,
+        pingCount: 10,
+        onUpdate: (status: LibreSpeedStatus) => {
+          if (runId !== runIdRef.current) return;
+          const latency = numericStatus(status.pingStatus);
+          const download = numericStatus(status.dlStatus);
+          const upload = numericStatus(status.ulStatus);
+          setResults((current) => ({
+            ...current,
+            latency: latency ?? current.latency,
+            download: download ?? current.download,
+            upload: upload ?? current.upload,
+          }));
+          if (status.testState === 2) {
+            setPhase("latency");
+            setProgress(Math.min(32, phaseProgress.latency + status.pingProgress * 20));
+          } else if (status.testState === 1) {
+            setPhase("download");
+            setProgress(Math.min(68, 32 + status.dlProgress * 36));
+          } else if (status.testState === 3) {
+            setPhase("upload");
+            setProgress(Math.min(94, 76 + status.ulProgress * 18));
+          }
+          const now = performance.now();
+          if (now - lastWaveUpdateRef.current >= 180) {
+            lastWaveUpdateRef.current = now;
+            const signal = status.testState === 2
+              ? 0.35 + Math.min((latency ?? 0) / 180, 0.45)
+              : status.testState === 1
+                ? 0.42 + Math.min((download ?? 0) / 500, 0.5)
+                : 0.52 + Math.min((upload ?? 0) / 500, 0.4);
+            appendWavePoint(signal);
+          }
+        },
+        onEnd: (aborted) => {
+          if (runId !== runIdRef.current) return;
+          if (aborted) {
+            if (pausedRef.current) return;
+            setError("The LibreSpeed measurement was interrupted.");
+            setPhase("error");
+            setIsRunning(false);
+            toast({ title: "Speed test could not be completed", description: "The measurement was interrupted.", variant: "destructive" });
+            return;
+          }
+          setResults((current) => ({ ...current, packetLoss: 0 }));
+          setProgress(100);
+          setPhase("complete");
+          setIsRunning(false);
+          toast({ title: "Speed test complete", description: "Latency and throughput results are ready below." });
+        },
+        onError: (measurementError) => {
+          if (runId !== runIdRef.current) return;
+          setError(measurementError.message);
+          setPhase("error");
+          setIsRunning(false);
+          toast({ title: "Speed test could not be completed", description: measurementError.message, variant: "destructive" });
+        },
+      });
+      libreSpeedRef.current = client;
+      client.start();
     } catch (caughtError) {
-      if (isAbortError(caughtError) || runId !== runIdRef.current) return;
+      if (runId !== runIdRef.current) return;
       const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
       setError(message);
       setPhase("error");
       setIsRunning(false);
       toast({ title: "Speed test could not be completed", description: message, variant: "destructive" });
-    } finally {
-      if (runId === runIdRef.current) controllerRef.current = null;
     }
-  }, [appendWavePoint, toast, waitIfPaused]);
+  }, [appendWavePoint, toast]);
 
   useEffect(() => () => {
     runIdRef.current += 1;
-    controllerRef.current?.abort();
+    libreSpeedRef.current?.abort();
   }, []);
 
   const startSpeedTest = () => {
     if (hasStarted && !isRunning && phase !== "complete" && phase !== "error") {
       pausedRef.current = false;
-      setIsRunning(true);
+      void runSpeedTest();
       toast({ title: "Speed test resumed", description: "Continuing the network measurement." });
       return;
     }
@@ -309,13 +311,15 @@ export default function SpeedTest() {
   };
   const pauseSpeedTest = () => {
     pausedRef.current = true;
+    libreSpeedRef.current?.abort();
     setIsRunning(false);
     toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
   };
   const resetTest = () => {
     runIdRef.current += 1;
     pausedRef.current = false;
-    controllerRef.current?.abort();
+    libreSpeedRef.current?.abort();
+    libreSpeedRef.current = null;
     setIsRunning(false);
     setHasStarted(false);
     setPhase("idle");
