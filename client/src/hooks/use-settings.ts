@@ -34,14 +34,15 @@ export function useUpdateSettings() {
       const queryKey = [api.settings.get.path];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<PublicAppSettings>(queryKey);
-      queryClient.setQueryData<PublicAppSettings>(queryKey, (current) =>
-        current
-          ? {
-              ...current,
-              ...data,
-            }
-          : current,
-      );
+      queryClient.setQueryData<PublicAppSettings>(queryKey, (current) => {
+        if (!current) return current;
+        const { preventDnsOverrides, ...otherUpdates } = data;
+        return {
+          ...current,
+          ...otherUpdates,
+          preventDnsOverrides: preventDnsOverrides ?? current.preventDnsOverrides,
+        };
+      });
       return { previous };
     },
     onSuccess: (updatedSettings) => {

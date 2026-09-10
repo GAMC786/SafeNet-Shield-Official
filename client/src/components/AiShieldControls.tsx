@@ -2,16 +2,14 @@ import { useAiShield } from "@/hooks/use-ai-shield";
 import type { AiShieldResult } from "@/hooks/use-vpn";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
   AlertCircle,
   Camera,
   CheckCircle2,
   Eye,
-  Loader2,
   Monitor,
-  Power,
   ShieldAlert,
 } from "lucide-react";
 
@@ -165,18 +163,18 @@ export function AiShieldControls() {
                   <p className="text-xs text-muted-foreground">Analyze consented camera frames</p>
                 </div>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={cameraEnabled ? "default" : "outline"}
-                onClick={() => void run(cameraEnabled ? shield.stop : shield.startCamera)}
-                disabled={shield.isBusy}
-                aria-pressed={cameraEnabled}
-                data-testid="button-start-ai-camera"
-              >
-                {shield.isBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Power className="mr-1.5 h-4 w-4" />}
-                {cameraEnabled ? "Disable" : "Enable"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {cameraEnabled ? "On" : "Off"}
+                </span>
+                <Switch
+                  checked={cameraEnabled}
+                  onCheckedChange={() => void run(cameraEnabled ? shield.stop : shield.startCamera)}
+                  disabled={shield.isBusy}
+                  data-testid="switch-ai-camera"
+                  aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -186,18 +184,18 @@ export function AiShieldControls() {
                   <p className="text-xs text-muted-foreground">Analyze consented screen pixels</p>
                 </div>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={screenEnabled ? "default" : "outline"}
-                onClick={() => void run(screenEnabled ? shield.stop : shield.startScreen)}
-                disabled={shield.isBusy}
-                aria-pressed={screenEnabled}
-                data-testid="button-start-ai-screen"
-              >
-                {shield.isBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Power className="mr-1.5 h-4 w-4" />}
-                {screenEnabled ? "Disable" : "Enable"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {screenEnabled ? "On" : "Off"}
+                </span>
+                <Switch
+                  checked={screenEnabled}
+                  onCheckedChange={() => void run(screenEnabled ? shield.stop : shield.startScreen)}
+                  disabled={shield.isBusy}
+                  data-testid="switch-ai-screen"
+                  aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
+                />
+              </div>
             </div>
           </div>
 

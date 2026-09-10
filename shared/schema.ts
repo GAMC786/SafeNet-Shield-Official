@@ -62,6 +62,7 @@ export const appSettings = pgTable("app_settings", {
   alwaysOnEnabled: boolean("always_on_enabled").default(false),
   deviceAdminEnabled: boolean("device_admin_enabled").default(false),
   firewallEnabled: boolean("firewall_enabled").default(false),
+  preventDnsOverrides: boolean("prevent_dns_overrides").default(true),
   theme: text("theme").default("red-gray-blue"),
 });
 
@@ -169,6 +170,7 @@ export const publicAppSettingsSchema = z.object({
   alwaysOnEnabled: z.boolean().nullable(),
   deviceAdminEnabled: z.boolean().nullable(),
   firewallEnabled: z.boolean().nullable(),
+  preventDnsOverrides: z.boolean().default(true),
   theme: z.string().nullable(),
 });
 

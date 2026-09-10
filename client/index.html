@@ -176,6 +176,7 @@
     <audio
       id="safenet-soundtrack-audio"
       loop
+      autoplay
       preload="auto"
       playsinline
       aria-hidden="true"
@@ -243,10 +244,6 @@
             <div style="color:#60a5fa;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Network</div>
             <strong style="display:block;margin-top:8px;font-size:20px">Protected</strong>
           </div>
-          <div style="border:1px solid rgba(52,211,153,.25);border-radius:14px;padding:18px;background:rgba(30,41,59,.55)">
-            <div style="color:#6ee7b7;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Soundtrack</div>
-            <strong style="display:block;margin-top:8px;font-size:20px">Ready</strong>
-          </div>
         </div>
       </div>
     </div>
@@ -260,6 +257,12 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
+         const startAudio = () => {
+           void audio.play().catch(() => undefined);
+         };
+         startAudio();
+         window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
+         window.addEventListener("keydown", startAudio, { once: true });
         audio.addEventListener("ended", () => {
           if (document.getElementById("startup-loader")) return;
           audio.currentTime = 0;

@@ -2,14 +2,11 @@ import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { AiShieldControls } from "@/components/AiShieldControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Shield, Smartphone, Activity, Eye, Zap, AlertTriangle, Loader2 } from "lucide-react";
+import { Shield, Eye, AlertTriangle, LockKeyhole } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
-import { useSafeNetVpn } from "@/hooks/use-vpn";
-import { useState } from "react";
 
 export default function Settings() {
   const {
@@ -18,31 +15,13 @@ export default function Settings() {
     isError: isSettingsError,
   } = useSettings();
   const updateSettings = useUpdateSettings();
-  const androidSettings = useSafeNetVpn();
   const { toast } = useToast();
   const settingsReady = settings !== undefined && !isLoadingSettings;
   const appVersion = import.meta.env.VITE_APP_VERSION;
 
-  const openAndroidSettings = async (
-    target: "vpn" | "device-admin",
-    label: string,
-  ) => {
-    try {
-      await androidSettings.openSystemSettings(target);
-    } catch (error) {
-      toast({
-        title: `${label} could not be opened`,
-        description: error instanceof Error ? error.message : "Open Android Settings manually and try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const settingLabels: Record<string, string> = {
     aiShieldEnabled: "AI Shield",
-    firewallEnabled: "Firewall protection",
-    alwaysOnEnabled: "Always-on protection",
-    deviceAdminEnabled: "Device administrator access",
+    preventDnsOverrides: "Prevent DNS Overrides",
   };
 
   const handleToggle = (key: string, checked: boolean) => {
@@ -98,7 +77,7 @@ export default function Settings() {
             <h2 className="text-xl font-display font-bold">Security Modules</h2>
           </div>
 
-          <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
+           <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
             <div className="space-y-1">
               <Label className="text-base text-white font-medium flex items-center gap-2">
                 <Eye className="w-4 h-4 text-primary" /> AI Shield
@@ -117,85 +96,19 @@ export default function Settings() {
           <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
             <div className="space-y-1">
               <Label className="text-base text-white font-medium flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" /> App Firewall
+                <LockKeyhole className="w-4 h-4 text-primary" /> Prevent DNS Overrides
               </Label>
-              <p className="text-xs text-muted-foreground">Sync DNS firewall rules to the Android VPN when protection is running.</p>
+              <p className="text-xs text-muted-foreground">
+                Keep DNS requests on SafeNet&apos;s protected resolver path so apps cannot silently switch to another resolver.
+              </p>
             </div>
-            <Switch 
-              checked={settings?.firewallEnabled ?? false} 
-              onCheckedChange={(c) => handleToggle("firewallEnabled", c)}
+            <Switch
+              checked={settings?.preventDnsOverrides ?? true}
+              onCheckedChange={(c) => handleToggle("preventDnsOverrides", c)}
                 disabled={!settingsReady || updateSettings.isPending}
-              aria-label="App Firewall"
-                data-testid="switch-app-firewall"
+              aria-label="Prevent DNS Overrides"
+                data-testid="switch-prevent-dns-overrides"
             />
-          </div>
-        </CyberCard>
-
-        {/* Device Integration */}
-        <CyberCard className="space-y-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Smartphone className="w-6 h-6 text-primary" />
-            <h2 className="text-xl font-display font-bold">Device Integration</h2>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
-            <div className="space-y-1">
-              <Label className="text-base text-white font-medium flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" /> Always-On VPN
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Saves the preference and opens Android&apos;s Always-on VPN settings for the actual device control.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <Switch
-                checked={settings?.alwaysOnEnabled ?? false}
-                onCheckedChange={(c) => handleToggle("alwaysOnEnabled", c)}
-                disabled={!settingsReady || updateSettings.isPending}
-                aria-label="Always-On VPN preference"
-                data-testid="switch-always-on-vpn"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void openAndroidSettings("vpn", "Always-on VPN settings")}
-                disabled={!androidSettings.supported}
-                data-testid="button-open-vpn-settings"
-              >
-                Open Android VPN settings
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded bg-white/5 border border-white/5 hover:border-primary/30 transition-colors">
-            <div className="space-y-1">
-              <Label className="text-base text-white font-medium flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" /> Device Admin
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Saves the preference and opens Android security settings. SafeNet never silently grants device-admin access.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <Switch
-                checked={settings?.deviceAdminEnabled ?? false}
-                onCheckedChange={(c) => handleToggle("deviceAdminEnabled", c)}
-                disabled={!settingsReady || updateSettings.isPending}
-                aria-label="Device Admin preference"
-                data-testid="switch-device-admin"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void openAndroidSettings("device-admin", "Device administrator settings")}
-                disabled={!androidSettings.supported}
-                data-testid="button-open-device-admin-settings"
-              >
-                Open Android security settings
-              </Button>
-            </div>
           </div>
         </CyberCard>
 

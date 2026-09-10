@@ -42,7 +42,7 @@ const startupEvidenceCheck = startupScript.slice(
 );
 
 const startupJobStart = buildWorkflow.indexOf("  android-release-startup:");
-const startupJobEnd = buildWorkflow.indexOf("\n  build-windows:", startupJobStart);
+const startupJobEnd = buildWorkflow.indexOf("\n  release:", startupJobStart);
 assert.notEqual(startupJobStart, -1, "dedicated Android startup job is missing");
 assert.notEqual(startupJobEnd, -1, "dedicated Android startup job boundary is missing");
 const startupJob = buildWorkflow.slice(startupJobStart, startupJobEnd);

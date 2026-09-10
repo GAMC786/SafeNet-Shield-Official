@@ -36,9 +36,8 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
-// Keep the first paint visible long enough to avoid a compositor flash, but do
-// not hold a ready app behind a decorative ten-second minimum.
-const STARTUP_LOADER_DURATION_MS = 320;
+// Keep the branded startup experience visible for the full ten-second handoff.
+const STARTUP_LOADER_DURATION_MS = 10_000;
 const STARTUP_LOADER_FADE_MS = 180;
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 let startupDurationComplete = false;

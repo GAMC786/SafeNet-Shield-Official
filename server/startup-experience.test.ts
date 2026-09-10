@@ -36,10 +36,6 @@ const navigationSource = readFileSync(
   path.join(clientRoot, "src/components/Navigation.tsx"),
   "utf8",
 );
-const soundtrackSource = readFileSync(
-  path.join(clientRoot, "src/components/SoundtrackControl.tsx"),
-  "utf8",
-);
 const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
@@ -102,7 +98,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Network/);
   assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*320/);
+  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
   assert.match(mainSource, /STARTUP_LOADER_FADE_MS\s*=\s*180/);
   assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
   assert.match(mainSource, /safenet:startup-complete/);
@@ -145,55 +141,22 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(indexHtml, /\bloop\b/);
   assert.match(indexHtml, /preload="auto"/);
-  assert.match(soundtrackSource, /audio\.loop\s*=\s*true/);
-  assert.match(soundtrackSource, /STARTUP_COMPLETE_EVENT/);
-  assert.match(soundtrackSource, /startup-loader/);
-  assert.match(soundtrackSource, /addEventListener\("ended", handleAudioEnded\)/);
-  assert.match(soundtrackSource, /audio\.currentTime\s*=\s*0/);
-  assert.match(soundtrackSource, /void audio\.play\(\)\.catch/);
-  assert.match(soundtrackSource, /setIsPlaying\(!audio\.paused && !audio\.muted\)/);
-  assert.match(soundtrackSource, /MUTED_STORAGE_KEY/);
   assert.doesNotMatch(indexHtml, /syncSoundtrack/);
 });
 
-test("the soundtrack control is a draggable right-side On/Off toggle", () => {
-  assert.match(
-    soundtrackSource,
-    /right-3 top-1\/2/,
-  );
-  assert.match(soundtrackSource, /onPointerDown=\{handlePointerDown\}/);
-  assert.match(soundtrackSource, /onPointerMove=\{handlePointerMove\}/);
-  assert.match(soundtrackSource, /setPointerCapture/);
-  assert.match(soundtrackSource, /POSITION_STORAGE_KEY/);
-  assert.match(soundtrackSource, /clampPosition/);
-  assert.match(soundtrackSource, /aria-pressed=\{isPlaying\}/);
-  assert.match(soundtrackSource, /Soundtrack: \$\{isPlaying && !isMuted \? "On" : "Off"\}/);
-  assert.match(soundtrackSource, /Turn soundtrack off/);
-  assert.match(soundtrackSource, /Turn soundtrack on/);
-  assert.match(appSource, /<SoundtrackControl \/>/);
+test("the soundtrack loops through startup and has no visible control", () => {
+  assert.match(indexHtml, /autoplay/);
+  assert.match(indexHtml, /addEventListener\("ended"/);
+  assert.match(indexHtml, /void audio\.play\(\)\.catch/);
+  assert.doesNotMatch(appSource, /SoundtrackControl/);
   assert.match(androidMainActivity, /!document\.getElementById\('startup-loader'\)/);
 });
 
-test("Measure Your Network identifies the ISP and reports measured packet loss", () => {
-  assert.match(speedTestSource, /https:\/\/ipapi\.co\/json\//);
-  assert.match(speedTestSource, /https:\/\/ipinfo\.io\/json/);
-  assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
-  assert.match(speedTestSource, /ISP-based connection profile/);
-  assert.match(speedTestSource, /public IP/);
-  assert.match(speedTestSource, /button-refresh-network-profile/);
-  assert.match(speedTestSource, /@cloudflare\/speedtest/);
-  assert.match(speedTestSource, /CloudflareSpeedTest/);
-  assert.match(speedTestSource, /summary\.packetLoss/);
-  assert.match(speedTestSource, /Math\.round\(summary\.packetLoss \* 10000\) \/ 100/);
-  assert.match(speedTestSource, /Cloudflare's engine measures directly against its edge network/);
-  assert.match(speedTestSource, /Packet loss uses WebRTC TURN/);
-  assert.doesNotMatch(speedTestSource, /type: "upload", bytes: 1_000_000/);
-  assert.doesNotMatch(speedTestSource, /type: "upload", bytes: 10_000_000/);
-  assert.match(speedTestSource, /Cloudflare upload measurement was unavailable on this network/);
-  assert.doesNotMatch(speedTestSource, /THROUGHPUT_TEST_BYTES/);
-  assert.doesNotMatch(speedTestSource, /\/api\/speedtest\/(download|upload)/);
-  assert.match(routesSource, /return res\.json\(\{ bytesReceived \}\)/);
-  assert.doesNotMatch(routesSource, /const speedMbps =/);
+test("OpenSpeedTest is the only speed-test engine", () => {
+  assert.match(speedTestSource, /openspeedtest\.com\/speedtest\?darkmode=1/);
+  assert.match(speedTestSource, /OpenSpeedTest engine/);
+  assert.match(speedTestSource, /data-testid="openspeedtest-frame"/);
+  assert.doesNotMatch(speedTestSource, /@cloudflare\/speedtest|CloudflareSpeedTest/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {
@@ -218,13 +181,13 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("Settings use the current package version and describe preference-only Android controls", () => {
+test("Settings use the current package version and expose only current controls", () => {
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(settingsSource, /settingsReady/);
-  assert.match(settingsSource, /opens Android(?:&apos;|')s Always-on VPN settings/);
-  assert.match(settingsSource, /Open Android security settings/);
-  assert.match(settingsSource, /button-open-vpn-settings/);
+  assert.match(settingsSource, /Prevent DNS Overrides/);
+  assert.match(settingsSource, /switch-prevent-dns-overrides/);
+  assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
   assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
   assert.match(
@@ -234,13 +197,13 @@ test("Settings use the current package version and describe preference-only Andr
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("the Dashboard reports DNS Protection VPN instead of generic system activity", () => {
+test("the Dashboard reports Built-In Private DNS protection instead of generic system activity", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
-  assert.match(dashboardSource, /DNS Protection VPN/);
-  assert.match(dashboardSource, /Enable DNS Protection VPN/);
+  assert.match(dashboardSource, /Built-In Private DNS Protection/);
+  assert.match(dashboardSource, /Private DNS protection On\/Off/);
   assert.match(dashboardSource, /startAfterEula/);
   assert.match(dashboardSource, /Available in the SafeNet Android APK/);
-  assert.match(dashboardSource, /DNS protection is running/);
+   assert.match(dashboardSource, /Private DNS protection is running/);
   assert.doesNotMatch(dashboardSource, /System Active/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
@@ -251,13 +214,16 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(ddnsSource, /Update Interval \(seconds\)/);
   assert.match(ddnsSource, /Test/);
+  assert.match(ddnsSource, /Connection test successful/);
+  assert.match(ddnsSource, /Connection test unsuccessful/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
   assert.match(appSource, /useFirewallConfig/);
-  assert.match(aiShieldSource, /button-start-ai-camera/);
-  assert.match(aiShieldSource, /button-start-ai-screen/);
+  assert.match(aiShieldSource, /switch-ai-camera/);
+  assert.match(aiShieldSource, /switch-ai-screen/);
   assert.match(aiShieldSource, /cameraEnabled/);
   assert.match(aiShieldSource, /screenEnabled/);
-  assert.match(aiShieldSource, /\{cameraEnabled \? "Disable" : "Enable"\}/);
-  assert.match(aiShieldSource, /\{screenEnabled \? "Disable" : "Enable"\}/);
+  assert.match(aiShieldSource, /\{cameraEnabled \? "On" : "Off"\}/);
+  assert.match(aiShieldSource, /\{screenEnabled \? "On" : "Off"\}/);
+  assert.match(dnsSettingsSource, /formData\.type === "plain"/);
 });

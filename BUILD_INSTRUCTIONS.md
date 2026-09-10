@@ -1,6 +1,6 @@
 # SafeNet DNS - Native Build Instructions
 
-This document provides instructions for building native installers for Android (APK) and Windows (MSI).
+This document provides instructions for building the SafeNet Android APK.
 
 ## Prerequisites
 
@@ -9,13 +9,6 @@ This document provides instructions for building native installers for Android (
 - Android SDK Command-line Tools
 - Java JDK 17+
 - Gradle
-
-### For Windows MSI:
-- Node.js 22+
-- Windows OS (or Wine on Linux/macOS)
-- Visual Studio Build Tools (for native modules)
-
----
 
 ## Building Android APK
 
@@ -184,41 +177,6 @@ VPN or startup checks.
 
 ---
 
-## Building Windows MSI
-
-The MSI packages the web frontend and loads it from a local `file://` URL. It
-must be built with a separately running SafeNet DNS backend over HTTPS.
-
-### Step 1: Build the web application
-```bash
-DESKTOP_API_URL=https://your-server.example.com ./scripts/build-windows.sh
-```
-
-This validates the backend URL, builds the web application with that API origin,
-and creates the Windows installer. The URL must be a public HTTPS origin
-without a path or query.
-
-### Alternative: Run Electron Builder manually
-```bash
-VITE_API_URL=https://your-server.example.com npm run build
-npx electron-builder --win --x64 --publish never
-```
-
-### Output Files:
-- MSI installer: `dist-electron/SafeNet DNS Setup X.X.X.msi`
-- NSIS installer: `dist-electron/SafeNet DNS Setup X.X.X.exe`
-
-### For specific targets only:
-```bash
-# MSI only
-npx electron-builder --win msi
-
-# NSIS only
-npx electron-builder --win nsis
-```
-
----
-
 ## Project Structure for Native Builds
 
 ```
@@ -230,18 +188,11 @@ project/
 │   │   │       └── apk/    # APK files here
 │   │   └── src/
 │   └── gradle/
-├── electron/
-│   ├── main.cjs            # Electron main process (CommonJS)
-│   └── preload.cjs         # Electron preload script (CommonJS)
 ├── build/
-│   ├── icon.ico            # Windows icon
-│   ├── icon.icns           # macOS icon
-│   └── icon.png            # Linux icon
+│   └── icon.png             # Android/web icon source
 ├── dist/
 │   └── public/             # Built web assets
-├── dist-electron/          # Electron build output
 ├── capacitor.config.ts     # Capacitor configuration
-└── electron-builder.yml    # Electron Builder configuration
 ```
 
 ---
@@ -256,12 +207,6 @@ Place icons in `android/app/src/main/res/` directories:
 - `mipmap-xxhdpi/ic_launcher.png` (144x144)
 - `mipmap-xxxhdpi/ic_launcher.png` (192x192)
 
-### For Windows/macOS/Linux:
-Place icons in `build/` directory:
-- `icon.ico` - Windows (256x256 recommended)
-- `icon.icns` - macOS
-- `icon.png` - Linux (512x512 recommended)
-
 ---
 
 ## Troubleshooting
@@ -275,16 +220,9 @@ Place icons in `build/` directory:
 - Re-run the Android build script before creating every APK so stale web assets
   are not left in `android/app/src/main/assets/public`
 
-### Windows Build Issues:
-- Install Windows Build Tools: `npm install --global windows-build-tools`
-- Ensure you have sufficient disk space
-- Run as Administrator if permission issues occur
-
----
-
 ## Automated Builds with GitHub Actions
 
-This project includes a GitHub Actions workflow that automatically builds APK and MSI files.
+This project includes a GitHub Actions workflow that automatically builds the Android APK.
 
 ### Setup:
 1. Push this project to a GitHub repository
@@ -295,7 +233,7 @@ This project includes a GitHub Actions workflow that automatically builds APK an
 2. Click the **Actions** tab
 3. Click the latest workflow run
 4. Scroll down to **Artifacts**
-5. Download **SafeNet-DNS-Android** (APK) or **SafeNet-DNS-Windows** (MSI)
+5. Download **SafeNet-DNS-Android** (APK)
 
 ### Create a Release with downloads:
 1. Create a git tag: `git tag v1.0.0`
@@ -367,8 +305,8 @@ and is not modified by the workflow.
 
 The build workflow is present in both repositories after a synchronization
 pull request is merged. It builds validation artifacts for branches and pull
-requests. A `v*` tag runs the release job in the repository where that tag was
-created and attaches the APK and MSI artifacts to a GitHub Release.
+requests. A `v*` tag runs the Android release job in the repository where that
+tag was created and attaches the APK artifacts to a GitHub Release.
 
 To publish an official release:
 
@@ -380,7 +318,7 @@ To publish an official release:
    git tag -a v1.0.0 -m "SafeNet DNS v1.0.0"
    git push origin v1.0.0
    ```
-4. Download the APK and MSI from the resulting official GitHub Release.
+4. Download the APK artifacts from the resulting official GitHub Release.
 
 Tags created only in the source repository are not copied automatically and do
 not publish an official release. This keeps official releases tied to reviewed

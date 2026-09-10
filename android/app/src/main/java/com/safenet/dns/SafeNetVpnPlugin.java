@@ -11,7 +11,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
-import android.provider.Settings;
 import android.webkit.CookieManager;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
@@ -79,36 +78,6 @@ public class SafeNetVpnPlugin extends Plugin {
     @PluginMethod
     public void getProtectionStatus(PluginCall call) {
         call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
-    }
-
-    @PluginMethod
-    public void openSystemSettings(PluginCall call) {
-        String target = call.getString("target", "");
-        String action;
-        if ("vpn".equals(target)) {
-            action = Settings.ACTION_VPN_SETTINGS;
-        } else if ("device-admin".equals(target)) {
-            action = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-                ? Settings.ACTION_SECURITY_SETTINGS
-                : Settings.ACTION_SETTINGS;
-        } else {
-            call.reject("Unknown Android settings destination.", "SETTINGS_TARGET_INVALID");
-            return;
-        }
-
-        Intent intent = new Intent(action);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-            intent = new Intent(Settings.ACTION_SETTINGS);
-        }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            getContext().startActivity(intent);
-            JSObject result = new JSObject();
-            result.put("opened", true);
-            call.resolve(result);
-        } catch (RuntimeException error) {
-            call.reject("Android could not open system settings.", "SETTINGS_OPEN_FAILED");
-        }
     }
 
     @PluginMethod

@@ -164,15 +164,15 @@ export default function Dashboard() {
             )}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">DNS Protection VPN</h3>
+           <h3 className="text-lg font-bold text-white">Built-In Private DNS Protection</h3>
             <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
               {!vpn.supported
                 ? "Available in the SafeNet Android APK"
                 : vpn.status === null
                   ? "Checking protection status…"
                   : vpn.status.running
-                    ? "DNS protection is running"
-                    : vpn.status.error || "Protection is inactive · Enable in Settings"}
+                     ? "Private DNS protection is running"
+                     : vpn.status.error || "Protection is inactive · Turn On to connect"}
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center justify-center gap-3">
@@ -199,7 +199,7 @@ export default function Dashboard() {
                 }).catch(() => undefined);
               }}
               disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
-              aria-label="Enable DNS Protection VPN"
+               aria-label="Private DNS protection On/Off"
             />
             <Button
               type="button"
@@ -207,14 +207,14 @@ export default function Dashboard() {
               size="sm"
               onClick={() => setEulaOpen(true)}
             >
-              View DNS VPN EULA
+               View Private DNS EULA
             </Button>
           </div>
           {vpn.status?.error && (
             <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs">
               <p role="alert" className="text-destructive">{vpn.status.error}</p>
               <p className="mt-2 text-muted-foreground">
-                Recovery is available here: turn the switch off to stop the VPN, then turn it back on after selecting a working resolver.
+                 Recovery is available here: turn protection Off, select a working resolver, then turn it On again.
               </p>
             </div>
           )}

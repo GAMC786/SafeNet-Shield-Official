@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useSafeNetVpn } from "@/hooks/use-vpn";
 
 type ResolverForm = {
   name: string;
@@ -74,6 +75,7 @@ export default function DnsSettings() {
   const createServer = useCreateDnsServer();
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
+  const vpn = useSafeNetVpn();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
@@ -104,6 +106,15 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
+      if (vpn.supported && vpn.status?.running) {
+        await vpn.stop();
+        await vpn.start({
+          type: server.type,
+          ipVersion: server.ipVersion,
+          primaryAddress: server.primaryAddress,
+          secondaryAddress: server.secondaryAddress,
+        });
+      }
       toast({
         title: "DNS resolver activated",
         description: `${server.name} is now the active SafeNet resolver.`,
@@ -272,29 +283,31 @@ export default function DnsSettings() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Address family</Label>
-              <Select
-                value={formData.ipVersion}
-                onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({
-                  ...formData,
-                  ipVersion: value,
-                  primaryAddress: "",
-                  secondaryAddress: "",
-                })}
-              >
-                <SelectTrigger data-testid="select-resolver-ip-version">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ipv4">IPv4</SelectItem>
-                  <SelectItem value="ipv6">IPv6</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Choose whether this resolver uses IPv4 or IPv6 addresses.
-              </p>
-            </div>
+            {formData.type === "plain" && (
+              <div className="space-y-2">
+                <Label>Address family</Label>
+                <Select
+                  value={formData.ipVersion}
+                  onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({
+                    ...formData,
+                    ipVersion: value,
+                    primaryAddress: "",
+                    secondaryAddress: "",
+                  })}
+                >
+                  <SelectTrigger data-testid="select-resolver-ip-version">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ipv4">IPv4</SelectItem>
+                    <SelectItem value="ipv6">IPv6</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Choose whether this plain resolver uses IPv4 or IPv6 addresses.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="resolver-primary">Primary address</Label>
               <Input

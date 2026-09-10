@@ -128,9 +128,6 @@ interface SafeNetVpnPlugin {
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
-  openSystemSettings(options: {
-    target: "vpn" | "device-admin";
-  }): Promise<{ opened: boolean }>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
@@ -219,12 +216,5 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  const openSystemSettings = useCallback(async (target: "vpn" | "device-admin") => {
-    if (!supported) {
-      throw new Error("Android system settings are available in the SafeNet APK.");
-    }
-    return SafeNetVpn.openSystemSettings({ target });
-  }, [supported]);
-
-  return { supported, status, isBusy, refresh, acceptEula, start, stop, openSystemSettings };
+  return { supported, status, isBusy, refresh, acceptEula, start, stop };
 }

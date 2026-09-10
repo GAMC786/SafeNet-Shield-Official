@@ -27,6 +27,11 @@ export default function DdnsUpdater() {
   const [isOpen, setIsOpen] = useState(false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
   const [testingUpdaterId, setTestingUpdaterId] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, {
+    ok: boolean;
+    message: string;
+    testedAt: number;
+  }>>({});
   const activeDnsServer = dnsServers?.find((server) => server.isActive);
 
   const isAutoMode = Boolean(updaters?.length && updaters.every((updater) => updater.isEnabled !== false));
@@ -149,11 +154,27 @@ export default function DdnsUpdater() {
     setTestingUpdaterId(updater.id);
     try {
       const result = await testUpdater.mutateAsync(updater.id) as { message?: string };
+      setTestResults((current) => ({
+        ...current,
+        [updater.id]: {
+          ok: true,
+          message: result.message || `${updater.provider.toUpperCase()} is reachable. No record was changed.`,
+          testedAt: Date.now(),
+        },
+      }));
       toast({
         title: "DDNS connectivity passed",
         description: result.message || `${updater.provider.toUpperCase()} is reachable. No record was changed.`,
       });
     } catch (error) {
+      setTestResults((current) => ({
+        ...current,
+        [updater.id]: {
+          ok: false,
+          message: error instanceof Error ? error.message : "The provider endpoint could not be reached.",
+          testedAt: Date.now(),
+        },
+      }));
       toast({
         title: "DDNS connectivity failed",
         description: error instanceof Error ? error.message : "The provider endpoint could not be reached.",
@@ -420,6 +441,27 @@ export default function DdnsUpdater() {
                            {new Date(updater.lastFailureTime).toLocaleString()}
                          </p>
                        )}
+
+               {testResults[updater.id] && (
+                 <div
+                   role={testResults[updater.id].ok ? "status" : "alert"}
+                   data-testid={`ddns-test-result-${updater.id}`}
+                   className={cn(
+                     "mb-4 rounded-lg border px-3 py-3 text-sm",
+                     testResults[updater.id].ok
+                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                       : "border-destructive/50 bg-destructive/10 text-destructive",
+                   )}
+                 >
+                   <p className="font-semibold">
+                     {testResults[updater.id].ok ? "Connection test successful" : "Connection test unsuccessful"}
+                   </p>
+                   <p className="mt-1 break-words">{testResults[updater.id].message}</p>
+                   <p className="mt-1 text-xs opacity-80">
+                     Tested {new Date(testResults[updater.id].testedAt).toLocaleString()}
+                   </p>
+                 </div>
+               )}
                      </div>
                    </div>
                  </div>
@@ -442,7 +484,7 @@ export default function DdnsUpdater() {
                   size="sm"
                   onClick={() => void handleUpdaterToggle(updater)}
                   disabled={updateUpdater.isPending}
-                  aria-label={`${updater.isEnabled ? "Disable" : "Enable"} ${updater.hostname}`}
+                   aria-label={`${updater.isEnabled ? "Turn Off" : "Turn On"} ${updater.hostname}`}
                   aria-pressed={updater.isEnabled ?? false}
                   className={cn(
                     "min-h-10 flex-1 border-2 font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
@@ -451,7 +493,7 @@ export default function DdnsUpdater() {
                       : "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/25"
                   )}
                 >
-                  {updater.isEnabled ? "Disable" : "Enable"}
+                   {updater.isEnabled ? "On" : "Off"}
                 </Button>
                 <Button
                   variant="outline"

@@ -89,6 +89,7 @@ function mockApi(
     alwaysOnEnabled: false,
     deviceAdminEnabled: false,
     firewallEnabled: false,
+    preventDnsOverrides: true,
     theme: "red-gray-blue",
   };
   let dnsServers = [
@@ -329,7 +330,7 @@ test("Settings keep controls safe while loading and show the current version", a
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
 
-  for (const name of ["AI Shield", "App Firewall", "Always-On VPN"]) {
+  for (const name of ["AI Shield", "Prevent DNS Overrides"]) {
     assert.equal(
       await page.getByRole("switch", { name }).isDisabled(),
       true,
@@ -395,8 +396,7 @@ for (const viewport of viewports) {
 
     const expectedStates = new Map([
       ["AI Shield", "true"],
-      ["App Firewall", "false"],
-      ["Always-On VPN", "false"],
+      ["Prevent DNS Overrides", "true"],
     ]);
     const backgroundColors = new Set();
 
@@ -419,33 +419,31 @@ for (const viewport of viewports) {
 
     assert.ok(backgroundColors.size >= 2, "checked and unchecked switches must have distinguishable colors");
 
-    const firewall = page.getByRole("switch", { name: "App Firewall" });
-    await focusWithKeyboard(page, firewall);
-    assert.equal(await firewall.evaluate((element) => element === document.activeElement), true);
+    const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
+    await focusWithKeyboard(page, dnsOverrides);
+    assert.equal(await dnsOverrides.evaluate((element) => element === document.activeElement), true);
     assert.notEqual(
-      await firewall.evaluate((element) => getComputedStyle(element).boxShadow),
+      await dnsOverrides.evaluate((element) => getComputedStyle(element).boxShadow),
       "none",
       "keyboard-focused switches need a visible focus ring",
     );
 
-    await firewall.click();
-    await firewall.waitFor({ state: "attached" });
-    for (let attempt = 0; attempt < 20 && (await firewall.getAttribute("aria-checked")) !== "true"; attempt += 1) {
+    await dnsOverrides.click();
+    await dnsOverrides.waitFor({ state: "attached" });
+    for (let attempt = 0; attempt < 20 && (await dnsOverrides.getAttribute("aria-checked")) !== "false"; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    assert.equal(await firewall.getAttribute("aria-checked"), "true", "unchecked switch should become checked");
+    assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
 
     for (const [name, expectedState] of [
       ["AI Shield", "false"],
-      ["Always-On VPN", "true"],
+      ["Prevent DNS Overrides", "true"],
     ]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
 
-    const browserVpn = page.getByTestId("button-open-vpn-settings");
-    assert.equal(await browserVpn.isDisabled(), true);
     await page.close();
   });
 
@@ -456,21 +454,21 @@ for (const viewport of viewports) {
     await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const activeToggle = page.getByRole("button", { name: "Disable home.example.com" });
-    const inactiveToggle = page.getByRole("button", { name: "Enable backup.example.com" });
+    const activeToggle = page.getByRole("button", { name: "Turn Off home.example.com" });
+    const inactiveToggle = page.getByRole("button", { name: "Turn On backup.example.com" });
     assert.equal(await activeToggle.getAttribute("aria-pressed"), "true");
     assert.equal(await inactiveToggle.getAttribute("aria-pressed"), "false");
 
     await activeToggle.click();
-    const enableHome = page.getByRole("button", { name: "Enable home.example.com" });
+    const enableHome = page.getByRole("button", { name: "Turn On home.example.com" });
     await enableHome.waitFor();
     assert.equal(await enableHome.getAttribute("aria-pressed"), "false");
     await enableHome.click();
-    await page.getByRole("button", { name: "Disable home.example.com" }).waitFor();
+    await page.getByRole("button", { name: "Turn Off home.example.com" }).waitFor();
 
     for (const [name, toggle] of [
-      ["active DDNS toggle", activeToggle],
-      ["inactive DDNS toggle", inactiveToggle],
+      ["active DDNS toggle", page.getByRole("button", { name: "Turn Off home.example.com" })],
+      ["inactive DDNS toggle", page.getByRole("button", { name: "Turn On backup.example.com" })],
     ]) {
       const box = await toggle.boundingBox();
       assert.ok(box && box.width >= 44 && box.height >= 40, `${name} is too small to be visible`);
@@ -487,7 +485,7 @@ for (const viewport of viewports) {
     await autoMode.click();
     await page.getByRole("button", { name: "Auto Mode On" }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Auto Mode On" }).getAttribute("aria-pressed"), "true");
-    const enabledBackupToggle = page.getByRole("button", { name: "Disable backup.example.com" });
+    const enabledBackupToggle = page.getByRole("button", { name: "Turn Off backup.example.com" });
     await enabledBackupToggle.waitFor();
     await focusWithKeyboard(page, enabledBackupToggle);
     assert.equal(await enabledBackupToggle.evaluate((element) => element === document.activeElement), true);
@@ -776,7 +774,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("SafeNet wave speed test completes with populated results without browser errors", async () => {
+test("OpenSpeedTest is available with a reliable full-page fallback", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -790,37 +788,14 @@ test("SafeNet wave speed test completes with populated results without browser e
   await page.getByRole("heading", { name: "Speed Test" }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop");
 
-  await page.getByTestId("button-start-speedtest").click();
-  await page.getByTestId("speedtest-wave-chart").waitFor();
-  await page.getByText("Measuring latency", { exact: true }).first().waitFor();
-
-  const pauseButton = page.getByTestId("button-pause-speedtest");
-  await pauseButton.waitFor({ state: "visible" });
-  await pauseButton.click();
-
-  const resumeButton = page.getByRole("button", { name: "Resume Test" });
-  await resumeButton.waitFor({ state: "visible" });
-  assert.equal(await pauseButton.isVisible(), false, "pausing should hide the pause control");
-
-  await resumeButton.click();
-  await pauseButton.waitFor({ state: "visible" });
-  await page.getByText("Measuring latency", { exact: true }).first().waitFor();
-
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 30000 });
-  await page.getByRole("button", { name: "Run Again" }).waitFor({ state: "visible" });
-  assert.equal(await page.getByRole("alert").count(), 0, "completed speed test should not show an error alert");
-  assert.equal(await page.getByTestId("speedtest-wave-chart").getAttribute("aria-label"), "Network performance wave chart, 100% complete");
-  for (const [testId, unit] of [
-    ["text-ping-result", "ms"],
-    ["text-download-result", "Mbps"],
-    ["text-upload-result", "Mbps"],
-  ]) {
-    assert.match(
-      (await page.getByTestId(testId).textContent()).trim(),
-      new RegExp(`^\\d+(?:\\.\\d+)? ${unit}$`),
-      `${testId} should show a completed numeric result`,
-    );
-  }
+  const frame = page.getByTestId("openspeedtest-frame");
+  await frame.waitFor();
+  assert.match(await frame.getAttribute("src"), /^https:\/\/openspeedtest\.com\/speedtest/);
+  const fullTestLink = page.getByRole("link", { name: "Open full test" }).first();
+  assert.equal(await fullTestLink.getAttribute("target"), "_blank");
+  assert.match(await fullTestLink.getAttribute("href"), /^https:\/\/openspeedtest\.com\/speedtest/);
+  await page.getByTestId("button-refresh-speedtest").click();
+  await frame.waitFor();
 
   assert.deepEqual(
     pageErrors,

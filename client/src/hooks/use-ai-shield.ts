@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AiShieldResult, ProtectionStatus, SafeNetVpn } from "@/hooks/use-vpn";
 
@@ -18,6 +18,15 @@ export function useAiShield() {
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latestStatusTimestamp = useRef(0);
+
+  const applyStatus = useCallback((nextStatus: AiShieldResult) => {
+    if (nextStatus.timestamp < latestStatusTimestamp.current) {
+      return;
+    }
+    latestStatusTimestamp.current = nextStatus.timestamp;
+    setStatus(nextStatus);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!supported) {
@@ -25,7 +34,7 @@ export function useAiShield() {
     }
     try {
       const nextStatus = await SafeNetVpn.getAiShieldStatus();
-      setStatus(nextStatus);
+      applyStatus(nextStatus);
       setError(null);
       return nextStatus;
     } catch (statusError) {
@@ -35,7 +44,7 @@ export function useAiShield() {
       setError(message);
       return null;
     }
-  }, [supported]);
+  }, [applyStatus, supported]);
 
   const refreshProtection = useCallback(async () => {
     if (!supported) {
@@ -78,7 +87,7 @@ export function useAiShield() {
     let listener: { remove: () => Promise<void> } | null = null;
     let disposed = false;
     void SafeNetVpn.addListener("aiShieldResult", (result) => {
-      setStatus(result);
+       applyStatus(result);
       setError(null);
     }).then((nextListener) => {
       if (disposed) {
@@ -94,7 +103,7 @@ export function useAiShield() {
         void listener.remove();
       }
     };
-  }, [refresh, refreshProtection, supported]);
+  }, [applyStatus, refresh, refreshProtection, supported]);
 
   const run = useCallback(async (
     action: () => Promise<AiShieldResult>,
@@ -106,7 +115,7 @@ export function useAiShield() {
     setError(null);
     try {
       const nextStatus = await action();
-      setStatus(nextStatus);
+      applyStatus(nextStatus);
       return nextStatus;
     } catch (actionError) {
       const message = actionError instanceof Error
@@ -117,7 +126,7 @@ export function useAiShield() {
     } finally {
       setIsBusy(false);
     }
-  }, [supported]);
+  }, [applyStatus, supported]);
 
   const startCamera = useCallback(
     () => run(() => SafeNetVpn.startAiShieldCamera()),

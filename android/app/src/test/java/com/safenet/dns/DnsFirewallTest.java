@@ -6,7 +6,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public class DnsFirewallTest {
-    private static final String SETTINGS = "{\"firewallEnabled\":true}";
+    private static final String SETTINGS = "{\"firewallEnabled\":true,\"preventDnsOverrides\":true}";
 
     @Test
     public void disabledFirewallAllowsQueries() throws Exception {
@@ -78,6 +78,43 @@ public class DnsFirewallTest {
         assertEquals(
             DnsFirewall.Decision.ALLOW,
             firewall.evaluate(query("example.com"), "10.248.0.2", "10.248.0.1")
+        );
+    }
+
+    @Test
+    public void preventDnsOverridesBlocksExternalDestinationsBeforeAllowRules() throws Exception {
+        DnsFirewall firewall = DnsFirewall.fromJson(
+            "{\"settings\":" + SETTINGS
+                + ",\"rules\":["
+                + "{\"id\":1,\"sourceInterface\":\"lan\",\"sourceAddress\":\"Any\","
+                + "\"destinationInterface\":\"wan\",\"destinationAddress\":\"Any\","
+                + "\"service\":\"dns\",\"action\":\"allow\",\"isEnabled\":true,\"priority\":20}"
+                + "],\"blocklists\":[]}"
+        );
+
+        DnsFirewall.Evaluation evaluation = firewall.evaluateWithReason(
+            query("example.com"),
+            "10.248.0.2",
+            "8.8.8.8"
+        );
+        assertEquals(DnsFirewall.Decision.BLOCK, evaluation.decision);
+        assertEquals("dns_override_prevented", evaluation.reason);
+    }
+
+    @Test
+    public void disabledDnsOverrideProtectionLeavesExternalAccessRuleBehaviorIntact() throws Exception {
+        DnsFirewall firewall = DnsFirewall.fromJson(
+            "{\"settings\":{\"firewallEnabled\":true,\"preventDnsOverrides\":false}"
+                + ",\"rules\":["
+                + "{\"id\":1,\"sourceInterface\":\"lan\",\"sourceAddress\":\"Any\","
+                + "\"destinationInterface\":\"wan\",\"destinationAddress\":\"Any\","
+                + "\"service\":\"dns\",\"action\":\"allow\",\"isEnabled\":true,\"priority\":20}"
+                + "],\"blocklists\":[]}"
+        );
+
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            firewall.evaluate(query("example.com"), "10.248.0.2", "8.8.8.8")
         );
     }
 

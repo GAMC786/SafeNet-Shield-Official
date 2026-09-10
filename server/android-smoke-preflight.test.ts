@@ -425,7 +425,7 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     /needs: \[build-android, android-release-smoke\]/,
   );
   const startupStart = workflow.indexOf("\n  android-release-startup:");
-  const startupJobEnd = workflow.indexOf("\n  build-windows:", startupStart);
+  const startupJobEnd = workflow.indexOf("\n  release:", startupStart);
   assert.ok(startupStart >= 0);
   assert.ok(startupJobEnd > startupStart);
   const startupJob = workflow.slice(startupStart, startupJobEnd);
@@ -454,10 +454,7 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
     releaseJob,
     /needs\.android-release-smoke\.result == 'success'[\s\S]*needs\.android-release-smoke\.result == 'failure'/,
   );
-  assert.match(
-    workflow,
-    /build-windows:\n\s+# Tagged releases.*\n\s+# Windows packaging lane.*\n\s+if: github\.event_name != 'schedule' && !startsWith\(github\.ref, 'refs\/tags\/v'\)/s,
-  );
+  assert.doesNotMatch(workflow, /build-windows|Windows packaging lane|Windows MSI/);
   assert.doesNotMatch(workflow, /name: Download Windows artifact/);
   assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
   const releaseVerifyStep = getStepBlock("Verify Android release APK");

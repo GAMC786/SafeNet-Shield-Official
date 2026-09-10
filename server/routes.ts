@@ -31,7 +31,13 @@ function publicSettings(settings: AppSettings) {
     isPinEnabled: _isPinEnabled,
     ...safeSettings
   } = settings;
-  return safeSettings;
+  return {
+    ...safeSettings,
+    // Existing installations may predate the setting. The safe default is to
+    // keep resolver override protection on until the user explicitly turns it
+    // off.
+    preventDnsOverrides: settings.preventDnsOverrides ?? true,
+  };
 }
 
 function publicDdnsUpdater(updater: DdnsUpdater) {

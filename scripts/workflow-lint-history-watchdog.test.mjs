@@ -309,7 +309,7 @@ test("alerts with the affected run and history file when the monthly run is abse
   };
   const result = await runWatchdog({
     runs: [nearestRun],
-    jobsByRun: { 100: [{ name: "Build Android APK and Windows MSI" }] },
+    jobsByRun: { 100: [{ name: "Build Android APK" }] },
     history: { schema_version: 1, retention_runs: 24, runs: [] },
   });
 
