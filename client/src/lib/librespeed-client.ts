@@ -224,7 +224,6 @@ export class LibreSpeedClient {
     const totalDuration = duration + graceDuration;
     const streams = direction === "download" ? this.options.downloadStreams : this.options.uploadStreams;
     const startedAt = performance.now();
-    let totalBytes = 0;
     let measuredBytes = 0;
     let measuredStartedAt = 0;
     let measurementStarted = false;
@@ -261,7 +260,6 @@ export class LibreSpeedClient {
         const update = (bytes: number) => {
           const delta = Math.max(0, bytes - previousBytes);
           previousBytes = bytes;
-          totalBytes += delta;
           const now = performance.now();
           if (!measurementStarted && now - startedAt >= graceDuration) {
             measurementStarted = true;
@@ -296,11 +294,11 @@ export class LibreSpeedClient {
           } else if (direction === "upload" && payload && previousBytes === 0) {
             update(payload.size);
           }
-          if (!finished && performance.now() - startedAt < duration) launch();
+          if (!finished && performance.now() - startedAt < totalDuration) launch();
         };
         request.onerror = () => {
           this.activeRequests.delete(request);
-          if (!finished && performance.now() - startedAt < duration) launch();
+          if (!finished && performance.now() - startedAt < totalDuration) launch();
         };
         request.onabort = () => this.activeRequests.delete(request);
         request.send(payload);

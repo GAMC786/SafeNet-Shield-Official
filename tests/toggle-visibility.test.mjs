@@ -768,7 +768,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("the ISP-based Measure Your Network UI exposes the Google speed test", async () => {
+test("the ISP-based Measure Your Network UI uses LibreSpeed without an external test link", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -784,9 +784,8 @@ test("the ISP-based Measure Your Network UI exposes the Google speed test", asyn
 
   await page.getByText("Measure your network", { exact: true }).waitFor();
   await page.getByTestId("speedtest-wave-chart").waitFor();
-  const fullTestLink = page.getByRole("link", { name: "Google Speed Test" });
-  assert.equal(await fullTestLink.getAttribute("target"), "_blank");
-  assert.equal(await fullTestLink.getAttribute("href"), "https://fiber.google.com/speedtest/");
+  assert.equal(await page.getByTestId("button-google-speedtest").count(), 0);
+  assert.equal(await page.getByText("Google Speed Test", { exact: true }).count(), 0);
 
   assert.deepEqual(
     pageErrors,
