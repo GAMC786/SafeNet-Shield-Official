@@ -535,16 +535,13 @@ test("DNS resolver management supports activation and CRUD controls", async () =
   await page.close();
 });
 
-test("Antivirus switches show success and recover after an update error", async () => {
+test("Antivirus dashboard hides the status toggle and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);
   await page.goto(`${baseUrl}/antivirus`);
   await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
 
-  const protectionSwitch = page.getByTestId("switch-antivirus-enabled");
-  await waitForAttribute(protectionSwitch, "aria-checked", "true");
-  await protectionSwitch.click();
-  await waitForAttribute(protectionSwitch, "aria-checked", "false");
+  assert.equal(await page.getByTestId("switch-antivirus-enabled").count(), 0);
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const malwareSwitch = page.getByTestId("switch-malware-settings");

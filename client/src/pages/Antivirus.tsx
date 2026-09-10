@@ -630,14 +630,8 @@ export default function Antivirus() {
           <div className="flex-1">
             <TabsContent value="dashboard" className="mt-0 space-y-4">
               <CyberCard>
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4">
                   <h3 className="font-display text-lg tracking-wider">Protection Status</h3>
-                  <Switch
-                    checked={antivirusEnabled}
-                    onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
-                    disabled={updateSettings.isPending}
-                    data-testid="switch-antivirus-enabled"
-                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
