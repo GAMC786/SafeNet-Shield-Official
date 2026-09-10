@@ -413,7 +413,7 @@ test("Settings keep controls safe while loading and show the current version", a
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
-    `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
+    `SafeNet Shield DNS v${packageVersion}`,
   );
   await page.close();
 });

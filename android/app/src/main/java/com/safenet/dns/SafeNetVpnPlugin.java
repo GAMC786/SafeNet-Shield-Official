@@ -41,6 +41,10 @@ public class SafeNetVpnPlugin extends Plugin {
     public static final String EULA_VERSION = "1.0";
     private static final String PREFS_NAME = "safenet_vpn";
     private static final String PREF_EULA_VERSION = "accepted_eula_version";
+    static final String PREF_RESOLVER_TYPE = "resolver_type";
+    static final String PREF_RESOLVER_IP_VERSION = "resolver_ip_version";
+    static final String PREF_RESOLVER_PRIMARY = "resolver_primary";
+    static final String PREF_RESOLVER_SECONDARY = "resolver_secondary";
     private ExecutorService apkScannerExecutor;
     private ApkScanner apkScanner;
     private AiShieldManager aiShieldManager;
@@ -130,6 +134,7 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
 
+        rememberResolver(type, ipVersion, primaryAddress, secondaryAddress);
         Intent serviceIntent = createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress);
         Intent permissionIntent = VpnService.prepare(getContext());
         if (permissionIntent != null) {
@@ -155,6 +160,7 @@ public class SafeNetVpnPlugin extends Plugin {
         String ipVersion = call.getString("ipVersion", "ipv4");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
+        rememberResolver(type, ipVersion, primaryAddress, secondaryAddress);
         startVpnService(createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress));
         resolveWhenStarted(call);
     }
@@ -172,6 +178,20 @@ public class SafeNetVpnPlugin extends Plugin {
         } else {
             getContext().startService(intent);
         }
+    }
+
+    private void rememberResolver(
+        String type,
+        String ipVersion,
+        String primaryAddress,
+        String secondaryAddress
+    ) {
+        preferences().edit()
+            .putString(PREF_RESOLVER_TYPE, type)
+            .putString(PREF_RESOLVER_IP_VERSION, ipVersion)
+            .putString(PREF_RESOLVER_PRIMARY, primaryAddress)
+            .putString(PREF_RESOLVER_SECONDARY, secondaryAddress == null ? "" : secondaryAddress)
+            .apply();
     }
 
     private void resolveWhenStarted(PluginCall call) {

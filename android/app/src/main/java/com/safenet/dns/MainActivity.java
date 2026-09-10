@@ -201,7 +201,6 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onPause() {
-        stopSoundtrack();
         super.onPause();
     }
 

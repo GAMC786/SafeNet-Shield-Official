@@ -5,12 +5,13 @@ import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { EulaDialog } from "@/components/EulaDialog";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2 } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2, Music } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
+import { useSoundtrack } from "@/hooks/use-soundtrack";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const { data: logs } = logsQuery;
   const { data: dnsServers } = useDnsServers();
   const vpn = useSafeNetVpn();
+  const soundtrack = useSoundtrack();
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -164,14 +166,14 @@ export default function Dashboard() {
             )}
           </div>
           <div>
-           <h3 className="text-lg font-bold text-white">Built-In Private DNS Protection</h3>
+            <h3 className="text-lg font-bold text-white">SafeNet VPN</h3>
             <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
               {!vpn.supported
                 ? "Available in the SafeNet Android APK"
                 : vpn.status === null
                   ? "Checking protection status…"
                   : vpn.status.running
-                     ? "Private DNS protection is running"
+                     ? "SafeNet VPN protection is running"
                      : vpn.status.error || "Protection is inactive · Turn On to connect"}
             </p>
           </div>
@@ -199,7 +201,7 @@ export default function Dashboard() {
                 }).catch(() => undefined);
               }}
               disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
-               aria-label="Private DNS protection On/Off"
+                aria-label="SafeNet VPN On/Off"
             />
             <Button
               type="button"
@@ -207,9 +209,24 @@ export default function Dashboard() {
               size="sm"
               onClick={() => setEulaOpen(true)}
             >
-               View Private DNS EULA
+                View SafeNet VPN EULA
             </Button>
           </div>
+           <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
+             <div className="flex items-center gap-2">
+               <Music className="h-4 w-4 text-primary" />
+               <div>
+                 <p className="text-sm font-medium text-foreground">Soundtrack</p>
+                 <p className="text-xs text-muted-foreground">Keep the SafeNet soundtrack enabled</p>
+               </div>
+             </div>
+             <Switch
+               checked={soundtrack.enabled}
+               onCheckedChange={soundtrack.setEnabled}
+               aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
+               data-testid="switch-soundtrack"
+             />
+           </div>
           {vpn.status?.error && (
             <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs">
               <p role="alert" className="text-destructive">{vpn.status.error}</p>

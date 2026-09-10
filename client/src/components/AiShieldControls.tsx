@@ -169,7 +169,7 @@ export function AiShieldControls() {
                 </span>
                 <Switch
                   checked={cameraEnabled}
-                  onCheckedChange={() => void run(cameraEnabled ? shield.stop : shield.startCamera)}
+                   onCheckedChange={(checked) => void run(checked ? shield.startCamera : shield.stop)}
                   disabled={shield.isBusy}
                   data-testid="switch-ai-camera"
                   aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
@@ -190,7 +190,7 @@ export function AiShieldControls() {
                 </span>
                 <Switch
                   checked={screenEnabled}
-                  onCheckedChange={() => void run(screenEnabled ? shield.stop : shield.startScreen)}
+                   onCheckedChange={(checked) => void run(checked ? shield.startScreen : shield.stop)}
                   disabled={shield.isBusy}
                   data-testid="switch-ai-screen"
                   aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}

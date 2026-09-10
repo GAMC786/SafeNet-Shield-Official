@@ -15,6 +15,7 @@ import {
   insertFirewallRuleSchema,
   DDNS_DEFAULT_INTERVAL_SECONDS,
   DDNS_DEFAULT_INTERVAL_MS,
+  DDNS_MIN_INTERVAL_MINUTES,
   DDNS_MIN_INTERVAL_SECONDS,
   DDNS_MIN_INTERVAL_MS,
 } from "@shared/schema";
@@ -52,7 +53,7 @@ function publicDdnsUpdater(updater: DdnsUpdater) {
     isEnabled: updater.isEnabled,
     updateInterval: updater.updateInterval === null
       ? DDNS_DEFAULT_INTERVAL_SECONDS
-      : Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(updater.updateInterval / 1000)),
+      : Math.max(DDNS_MIN_INTERVAL_MINUTES, Math.round(updater.updateInterval / 60000)),
   };
 }
 
@@ -297,10 +298,10 @@ export async function registerRoutes(
       if (provider !== "iplink" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_SECONDS).safeParse(updateInterval);
+       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_SECONDS} second`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MINUTES} minute`,
          });
        }
        const updater = await storage.createDdnsUpdater({
@@ -309,7 +310,7 @@ export async function registerRoutes(
         apiKey: apiKey || "",
         customUrl: customUrl || null,
           updateInterval: parsedInterval.success
-            ? parsedInterval.data * 1000
+             ? parsedInterval.data * 60000
             : DDNS_DEFAULT_INTERVAL_MS,
         isEnabled: isEnabled !== false,
       });
@@ -326,10 +327,10 @@ export async function registerRoutes(
       if (customUrl !== undefined && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_SECONDS).safeParse(updateInterval);
+        const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_SECONDS} second`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MINUTES} minute`,
          });
        }
        const updater = await storage.updateDdnsUpdater(id, {
@@ -338,7 +339,7 @@ export async function registerRoutes(
         ...(apiKey !== undefined && { apiKey }),
         ...(customUrl !== undefined && { customUrl }),
           ...(updateInterval !== undefined && parsedInterval.success
-            ? { updateInterval: parsedInterval.data * 1000 }
+             ? { updateInterval: parsedInterval.data * 60000 }
             : {}),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
@@ -483,6 +484,27 @@ export async function registerRoutes(
     const settings = await storage.getAntivirusSettings();
     res.json(settings);
   });
+
+  app.get("/api/antivirus/clamav/status", async (_req, res) => {
+    const { getClamAvStatus } = await import("./clamav-service");
+    res.json(await getClamAvStatus());
+  });
+
+  app.post(
+    "/api/antivirus/clamav/scan",
+    express.raw({ type: "application/octet-stream", limit: "64mb" }),
+    async (req, res) => {
+      try {
+        const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+        const { scanWithClamAv } = await import("./clamav-service");
+        res.json(await scanWithClamAv(payload));
+      } catch (error) {
+        res.status(503).json({
+          message: error instanceof Error ? error.message : "ClamAV REST scan failed.",
+        });
+      }
+    },
+  );
 
   app.put("/api/antivirus/settings", async (req, res) => {
     try {

@@ -123,7 +123,7 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     assert.equal(httpsPayload.updateInterval, 123456);
     const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 0);
     assert.equal(invalidIntervalResponse.status, 400);
-    assert.match((await invalidIntervalResponse.json()).message, /second/);
+    assert.match((await invalidIntervalResponse.json()).message, /minute/);
     assert.equal(providerRequests, 0);
 
     globalThis.fetch = async (_input, init) => {
@@ -147,9 +147,9 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
   }
 });
 
-test("DDNS status refresh cadence is 500 milliseconds", async () => {
+test("DDNS status refresh cadence is five seconds", async () => {
   const { DDNS_STATUS_REFRESH_INTERVAL_MS } = await import("../client/src/hooks/ddns-constants");
-  assert.equal(DDNS_STATUS_REFRESH_INTERVAL_MS, 500);
+  assert.equal(DDNS_STATUS_REFRESH_INTERVAL_MS, 5000);
 });
 
 test("DDNS connectivity rejects provider HTTP errors", async () => {
@@ -313,6 +313,50 @@ test("DDNS updates skip an updater while its provider request is in flight", asy
   } finally {
     resolveProviderStarted?.();
     releaseProviderResponse?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DDNS scheduler honors a shared database claim before writing", async () => {
+  const { checkAndUpdateDdns } = await import("./ddns-service");
+  const updater: DdnsUpdater = {
+    id: 12,
+    hostname: "home.example.test",
+    provider: "duckdns",
+    apiKey: "test-token",
+    customUrl: null,
+    lastIpAddress: "198.51.100.20",
+    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
+    lastFailureMessage: null,
+    lastFailureTime: null,
+    isEnabled: true,
+    updateInterval: 3600000,
+  };
+  let providerRequests = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerRequests += 1;
+    return new Response("OK", { status: 200 });
+  };
+
+  try {
+    const sharedStorage = {
+      getDdnsUpdaters: async () => [updater],
+      updateDdnsIpInfo: async () => updater,
+      claimDdnsUpdate: async () => false,
+    };
+    assert.deepEqual(await checkAndUpdateDdns("198.51.100.21", sharedStorage), []);
+    assert.equal(providerRequests, 0);
+
+    const winningStorage = {
+      ...sharedStorage,
+      claimDdnsUpdate: async () => true,
+    };
+    const results = await checkAndUpdateDdns("198.51.100.21", winningStorage);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].success, true);
+    assert.equal(providerRequests, 1);
+  } finally {
     globalThis.fetch = originalFetch;
   }
 });

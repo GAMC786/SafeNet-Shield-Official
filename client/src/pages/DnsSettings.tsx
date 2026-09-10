@@ -375,7 +375,9 @@ export default function DnsSettings() {
                     {server.isCustom && <Badge variant="outline">Custom</Badge>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{resolverTypeLabel(server.type)}</p>
-                   <p className="mt-1 text-xs font-mono uppercase tracking-wider text-primary">{server.ipVersion}</p>
+                   {server.type === "plain" && (
+                     <p className="mt-1 text-xs font-mono uppercase tracking-wider text-primary">{server.ipVersion}</p>
+                   )}
                   <p className="mt-1 break-all font-mono text-sm text-muted-foreground">
                     {server.primaryAddress}
                     {server.secondaryAddress && <span className="opacity-50"> • {server.secondaryAddress}</span>}

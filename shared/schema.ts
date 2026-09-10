@@ -2,8 +2,13 @@ import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const DDNS_DEFAULT_INTERVAL_SECONDS = 60 * 60;
-export const DDNS_MIN_INTERVAL_SECONDS = 1;
+// The API and UI expose provider write intervals in minutes. Persistence keeps
+// the historical millisecond representation for compatibility with existing
+// installations and scheduler code.
+export const DDNS_DEFAULT_INTERVAL_MINUTES = 60;
+export const DDNS_MIN_INTERVAL_MINUTES = 1;
+export const DDNS_DEFAULT_INTERVAL_SECONDS = DDNS_DEFAULT_INTERVAL_MINUTES * 60;
+export const DDNS_MIN_INTERVAL_SECONDS = DDNS_MIN_INTERVAL_MINUTES * 60;
 export const DDNS_SCHEDULER_INTERVAL_SECONDS = 1;
 export const DDNS_DEFAULT_INTERVAL_MS = DDNS_DEFAULT_INTERVAL_SECONDS * 1000;
 export const DDNS_MIN_INTERVAL_MS = DDNS_MIN_INTERVAL_SECONDS * 1000;
@@ -69,7 +74,7 @@ export const appSettings = pgTable("app_settings", {
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
-  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"] }).notNull(),
+  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"] }).notNull(),
   apiKey: text("api_key").notNull(),
   customUrl: text("custom_url"), // For IP Link - URL with {ip} and {hostname} placeholders
   lastIpAddress: text("last_ip_address"),
@@ -182,7 +187,7 @@ export const firewallConfigSchema = z.object({
 export const publicDdnsUpdaterSchema = z.object({
   id: z.number(),
   hostname: z.string(),
-  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"]),
+  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"]),
   lastIpAddress: z.string().nullable(),
   lastUpdateTime: z.coerce.date().nullable(),
   lastFailureMessage: z.string().nullable(),

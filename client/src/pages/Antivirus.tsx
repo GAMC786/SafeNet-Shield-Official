@@ -5,6 +5,7 @@ import {
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
+import { useClamAvStatus } from "@/hooks/use-clamav";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -32,6 +33,7 @@ export default function Antivirus() {
   const resolveEvent = useResolveAntivirusEvent();
   const { data: stats } = useAntivirusStats();
   const apkScanner = useApkScanner();
+  const clamAv = useClamAvStatus();
   const { toast } = useToast();
   const antivirusEnabled = settings?.isEnabled ?? true;
 
@@ -276,10 +278,30 @@ export default function Antivirus() {
   return (
     <div className="space-y-6">
       <Header 
-        title="Built-In Antivirus" 
+        title="Cisco Endpoint Protection"
         subtitle="On-Device APK & DNS Threat Protection"
         status={antivirusEnabled ? "active" : "inactive"}
       />
+
+      <CyberCard className={clamAv.data?.reachable
+        ? "border-emerald-500/30 bg-emerald-500/5"
+        : "border-yellow-500/30 bg-yellow-500/5"}
+      >
+        <div className="flex items-start gap-3">
+          <Shield className="mt-0.5 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-display text-lg tracking-wider">ClamAV REST engine</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {clamAv.isLoading ? "Checking the deployment scanner…" : clamAv.data?.message || "ClamAV status is unavailable."}
+            </p>
+            {!clamAv.data?.reachable && (
+              <p className="mt-2 text-xs text-yellow-100/80">
+                Cisco Endpoint Protection will not pretend a scan succeeded while the deployment scanner is unavailable.
+              </p>
+            )}
+          </div>
+        </div>
+      </CyberCard>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <CyberCard className="bg-gradient-to-br from-destructive/10 to-transparent border-destructive/20">
@@ -332,7 +354,7 @@ export default function Antivirus() {
               <FileSearch className="h-6 w-6 text-primary" />
             </div>
             <div className="space-y-1">
-              <h2 className="font-display text-lg tracking-wider">APK Endpoint Protection</h2>
+              <h2 className="font-display text-lg tracking-wider">Cisco Endpoint Protection</h2>
               <p className="max-w-2xl text-sm text-muted-foreground">
                 Inspect APK files locally before you install them. Files stay on this device and are checked against
                 the bundled offline signature database.

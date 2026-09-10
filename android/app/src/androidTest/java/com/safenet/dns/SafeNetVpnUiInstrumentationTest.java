@@ -48,7 +48,7 @@ import java.util.regex.Pattern;
 @RunWith(AndroidJUnit4.class)
 public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
-    private static final String VPN_SWITCH_LABEL = "Private DNS protection On/Off";
+    private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;

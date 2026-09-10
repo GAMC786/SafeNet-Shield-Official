@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
-import { DDNS_DEFAULT_INTERVAL_SECONDS, DDNS_MIN_INTERVAL_SECONDS, type PublicDdnsUpdater } from "@shared/schema";
+import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2 } from "lucide-react";
@@ -72,14 +72,14 @@ export default function DdnsUpdater() {
     provider: PublicDdnsUpdater["provider"];
     apiKey: string;
     customUrl: string;
-    updateIntervalSeconds: number;
+    updateIntervalMinutes: number;
     isEnabled: boolean;
   }>({
     hostname: "",
-    provider: "duckdns" as "duckdns" | "noip" | "dynu" | "dnsomatic" | "iplink",
+    provider: "duckdns" as PublicDdnsUpdater["provider"],
     apiKey: "",
     customUrl: "",
-    updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_SECONDS,
+    updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
     isEnabled: true,
   });
 
@@ -89,7 +89,7 @@ export default function DdnsUpdater() {
       provider: "duckdns",
       apiKey: "",
       customUrl: "",
-      updateIntervalSeconds: DDNS_DEFAULT_INTERVAL_SECONDS,
+      updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
       isEnabled: true,
     });
     setEditingUpdater(null);
@@ -107,7 +107,7 @@ export default function DdnsUpdater() {
       provider: updater.provider,
       apiKey: "",
       customUrl: "",
-      updateIntervalSeconds: Math.max(DDNS_MIN_INTERVAL_SECONDS, updater.updateInterval || DDNS_DEFAULT_INTERVAL_SECONDS),
+      updateIntervalMinutes: Math.max(DDNS_MIN_INTERVAL_MINUTES, updater.updateInterval || DDNS_DEFAULT_INTERVAL_MINUTES),
       isEnabled: updater.isEnabled !== false,
     });
     setIsOpen(true);
@@ -122,7 +122,7 @@ export default function DdnsUpdater() {
           id: editingUpdater.id,
           data: {
             ...updaterData,
-            updateInterval: Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(formData.updateIntervalSeconds)),
+            updateInterval: Math.max(DDNS_MIN_INTERVAL_MINUTES, Math.round(formData.updateIntervalMinutes)),
             ...(apiKey.trim() ? { apiKey } : {}),
             ...(customUrl.trim() ? { customUrl } : {}),
           },
@@ -130,7 +130,7 @@ export default function DdnsUpdater() {
       } else {
         await createUpdater.mutateAsync({
           ...formData,
-          updateInterval: Math.max(DDNS_MIN_INTERVAL_SECONDS, Math.round(formData.updateIntervalSeconds)),
+          updateInterval: Math.max(DDNS_MIN_INTERVAL_MINUTES, Math.round(formData.updateIntervalMinutes)),
         });
       }
       setIsOpen(false);
@@ -253,7 +253,7 @@ export default function DdnsUpdater() {
               {activeDnsServer?.name || "No resolver selected"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              DDNS status refreshes every 500 ms. Provider updates use the authenticated
+              DDNS status is read-only and live. Provider updates use the authenticated
               SafeNet API, and custom IP Link endpoints require HTTPS.
             </p>
           </div>
@@ -312,6 +312,7 @@ export default function DdnsUpdater() {
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
                      <SelectItem value="cloudflare">Cloudflare</SelectItem>
+                     <SelectItem value="dnsexit">DNSExit</SelectItem>
                     <SelectItem value="dnsomatic">DNS-O-MATIC</SelectItem>
                     <SelectItem value="iplink">IP Link (Custom URL)</SelectItem>
                   </SelectContent>
@@ -357,17 +358,17 @@ export default function DdnsUpdater() {
               </div>
 
               <div className="space-y-2">
-                  <Label>Update Interval (seconds)</Label>
+                   <Label>Update Interval (minutes)</Label>
                 <Input
-                   value={formData.updateIntervalSeconds}
-                   onChange={(e) => setFormData({ ...formData, updateIntervalSeconds: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_SECONDS })}
+                   value={formData.updateIntervalMinutes}
+                   onChange={(e) => setFormData({ ...formData, updateIntervalMinutes: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MINUTES })}
                   type="number"
-                   min={DDNS_MIN_INTERVAL_SECONDS}
+                    min={DDNS_MIN_INTERVAL_MINUTES}
                    step="1"
                   className="bg-background border-border"
                 />
                  <p className="text-xs text-muted-foreground">
-                   Provider writes are limited to this interval. Status refresh stays live every 500 ms.
+                    Provider writes are limited to this interval. Existing secrets are kept when the key or custom URL is blank.
                  </p>
               </div>
 

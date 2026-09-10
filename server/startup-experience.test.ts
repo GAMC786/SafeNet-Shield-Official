@@ -88,7 +88,7 @@ const packageVersion = JSON.parse(
 test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
   assert.match(indexHtml, /id="startup-loader"/);
-  assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
+  assert.match(indexHtml, /Connecting to SafeNet Shield DNS/);
   assert.match(indexHtml, /safenet-astronaut-loader-transparent\.png/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
@@ -194,20 +194,20 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
   assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);
   assert.doesNotMatch(settingsSource, /v1\.0\.20/);
-  assert.match(
-    manifestSource,
-    new RegExp(`SafeNet Shield DNS Server\\+ \\(Official\\) v${packageVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
-  );
+   assert.match(
+     manifestSource,
+     new RegExp(`SafeNet Shield DNS v${packageVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+   );
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("the Dashboard reports Built-In Private DNS protection instead of generic system activity", () => {
+test("the Dashboard reports SafeNet VPN protection instead of generic system activity", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
-  assert.match(dashboardSource, /Built-In Private DNS Protection/);
-  assert.match(dashboardSource, /Private DNS protection On\/Off/);
+  assert.match(dashboardSource, /SafeNet VPN/);
+  assert.match(dashboardSource, /SafeNet VPN On\/Off/);
   assert.match(dashboardSource, /startAfterEula/);
   assert.match(dashboardSource, /Available in the SafeNet Android APK/);
-   assert.match(dashboardSource, /Private DNS protection is running/);
+   assert.match(dashboardSource, /SafeNet VPN protection is running/);
   assert.doesNotMatch(dashboardSource, /System Active/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
@@ -216,7 +216,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
-  assert.match(ddnsSource, /Update Interval \(seconds\)/);
+  assert.match(ddnsSource, /Update Interval \(minutes\)/);
+  assert.match(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Test/);
   assert.match(ddnsSource, /Connection test successful/);
   assert.match(ddnsSource, /Connection test unsuccessful/);

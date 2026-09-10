@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
 import { useFirewallRules, useCreateFirewallRule, useUpdateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -26,6 +28,9 @@ export default function Firewall() {
   const createRule = useCreateFirewallRule();
   const updateRule = useUpdateFirewallRule();
   const deleteRule = useDeleteFirewallRule();
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const firewallEnabled = settings?.firewallEnabled ?? false;
 
   const [newDomain, setNewDomain] = useState("");
   const [newDomainAction, setNewDomainAction] = useState<"allow" | "block">("block");
@@ -275,6 +280,18 @@ export default function Firewall() {
             <p className="text-muted-foreground">
               Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {firewallEnabled ? "On" : "Off"}
+            </span>
+            <Switch
+              checked={firewallEnabled}
+              disabled={!settings || updateSettings.isPending}
+              onCheckedChange={(checked) => updateSettings.mutate({ firewallEnabled: checked })}
+              aria-label="DNS Firewall On/Off"
+              data-testid="switch-firewall-master"
+            />
           </div>
         </div>
       </CyberCard>

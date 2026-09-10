@@ -6,7 +6,7 @@ import {
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
 import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
-import { eq, desc, asc, count } from "drizzle-orm";
+import { and, eq, desc, asc, count, isNull, lt, or } from "drizzle-orm";
 
 export interface IStorage {
   // DNS Servers
@@ -37,6 +37,7 @@ export interface IStorage {
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
   updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater>;
+  claimDdnsUpdate(id: number, notBefore: Date): Promise<boolean>;
 
   // Firewall Rules
   getFirewallRules(): Promise<FirewallRule[]>;
@@ -229,6 +230,22 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ddnsUpdaters.id, id))
       .returning();
     return updated;
+  }
+
+  async claimDdnsUpdate(id: number, notBefore: Date): Promise<boolean> {
+    // Claim the write slot atomically so multiple autoscaled processes cannot
+    // all update the same provider during one scheduler interval.
+    const [claimed] = await db.update(ddnsUpdaters)
+      .set({ lastUpdateTime: new Date() })
+      .where(and(
+        eq(ddnsUpdaters.id, id),
+        or(
+          isNull(ddnsUpdaters.lastUpdateTime),
+          lt(ddnsUpdaters.lastUpdateTime, notBefore),
+        ),
+      ))
+      .returning({ id: ddnsUpdaters.id });
+    return Boolean(claimed);
   }
 
   async getFirewallRules(): Promise<FirewallRule[]> {
