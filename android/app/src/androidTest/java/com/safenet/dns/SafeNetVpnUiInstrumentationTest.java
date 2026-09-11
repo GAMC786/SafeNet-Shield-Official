@@ -1165,6 +1165,39 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldRepeatedSourceSwitchesKeepLatestCaptureActive() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+
+        JSONObject stopped = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.stopAiShield()"
+        ));
+        assertFalse("Stopping repeated AI Shield captures must release the active source",
+            stopped.getBoolean("monitoring"));
+        assertEquals("none", stopped.getString("source"));
+        assertEquals(
+            "A stopped AI Shield capture must return to the idle capture state",
+            AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE,
+            stopped.getString("state")
+        );
+    }
+
+    @Test
     public void aiShieldSettingsShowsUnavailableForMissingOrInvalidModelMetadata() throws Exception {
         String missingMetadataStatus = modelUnavailableStatusPayload((String) null);
         String invalidMetadataStatus = modelUnavailableStatusPayload("{\"modelVersion\":\"wrong\"}");
@@ -1800,6 +1833,28 @@ public class SafeNetVpnUiInstrumentationTest {
             );
             Thread.sleep(250);
         }
+    }
+
+    private JSONObject startAndVerifyAiShieldSource(
+        String expectedSource,
+        ConsentAction consentAction
+    ) throws Exception {
+        String startExpression = "camera".equals(expectedSource)
+            ? "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()"
+            : "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()";
+        JSONObject started = requireWebViewValue(callWebViewWithConsent(
+            startExpression,
+            consentAction
+        ));
+        assertEquals(expectedSource, started.getString("source"));
+        assertTrue(
+            "Selecting " + expectedSource + " must leave AI Shield monitoring active",
+            started.getBoolean("monitoring")
+        );
+
+        assertAiShieldInference(waitForAiShieldInference(expectedSource), expectedSource);
+        assertAiShieldSourceRemainsActive(expectedSource);
+        return started;
     }
 
     private JSONObject waitForAiShieldStatus(
