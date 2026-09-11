@@ -336,10 +336,6 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void startAiShieldScreen(PluginCall call) {
-        if (!aiShield().isModelAvailable()) {
-            call.resolve(toJsObject(aiShield().getStatus()));
-            return;
-        }
         android.media.projection.MediaProjectionManager projectionManager =
             (android.media.projection.MediaProjectionManager) getContext()
                 .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
@@ -349,6 +345,10 @@ public class SafeNetVpnPlugin extends Plugin {
                 "Android MediaProjection is not available on this device."
             );
             call.resolve(toJsObject(unavailable.toJson()));
+            return;
+        }
+        if (!aiShield().isModelAvailable()) {
+            call.resolve(toJsObject(aiShield().getStatus()));
             return;
         }
         startActivityForResult(

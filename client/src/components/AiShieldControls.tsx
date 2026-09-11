@@ -212,8 +212,13 @@ export function AiShieldControls() {
             </div>
             <p className="mt-2 text-sm">{shield.status?.message || "Loading Android AI Shield status."}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Engine {shield.status?.modelVersion || "safenet-nudity-engine-1.0.0"}
+              Engine {shield.status?.modelVersion || "safenet-nudity-tflite-1.0.0"}
             </p>
+            {shield.status?.state === "model_unavailable" && (
+              <p className="mt-2 text-sm font-medium text-destructive">
+                AI Shield is unavailable until the bundled on-device model loads successfully. No frame was treated as safe.
+              </p>
+            )}
             {shield.status?.state === "nudity_detected" && (
               <p className="mt-2 text-sm font-medium text-destructive">
                 Shield event: high-confidence content was detected in the available frame.

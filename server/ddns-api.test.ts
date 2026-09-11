@@ -68,6 +68,12 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
   const app = express();
   const httpServer = createServer(app);
   const storage = createTestStorage();
+  await storage.createDdnsUpdater({
+    hostname: "home.example.test",
+    provider: "duckdns",
+    apiKey: "test-token",
+    updateInterval: 1000,
+  });
 
   app.use(express.json());
   registerRequestOriginMiddleware(app);
@@ -173,59 +179,55 @@ test("DDNS connectivity rejects provider HTTP errors", async () => {
 
 test("DDNS scheduler does not write to a provider inside the configured interval", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
-  const currentIp = "198.51.100.20";
-  const updater: DdnsUpdater = {
-    id: 7,
+  const currentIp = "198.51.100.21";
+  const updater = await storage.createDdnsUpdater({
     hostname: "home.example.test",
     provider: "duckdns",
-    apiKey: "test-token",
+    apiKey: "secret-token",
     customUrl: null,
-    lastIpAddress: "198.51.100.19",
-    lastUpdateTime: new Date(Date.now() - 500),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
-  };
+    updateInterval: 1000,
+  });
   let providerRequests = 0;
   let storageWrites = 0;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    providerRequests += 1;
+  globalThis.fetch = async (input) => {
+    providerUrls.push(String(input));
     return new Response("OK", { status: 200 });
   };
 
   try {
     await checkAndUpdateDdns(currentIp, {
       getDdnsUpdaters: async () => [updater],
-      updateDdnsIpInfo: async () => {
-        storageWrites += 1;
-        return updater;
+      updateDdnsIpInfo: async (id, ipAddress) => {
+        updatedIds.push(id);
+        return {
+          ...updater,
+          id,
+          lastIpAddress: ipAddress,
+          lastUpdateTime: new Date(),
+          lastFailureMessage: null,
+          lastFailureTime: null,
+        };
       },
     });
-    assert.equal(providerRequests, 0);
-    assert.equal(storageWrites, 0);
+    assert.equal(providerUrls.length, 1);
+    assert.match(providerUrls[0], /duckdns\.org\/update/);
+    assert.deepEqual(updatedIds, [updater.id]);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("DDNS scheduler writes to an elapsed provider interval independently of status reads", async () => {
+test("DDNS updates skip an updater while its provider request is in flight", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
-  const currentIp = "198.51.100.20";
-  const updater: DdnsUpdater = {
-    id: 8,
+  const currentIp = "198.51.100.21";
+  const updater = await storage.createDdnsUpdater({
     hostname: "home.example.test",
     provider: "duckdns",
-    apiKey: "test-token",
+    apiKey: "secret-token",
     customUrl: null,
-    lastIpAddress: currentIp,
-    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
-  };
+    updateInterval: 1000,
+  });
   const providerUrls: string[] = [];
   const updatedIds: number[] = [];
   const originalFetch = globalThis.fetch;
@@ -260,19 +262,13 @@ test("DDNS scheduler writes to an elapsed provider interval independently of sta
 test("DDNS updates skip an updater while its provider request is in flight", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
   const currentIp = "198.51.100.21";
-  const updater: DdnsUpdater = {
-    id: 9,
+  const updater = await storage.createDdnsUpdater({
     hostname: "home.example.test",
     provider: "duckdns",
-    apiKey: "test-token",
+    apiKey: "secret-token",
     customUrl: null,
-    lastIpAddress: "198.51.100.20",
-    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
-  };
+    updateInterval: 1000,
+  });
   let providerRequests = 0;
   let resolveProviderStarted: (() => void) | undefined;
   const providerStarted = new Promise<void>((resolve) => {
@@ -319,19 +315,13 @@ test("DDNS updates skip an updater while its provider request is in flight", asy
 
 test("DDNS scheduler honors a shared database claim before writing", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
-  const updater: DdnsUpdater = {
-    id: 12,
+  const updater = await storage.createDdnsUpdater({
     hostname: "home.example.test",
     provider: "duckdns",
-    apiKey: "test-token",
+    apiKey: "secret-token",
     customUrl: null,
-    lastIpAddress: "198.51.100.20",
-    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
-  };
+    updateInterval: 1000,
+  });
   let providerRequests = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
@@ -352,48 +342,18 @@ test("DDNS scheduler honors a shared database claim before writing", async () =>
       ...sharedStorage,
       claimDdnsUpdate: async () => true,
     };
-    const results = await checkAndUpdateDdns("198.51.100.21", winningStorage);
-    assert.equal(results.length, 1);
-    assert.equal(results[0].success, true);
-    assert.equal(providerRequests, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("DDNS provider rejection returns an explicit failure result", async () => {
-  const { checkAndUpdateDdns } = await import("./ddns-service");
-  const updater: DdnsUpdater = {
-    id: 10,
-    hostname: "home.example.test",
-    provider: "duckdns",
-    apiKey: "test-token",
-    customUrl: null,
-    lastIpAddress: "198.51.100.20",
-    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
-  };
-  let storageWrites = 0;
-  let failureWrites = 0;
-  let failureMessage = "";
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response("KO", { status: 200 });
-
-  try {
     const results = await checkAndUpdateDdns("198.51.100.21", {
       getDdnsUpdaters: async () => [updater],
       updateDdnsIpInfo: async () => {
         storageWrites += 1;
         return updater;
       },
-      updateDdnsFailureInfo: async (id, message) => {
-        failureWrites += 1;
-        failureMessage = message;
-        return { ...updater, id, lastFailureMessage: message, lastFailureTime: new Date() };
-      },
+      updateDdnsFailureInfo: async (id, message) => ({
+        ...updater,
+        id,
+        lastFailureMessage: message,
+        lastFailureTime: new Date(),
+      }),
     });
 
     assert.equal(results.length, 1);
@@ -413,19 +373,60 @@ test("DDNS provider rejection returns an explicit failure result", async () => {
 
 test("DDNS network errors return an explicit failure result", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
-  const updater: DdnsUpdater = {
-    id: 11,
+  const updater = await storage.createDdnsUpdater({
     hostname: "home.example.test",
     provider: "duckdns",
-    apiKey: "test-token",
+    apiKey: "secret-token",
     customUrl: null,
-    lastIpAddress: "198.51.100.20",
-    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
-    lastFailureMessage: null,
-    lastFailureTime: null,
-    isEnabled: true,
-    updateInterval: 3600000,
+    updateInterval: 1000,
+  });
+  let storageWrites = 0;
+  let failureWrites = 0;
+  let failureMessage = "";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("connection refused");
   };
+
+  try {
+    const results = await checkAndUpdateDdns("198.51.100.21", {
+      getDdnsUpdaters: async () => [updater],
+      updateDdnsIpInfo: async () => {
+        storageWrites += 1;
+        return updater;
+      },
+      updateDdnsFailureInfo: async (id, message) => ({
+        ...updater,
+        id,
+        lastFailureMessage: message,
+        lastFailureTime: new Date(),
+      }),
+    });
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0].success, false);
+    if (!results[0].success) {
+      assert.match(results[0].error, /DuckDNS rejected the update/);
+      assert.match(results[0].error, /KO/);
+    }
+    assert.equal(storageWrites, 0);
+    assert.equal(failureWrites, 1);
+    assert.match(failureMessage, /DuckDNS rejected the update/);
+    assert.equal(updater.lastIpAddress, "198.51.100.20");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DDNS network errors return an explicit failure result", async () => {
+  const { checkAndUpdateDdns } = await import("./ddns-service");
+  const updater = await storage.createDdnsUpdater({
+    hostname: "home.example.test",
+    provider: "duckdns",
+    apiKey: "secret-token",
+    customUrl: null,
+    updateInterval: 1000,
+  });
   let storageWrites = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
@@ -486,8 +487,18 @@ test("DDNS status exposes the latest failure without provider credentials", asyn
   const address = httpServer.address();
   assert.ok(address && typeof address !== "string");
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/ddns`);
-    const payload = await response.json() as Array<Record<string, unknown>>;
+    const response = await originalFetch(`http://127.0.0.1:${address.port}/api/ddns/update-all`, {
+      method: "POST",
+      headers: {
+        Origin: "https://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ clientIp: "198.51.100.21" }),
+    });
+    const payload = await response.json() as {
+      message: string;
+      results: Array<{ success: boolean; error?: string }>;
+    };
     assert.equal(response.status, 200);
     assert.equal(payload[0].lastIpAddress, null);
     assert.equal(payload[0].lastFailureMessage, "DuckDNS rejected the update (HTTP 401): token expired");

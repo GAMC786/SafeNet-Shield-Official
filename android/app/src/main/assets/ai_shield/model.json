@@ -1,14 +1,20 @@
 {
-  "modelVersion": "safenet-nudity-engine-1.0.0",
-  "engine": "calibrated_skin_region",
-  "license": "Apache-2.0",
+  "modelVersion": "safenet-nudity-tflite-1.0.0",
+  "engine": "tensorflow-lite-image-classification",
+  "modelFile": "ai_shield/safenet-nudity-v1.tflite",
+  "modelSha256": "51cc2d2997bb1e87fa20416d5a528951980b4fc37e4eb30c08d5b1e11b7f2a2d",
+  "license": "MIT",
+  "source": "https://github.com/nipunru/nsfw-detector-android",
+  "inputWidth": 224,
+  "inputHeight": 224,
+  "inputType": "float32",
+  "labels": ["nonnude", "nude"],
   "safeThreshold": 0.18,
   "nudityThreshold": 0.64,
   "uncertainBand": "0.18..0.64",
   "sampleIntervalMs": 750,
-  "maxFrameDimension": 256,
   "limitations": [
-    "This is a local calibrated baseline engine, not a promise of perfect nudity detection.",
+    "This is an on-device image classifier, not a promise of perfect nudity detection.",
     "It can only classify pixels Android makes available through Camera2 or MediaProjection.",
     "Secure, DRM, revoked, or unavailable surfaces are reported as unavailable."
   ]

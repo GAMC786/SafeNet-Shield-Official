@@ -2,25 +2,33 @@ package com.safenet.dns;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 
 import org.json.JSONObject;
+import org.tensorflow.lite.DataType;
+import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
 
 /**
- * Small, offline, value-only classifier used by AI Shield.
+ * Offline TensorFlow Lite classifier used by AI Shield.
  *
- * The engine intentionally retains only aggregate values. It never writes or
- * uploads a Bitmap. The bundled metadata is validated before a result can be
- * reported as available.
+ * The classifier intentionally retains only aggregate values. It never writes
+ * or uploads a Bitmap. The interpreter is created lazily after a capture
+ * toggle is enabled and is released when monitoring stops.
  */
 public final class AiShieldClassifier {
-    public static final String MODEL_VERSION = "safenet-nudity-engine-1.0.0";
+    public static final String MODEL_VERSION = "safenet-nudity-tflite-1.0.0";
     public static final String MODEL_ASSET = "ai_shield/model.json";
+    public static final String MODEL_BINARY_ASSET = "ai_shield/safenet-nudity-v1.tflite";
     public static final String STATE_SAFE = "safe";
     public static final String STATE_NUDITY_DETECTED = "nudity_detected";
     public static final String STATE_UNCERTAIN = "uncertain";
@@ -30,10 +38,16 @@ public final class AiShieldClassifier {
 
     private static final float SAFE_THRESHOLD = 0.18f;
     private static final float NUDITY_THRESHOLD = 0.64f;
-    private static final int MAX_FRAME_DIMENSION = 256;
 
-    private final boolean available;
-    private final String unavailableReason;
+    private final boolean metadataAvailable;
+    private final String metadataUnavailableReason;
+    private String loadFailureReason;
+    private volatile Interpreter interpreter;
+    private int inputWidth;
+    private int inputHeight;
+    private DataType inputType;
+    private DataType outputType;
+    private int outputElements;
 
     public AiShieldClassifier(Context context) {
         this(readMetadata(context));
@@ -46,42 +60,110 @@ public final class AiShieldClassifier {
             JSONObject model = new JSONObject(metadata);
             String version = model.optString("modelVersion", "");
             String license = model.optString("license", "");
+            String modelFile = model.optString("modelFile", "");
+            String engine = model.optString("engine", "");
             double safeThreshold = model.optDouble("safeThreshold", -1);
             double nudityThreshold = model.optDouble("nudityThreshold", -1);
             valid = MODEL_VERSION.equals(version)
                 && !license.trim().isEmpty()
+                && MODEL_BINARY_ASSET.equals(modelFile)
+                && "tensorflow-lite-image-classification".equals(engine)
                 && safeThreshold >= 0.0
                 && safeThreshold < nudityThreshold
                 && nudityThreshold <= 1.0
-                && model.optInt("maxFrameDimension", 0) > 0;
+                && model.optInt("inputWidth", 0) > 0
+                && model.optInt("inputHeight", 0) > 0
+                && model.optJSONArray("labels") != null
+                && model.optJSONArray("labels").length() >= 2
+                && "nude".equals(model.optJSONArray("labels").optString(1));
             if (!valid) {
                 reason = "The bundled AI Shield engine metadata failed validation.";
             }
         } catch (Exception error) {
             reason = "The bundled AI Shield engine could not be loaded.";
         }
-        available = valid;
-        unavailableReason = reason;
+        metadataAvailable = valid;
+        metadataUnavailableReason = reason;
     }
 
-    public boolean isAvailable() {
-        return available;
+    /**
+     * Loads and validates the bundled interpreter. Merely opening Settings
+     * does not map the model into memory.
+     */
+    public synchronized boolean load(Context context) {
+        if (!metadataAvailable) {
+            return false;
+        }
+        if (interpreter != null) {
+            return true;
+        }
+        try {
+            Interpreter candidate = new Interpreter(loadModelFile(context), new Interpreter.Options());
+            Tensor input = candidate.getInputTensor(0);
+            Tensor output = candidate.getOutputTensor(0);
+            int[] inputShape = input.shape();
+            int[] outputShape = output.shape();
+            if (candidate.getInputTensorCount() != 1
+                || candidate.getOutputTensorCount() != 1
+                || inputShape.length != 4
+                || inputShape[0] != 1
+                || inputShape[3] != 3
+                || (input.type() != DataType.FLOAT32 && input.type() != DataType.UINT8)
+                || outputShape.length < 2
+                || output.numElements() < 2
+                || (output.type() != DataType.FLOAT32 && output.type() != DataType.UINT8)) {
+                candidate.close();
+                loadFailureReason = "The bundled AI Shield model has an unsupported tensor contract.";
+                return false;
+            }
+            inputWidth = inputShape[2];
+            inputHeight = inputShape[1];
+            inputType = input.type();
+            outputType = output.type();
+            outputElements = output.numElements();
+            interpreter = candidate;
+            loadFailureReason = null;
+            return true;
+        } catch (Exception error) {
+            loadFailureReason = "The bundled AI Shield model could not be loaded: " + safeMessage(error);
+            return false;
+        }
     }
 
-    public String getUnavailableReason() {
-        return unavailableReason;
+    public synchronized boolean isAvailable() {
+        return metadataAvailable && interpreter != null;
+    }
+
+    public boolean isMetadataAvailable() {
+        return metadataAvailable;
+    }
+
+    public synchronized String getUnavailableReason() {
+        if (!metadataAvailable) {
+            return metadataUnavailableReason;
+        }
+        return loadFailureReason == null
+            ? "The AI Shield model has not been loaded."
+            : loadFailureReason;
+    }
+
+    public synchronized void release() {
+        if (interpreter != null) {
+            interpreter.close();
+            interpreter = null;
+        }
     }
 
     public Analysis analyze(Bitmap frame, String source) {
         long timestamp = System.currentTimeMillis();
-        if (!available) {
+        if (!metadataAvailable || interpreter == null) {
             return Analysis.of(
                 STATE_MODEL_UNAVAILABLE,
                 source,
                 null,
                 MODEL_VERSION,
                 timestamp,
-                unavailableReason
+                getUnavailableReason()
             );
         }
         if (frame == null || frame.isRecycled() || frame.getWidth() <= 0 || frame.getHeight() <= 0) {
@@ -95,66 +177,74 @@ public final class AiShieldClassifier {
             );
         }
 
-        int width = frame.getWidth();
-        int height = frame.getHeight();
-        int stride = Math.max(1, Math.max(width, height) / MAX_FRAME_DIMENSION);
-        long totalPixels = 0;
-        long skinPixels = 0;
-        long centerSkinPixels = 0;
-        int centerLeft = width / 5;
-        int centerRight = width - centerLeft;
-        int centerTop = height / 8;
-        int centerBottom = height - centerTop;
-
-        for (int y = 0; y < height; y += stride) {
-            for (int x = 0; x < width; x += stride) {
-                int color = frame.getPixel(x, y);
-                int red = Color.red(color);
-                int green = Color.green(color);
-                int blue = Color.blue(color);
-                totalPixels++;
-                if (looksLikeSkin(red, green, blue)) {
-                    skinPixels++;
-                    if (x >= centerLeft && x < centerRight && y >= centerTop && y < centerBottom) {
-                        centerSkinPixels++;
-                    }
+        Bitmap scaled = null;
+        try {
+            scaled = Bitmap.createScaledBitmap(frame, inputWidth, inputHeight, true);
+            ByteBuffer input = ByteBuffer.allocateDirect(
+                inputWidth * inputHeight * 3 * (inputType == DataType.FLOAT32 ? 4 : 1)
+            ).order(ByteOrder.nativeOrder());
+            int[] pixels = new int[inputWidth * inputHeight];
+            scaled.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight);
+            for (int pixel : pixels) {
+                int red = (pixel >> 16) & 0xff;
+                int green = (pixel >> 8) & 0xff;
+                int blue = pixel & 0xff;
+                if (inputType == DataType.FLOAT32) {
+                    input.putFloat(red / 255.0f);
+                    input.putFloat(green / 255.0f);
+                    input.putFloat(blue / 255.0f);
+                } else {
+                    input.put((byte) red);
+                    input.put((byte) green);
+                    input.put((byte) blue);
                 }
             }
-        }
+            input.rewind();
 
-        if (totalPixels == 0) {
-            return Analysis.of(
-                STATE_CAPTURE_UNAVAILABLE,
+            ByteBuffer output = ByteBuffer.allocateDirect(
+                outputElements * (outputType == DataType.FLOAT32 ? 4 : 1)
+            ).order(ByteOrder.nativeOrder());
+            synchronized (this) {
+                if (interpreter == null) {
+                    return modelUnavailable(source, "The AI Shield model was released before inference completed.");
+                }
+                interpreter.run(input, output);
+            }
+            output.rewind();
+            float[] scores = new float[outputElements];
+            for (int index = 0; index < outputElements; index++) {
+                scores[index] = outputType == DataType.FLOAT32
+                    ? output.getFloat()
+                    : (output.get() & 0xff) / 255.0f;
+            }
+            float nudityScore = clamp(scores[1]);
+            String state;
+            float confidence;
+            String message;
+            if (nudityScore < SAFE_THRESHOLD) {
+                state = STATE_SAFE;
+                confidence = clamp(1.0f - nudityScore);
+                message = "The validated on-device model found no high-confidence nudity signal.";
+            } else if (nudityScore >= NUDITY_THRESHOLD) {
+                state = STATE_NUDITY_DETECTED;
+                confidence = nudityScore;
+                message = "The validated on-device model detected a high-confidence nudity signal.";
+            } else {
+                state = STATE_UNCERTAIN;
+                confidence = clamp(Math.max(nudityScore, 1.0f - nudityScore));
+                message = "The validated on-device model returned an ambiguous result; it was not treated as safe.";
+            }
+            return Analysis.of(state, source, confidence, MODEL_VERSION, timestamp, message);
+        } catch (Exception error) {
+            return modelUnavailable(
                 source,
-                null,
-                MODEL_VERSION,
-                timestamp,
-                "Android did not provide any pixels to classify."
+                "The bundled AI Shield model could not analyze this frame: " + safeMessage(error)
             );
+        } finally {
+            if (scaled != null && scaled != frame && !scaled.isRecycled()) {
+                scaled.recycle();
+            }
         }
-
-        float skinRatio = (float) skinPixels / totalPixels;
-        float centerRatio = (float) centerSkinPixels / Math.max(1, totalPixels * 0.6f);
-        float score = clamp((skinRatio * 0.72f) + (Math.min(1.0f, centerRatio) * 0.28f));
-        String state;
-        float confidence;
-        String message;
-
-        if (score < SAFE_THRESHOLD) {
-            state = STATE_SAFE;
-            confidence = clamp(0.96f - score * 0.65f);
-            message = "No high-confidence nudity signal was found in the available frame.";
-        } else if (score >= NUDITY_THRESHOLD) {
-            state = STATE_NUDITY_DETECTED;
-            confidence = clamp(0.72f + ((score - NUDITY_THRESHOLD) * 0.75f));
-            message = "High-confidence nudity signal detected in the available frame.";
-        } else {
-            state = STATE_UNCERTAIN;
-            confidence = clamp(0.50f + Math.abs(score - 0.41f) * 0.25f);
-            message = "The available frame is ambiguous; it was not treated as safe.";
-        }
-
-        return Analysis.of(state, source, confidence, MODEL_VERSION, timestamp, message);
     }
 
     public static Analysis permissionDenied(String source, String message) {
@@ -190,20 +280,28 @@ public final class AiShieldClassifier {
         );
     }
 
-    private static boolean looksLikeSkin(int red, int green, int blue) {
-        int max = Math.max(red, Math.max(green, blue));
-        int min = Math.min(red, Math.min(green, blue));
-        return red > 45
-            && green > 25
-            && blue > 15
-            && red > green * 1.05f
-            && green > blue * 1.05f
-            && max - min > 18
-            && red - blue > 25;
-    }
-
     private static float clamp(float value) {
         return Math.max(0.0f, Math.min(0.99f, value));
+    }
+
+    private static String safeMessage(Exception error) {
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty()
+            ? error.getClass().getSimpleName()
+            : message;
+    }
+
+    private static MappedByteBuffer loadModelFile(Context context) throws Exception {
+        try (android.content.res.AssetFileDescriptor descriptor =
+                 context.getAssets().openFd(MODEL_BINARY_ASSET);
+             FileInputStream input = new FileInputStream(descriptor.getFileDescriptor())) {
+            FileChannel channel = input.getChannel();
+            return channel.map(
+                FileChannel.MapMode.READ_ONLY,
+                descriptor.getStartOffset(),
+                descriptor.getDeclaredLength()
+            );
+        }
     }
 
     private static String readMetadata(Context context) {

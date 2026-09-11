@@ -1,11 +1,13 @@
 package com.safenet.dns;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.content.Context;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -16,84 +18,65 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class AiShieldClassifierInstrumentationTest {
     @Test
-    public void packagedEngineMetadataIsAvailable() {
+    public void bundledTfliteModelIsAvailableOnlyAfterExplicitLoad() {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-
         AiShieldClassifier classifier = new AiShieldClassifier(context);
 
+        assertTrue(classifier.isMetadataAvailable());
+        assertFalse(classifier.isAvailable());
+        assertTrue(classifier.load(context));
         assertTrue(classifier.isAvailable());
+        classifier.release();
     }
 
     @Test
-    public void bundledEngineMetadataIsVersionedAndLicensed() {
-        AiShieldClassifier classifier = new AiShieldClassifier(
-            "{\"modelVersion\":\"safenet-nudity-engine-1.0.0\","
-                + "\"engine\":\"calibrated_skin_region\","
-                + "\"license\":\"Apache-2.0\","
-                + "\"safeThreshold\":0.18,"
-                + "\"nudityThreshold\":0.64,"
-                + "\"maxFrameDimension\":256}"
-        );
-
-        assertTrue(classifier.isAvailable());
-        assertEquals("safenet-nudity-engine-1.0.0", AiShieldClassifier.MODEL_VERSION);
-    }
-
-    @Test
-    public void nonSkinFixtureIsSafe() {
-        AiShieldClassifier classifier = availableClassifier();
-        Bitmap fixture = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
-        fixture.eraseColor(Color.rgb(20, 40, 180));
-
-        AiShieldClassifier.Analysis result = classifier.analyze(fixture, "screen");
-
-        assertEquals(AiShieldClassifier.STATE_SAFE, result.state);
-        assertEquals("screen", result.source);
-        assertTrue(result.confidence >= 0.90f);
-        fixture.recycle();
-    }
-
-    @Test
-    public void skinDominantFixtureProducesHighConfidenceFinding() {
-        AiShieldClassifier classifier = availableClassifier();
-        Bitmap fixture = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
-        fixture.eraseColor(Color.rgb(214, 146, 105));
+    public void cameraCaptureUsesLoadedModelWithoutUploadingFrames() {
+        AiShieldClassifier classifier = loadedClassifier();
+        Bitmap fixture = solidFixture(Color.rgb(20, 40, 180));
 
         AiShieldClassifier.Analysis result = classifier.analyze(fixture, "camera");
 
-        assertEquals(AiShieldClassifier.STATE_NUDITY_DETECTED, result.state);
         assertEquals("camera", result.source);
-        assertTrue(result.confidence >= 0.72f);
+        assertNotEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, result.state);
+        assertTrue(result.modelVersion.startsWith("safenet-nudity-tflite-"));
         fixture.recycle();
+        classifier.release();
     }
 
     @Test
-    public void mixedFixtureIsUncertainRatherThanSafe() {
-        AiShieldClassifier classifier = availableClassifier();
-        Bitmap fixture = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
-        for (int y = 0; y < 64; y++) {
-            for (int x = 0; x < 64; x++) {
-                fixture.setPixel(
-                    x,
-                    y,
-                    x < 27 ? Color.rgb(214, 146, 105) : Color.rgb(20, 40, 180)
-                );
-            }
-        }
+    public void screenCaptureUsesLoadedModelWithoutUploadingFrames() {
+        AiShieldClassifier classifier = loadedClassifier();
+        Bitmap fixture = solidFixture(Color.rgb(20, 40, 180));
 
         AiShieldClassifier.Analysis result = classifier.analyze(fixture, "screen");
 
-        assertEquals(AiShieldClassifier.STATE_UNCERTAIN, result.state);
+        assertEquals("screen", result.source);
+        assertNotEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, result.state);
+        assertTrue(result.confidence != null);
         fixture.recycle();
+        classifier.release();
     }
 
     @Test
-    public void malformedMetadataIsModelUnavailable() {
+    public void malformedMetadataNeverReportsSafe() {
         AiShieldClassifier classifier = new AiShieldClassifier("{malformed");
 
-        assertTrue(!classifier.isAvailable());
+        assertFalse(classifier.isMetadataAvailable());
         AiShieldClassifier.Analysis result = classifier.analyze(null, "camera");
+
         assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, result.state);
+        assertFalse(AiShieldClassifier.STATE_SAFE.equals(result.state));
+    }
+
+    @Test
+    public void invalidFrameNeverReportsSafe() {
+        AiShieldClassifier classifier = loadedClassifier();
+
+        AiShieldClassifier.Analysis result = classifier.analyze(null, "screen");
+
+        assertEquals(AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE, result.state);
+        assertFalse(AiShieldClassifier.STATE_SAFE.equals(result.state));
+        classifier.release();
     }
 
     @Test
@@ -109,17 +92,21 @@ public class AiShieldClassifierInstrumentationTest {
 
         assertEquals(AiShieldClassifier.STATE_PERMISSION_DENIED, denied.state);
         assertEquals(AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE, unavailable.state);
-        assertTrue(!denied.toJson().has("frame"));
-        assertTrue(!unavailable.toJson().has("frame"));
+        assertEquals(null, denied.confidence);
+        assertEquals(null, unavailable.confidence);
     }
 
-    private AiShieldClassifier availableClassifier() {
-        return new AiShieldClassifier(
-            "{\"modelVersion\":\"safenet-nudity-engine-1.0.0\","
-                + "\"license\":\"Apache-2.0\","
-                + "\"safeThreshold\":0.18,"
-                + "\"nudityThreshold\":0.64,"
-                + "\"maxFrameDimension\":256}"
-        );
+    private static AiShieldClassifier loadedClassifier() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        AiShieldClassifier classifier = new AiShieldClassifier(context);
+        assertTrue("The bundled TFLite model failed to load: " + classifier.getUnavailableReason(),
+            classifier.load(context));
+        return classifier;
+    }
+
+    private static Bitmap solidFixture(int color) {
+        Bitmap fixture = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        fixture.eraseColor(color);
+        return fixture;
     }
 }

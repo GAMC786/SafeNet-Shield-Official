@@ -6,7 +6,7 @@ const idleResult: AiShieldResult = {
   state: "capture_unavailable",
   source: "none",
   confidence: null,
-  modelVersion: "safenet-nudity-engine-1.0.0",
+  modelVersion: "safenet-nudity-tflite-1.0.0",
   timestamp: 0,
   message: "AI Shield monitoring is idle.",
   monitoring: false,

@@ -71,13 +71,19 @@ public final class AiShieldManager {
         this.context = context.getApplicationContext();
         this.classifier = new AiShieldClassifier(context);
         this.listener = listener;
-        this.lastAnalysis = classifier.isAvailable()
+        this.lastAnalysis = classifier.isMetadataAvailable()
             ? AiShieldClassifier.captureUnavailable("none", "AI Shield monitoring is idle.")
             : AiShieldClassifier.modelUnavailable("none", classifier.getUnavailableReason());
     }
 
     public boolean isModelAvailable() {
-        return classifier.isAvailable();
+        synchronized (lock) {
+            if (classifier.load(context)) {
+                return true;
+            }
+            emitLocked(AiShieldClassifier.modelUnavailable("none", classifier.getUnavailableReason()));
+            return false;
+        }
     }
 
     public JSONObject getStatus() {
@@ -100,11 +106,11 @@ public final class AiShieldManager {
 
     public void startCamera() {
         synchronized (lock) {
-            if (!classifier.isAvailable()) {
+            stopLocked(false);
+            if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("camera", classifier.getUnavailableReason()));
                 return;
             }
-            stopLocked(false);
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
                 emitLocked(AiShieldClassifier.permissionDenied(
@@ -153,12 +159,13 @@ public final class AiShieldManager {
 
     public void startScreen(int resultCode, Intent resultData) {
         synchronized (lock) {
-            if (!classifier.isAvailable()) {
+            stopLocked(false);
+            if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("screen", classifier.getUnavailableReason()));
                 return;
             }
-            stopLocked(false);
             if (resultCode != Activity.RESULT_OK || resultData == null) {
+                classifier.release();
                 emitLocked(AiShieldClassifier.captureUnavailable(
                     "screen",
                     "Screen-capture consent was canceled; no screen pixels were analyzed."
@@ -166,6 +173,7 @@ public final class AiShieldManager {
                 return;
             }
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+                classifier.release();
                 emitLocked(AiShieldClassifier.captureUnavailable(
                     "screen",
                     "Screen monitoring requires Android 5.0 or newer."
@@ -245,6 +253,7 @@ public final class AiShieldManager {
 
     public AiShieldClassifier.Analysis permissionDenied(String source, String message) {
         synchronized (lock) {
+            classifier.release();
             AiShieldClassifier.Analysis analysis = AiShieldClassifier.permissionDenied(source, message);
             monitoring = false;
             this.source = source;
@@ -479,9 +488,10 @@ public final class AiShieldManager {
         monitoring = false;
         source = "none";
         lastAnalysisAt = 0L;
+        classifier.release();
         if (emitIdle) {
             emitLocked(
-                classifier.isAvailable()
+                classifier.isMetadataAvailable()
                     ? AiShieldClassifier.captureUnavailable("none", "AI Shield monitoring is idle.")
                     : AiShieldClassifier.modelUnavailable("none", classifier.getUnavailableReason())
             );
