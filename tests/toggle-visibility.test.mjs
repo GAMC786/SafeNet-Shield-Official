@@ -413,7 +413,7 @@ test("Settings keep controls safe while loading and show the current version", a
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
-    `SafeNet Shield DNS v${packageVersion}`,
+    `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
   await page.close();
 });
@@ -565,7 +565,7 @@ for (const viewport of viewports) {
     await page.getByRole("button", { name: "Add DDNS" }).click();
     await page.getByRole("heading", { name: "New DDNS Updater" }).waitFor();
     const intervalInput = page.locator('input[type="number"]');
-    assert.equal(await intervalInput.inputValue(), "3600");
+    assert.equal(await intervalInput.inputValue(), "60");
     await page.keyboard.press("Escape");
     await page.close();
   });
