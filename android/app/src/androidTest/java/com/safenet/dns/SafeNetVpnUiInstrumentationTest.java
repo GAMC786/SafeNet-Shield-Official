@@ -3,11 +3,13 @@ package com.safenet.dns;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
@@ -79,6 +81,14 @@ public class SafeNetVpnUiInstrumentationTest {
     @After
     public void tearDown() throws Exception {
         if (activity != null && !activity.isFinishing()) {
+            if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName())) {
+                try {
+                    callWebView("window.Capacitor.Plugins.SafeNetVpn.stopAiShield()");
+                } catch (Exception ignored) {
+                    // Keep teardown useful when a permission activity or failed
+                    // WebView call left the bridge unavailable.
+                }
+            }
             InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
         }
     }
@@ -899,6 +909,87 @@ public class SafeNetVpnUiInstrumentationTest {
             accessibleSwitch.isEnabled());
     }
 
+    @Test
+    public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject started = callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        );
+        JSONObject startedStatus = requireWebViewValue(started);
+        assertEquals("camera", startedStatus.getString("source"));
+        assertTrue("Camera consent must start AI Shield monitoring",
+            startedStatus.getBoolean("monitoring"));
+
+        JSONObject inference = waitForAiShieldInference("camera");
+        assertAiShieldInference(inference, "camera");
+
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+
+        JSONObject paused = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> !status.optBoolean("monitoring", true)
+        );
+        assertFalse("Pausing the Android app must stop camera monitoring",
+            paused.getBoolean("monitoring"));
+        assertNotEquals("A paused capture must not report a safe verdict",
+            AiShieldClassifier.STATE_SAFE, paused.getString("state"));
+
+        JSONObject stopped = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.stopAiShield()"
+        ));
+        assertFalse("Stopping AI Shield must release camera monitoring",
+            stopped.getBoolean("monitoring"));
+        assertNotEquals("A stopped capture must not retain a safe verdict",
+            AiShieldClassifier.STATE_SAFE, stopped.getString("state"));
+    }
+
+    @Test
+    public void aiShieldScreenConsentInfersAndProjectionRevocationFailsClosed() throws Exception {
+        JSONObject started = callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        );
+        JSONObject startedStatus = requireWebViewValue(started);
+        assertEquals("screen", startedStatus.getString("source"));
+        assertTrue("MediaProjection consent must start AI Shield monitoring",
+            startedStatus.getBoolean("monitoring"));
+
+        JSONObject inference = waitForAiShieldInference("screen");
+        assertAiShieldInference(inference, "screen");
+
+        String revokeOutput = executeShellCommand("cmd media_projection stop " + PACKAGE_NAME);
+        String normalizedRevokeOutput = revokeOutput.toLowerCase();
+        assertFalse(
+            "The Android target must support revoking the active MediaProjection: " + revokeOutput,
+            normalizedRevokeOutput.contains("unknown") ||
+                normalizedRevokeOutput.contains("error")
+        );
+
+        JSONObject revoked = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(status.optString("state"))
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals("screen", revoked.getString("source"));
+        assertEquals(AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE, revoked.getString("state"));
+        assertFalse("A revoked projection must never report a safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(revoked.getString("state")));
+        assertFalse("A revoked projection must not retain frame confidence",
+            revoked.has("confidence") && !revoked.isNull("confidence"));
+    }
+
     private void clearTargetAppData() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
             return;
@@ -1129,6 +1220,43 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Android VPN permission dialog did not appear");
     }
 
+    private void grantCameraPermissionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(while using the app|only this time|allow)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                allow.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android camera permission dialog did not appear");
+    }
+
+    private void grantMediaProjectionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 start = device.findObject(
+                By.text(Pattern.compile("(?i)(start now|start recording)"))
+            );
+            if (start != null && start.isEnabled()) {
+                start.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android MediaProjection consent dialog did not appear");
+    }
+
+    private void relaunchActivity() throws Exception {
+        Intent launchIntent = new Intent(context, MainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
+        waitForCapacitorBridge();
+    }
+
     private void waitForCapacitorBridge() throws Exception {
         waitForWebView(
             "Boolean(window.Capacitor && window.Capacitor.Plugins && " +
@@ -1236,6 +1364,13 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     private JSONObject callWebView(String expression) throws Exception {
+        return callWebViewWithConsent(expression, null);
+    }
+
+    private JSONObject callWebViewWithConsent(
+        String expression,
+        ConsentAction consentAction
+    ) throws Exception {
         CountDownLatch completed = new CountDownLatch(1);
         String[] rawResult = new String[1];
         TestResultBridge resultBridge = new TestResultBridge(rawResult, completed);
@@ -1255,6 +1390,9 @@ public class SafeNetVpnUiInstrumentationTest {
         });
 
         try {
+            if (consentAction != null) {
+                consentAction.grant();
+            }
             if (!completed.await(JS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 throw new AssertionError("Timed out evaluating WebView expression: " + expression);
             }
@@ -1268,6 +1406,79 @@ public class SafeNetVpnUiInstrumentationTest {
             );
         }
         return new JSONObject(rawResult[0]);
+    }
+
+    private JSONObject requireWebViewValue(JSONObject result) throws Exception {
+        assertTrue("SafeNetVpn bridge call failed: " + result.optString("message"),
+            result.optBoolean("ok", false));
+        return result.getJSONObject("value");
+    }
+
+    private JSONObject waitForAiShieldInference(String expectedSource) throws Exception {
+        return waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> expectedSource.equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+                && (
+                    AiShieldClassifier.STATE_SAFE.equals(status.optString("state")) ||
+                    AiShieldClassifier.STATE_NUDITY_DETECTED.equals(status.optString("state")) ||
+                    AiShieldClassifier.STATE_UNCERTAIN.equals(status.optString("state"))
+                )
+        );
+    }
+
+    private void assertAiShieldInference(JSONObject result, String expectedSource) throws Exception {
+        assertEquals(expectedSource, result.getString("source"));
+        assertTrue(
+            "AI Shield must expose a local inference state, not a capture failure: " + result,
+            AiShieldClassifier.STATE_SAFE.equals(result.getString("state")) ||
+                AiShieldClassifier.STATE_NUDITY_DETECTED.equals(result.getString("state")) ||
+                AiShieldClassifier.STATE_UNCERTAIN.equals(result.getString("state"))
+        );
+        assertTrue("A local inference result must include confidence",
+            result.has("confidence") && !result.isNull("confidence"));
+    }
+
+    private JSONObject waitForAiShieldStatus(
+        String expression,
+        AiShieldStatusPredicate predicate
+    ) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        JSONObject latest = null;
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(expression);
+            if (result.optBoolean("ok", false)) {
+                latest = result.optJSONObject("value");
+                if (latest != null && predicate.matches(latest)) {
+                    return latest;
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("AI Shield status did not reach the expected state: " + latest);
+    }
+
+    private String executeShellCommand(String command) throws Exception {
+        ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .executeShellCommand(command);
+        StringBuilder result = new StringBuilder();
+        try (ParcelFileDescriptor.AutoCloseInputStream input =
+                 new ParcelFileDescriptor.AutoCloseInputStream(output)) {
+            int value;
+            while ((value = input.read()) != -1) {
+                result.append((char) value);
+            }
+        }
+        return result.toString();
+    }
+
+    private interface ConsentAction {
+        void grant() throws Exception;
+    }
+
+    private interface AiShieldStatusPredicate {
+        boolean matches(JSONObject status) throws Exception;
     }
 
     private static final class TestResultBridge {

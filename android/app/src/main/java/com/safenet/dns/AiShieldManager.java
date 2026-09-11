@@ -423,19 +423,19 @@ public final class AiShieldManager {
 
                             @Override
                             public void onConfigureFailed(CameraCaptureSession session) {
-                                emit(AiShieldClassifier.captureUnavailable(
-                                    "camera",
-                                    "Android could not configure the camera capture surface."
-                                ));
+                                synchronized (lock) {
+                                    emitCameraUnavailableAfterStopLocked(
+                                        "Android could not configure the camera capture surface."
+                                    );
+                                }
                             }
                         },
                         captureHandler
                     );
                 } catch (Exception error) {
-                    emitLocked(AiShieldClassifier.captureUnavailable(
-                        "camera",
+                    emitCameraUnavailableAfterStopLocked(
                         "Camera capture could not be configured: " + safeMessage(error)
-                    ));
+                    );
                 }
             }
         }
@@ -474,6 +474,8 @@ public final class AiShieldManager {
                 closeScreenLocked(false);
                 monitoring = false;
                 source = "screen";
+                lastAnalysisAt = 0L;
+                classifier.release();
                 emitLocked(AiShieldClassifier.captureUnavailable(
                     "screen",
                     "Screen-capture consent was revoked or the projection stopped."
@@ -496,6 +498,12 @@ public final class AiShieldManager {
                     : AiShieldClassifier.modelUnavailable("none", classifier.getUnavailableReason())
             );
         }
+    }
+
+    private void emitCameraUnavailableAfterStopLocked(String message) {
+        stopLocked(false);
+        source = "camera";
+        emitLocked(AiShieldClassifier.captureUnavailable("camera", message));
     }
 
     private void closeCameraLocked() {

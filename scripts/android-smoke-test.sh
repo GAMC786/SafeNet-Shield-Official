@@ -241,7 +241,8 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt \
     "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
     "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
-    "$output_dir"/media-smoke-result.txt
+    "$output_dir"/media-smoke-result.txt \
+    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
@@ -1015,6 +1016,26 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
         "$output_dir/instrumentation.log"; then
     test_failed=1
 fi
+
+# Keep the consent-gated AI Shield lifecycle evidence easy to find without
+# claiming success when a runner skipped or failed either device test.
+grep -E 'aiShield(CameraConsentInfersAndPauseReleasesCapture|ScreenConsentInfersAndProjectionRevocationFailsClosed)' \
+    "$output_dir/instrumentation.log" > "$output_dir/ai-shield-instrumentation.log" || true
+ai_shield_status="PASS"
+if ! grep -q 'aiShieldCameraConsentInfersAndPauseReleasesCapture' \
+    "$output_dir/ai-shield-instrumentation.log" ||
+    ! grep -q 'aiShieldScreenConsentInfersAndProjectionRevocationFailsClosed' \
+    "$output_dir/ai-shield-instrumentation.log"; then
+    ai_shield_status="NOT_RECORDED"
+    test_failed=1
+elif grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+    "$output_dir/ai-shield-instrumentation.log"; then
+    ai_shield_status="FAIL"
+    test_failed=1
+fi
+printf 'ai_shield_status=%s\n' "$ai_shield_status" |
+    tee "$output_dir/ai-shield-result.txt"
+
 fixture_process_failed=0
 if [[ "$resolver_mode" == "fixture" ]] &&
     { [[ -z "$fixture_pid" ]] || ! kill -0 "$fixture_pid" 2>/dev/null; }; then
@@ -1038,8 +1059,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

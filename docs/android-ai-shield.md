@@ -28,8 +28,12 @@ conservative thresholds from the bundled metadata:
 - `0.18 <= score < 0.64`: uncertain; never silently treated as safe
 
 Instrumentation verifies explicit model loading, model-unavailable fail-closed
-behavior, and both camera and MediaProjection source paths. These tests are
-not a claim of real-world precision or recall. Before release, evaluate a
+behavior, and both camera and MediaProjection source paths. The Android device
+smoke suite also drives camera consent, waits for a real camera inference,
+checks pause/stop cleanup, drives MediaProjection consent, and revokes the
+active projection to verify a visible `capture_unavailable` result without a
+safe verdict. These tests are not a claim of real-world precision or recall.
+Before release, evaluate a
 consent-cleared, representative fixture set and report precision, recall,
 false-positive rate, and false-negative rate for this exact engine version.
 

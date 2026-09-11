@@ -39,6 +39,12 @@ function statePresentation(result: AiShieldResult | null) {
         className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-100",
         icon: <AlertCircle className="h-4 w-4 text-yellow-400" />,
       };
+    case "capture_unavailable":
+      return {
+        label: result?.source === "screen" ? "Screen capture unavailable" : "Capture unavailable",
+        className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-100",
+        icon: <AlertCircle className="h-4 w-4 text-yellow-400" />,
+      };
     case "model_unavailable":
       return {
         label: "Engine unavailable",
