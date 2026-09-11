@@ -17,6 +17,7 @@ expected_manufacturer=""
 expected_android=""
 expected_camera_stack=""
 profile_status="NOT_CHECKED"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'EOF'
@@ -210,71 +211,19 @@ grep -E 'AI_SHIELD_DEVICE_EVENT.*(camera_permission|media_projection|switch|sour
     "$output_dir/logcat.txt" > "$output_dir/consent-events.log" || true
 grep -F 'AI_SHIELD_CALLBACK' "$output_dir/logcat.txt" > "$output_dir/callback-order.txt" || true
 
-camera_to_screen="FAIL"
-screen_to_camera="FAIL"
-if grep -Fq 'aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive' \
-    "$output_dir/logcat.txt" &&
-    grep -Fq 'AI_SHIELD_DEVICE_EVENT event=test_pass source=camera_to_screen' \
-        "$output_dir/logcat.txt"; then
-    camera_to_screen="PASS"
-fi
-if grep -Fq 'aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive' \
-    "$output_dir/logcat.txt" &&
-    grep -Fq 'AI_SHIELD_DEVICE_EVENT event=test_pass source=screen_to_camera' \
-        "$output_dir/logcat.txt"; then
-    screen_to_camera="PASS"
-fi
-camera_permission="PASS"
-grep -Fq 'AI_SHIELD_DEVICE_EVENT event=camera_permission_granted' \
-    "$output_dir/logcat.txt" || camera_permission="NOT_RECORDED"
-media_projection_consent="PASS"
-grep -Fq 'AI_SHIELD_DEVICE_EVENT event=media_projection_consent_granted' \
-    "$output_dir/logcat.txt" || media_projection_consent="NOT_RECORDED"
-callback_order="PASS"
-grep -Eq 'AI_SHIELD_CALLBACK.*generation=[0-9]+' \
-    "$output_dir/logcat.txt" || callback_order="NOT_RECORDED"
-generation_numbered_callbacks="$callback_order"
+set +e
+bash "$script_dir/android-ai-shield-device-evidence.sh" \
+    --logcat "$output_dir/logcat.txt" \
+    --instrumentation-log "$output_dir/instrumentation.log" \
+    --instrumentation-status "$instrumentation_status" \
+    --output "$output_dir/result.txt" \
+    --target "$serial" \
+    --profile "$profile" \
+    --profile-status "$profile_status"
+evidence_status=$?
+set -e
 
-failure_class="NONE"
-failure_category="PASS"
-if [[ "$instrumentation_status" -ne 0 ]] ||
-    grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
-        "$output_dir/instrumentation.log"; then
-    failure_class="APP"
-    failure_category="APP_REGRESSION"
-    if grep -Eiq 'camera_(error|disconnected)|camera capture|could not configure the camera|camera.*unavailable|projection_stopped|projection.*stopped' \
-        "$output_dir/logcat.txt" "$output_dir/instrumentation.log"; then
-        failure_class="DEVICE"
-        failure_category="DEVICE_CAPTURE_FAILURE"
-    fi
-fi
-if [[ "$camera_permission" != "PASS" || "$media_projection_consent" != "PASS" ]]; then
-    failure_class="DEVICE"
-    failure_category="DEVICE_CONSENT_FAILURE"
-elif [[ "$camera_to_screen" != "PASS" || "$screen_to_camera" != "PASS" ||
-    "$callback_order" != "PASS" ]]; then
-    if [[ "$failure_category" == "PASS" ]]; then
-        failure_class="EVIDENCE"
-        failure_category="INCOMPLETE_DEVICE_EVIDENCE"
-    fi
-fi
-
-{
-    printf 'validation_mode=real-device\n'
-    printf 'device_kind=physical-device\n'
-    printf 'target=%s\n' "$serial"
-    printf 'device_profile=%s\nprofile_status=%s\n' "$profile" "$profile_status"
-    printf 'camera_to_screen=%s\nscreen_to_camera=%s\n' "$camera_to_screen" "$screen_to_camera"
-    printf 'camera_permission=%s\nmedia_projection_consent=%s\n' \
-        "$camera_permission" "$media_projection_consent"
-    printf 'callback_order=%s\ngeneration_numbered_callbacks=%s\ngeneration_guards=UNCHANGED\n' \
-        "$callback_order" "$generation_numbered_callbacks"
-    printf 'failure_class=%s\nfailure_category=%s\nresult=%s\n' \
-        "$failure_class" "$failure_category" \
-        "$([[ "$failure_category" == PASS ]] && echo PASS || echo FAIL)"
-} | tee "$output_dir/result.txt"
-
-if [[ "$failure_category" != "PASS" ]]; then
+if [[ "$evidence_status" -ne 0 ]]; then
     echo "AI Shield physical-device checks failed. Evidence: $output_dir" >&2
     exit 1
 fi

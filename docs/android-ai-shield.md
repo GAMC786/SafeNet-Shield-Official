@@ -85,6 +85,23 @@ replacement when the device delivers one late. `result.txt` reports each
 direction separately, keeps `generation_guards=UNCHANGED`, and includes
 `failure_class` and `failure_category`.
 
+The result parser is `scripts/android-ai-shield-device-evidence.sh`. Its host-side
+contract test is `scripts/android-ai-shield-device-evidence.test.mjs`, so changes
+to log wording cannot silently turn incomplete evidence into a pass. A complete
+log must contain all of these markers:
+
+- `AI_SHIELD_DEVICE_EVENT event=camera_permission_granted source=camera`
+- `AI_SHIELD_DEVICE_EVENT event=media_projection_consent_granted source=screen`
+- `AI_SHIELD_DEVICE_EVENT event=test_pass source=camera_to_screen` and the
+  `aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive` test name
+- `AI_SHIELD_DEVICE_EVENT event=test_pass source=screen_to_camera` and the
+  `aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive` test name
+- at least one `AI_SHIELD_CALLBACK` record with `event`, `source`, numeric
+  `generation`, and boolean `active` fields
+
+Missing consent, callbacks, or either switch direction produces
+`result=FAIL`; only the complete marker set produces `result=PASS`.
+
 `failure_class=DEVICE` is reserved for target-specific setup, consent, camera
 HAL, projection, or profile problems. `failure_class=APP` with
 `failure_category=APP_REGRESSION` means the instrumentation failed without a
