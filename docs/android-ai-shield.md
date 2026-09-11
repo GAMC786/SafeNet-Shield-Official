@@ -32,3 +32,34 @@ behavior, and both camera and MediaProjection source paths. These tests are
 not a claim of real-world precision or recall. Before release, evaluate a
 consent-cleared, representative fixture set and report precision, recall,
 false-positive rate, and false-negative rate for this exact engine version.
+
+## Offline benchmark
+
+The repository includes a bounded benchmark for the bundled model:
+
+```sh
+./scripts/run-android-ai-shield-benchmark.sh
+adb logcat -d -s AiShieldBenchmark:I '*:S' | grep AI_SHIELD_BENCHMARK
+```
+
+Run it with a connected Android device or emulator. The benchmark uses nine
+deterministic, synthetic fixtures: three safe, three nudity, and three
+ambiguous cases. The fixture patterns are created in the test process, are
+consent-cleared by construction, and are recycled after each inference. No
+camera or MediaProjection frames are read, stored, or uploaded.
+
+The machine-readable line is grouped by `modelVersion` and includes the
+confusion counts plus:
+
+- `precision = truePositive / (truePositive + falsePositive)`
+- `recall = truePositive / (truePositive + falseNegative)`
+- `falsePositiveRate = falsePositive / (falsePositive + trueNegative)`
+- `falseNegativeRate = falseNegative / (falseNegative + truePositive)`
+
+For those binary metrics, `nudity_detected` is the positive action and
+`uncertain` counts as not detected. Ambiguous fixtures are excluded from the
+binary denominators and are reported separately through
+`ambiguousUncertainRate` and `stateCounts`. The output also includes
+`framesStoredOrUploaded: false` as an audit signal. This is a repeatable
+threshold and regression check, not a claim that synthetic fixtures measure
+real-world prevalence or replace a separately consented evaluation set.
