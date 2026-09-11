@@ -1078,6 +1078,83 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldDuplicateScreenConsentIsRejectedAndOriginalApprovalResolvesOnce()
+        throws Exception {
+        startScreenConsentAndTrackResult();
+        waitForMediaProjectionDialog();
+
+        JSONObject duplicate = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                ".then(() => ({accepted:true}))" +
+                ".catch(error => ({accepted:false,code:error.code||'',message:error.message||''}))"
+        ));
+        assertFalse("A second screen consent request must be rejected", duplicate.getBoolean("accepted"));
+        assertEquals("SCREEN_CONSENT_PENDING", duplicate.getString("code"));
+
+        grantMediaProjectionDialog();
+        waitForWebView(
+            "Array.isArray(window.__safeNetScreenConsentResults) && " +
+                "window.__safeNetScreenConsentResults.length === 1"
+        );
+        JSONObject original = requireWebViewValue(callWebView(
+            "window.__safeNetScreenConsentResults[0]"
+        ));
+        assertTrue("The original consent request must resolve after approval",
+            original.getBoolean("resolved"));
+        assertTrue("Approved consent must start screen monitoring",
+            original.getBoolean("monitoring"));
+
+        Thread.sleep(500);
+        JSONObject resultCount = requireWebViewValue(callWebView(
+            "({count:window.__safeNetScreenConsentResults.length})"
+        ));
+        assertEquals("The original consent request must resolve exactly once",
+            1, resultCount.getInt("count"));
+    }
+
+    @Test
+    public void aiShieldDuplicateScreenConsentIsRejectedAndOriginalCancellationResolvesOnce()
+        throws Exception {
+        startScreenConsentAndTrackResult();
+        waitForMediaProjectionDialog();
+
+        JSONObject duplicate = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                ".then(() => ({accepted:true}))" +
+                ".catch(error => ({accepted:false,code:error.code||'',message:error.message||''}))"
+        ));
+        assertFalse("A second screen consent request must be rejected", duplicate.getBoolean("accepted"));
+        assertEquals("SCREEN_CONSENT_PENDING", duplicate.getString("code"));
+
+        cancelMediaProjectionDialog();
+        waitForWebView(
+            "Array.isArray(window.__safeNetScreenConsentResults) && " +
+                "window.__safeNetScreenConsentResults.length === 1"
+        );
+        JSONObject original = requireWebViewValue(callWebView(
+            "window.__safeNetScreenConsentResults[0]"
+        ));
+        assertTrue("The original consent request must resolve after cancellation",
+            original.getBoolean("resolved"));
+        assertFalse("Canceled consent must not start screen monitoring",
+            original.getBoolean("monitoring"));
+
+        Thread.sleep(500);
+        JSONObject resultCount = requireWebViewValue(callWebView(
+            "({count:window.__safeNetScreenConsentResults.length})"
+        ));
+        assertEquals("The original consent request must resolve exactly once",
+            1, resultCount.getInt("count"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertTrue("A canceled request must release the consent boundary for later use",
+            restarted.getBoolean("monitoring"));
+    }
+
+    @Test
     public void aiShieldCanceledScreenReplacementFailsClosedAndCanRestart() throws Exception {
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
@@ -1718,6 +1795,24 @@ public class SafeNetVpnUiInstrumentationTest {
             "})()"
         );
         assertTrue("Could not start the pending MediaProjection consent request",
+            result.getBoolean("value"));
+    }
+
+    private void startScreenConsentAndTrackResult() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "window.__safeNetScreenConsentResults = [];" +
+                "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                    ".then(value => window.__safeNetScreenConsentResults.push({" +
+                        "resolved:true,monitoring:Boolean(value && value.monitoring)" +
+                    "}))" +
+                    ".catch(error => window.__safeNetScreenConsentResults.push({" +
+                        "resolved:false,monitoring:false" +
+                    "}));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not start the tracked MediaProjection consent request",
             result.getBoolean("value"));
     }
 

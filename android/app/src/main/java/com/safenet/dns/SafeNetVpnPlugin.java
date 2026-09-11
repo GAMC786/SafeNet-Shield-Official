@@ -497,38 +497,51 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void startAiShieldScreen(PluginCall call) {
-        android.media.projection.MediaProjectionManager projectionManager =
-            (android.media.projection.MediaProjectionManager) getContext()
-                .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
-        if (projectionManager == null) {
-            AiShieldClassifier.Analysis unavailable = AiShieldClassifier.captureUnavailable(
-                "screen",
-                "Android MediaProjection is not available on this device."
+        synchronized (this) {
+            if (projectionRequestPending) {
+                call.reject(
+                    "A screen-capture consent request is already pending.",
+                    "SCREEN_CONSENT_PENDING"
+                );
+                return;
+            }
+            android.media.projection.MediaProjectionManager projectionManager =
+                (android.media.projection.MediaProjectionManager) getContext()
+                    .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
+            if (projectionManager == null) {
+                AiShieldClassifier.Analysis unavailable = AiShieldClassifier.captureUnavailable(
+                    "screen",
+                    "Android MediaProjection is not available on this device."
+                );
+                call.resolve(toJsObject(unavailable.toJson()));
+                return;
+            }
+            if (!aiShield().isModelAvailable()) {
+                call.resolve(toJsObject(aiShield().getStatus()));
+                return;
+            }
+            // Keep the cleanup and state transition together so concurrent
+            // bridge calls cannot both replace the active capture.
+            aiShield().prepareForScreenConsent();
+            projectionRequestPending = true;
+            projectionResultDelivered = false;
+            startActivityForResult(
+                call,
+                projectionManager.createScreenCaptureIntent(),
+                "aiShieldProjectionResult"
             );
-            call.resolve(toJsObject(unavailable.toJson()));
-            return;
         }
-        if (!aiShield().isModelAvailable()) {
-            call.resolve(toJsObject(aiShield().getStatus()));
-            return;
-        }
-        aiShield().prepareForScreenConsent();
-        projectionRequestPending = true;
-        projectionResultDelivered = false;
-        startActivityForResult(
-            call,
-            projectionManager.createScreenCaptureIntent(),
-            "aiShieldProjectionResult"
-        );
     }
 
     @ActivityCallback
     private void aiShieldProjectionResult(PluginCall call, ActivityResult result) {
-        if (call == null || !projectionRequestPending || projectionResultDelivered) {
-            return;
+        synchronized (this) {
+            if (call == null || !projectionRequestPending || projectionResultDelivered) {
+                return;
+            }
+            projectionResultDelivered = true;
+            projectionRequestPending = false;
         }
-        projectionResultDelivered = true;
-        projectionRequestPending = false;
         try {
             int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
             Intent data = result == null ? null : result.getData();
@@ -627,14 +640,16 @@ public class SafeNetVpnPlugin extends Plugin {
     @Override
     protected Bundle saveInstanceState() {
         Bundle state = super.saveInstanceState();
-        if (state == null && !projectionRequestPending) {
-            return null;
+        synchronized (this) {
+            if (state == null && !projectionRequestPending) {
+                return null;
+            }
+            if (state == null) {
+                state = new Bundle();
+            }
+            state.putBoolean(STATE_PROJECTION_PENDING, projectionRequestPending);
+            state.putBoolean(STATE_PROJECTION_RESULT_DELIVERED, projectionResultDelivered);
         }
-        if (state == null) {
-            state = new Bundle();
-        }
-        state.putBoolean(STATE_PROJECTION_PENDING, projectionRequestPending);
-        state.putBoolean(STATE_PROJECTION_RESULT_DELIVERED, projectionResultDelivered);
         return state;
     }
 
@@ -644,8 +659,10 @@ public class SafeNetVpnPlugin extends Plugin {
         if (state == null) {
             return;
         }
-        projectionRequestPending = state.getBoolean(STATE_PROJECTION_PENDING, false);
-        projectionResultDelivered = state.getBoolean(STATE_PROJECTION_RESULT_DELIVERED, false);
+        synchronized (this) {
+            projectionRequestPending = state.getBoolean(STATE_PROJECTION_PENDING, false);
+            projectionResultDelivered = state.getBoolean(STATE_PROJECTION_RESULT_DELIVERED, false);
+        }
     }
 
     private String displayName(Uri uri) {
