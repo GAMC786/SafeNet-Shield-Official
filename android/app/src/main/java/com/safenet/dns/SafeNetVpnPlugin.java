@@ -512,6 +512,7 @@ public class SafeNetVpnPlugin extends Plugin {
             call.resolve(toJsObject(aiShield().getStatus()));
             return;
         }
+        aiShield().prepareForScreenConsent();
         projectionRequestPending = true;
         projectionResultDelivered = false;
         startActivityForResult(

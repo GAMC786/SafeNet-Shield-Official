@@ -1078,6 +1078,59 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldCanceledScreenReplacementFailsClosedAndCanRestart() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue("The initial camera source must be active", cameraStarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+        cancelMediaProjectionDialog();
+
+        JSONObject canceled = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                )
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals(
+            "Screen-capture consent was canceled; no screen pixels were analyzed.",
+            canceled.getString("message")
+        );
+        assertFalse("Canceled replacement must not leave monitoring active",
+            canceled.getBoolean("monitoring"));
+        assertFalse("Canceled replacement must not retain the camera verdict",
+            canceled.has("confidence") && !canceled.isNull("confidence"));
+        assertNotEquals("Canceled replacement must not report a safe verdict",
+            AiShieldClassifier.STATE_SAFE, canceled.getString("state"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", restarted.getString("source"));
+        assertTrue("A later screen selection must restart monitoring",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+    }
+
+    @Test
     public void aiShieldScreenConsentApprovalSurvivesActivityRecreation() throws Exception {
         startScreenConsentWithoutWaiting();
         waitForMediaProjectionDialog();

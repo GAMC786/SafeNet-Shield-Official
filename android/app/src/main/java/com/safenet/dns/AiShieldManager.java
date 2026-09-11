@@ -243,6 +243,17 @@ public final class AiShieldManager {
         }
     }
 
+    /**
+     * End the current source before Android opens the MediaProjection consent
+     * surface. The user may cancel that surface, so the replacement must not
+     * leave the previous capture alive while its result is pending.
+     */
+    public void prepareForScreenConsent() {
+        synchronized (lock) {
+            stopLocked(true);
+        }
+    }
+
     public void stop() {
         synchronized (lock) {
             stopLocked(true);
