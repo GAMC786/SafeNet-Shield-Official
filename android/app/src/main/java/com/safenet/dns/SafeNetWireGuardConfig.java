@@ -20,6 +20,37 @@ import java.util.List;
  * release environment and the official WireGuard parser accepts them.
  */
 final class SafeNetWireGuardConfig {
+    static final class Settings {
+        final String gatewayEndpoint;
+        final String gatewayOwner;
+        final String peerPublicKey;
+        final String clientPrivateKey;
+        final String clientAddress;
+        final String allowedIps;
+        final String dnsServers;
+        final String persistentKeepalive;
+
+        Settings(
+            String gatewayEndpoint,
+            String gatewayOwner,
+            String peerPublicKey,
+            String clientPrivateKey,
+            String clientAddress,
+            String allowedIps,
+            String dnsServers,
+            String persistentKeepalive
+        ) {
+            this.gatewayEndpoint = gatewayEndpoint;
+            this.gatewayOwner = gatewayOwner;
+            this.peerPublicKey = peerPublicKey;
+            this.clientPrivateKey = clientPrivateKey;
+            this.clientAddress = clientAddress;
+            this.allowedIps = allowedIps;
+            this.dnsServers = dnsServers;
+            this.persistentKeepalive = persistentKeepalive;
+        }
+    }
+
     private SafeNetWireGuardConfig() {
     }
 
@@ -56,17 +87,22 @@ final class SafeNetWireGuardConfig {
     }
 
     static Config load() throws java.io.IOException, BadConfigException {
-        return load(null);
+        return load(fromBuildConfig(), null);
     }
 
     static Config load(String selectedDnsServers) throws java.io.IOException, BadConfigException {
-        String owner = required(BuildConfig.SAFENET_WIREGUARD_GATEWAY_OWNER, "gateway owner");
+        return load(fromBuildConfig(), selectedDnsServers);
+    }
+
+    static Config load(Settings settings, String selectedDnsServers)
+        throws java.io.IOException, BadConfigException {
+        String owner = required(settings.gatewayOwner, "gateway owner");
         if (!"SafeNet".equals(owner)) {
             throw new IllegalArgumentException("The WireGuard gateway must be operated by SafeNet.");
         }
 
         String endpoint = required(
-            BuildConfig.SAFENET_WIREGUARD_GATEWAY_ENDPOINT,
+            settings.gatewayEndpoint,
             "gateway endpoint"
         );
         // Parse the endpoint independently so a syntactically valid config
@@ -78,29 +114,29 @@ final class SafeNetWireGuardConfig {
         }
 
         String peerPublicKey = required(
-            BuildConfig.SAFENET_WIREGUARD_PEER_PUBLIC_KEY,
+            settings.peerPublicKey,
             "gateway peer public key"
         );
         String clientPrivateKey = required(
-            BuildConfig.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY,
+            settings.clientPrivateKey,
             "client private key"
         );
         String clientAddress = required(
-            BuildConfig.SAFENET_WIREGUARD_CLIENT_ADDRESS,
+            settings.clientAddress,
             "client address"
         );
         String allowedIps = required(
-            BuildConfig.SAFENET_WIREGUARD_ALLOWED_IPS,
+            settings.allowedIps,
             "allowed IPs"
         );
         requireDefaultRoute(allowedIps);
         String dnsServers = resolveDnsServers(normalizeDnsServers(
             selectedDnsServers == null || selectedDnsServers.trim().isEmpty()
-                ? required(BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS, "DNS servers")
+                ? required(settings.dnsServers, "DNS servers")
                 : selectedDnsServers
         ));
         String keepalive = required(
-            BuildConfig.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE,
+            settings.persistentKeepalive,
             "persistent keepalive"
         );
 
@@ -124,6 +160,19 @@ final class SafeNetWireGuardConfig {
             + "Endpoint = " + endpoint + "\n"
             + "PersistentKeepalive = " + keepaliveSeconds + "\n";
         return Config.parse(new ByteArrayInputStream(configText.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static Settings fromBuildConfig() {
+        return new Settings(
+            BuildConfig.SAFENET_WIREGUARD_GATEWAY_ENDPOINT,
+            BuildConfig.SAFENET_WIREGUARD_GATEWAY_OWNER,
+            BuildConfig.SAFENET_WIREGUARD_PEER_PUBLIC_KEY,
+            BuildConfig.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY,
+            BuildConfig.SAFENET_WIREGUARD_CLIENT_ADDRESS,
+            BuildConfig.SAFENET_WIREGUARD_ALLOWED_IPS,
+            BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS,
+            BuildConfig.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE
+        );
     }
 
     static String gatewayEndpoint() {

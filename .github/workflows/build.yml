@@ -770,7 +770,22 @@ jobs:
             echo "::error::The WireGuard client private key must not be copied into frontend assets."
             exit 1
           fi
-          echo "Validated complete SafeNet WireGuard release configuration without printing secret values."
+          echo "Validated complete SafeNet WireGuard release configuration presence without printing secret values."
+
+      - name: Validate SafeNet WireGuard parser before APK packaging
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        working-directory: android
+        shell: bash
+        env:
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
+        run: ./gradlew :app:testDebugUnitTest --tests com.safenet.dns.SafeNetWireGuardConfigTest -Dsafenet.validateReleaseConfig=true
 
       - name: Build signed release APK
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'

@@ -59,6 +59,33 @@ test("release workflows source every WireGuard value from protected secrets", ()
   }
 });
 
+test("release workflows run the Android parser before APK packaging", () => {
+  for (const [name, workflow] of [
+    ["main Android workflow", mainWorkflow],
+    ["APK-only workflow", apkOnlyWorkflow],
+  ]) {
+    const parserIndex = workflow.indexOf(
+      "- name: Validate SafeNet WireGuard parser before APK packaging",
+    );
+    const packageIndex = workflow.indexOf(
+      "- name: Build signed release APK",
+      parserIndex,
+    );
+
+    assert.notEqual(parserIndex, -1, `${name} is missing the parser validation step`);
+    assert.notEqual(packageIndex, -1, `${name} is missing release packaging`);
+    assert.ok(
+      parserIndex < packageIndex,
+      `${name} must validate the WireGuard parser before packaging`,
+    );
+
+    const parserStep = workflow.slice(parserIndex, packageIndex);
+    assert.match(parserStep, /:app:testDebugUnitTest/);
+    assert.match(parserStep, /SafeNetWireGuardConfigTest/);
+    assert.match(parserStep, /safenet\.validateReleaseConfig=true/);
+  }
+});
+
 test("the client private key is not available during the web asset build", () => {
   const webBuildSection = mainWorkflow.slice(
     mainWorkflow.indexOf("- name: Build and sync mobile web assets"),
