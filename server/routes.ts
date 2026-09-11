@@ -480,6 +480,46 @@ export async function registerRoutes(
   });
 
   // === Antivirus ===
+  app.get("/internal/clamav/health", async (req, res) => {
+    const {
+      isAuthorizedLocalClamAvRequest,
+      localClamAvHealth,
+    } = await import("./clamav-local");
+    if (!isAuthorizedLocalClamAvRequest(req.get("x-safenet-clamav-token"))) {
+      return res.status(404).end();
+    }
+    try {
+      return res.json(await localClamAvHealth());
+    } catch (error) {
+      return res.status(503).json({
+        status: "unavailable",
+        message: error instanceof Error ? error.message : "ClamAV is unavailable.",
+      });
+    }
+  });
+
+  app.post(
+    "/internal/clamav/scan",
+    express.raw({ type: "application/octet-stream", limit: "64mb" }),
+    async (req, res) => {
+      const {
+        isAuthorizedLocalClamAvRequest,
+        scanWithLocalClamAv,
+      } = await import("./clamav-local");
+      if (!isAuthorizedLocalClamAvRequest(req.get("x-safenet-clamav-token"))) {
+        return res.status(404).end();
+      }
+      try {
+        const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+        return res.json(await scanWithLocalClamAv(payload));
+      } catch (error) {
+        return res.status(503).json({
+          message: error instanceof Error ? error.message : "ClamAV is unavailable.",
+        });
+      }
+    },
+  );
+
   app.get("/api/antivirus/settings", async (req, res) => {
     const settings = await storage.getAntivirusSettings();
     res.json(settings);

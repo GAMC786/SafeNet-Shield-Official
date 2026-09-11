@@ -101,6 +101,14 @@ app.use((req, res, next) => {
       // Start DDNS scheduler for automatic updates
       startDdnsScheduler();
       log("DDNS scheduler started");
+      void import("./clamav-local")
+        .then(({ startLocalClamAv }) => startLocalClamAv())
+        .catch((error) => {
+          log(
+            `Local ClamAV startup deferred: ${error instanceof Error ? error.message : "engine unavailable"}`,
+            "clamav",
+          );
+        });
     },
   );
 })();

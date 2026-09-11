@@ -1,3 +1,9 @@
+import {
+  isLocalClamAvEnabled,
+  localClamAvHeaders,
+  localClamAvUrl,
+} from "./clamav-local";
+
 export type ClamAvStatus = {
   configured: boolean;
   reachable: boolean;
@@ -45,7 +51,9 @@ let lastVerification: LocalVerification | null = null;
 
 function getClamAvUrl() {
   const configuredUrl = process.env.CLAMAV_REST_URL?.trim();
-  if (!configuredUrl) return null;
+  if (!configuredUrl) {
+    return isLocalClamAvEnabled() ? localClamAvUrl() : null;
+  }
 
   try {
     const url = new URL(configuredUrl);
@@ -58,6 +66,11 @@ function getClamAvUrl() {
   }
 }
 
+function requestHeaders(url: string) {
+  return url === localClamAvUrl()
+    ? localClamAvHeaders()
+    : {};
+}
 
 function unavailable(
   message: string,
@@ -145,7 +158,10 @@ function parseScanResponse(body: unknown): ClamAvScanResult {
 async function requestHealth(url: string) {
   const response = await fetch(`${url}/health`, {
     method: "GET",
-    headers: { Accept: "application/json, text/plain" },
+    headers: {
+      Accept: "application/json, text/plain",
+      ...requestHeaders(url),
+    },
     signal: AbortSignal.timeout(5000),
   });
   const text = await response.text();
@@ -244,6 +260,7 @@ async function scanRequest(url: string, payload: Buffer): Promise<ClamAvScanResu
     headers: {
       "Content-Type": "application/octet-stream",
       Accept: "application/json, text/plain",
+      ...requestHeaders(url),
     },
     body: payload,
     signal: AbortSignal.timeout(30_000),

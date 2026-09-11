@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["actionlint", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "freetype", "glib", "gumbo", "harfbuzz", "jbig2dec", "libdrm", "libjpeg_turbo", "libxkbcommon", "mesa", "mupdf", "nspr", "nss", "openjpeg", "shellcheck", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "android-tools"]
+packages = ["actionlint", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "freetype", "glib", "gumbo", "harfbuzz", "jbig2dec", "libdrm", "libjpeg_turbo", "libxkbcommon", "mesa", "mupdf", "nspr", "nss", "openjpeg", "shellcheck", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "android-tools", "clamav"]
 
 [[ports]]
 localPort = 4173
@@ -41,6 +41,8 @@ externalPort = 3002
 
 [env]
 PORT = "5000"
+CLAMAV_LOCAL_MODE = "true"
+CLAMAV_LOCAL_PORT = "3310"
 
 [deployment]
 deploymentTarget = "autoscale"

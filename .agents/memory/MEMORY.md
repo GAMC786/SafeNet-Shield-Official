@@ -47,4 +47,5 @@
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts whole minutes at the API/UI boundary while persistence remains milliseconds and scheduler comparisons use seconds.
 - [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
+- [Local ClamAV sidecar](local-clamav-sidecar.md) — when no external service is available, run token-protected clamd locally but re-verify on every fresh autoscale instance.
 - [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
