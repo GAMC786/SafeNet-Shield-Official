@@ -11,10 +11,59 @@ def releaseSigningConfigured = [
     releaseKeyPassword
 ].every { value -> value != null && !value.trim().isEmpty() }
 
+def wireGuardValue = { String environmentName, String propertyName ->
+    def environmentValue = System.getenv(environmentName)
+    if (environmentValue != null) {
+        return environmentValue
+    }
+    def propertyValue = project.findProperty(propertyName)
+    return propertyValue == null ? "" : propertyValue.toString()
+}
+
+def wireGuardBuildConfigString = { String value ->
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
+}
+
+def wireGuardGatewayEndpoint = wireGuardValue(
+    "SAFENET_WIREGUARD_GATEWAY_ENDPOINT",
+    "safenetWireguardGatewayEndpoint"
+)
+def wireGuardGatewayOwner = wireGuardValue(
+    "SAFENET_WIREGUARD_GATEWAY_OWNER",
+    "safenetWireguardGatewayOwner"
+)
+def wireGuardPeerPublicKey = wireGuardValue(
+    "SAFENET_WIREGUARD_PEER_PUBLIC_KEY",
+    "safenetWireguardPeerPublicKey"
+)
+def wireGuardClientPrivateKey = wireGuardValue(
+    "SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY",
+    "safenetWireguardClientPrivateKey"
+)
+def wireGuardClientAddress = wireGuardValue(
+    "SAFENET_WIREGUARD_CLIENT_ADDRESS",
+    "safenetWireguardClientAddress"
+)
+def wireGuardAllowedIps = wireGuardValue(
+    "SAFENET_WIREGUARD_ALLOWED_IPS",
+    "safenetWireguardAllowedIps"
+)
+def wireGuardDnsServers = wireGuardValue(
+    "SAFENET_WIREGUARD_DNS_SERVERS",
+    "safenetWireguardDnsServers"
+)
+def wireGuardPersistentKeepalive = wireGuardValue(
+    "SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE",
+    "safenetWireguardPersistentKeepalive"
+)
+
 android {
     namespace "com.safenet.dns"
     compileSdk rootProject.ext.compileSdkVersion
     buildToolsVersion rootProject.ext.androidBuildToolsVersion
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.safenet.dns"
         testApplicationId "com.safenet.dns.test"
@@ -23,6 +72,14 @@ android {
         versionCode 60
         versionName "1.0.68"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_ENDPOINT", wireGuardBuildConfigString(wireGuardGatewayEndpoint)
+        buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_OWNER", wireGuardBuildConfigString(wireGuardGatewayOwner)
+        buildConfigField "String", "SAFENET_WIREGUARD_PEER_PUBLIC_KEY", wireGuardBuildConfigString(wireGuardPeerPublicKey)
+        buildConfigField "String", "SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY", wireGuardBuildConfigString(wireGuardClientPrivateKey)
+        buildConfigField "String", "SAFENET_WIREGUARD_CLIENT_ADDRESS", wireGuardBuildConfigString(wireGuardClientAddress)
+        buildConfigField "String", "SAFENET_WIREGUARD_ALLOWED_IPS", wireGuardBuildConfigString(wireGuardAllowedIps)
+        buildConfigField "String", "SAFENET_WIREGUARD_DNS_SERVERS", wireGuardBuildConfigString(wireGuardDnsServers)
+        buildConfigField "String", "SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE", wireGuardBuildConfigString(wireGuardPersistentKeepalive)
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -135,6 +192,7 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "com.wireguard.android:tunnel:1.0.20250531"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"

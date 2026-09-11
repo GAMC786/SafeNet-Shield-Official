@@ -76,6 +76,31 @@ project. The URL must be a public HTTPS origin without a path or query. Do not
 use `localhost` or a private network address: on the phone, `localhost` refers
 to the phone itself.
 
+### Optional Step 1a: Configure the SafeNet WireGuard gateway
+
+WireGuard controls are included only when the APK build receives a complete
+SafeNet-operated gateway and peer configuration. The values are validated by
+the official WireGuard parser; an incomplete build keeps the controls hidden
+instead of starting an arbitrary or competing VPN. Supply these values through
+the environment or equivalent Gradle properties before running the Android
+build:
+
+```bash
+export SAFENET_WIREGUARD_GATEWAY_OWNER=SafeNet
+export SAFENET_WIREGUARD_GATEWAY_ENDPOINT=wireguard.example.com:51820
+export SAFENET_WIREGUARD_PEER_PUBLIC_KEY='<gateway-public-key>'
+export SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY='<client-private-key>'
+export SAFENET_WIREGUARD_CLIENT_ADDRESS=10.66.0.2/32
+export SAFENET_WIREGUARD_ALLOWED_IPS='0.0.0.0/0, ::/0'
+export SAFENET_WIREGUARD_DNS_SERVERS=10.66.0.1
+export SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE=25
+```
+
+Do not commit the client private key or put it in frontend assets. The WireGuard
+backend owns Android's single VPN permission while the tunnel is active, so
+SafeNet DNS and WireGuard start requests reject conflicting ownership. The
+Quick Settings tile follows whichever SafeNet tunnel is active.
+
 ### Step 2: Open in Android Studio
 ```bash
 npx cap open android

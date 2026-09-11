@@ -200,8 +200,8 @@ export default function Dashboard() {
                   secondaryAddress: activeResolver.secondaryAddress,
                 }).catch(() => undefined);
               }}
-              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
-                aria-label="SafeNet VPN On/Off"
+              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns || vpn.status?.wireguardRunning}
+              aria-label="SafeNet DNS VPN On/Off"
             />
             <Button
               type="button"
@@ -235,8 +235,56 @@ export default function Dashboard() {
               </p>
             </div>
           )}
+          {vpn.status?.vpnPermissionOwner && vpn.status.vpnPermissionOwner !== "none" && (
+            <p className="w-full text-left text-xs text-muted-foreground">
+              Android allows one VPN owner at a time. Current owner:{" "}
+              <span className="font-medium text-foreground">{vpn.status.vpnPermissionOwner}</span>.
+            </p>
+          )}
         </CyberCard>
       </div>
+
+      {vpn.supported && vpn.status?.wireguardConfigured && (
+        <CyberCard className="space-y-4" data-testid="dashboard-wireguard-card">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-white">SafeNet WireGuard</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Protected through the SafeNet-operated gateway{" "}
+                <span className="font-mono text-foreground">{vpn.status.wireguardGateway}</span>.
+              </p>
+            </div>
+            <Switch
+              checked={vpn.status.wireguardRunning ?? false}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  void vpn.startWireGuard().catch(() => undefined);
+                } else {
+                  void vpn.stopWireGuard().catch(() => undefined);
+                }
+              }}
+              disabled={
+                vpn.isBusy ||
+                vpn.status === null ||
+                (!vpn.status.wireguardRunning && vpn.status.running)
+              }
+              aria-label="SafeNet WireGuard On/Off"
+            />
+          </div>
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+            <p>
+              SafeNet owns Android&apos;s single VPN permission for this tunnel. Stop DNS protection
+              before starting WireGuard; the two tunnels cannot run together.
+            </p>
+            <p className="mt-2">
+              Gateway peer: <span className="font-mono text-foreground">{vpn.status.wireguardPeerPublicKey}</span>
+            </p>
+          </div>
+          {vpn.status.wireguardError && (
+            <p role="alert" className="text-xs text-destructive">{vpn.status.wireguardError}</p>
+          )}
+        </CyberCard>
+      )}
 
       {vpn.supported && (
         <EulaDialog

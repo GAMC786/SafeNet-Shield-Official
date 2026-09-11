@@ -2,6 +2,8 @@ package com.safenet.dns;
 
 import android.content.Intent;
 import android.net.VpnService;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Build;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
@@ -22,6 +24,14 @@ public final class SafeNetVpnTileService extends TileService {
     @Override
     public void onClick() {
         super.onClick();
+        if (SafeNetWireGuardConfig.isConfigured()
+                && SafeNetWireGuardManager.get(this).isRunning()) {
+            SafeNetWireGuardManager.get(this).stopAsync(
+                this::postUpdateTile,
+                error -> postUpdateTile()
+            );
+            return;
+        }
         if (SafeNetVpnService.isRunning()) {
             SafeNetVpnService.requestStop();
             stopService(new Intent(this, SafeNetVpnService.class));
@@ -36,6 +46,16 @@ public final class SafeNetVpnTileService extends TileService {
 
         android.content.SharedPreferences preferences =
             getSharedPreferences("safenet_vpn", MODE_PRIVATE);
+        if (SafeNetWireGuardConfig.isConfigured()
+                && SafeNetVpnPlugin.TUNNEL_WIREGUARD.equals(
+                    preferences.getString(SafeNetVpnPlugin.PREF_ACTIVE_TUNNEL, "")
+                )) {
+            SafeNetWireGuardManager.get(this).startAsync(
+                this::postUpdateTile,
+                error -> postUpdateTile()
+            );
+            return;
+        }
         Intent serviceIntent = new Intent(this, SafeNetVpnService.class)
             .putExtra(SafeNetVpnService.EXTRA_TYPE, preferences.getString(
                 SafeNetVpnPlugin.PREF_RESOLVER_TYPE, "doh"))
@@ -56,10 +76,13 @@ public final class SafeNetVpnTileService extends TileService {
     private boolean isReadyToStart() {
         android.content.SharedPreferences preferences =
             getSharedPreferences("safenet_vpn", MODE_PRIVATE);
-        return SafeNetVpnPlugin.EULA_VERSION.equals(
+        boolean dnsReady = SafeNetVpnPlugin.EULA_VERSION.equals(
                 preferences.getString("accepted_eula_version", null))
             && VpnService.prepare(this) == null
             && !preferences.getString(SafeNetVpnPlugin.PREF_RESOLVER_PRIMARY, "").trim().isEmpty();
+        boolean wireGuardReady = SafeNetWireGuardConfig.isConfigured()
+            && VpnService.prepare(this) == null;
+        return dnsReady || wireGuardReady;
     }
 
     private void openApp() {
@@ -71,10 +94,20 @@ public final class SafeNetVpnTileService extends TileService {
     private void updateTile() {
         Tile tile = getQsTile();
         if (tile == null) return;
+        boolean wireGuardRunning = SafeNetWireGuardConfig.isConfigured()
+            && SafeNetWireGuardManager.get(this).isRunning();
         boolean running = SafeNetVpnService.isRunning();
-        tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel(running ? "SafeNet VPN On" : "SafeNet VPN Off");
-        tile.setSubtitle(running ? "DNS protected" : "Tap to protect DNS");
+        tile.setState(running || wireGuardRunning ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        tile.setLabel(wireGuardRunning
+            ? "SafeNet WireGuard On"
+            : running ? "SafeNet DNS On" : "SafeNet VPN Off");
+        tile.setSubtitle(wireGuardRunning
+            ? "SafeNet gateway protected"
+            : running ? "DNS protected" : "Tap to protect");
         tile.updateTile();
+    }
+
+    private void postUpdateTile() {
+        new Handler(Looper.getMainLooper()).post(this::updateTile);
     }
 }

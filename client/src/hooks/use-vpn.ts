@@ -62,6 +62,15 @@ export interface VpnStatus {
   permissionGranted: boolean;
   eulaVersion: string;
   eulaAccepted: boolean;
+  wireguardConfigured?: boolean;
+  wireguardRunning?: boolean;
+  activeTunnel?: "dns" | "wireguard" | "none" | string;
+  vpnPermissionOwner?: "SafeNet DNS" | "SafeNet WireGuard" | "none" | string;
+  wireguardGateway?: string;
+  wireguardGatewayOwner?: string;
+  wireguardPeerPublicKey?: string;
+  wireguardAllowedIps?: string;
+  wireguardError?: string | null;
   error?: string;
   protection?: ProtectionStatus;
 }
@@ -128,6 +137,8 @@ interface SafeNetVpnPlugin {
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
+  startWireGuard(): Promise<VpnStatus>;
+  stopWireGuard(): Promise<VpnStatus>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
@@ -162,6 +173,10 @@ export function useSafeNetVpn() {
         permissionGranted: previous?.permissionGranted ?? false,
         eulaVersion: previous?.eulaVersion ?? SAFE_NET_VPN_EULA_VERSION,
         eulaAccepted: previous?.eulaAccepted ?? false,
+        wireguardConfigured: previous?.wireguardConfigured ?? false,
+        wireguardRunning: previous?.wireguardRunning ?? false,
+        activeTunnel: previous?.activeTunnel ?? "none",
+        vpnPermissionOwner: previous?.vpnPermissionOwner ?? "none",
         error: `DNS protection status is unavailable. ${message}`,
       }));
       throw error;
@@ -216,5 +231,38 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  return { supported, status, isBusy, refresh, acceptEula, start, stop };
+  const startWireGuard = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SafeNetVpn.startWireGuard();
+      setStatus(nextStatus);
+      await refresh();
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [refresh]);
+
+  const stopWireGuard = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SafeNetVpn.stopWireGuard();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  return {
+    supported,
+    status,
+    isBusy,
+    refresh,
+    acceptEula,
+    start,
+    stop,
+    startWireGuard,
+    stopWireGuard,
+  };
 }
