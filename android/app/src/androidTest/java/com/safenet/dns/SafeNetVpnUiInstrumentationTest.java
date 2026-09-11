@@ -1045,6 +1045,64 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldScreenConsentCancellationSurvivesActivityRecreation() throws Exception {
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+
+        recreateActivity();
+        cancelMediaProjectionDialog();
+
+        JSONObject canceled = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                )
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals(
+            "Screen-capture consent was canceled; no screen pixels were analyzed.",
+            canceled.getString("message")
+        );
+        assertFalse("Canceled consent must not leave screen monitoring active",
+            canceled.getBoolean("monitoring"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertTrue("A canceled consent callback must not block a later request",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+    }
+
+    @Test
+    public void aiShieldScreenConsentApprovalSurvivesActivityRecreation() throws Exception {
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+
+        recreateActivity();
+        grantMediaProjectionDialog();
+
+        JSONObject started = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Approved consent must resolve into active screen monitoring",
+            started.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+
+        JSONObject stable = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("A recreated approval must not leave stale monitoring transitions",
+            stable.getBoolean("monitoring"));
+    }
+
+    @Test
     public void aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive() throws Exception {
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
@@ -1473,18 +1531,54 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     private void grantMediaProjectionDialog() throws Exception {
+        UiObject2 start = waitForMediaProjectionDialog();
+        start.click();
+    }
+
+    private UiObject2 waitForMediaProjectionDialog() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
             UiObject2 start = device.findObject(
                 By.text(Pattern.compile("(?i)(start now|start recording)"))
             );
             if (start != null && start.isEnabled()) {
-                start.click();
-                return;
+                return start;
             }
             Thread.sleep(250);
         }
         throw new AssertionError("Android MediaProjection consent dialog did not appear");
+    }
+
+    private void cancelMediaProjectionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 cancel = device.findObject(
+                By.text(Pattern.compile("(?i)(cancel|deny|don't allow|not now)"))
+            );
+            if (cancel != null && cancel.isEnabled()) {
+                cancel.click();
+                return;
+            }
+            if (device.findObject(
+                    By.text(Pattern.compile("(?i)(start now|start recording)"))
+                ) == null) {
+                device.pressBack();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android MediaProjection consent dialog did not cancel");
+    }
+
+    private void startScreenConsentWithoutWaiting() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen().catch(() => {});" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not start the pending MediaProjection consent request",
+            result.getBoolean("value"));
     }
 
     private void relaunchActivity() throws Exception {

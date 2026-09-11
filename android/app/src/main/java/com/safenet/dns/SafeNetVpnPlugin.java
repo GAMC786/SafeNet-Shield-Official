@@ -8,6 +8,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
@@ -52,6 +53,11 @@ public class SafeNetVpnPlugin extends Plugin {
     private ExecutorService apkScannerExecutor;
     private ApkScanner apkScanner;
     private AiShieldManager aiShieldManager;
+    private static final String STATE_PROJECTION_PENDING = "safenet_projection_pending";
+    private static final String STATE_PROJECTION_RESULT_DELIVERED =
+        "safenet_projection_result_delivered";
+    private boolean projectionRequestPending;
+    private boolean projectionResultDelivered;
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
@@ -506,6 +512,8 @@ public class SafeNetVpnPlugin extends Plugin {
             call.resolve(toJsObject(aiShield().getStatus()));
             return;
         }
+        projectionRequestPending = true;
+        projectionResultDelivered = false;
         startActivityForResult(
             call,
             projectionManager.createScreenCaptureIntent(),
@@ -515,13 +523,19 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @ActivityCallback
     private void aiShieldProjectionResult(PluginCall call, ActivityResult result) {
-        if (call == null) {
+        if (call == null || !projectionRequestPending || projectionResultDelivered) {
             return;
         }
-        int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
-        Intent data = result == null ? null : result.getData();
-        aiShield().startScreen(resultCode, data);
-        call.resolve(toJsObject(aiShield().getStatus()));
+        projectionResultDelivered = true;
+        projectionRequestPending = false;
+        try {
+            int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
+            Intent data = result == null ? null : result.getData();
+            aiShield().startScreen(resultCode, data);
+            call.resolve(toJsObject(aiShield().getStatus()));
+        } finally {
+            getBridge().releaseCall(call);
+        }
     }
 
     @PluginMethod
@@ -607,6 +621,30 @@ public class SafeNetVpnPlugin extends Plugin {
             apkScannerExecutor = Executors.newSingleThreadExecutor();
         }
         return apkScannerExecutor;
+    }
+
+    @Override
+    protected Bundle saveInstanceState() {
+        Bundle state = super.saveInstanceState();
+        if (state == null && !projectionRequestPending) {
+            return null;
+        }
+        if (state == null) {
+            state = new Bundle();
+        }
+        state.putBoolean(STATE_PROJECTION_PENDING, projectionRequestPending);
+        state.putBoolean(STATE_PROJECTION_RESULT_DELIVERED, projectionResultDelivered);
+        return state;
+    }
+
+    @Override
+    protected void restoreState(Bundle state) {
+        super.restoreState(state);
+        if (state == null) {
+            return;
+        }
+        projectionRequestPending = state.getBoolean(STATE_PROJECTION_PENDING, false);
+        projectionResultDelivered = state.getBoolean(STATE_PROJECTION_RESULT_DELIVERED, false);
     }
 
     private String displayName(Uri uri) {

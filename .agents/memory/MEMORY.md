@@ -28,6 +28,7 @@
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
  - [Android Clerk startup configuration](android-clerk-startup-config.md) — packaged builds must load public Clerk config before mounting React or a missing CI key produces a blank WebView.
 - [Android startup loader first paint](android-startup-loader-first-paint.md) — render the loader before async Clerk configuration so fast WebView startup cannot skip it.
+- [Capacitor activity-result recovery](capacitor-activity-result-recovery.md) — restore plugin-local pending/result state because Capacitor rebuilds pending activity calls as dangling callbacks.
  - [Clerk WebView proxy origin](clerk-webview-proxy-origin.md) — native WebViews must present the public proxy origin to Clerk upstream or Clerk rejects the localhost origin.
 - [Android instrumentation metadata](android-instrumentation-metadata.md) — test APK manifests may omit version metadata; validate package/signature and let hosted smoke exercise the runner.
 - [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
