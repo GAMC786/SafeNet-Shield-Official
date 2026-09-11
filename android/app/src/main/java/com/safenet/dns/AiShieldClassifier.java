@@ -108,18 +108,18 @@ public final class AiShieldClassifier {
                 || inputShape.length != 4
                 || inputShape[0] != 1
                 || inputShape[3] != 3
-                || (input.type() != DataType.FLOAT32 && input.type() != DataType.UINT8)
+                || (input.dataType() != DataType.FLOAT32 && input.dataType() != DataType.UINT8)
                 || outputShape.length < 2
                 || output.numElements() < 2
-                || (output.type() != DataType.FLOAT32 && output.type() != DataType.UINT8)) {
+                || (output.dataType() != DataType.FLOAT32 && output.dataType() != DataType.UINT8)) {
                 candidate.close();
                 loadFailureReason = "The bundled AI Shield model has an unsupported tensor contract.";
                 return false;
             }
             inputWidth = inputShape[2];
             inputHeight = inputShape[1];
-            inputType = input.type();
-            outputType = output.type();
+            inputType = input.dataType();
+            outputType = output.dataType();
             outputElements = output.numElements();
             interpreter = candidate;
             loadFailureReason = null;

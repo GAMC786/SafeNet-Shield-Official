@@ -153,7 +153,7 @@ public final class AiShieldManager {
                     reader -> analyzeCameraImage(reader, generation),
                     captureHandler
                 );
-                manager.openCamera(createCameraStateCallback(generation), captureHandler);
+                manager.openCamera(cameraId, createCameraStateCallback(generation), captureHandler);
             } catch (Exception error) {
                 emitLocked(AiShieldClassifier.captureUnavailable(
                     "camera",

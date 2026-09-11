@@ -68,3 +68,20 @@ test("resolver address family is forwarded into the native service", () => {
   assert.match(serviceSource, /resolveHost\(endpoint\.host, ipVersion\)/);
   assert.match(serviceSource, /resolveHost\(uri\.getHost\(\), ipVersion\)/);
 });
+
+test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs", async () => {
+  const managerSource = await readFile(
+    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldManager.java", import.meta.url),
+    "utf8",
+  );
+  const classifierSource = await readFile(
+    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldClassifier.java", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(managerSource, /manager\.openCamera\(cameraId,\s*createCameraStateCallback/);
+  assert.doesNotMatch(managerSource, /manager\.openCamera\(createCameraStateCallback/);
+  assert.match(classifierSource, /input\.dataType\(\)/);
+  assert.match(classifierSource, /output\.dataType\(\)/);
+  assert.doesNotMatch(classifierSource, /(?:input|output)\.type\(\)/);
+});
