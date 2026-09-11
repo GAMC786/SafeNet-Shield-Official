@@ -205,7 +205,11 @@ export function AiShieldControls() {
             </div>
           </div>
 
-          <div className={`rounded-md border p-3 ${presentation.className}`} data-testid="ai-shield-result">
+          <div
+            className={`rounded-md border p-3 ${presentation.className}`}
+            data-testid="ai-shield-result"
+            data-state={shield.status?.state || "idle"}
+          >
             <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
               {presentation.icon}
               <span>{presentation.label}</span>

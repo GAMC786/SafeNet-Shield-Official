@@ -990,6 +990,127 @@ public class SafeNetVpnUiInstrumentationTest {
             revoked.has("confidence") && !revoked.isNull("confidence"));
     }
 
+    @Test
+    public void aiShieldSettingsShowsUnavailableForMissingOrInvalidModelMetadata() throws Exception {
+        String missingMetadataStatus = modelUnavailableStatusPayload((String) null);
+        String invalidMetadataStatus = modelUnavailableStatusPayload("{\"modelVersion\":\"wrong\"}");
+
+        JSONObject installed = callWebView(
+            "(() => {" +
+                "const plugin = window.Capacitor.Plugins.SafeNetVpn;" +
+                "const missing = JSON.parse(\"" + jsQuote(missingMetadataStatus) + "\");" +
+                "const invalid = JSON.parse(\"" + jsQuote(invalidMetadataStatus) + "\");" +
+                "plugin.getAiShieldStatus = () => Promise.resolve(missing);" +
+                "plugin.startAiShieldCamera = () => Promise.resolve(missing);" +
+                "plugin.startAiShieldScreen = () => Promise.resolve(missing);" +
+                "plugin.stopAiShield = () => Promise.resolve(missing);" +
+                "plugin.addListener = (_name, listener) => {" +
+                    "window.__safeNetAiShieldTestListener = listener;" +
+                    "return Promise.resolve({remove: () => Promise.resolve()});" +
+                "};" +
+                "history.pushState({}, '', '/settings');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "window.__safeNetAiShieldInvalidStatus = invalid;" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to Settings in the WebView", installed.getBoolean("ok"));
+
+        waitForWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "return Boolean(window.__safeNetAiShieldTestListener && result && " +
+                    "result.getAttribute('data-state') === 'model_unavailable' && " +
+                    "result.textContent.includes('Engine unavailable'));" +
+            "})()"
+        );
+
+        JSONObject initialState = aiShieldSettingsDomState();
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, initialState.getString("state"));
+        assertTrue("Settings must visibly report an unavailable AI Shield engine",
+            initialState.getBoolean("engineUnavailable"));
+        assertFalse("Missing model metadata must not render a safe verdict",
+            initialState.getBoolean("safeVerdict"));
+        assertFalse("Missing model metadata must not expose confidence",
+            initialState.getBoolean("hasConfidence"));
+
+        JSONObject clicked = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-ai-camera\"]');" +
+                "if (!toggle) { return {ok: false}; }" +
+                "toggle.click();" +
+                "return {ok: true};" +
+            "})()"
+        );
+        assertTrue("The unavailable AI Shield card must expose its camera control",
+            clicked.getBoolean("ok"));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"ai-shield-result\"]')?.getAttribute('data-state') === " +
+                "'model_unavailable'"
+        );
+        JSONObject afterStartAttempt = aiShieldSettingsDomState();
+        assertFalse("Starting an unavailable model must not render a safe verdict",
+            afterStartAttempt.getBoolean("safeVerdict"));
+
+        JSONObject attemptedStart = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()"
+        ));
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE,
+            attemptedStart.getString("state"));
+        assertFalse("An unavailable model must not produce a safe start result",
+            AiShieldClassifier.STATE_SAFE.equals(attemptedStart.getString("state")));
+
+        JSONObject updated = callWebView(
+            "(() => {" +
+                "const invalid = window.__safeNetAiShieldInvalidStatus;" +
+                "window.__safeNetAiShieldTestListener(invalid);" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The invalid metadata status fixture must be emitted",
+            updated.getBoolean("ok"));
+
+        waitForWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "return Boolean(result && result.getAttribute('data-state') === 'model_unavailable' && " +
+                    "result.textContent.includes('failed validation'));" +
+            "})()"
+        );
+        JSONObject invalidDomState = aiShieldSettingsDomState();
+        assertEquals("model_unavailable", invalidDomState.getString("state"));
+        assertTrue("Invalid model metadata must keep the Engine unavailable label visible",
+            invalidDomState.getBoolean("engineUnavailable"));
+        assertFalse("Invalid model metadata must not render a safe verdict",
+            invalidDomState.getBoolean("safeVerdict"));
+        assertTrue("Invalid model metadata must retain its unavailable diagnostic",
+            invalidDomState.getBoolean("validationFailure"));
+    }
+
+    private String modelUnavailableStatusPayload(String metadata) throws Exception {
+        AiShieldClassifier classifier = new AiShieldClassifier(metadata);
+        AiShieldClassifier.Analysis result = classifier.analyze(null, "none");
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, result.state);
+        assertFalse(AiShieldClassifier.STATE_SAFE.equals(result.state));
+        return result.toJson().toString();
+    }
+
+    private JSONObject aiShieldSettingsDomState() throws Exception {
+        return requireWebViewValue(callWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "const text = result ? result.textContent || '' : '';" +
+                "return {" +
+                    "state: result?.getAttribute('data-state')," +
+                    "engineUnavailable: text.includes('Engine unavailable')," +
+                    "safeVerdict: text.includes('Safe signal')," +
+                    "hasConfidence: !text.includes('Confidence —')," +
+                    "validationFailure: text.includes('failed validation')" +
+                "};" +
+            "})()"
+        ));
+    }
+
     private void clearTargetAppData() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
             return;
