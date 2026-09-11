@@ -368,7 +368,6 @@ export default function SpeedTest() {
               )}
               {(phase === "complete" || phase === "error") && <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest"><RotateCcw className="mr-2 h-4 w-4" />Reset</Button>}
             </div>
-            <p className="text-xs text-muted-foreground">Google&apos;s official Fiber speed test opens in a separate tab because Google does not permit this page to be embedded.</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {phase === "complete" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : phase === "error" ? <AlertTriangle className="h-4 w-4 text-rose-400" /> : <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />}
               <span>{phaseLabel}</span><span className="ml-auto font-mono text-primary">{progress}%</span>
