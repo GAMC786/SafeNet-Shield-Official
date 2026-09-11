@@ -1256,6 +1256,51 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldRepeatedSourceSwitchesPauseCleanlyAndRestartInference() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+
+        JSONObject paused = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && "none".equals(status.optString("source"))
+                && !status.optBoolean("monitoring", true)
+                && (!status.has("confidence") || status.isNull("confidence"))
+        );
+        assertFalse("Pausing after repeated source switches must stop AI Shield monitoring",
+            paused.getBoolean("monitoring"));
+        assertEquals("none", paused.getString("source"));
+        assertFalse("A paused AI Shield capture must not retain frame confidence",
+            paused.has("confidence") && !paused.isNull("confidence"));
+
+        JSONObject restarted = startAndVerifyAiShieldSource("camera", null);
+        assertEquals("camera", restarted.getString("source"));
+        assertTrue("A fresh consented source must restart AI Shield monitoring",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+    }
+
+    @Test
     public void aiShieldSettingsShowsUnavailableForMissingOrInvalidModelMetadata() throws Exception {
         String missingMetadataStatus = modelUnavailableStatusPayload((String) null);
         String invalidMetadataStatus = modelUnavailableStatusPayload("{\"modelVersion\":\"wrong\"}");
