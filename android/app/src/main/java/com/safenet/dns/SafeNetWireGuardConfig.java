@@ -6,7 +6,11 @@ import com.wireguard.config.InetEndpoint;
 import com.wireguard.config.ParseException;
 
 import java.io.ByteArrayInputStream;
+import java.net.InetAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Build-time configuration for the SafeNet-operated WireGuard gateway.
@@ -28,9 +32,23 @@ final class SafeNetWireGuardConfig {
         }
     }
 
+    /**
+     * Returns whether the gateway and peer are usable even when the build did
+     * not provide a default DNS value. The selected resolver is supplied when
+     * the tunnel is started.
+     */
+    static boolean isCoreConfigured() {
+        try {
+            load("1.1.1.1");
+            return true;
+        } catch (IllegalArgumentException | BadConfigException | java.io.IOException error) {
+            return false;
+        }
+    }
+
     static String validationError() {
         try {
-            load();
+            load("1.1.1.1");
             return null;
         } catch (IllegalArgumentException | BadConfigException | java.io.IOException error) {
             return safeMessage(error);
@@ -38,6 +56,10 @@ final class SafeNetWireGuardConfig {
     }
 
     static Config load() throws java.io.IOException, BadConfigException {
+        return load(null);
+    }
+
+    static Config load(String selectedDnsServers) throws java.io.IOException, BadConfigException {
         String owner = required(BuildConfig.SAFENET_WIREGUARD_GATEWAY_OWNER, "gateway owner");
         if (!"SafeNet".equals(owner)) {
             throw new IllegalArgumentException("The WireGuard gateway must be operated by SafeNet.");
@@ -71,10 +93,12 @@ final class SafeNetWireGuardConfig {
             BuildConfig.SAFENET_WIREGUARD_ALLOWED_IPS,
             "allowed IPs"
         );
-        String dnsServers = required(
-            BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS,
-            "DNS servers"
-        );
+        requireDefaultRoute(allowedIps);
+        String dnsServers = resolveDnsServers(normalizeDnsServers(
+            selectedDnsServers == null || selectedDnsServers.trim().isEmpty()
+                ? required(BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS, "DNS servers")
+                : selectedDnsServers
+        ));
         String keepalive = required(
             BuildConfig.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE,
             "persistent keepalive"
@@ -116,6 +140,133 @@ final class SafeNetWireGuardConfig {
 
     static String allowedIps() {
         return BuildConfig.SAFENET_WIREGUARD_ALLOWED_IPS.trim();
+    }
+
+    static String defaultDnsServers() {
+        return BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS == null
+            ? ""
+            : BuildConfig.SAFENET_WIREGUARD_DNS_SERVERS.trim();
+    }
+
+    static String normalizeDnsServers(String value) {
+        String[] candidates = value == null ? new String[0] : value.trim().split("[,\\s]+");
+        List<String> normalized = new ArrayList<>();
+        for (String candidate : candidates) {
+            if (candidate == null || candidate.trim().isEmpty()) {
+                continue;
+            }
+            String address = candidate.trim();
+            normalized.add(providerHost(address));
+        }
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Select a plain DNS resolver with at least one IP address before starting WireGuard."
+            );
+        }
+        return String.join(", ", normalized);
+    }
+
+    private static String resolveDnsServers(String normalizedDnsServers) {
+        List<String> resolved = new ArrayList<>();
+        for (String host : normalizedDnsServers.split(",\\s*")) {
+            if (isIpv4(host) || isIpv6(host)) {
+                resolved.add(host);
+                continue;
+            }
+            try {
+                for (InetAddress address : InetAddress.getAllByName(host)) {
+                    resolved.add(address.getHostAddress());
+                }
+            } catch (java.io.IOException error) {
+                throw new IllegalArgumentException(
+                    "The selected DNS provider endpoint could not be resolved."
+                );
+            }
+        }
+        if (resolved.isEmpty()) {
+            throw new IllegalArgumentException(
+                "The selected DNS provider did not resolve to an IP address."
+            );
+        }
+        return String.join(", ", resolved);
+    }
+
+    private static String providerHost(String value) {
+        if (isIpv4(value) || isIpv6(value)) {
+            return value;
+        }
+
+        String host = value;
+        if (host.startsWith("https://") || host.startsWith("http://")) {
+            try {
+                URI endpoint = URI.create(host);
+                if (!"https".equalsIgnoreCase(endpoint.getScheme()) || endpoint.getHost() == null) {
+                    throw new IllegalArgumentException(
+                        "WireGuard DNS-over-HTTPS endpoints must use a valid HTTPS URL."
+                    );
+                }
+                host = endpoint.getHost();
+            } catch (IllegalArgumentException error) {
+                throw new IllegalArgumentException(
+                    "WireGuard DNS-over-HTTPS endpoints must use a valid HTTPS URL."
+                );
+            }
+        } else if (host.startsWith("[") && host.contains("]")) {
+            host = host.substring(1, host.indexOf("]"));
+        } else {
+            int lastColon = host.lastIndexOf(':');
+            if (lastColon > 0 && host.substring(lastColon + 1).matches("\\d{1,5}")) {
+                host = host.substring(0, lastColon);
+            }
+        }
+
+        if (!host.matches("[a-zA-Z0-9.-]+")) {
+            throw new IllegalArgumentException(
+                "WireGuard DNS must contain IP addresses or valid resolver hostnames."
+            );
+        }
+        return host;
+    }
+
+    private static boolean isIpv4(String value) {
+        String[] octets = value.split("\\.", -1);
+        if (octets.length != 4) {
+            return false;
+        }
+        for (String octet : octets) {
+            if (octet.isEmpty() || !octet.matches("\\d{1,3}")) {
+                return false;
+            }
+            try {
+                if (Integer.parseInt(octet) > 255) {
+                    return false;
+                }
+            } catch (NumberFormatException error) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isIpv6(String value) {
+        return value.contains(":")
+            && value.matches("[0-9a-fA-F:]+")
+            && value.indexOf("::") == value.lastIndexOf("::");
+    }
+
+    private static void requireDefaultRoute(String allowedIps) {
+        boolean hasDefaultRoute = false;
+        for (String route : allowedIps.split("[,\\s]+")) {
+            if ("0.0.0.0/0".equals(route) || "::/0".equals(route)) {
+                hasDefaultRoute = true;
+                break;
+            }
+        }
+        if (!hasDefaultRoute) {
+            throw new IllegalArgumentException(
+                "SafeNet WireGuard must use a default route so selected DNS stays inside the tunnel."
+            );
+        }
     }
 
     private static String required(String value, String label) {

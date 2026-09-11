@@ -45,6 +45,7 @@ public class SafeNetVpnPlugin extends Plugin {
     static final String PREF_RESOLVER_IP_VERSION = "resolver_ip_version";
     static final String PREF_RESOLVER_PRIMARY = "resolver_primary";
     static final String PREF_RESOLVER_SECONDARY = "resolver_secondary";
+    static final String PREF_WIREGUARD_DNS_SERVERS = "wireguard_dns_servers";
     static final String PREF_ACTIVE_TUNNEL = "active_tunnel";
     static final String TUNNEL_DNS = "dns";
     static final String TUNNEL_WIREGUARD = "wireguard";
@@ -68,7 +69,7 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("permissionGranted", VpnService.prepare(getContext()) == null);
         result.put("eulaVersion", EULA_VERSION);
         result.put("eulaAccepted", hasAcceptedEula());
-        boolean wireGuardConfigured = SafeNetWireGuardConfig.isConfigured();
+        boolean wireGuardConfigured = SafeNetWireGuardConfig.isCoreConfigured();
         boolean wireGuardRunning = false;
         if (wireGuardConfigured) {
             wireGuardRunning = SafeNetWireGuardManager.get(getContext()).isRunning();
@@ -86,6 +87,13 @@ public class SafeNetVpnPlugin extends Plugin {
             result.put("wireguardGatewayOwner", SafeNetWireGuardConfig.gatewayOwner());
             result.put("wireguardPeerPublicKey", SafeNetWireGuardConfig.peerPublicKey());
             result.put("wireguardAllowedIps", SafeNetWireGuardConfig.allowedIps());
+            result.put(
+                "wireguardDnsServers",
+                preferences().getString(
+                    PREF_WIREGUARD_DNS_SERVERS,
+                    SafeNetWireGuardConfig.defaultDnsServers()
+                )
+            );
             String wireGuardError = SafeNetWireGuardManager.get(getContext()).getLastError();
             if (wireGuardError != null && !wireGuardError.trim().isEmpty()) {
                 result.put("wireguardError", wireGuardError);
@@ -161,7 +169,7 @@ public class SafeNetVpnPlugin extends Plugin {
             call.reject("Select an active DNS server before starting protection.", "DNS_REQUIRED");
             return;
         }
-        if (SafeNetWireGuardConfig.isConfigured()
+        if (SafeNetWireGuardConfig.isCoreConfigured()
                 && SafeNetWireGuardManager.get(getContext()).isRunning()) {
             call.reject(
                 "SafeNet WireGuard already owns Android's VPN permission. Stop it before starting DNS protection.",
@@ -203,11 +211,24 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void startWireGuard(PluginCall call) {
-        if (!SafeNetWireGuardConfig.isConfigured()) {
+        if (!SafeNetWireGuardConfig.isCoreConfigured()) {
             call.reject(
                 SafeNetWireGuardConfig.validationError(),
                 "WIREGUARD_NOT_CONFIGURED"
             );
+            return;
+        }
+        String selectedDnsServers = call.getString("dnsServers", "");
+        if (selectedDnsServers == null || selectedDnsServers.trim().isEmpty()) {
+            selectedDnsServers = preferences().getString(
+                PREF_WIREGUARD_DNS_SERVERS,
+                SafeNetWireGuardConfig.defaultDnsServers()
+            );
+        }
+        try {
+            selectedDnsServers = SafeNetWireGuardConfig.normalizeDnsServers(selectedDnsServers);
+        } catch (IllegalArgumentException error) {
+            call.reject(error.getMessage(), "WIREGUARD_DNS_REQUIRED");
             return;
         }
         if (SafeNetVpnService.isRunning()) {
@@ -239,9 +260,20 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private void startWireGuardAsync(PluginCall call) {
+        String selectedDnsServers;
+        try {
+            selectedDnsServers = resolveWireGuardDnsServers(call);
+        } catch (IllegalArgumentException error) {
+            call.reject(error.getMessage(), "WIREGUARD_DNS_REQUIRED");
+            return;
+        }
         SafeNetWireGuardManager.get(getContext()).startAsync(
+            selectedDnsServers,
             () -> {
-                preferences().edit().putString(PREF_ACTIVE_TUNNEL, TUNNEL_WIREGUARD).apply();
+                preferences().edit()
+                    .putString(PREF_ACTIVE_TUNNEL, TUNNEL_WIREGUARD)
+                    .putString(PREF_WIREGUARD_DNS_SERVERS, selectedDnsServers)
+                    .apply();
                 call.resolve(status());
             },
             error -> call.reject(
@@ -251,9 +283,20 @@ public class SafeNetVpnPlugin extends Plugin {
         );
     }
 
+    private String resolveWireGuardDnsServers(PluginCall call) {
+        String selectedDnsServers = call.getString("dnsServers", "");
+        if (selectedDnsServers == null || selectedDnsServers.trim().isEmpty()) {
+            selectedDnsServers = preferences().getString(
+                PREF_WIREGUARD_DNS_SERVERS,
+                SafeNetWireGuardConfig.defaultDnsServers()
+            );
+        }
+        return SafeNetWireGuardConfig.normalizeDnsServers(selectedDnsServers);
+    }
+
     @PluginMethod
     public void stopWireGuard(PluginCall call) {
-        if (!SafeNetWireGuardConfig.isConfigured()) {
+        if (!SafeNetWireGuardConfig.isCoreConfigured()) {
             call.resolve(status());
             return;
         }
@@ -268,7 +311,7 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        if (SafeNetWireGuardConfig.isConfigured()
+        if (SafeNetWireGuardConfig.isCoreConfigured()
                 && SafeNetWireGuardManager.get(getContext()).isRunning()) {
             stopWireGuard(call);
             return;

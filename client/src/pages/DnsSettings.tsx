@@ -106,7 +106,13 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
-      if (vpn.supported && vpn.status?.running) {
+      const wireGuardDns = [server.primaryAddress, server.secondaryAddress]
+        .filter(Boolean)
+        .join(",");
+      if (vpn.supported && vpn.status?.wireguardRunning) {
+        await vpn.stopWireGuard();
+        await vpn.startWireGuard({ dnsServers: wireGuardDns });
+      } else if (vpn.supported && vpn.status?.running) {
         await vpn.stop();
         await vpn.start({
           type: server.type,

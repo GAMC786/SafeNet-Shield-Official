@@ -26,6 +26,9 @@ export default function Dashboard() {
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   
   const activeDns = dnsServers?.find(s => s.isActive);
+  const selectedWireGuardDns = activeDns
+    ? [activeDns.primaryAddress, activeDns.secondaryAddress].filter(Boolean).join(",")
+    : undefined;
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -201,7 +204,7 @@ export default function Dashboard() {
                 }).catch(() => undefined);
               }}
               disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns || vpn.status?.wireguardRunning}
-              aria-label="SafeNet DNS VPN On/Off"
+              aria-label="SafeNet VPN On/Off"
             />
             <Button
               type="button"
@@ -258,7 +261,7 @@ export default function Dashboard() {
               checked={vpn.status.wireguardRunning ?? false}
               onCheckedChange={(checked) => {
                 if (checked) {
-                  void vpn.startWireGuard().catch(() => undefined);
+                  void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(() => undefined);
                 } else {
                   void vpn.stopWireGuard().catch(() => undefined);
                 }
@@ -278,6 +281,12 @@ export default function Dashboard() {
             </p>
             <p className="mt-2">
               Gateway peer: <span className="font-mono text-foreground">{vpn.status.wireguardPeerPublicKey}</span>
+            </p>
+            <p className="mt-2">
+              DNS inside tunnel:{" "}
+              <span className="font-mono text-foreground">
+                {vpn.status.wireguardDnsServers || selectedWireGuardDns || "not selected"}
+              </span>
             </p>
           </div>
           {vpn.status.wireguardError && (

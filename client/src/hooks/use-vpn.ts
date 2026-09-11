@@ -70,6 +70,7 @@ export interface VpnStatus {
   wireguardGatewayOwner?: string;
   wireguardPeerPublicKey?: string;
   wireguardAllowedIps?: string;
+  wireguardDnsServers?: string;
   wireguardError?: string | null;
   error?: string;
   protection?: ProtectionStatus;
@@ -137,7 +138,7 @@ interface SafeNetVpnPlugin {
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
-  startWireGuard(): Promise<VpnStatus>;
+  startWireGuard(options?: { dnsServers?: string }): Promise<VpnStatus>;
   stopWireGuard(): Promise<VpnStatus>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
@@ -231,10 +232,10 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  const startWireGuard = useCallback(async () => {
+  const startWireGuard = useCallback(async (options?: { dnsServers?: string }) => {
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.startWireGuard();
+      const nextStatus = await SafeNetVpn.startWireGuard(options ?? {});
       setStatus(nextStatus);
       await refresh();
       return nextStatus;

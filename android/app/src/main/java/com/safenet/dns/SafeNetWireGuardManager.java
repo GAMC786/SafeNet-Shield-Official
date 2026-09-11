@@ -66,7 +66,7 @@ final class SafeNetWireGuardManager {
         }
     }
 
-    void start() throws Exception {
+    void start(String selectedDnsServers) throws Exception {
         try {
             if (SafeNetVpnService.isRunning()) {
                 throw new IllegalStateException(
@@ -78,7 +78,7 @@ final class SafeNetWireGuardManager {
                     "Android VPN permission belongs to another app. Grant SafeNet permission before starting WireGuard."
                 );
             }
-            Config config = SafeNetWireGuardConfig.load();
+            Config config = SafeNetWireGuardConfig.load(selectedDnsServers);
             backend.setState(tunnel, Tunnel.State.UP, config);
             lastError = null;
         } catch (Exception error) {
@@ -101,10 +101,14 @@ final class SafeNetWireGuardManager {
         return lastError;
     }
 
-    void startAsync(final Runnable onSuccess, final java.util.function.Consumer<Exception> onFailure) {
+    void startAsync(
+        final String selectedDnsServers,
+        final Runnable onSuccess,
+        final java.util.function.Consumer<Exception> onFailure
+    ) {
         EXECUTOR.execute(() -> {
             try {
-                start();
+                start(selectedDnsServers);
                 onSuccess.run();
             } catch (Exception error) {
                 onFailure.accept(error);
