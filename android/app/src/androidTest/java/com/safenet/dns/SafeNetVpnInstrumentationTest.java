@@ -78,6 +78,14 @@ public class SafeNetVpnInstrumentationTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
         waitForBridge();
+        // A previous instrumentation invocation may have been interrupted
+        // after GoBackend claimed Android's VPN owner. Reset that state before
+        // asserting the fresh-install behavior below.
+        try {
+            callVpn("window.Capacitor.Plugins.SafeNetVpn.stopWireGuard()");
+        } catch (Exception ignored) {
+            // The first launch may not have a configured WireGuard build.
+        }
     }
 
     private void clearTargetAppData() throws Exception {
@@ -102,6 +110,7 @@ public class SafeNetVpnInstrumentationTest {
         if (activity != null && !activity.isFinishing()) {
             callVpn("window.Capacitor.Plugins.SafeNetVpn.stop()");
             waitForVpnState(false, 5);
+            waitForWireGuardState(false, 5);
             InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
         } else {
             context.stopService(new Intent(context, SafeNetVpnService.class));
@@ -136,6 +145,154 @@ public class SafeNetVpnInstrumentationTest {
         JSONObject started = startVpnWithPermission("plain", plainPrimary(), plainSecondary());
         assertTrue("The VPN start call should resolve after permission is granted", started.getBoolean("ok"));
         waitForVpnState(true, VPN_START_TIMEOUT_SECONDS);
+    }
+
+    @Test
+    public void configuredWireGuardStartsTunnelAndReportsSafeNetGateway() throws Exception {
+        JSONObject initialResult = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+        );
+        if (!initialResult.optBoolean("ok", false)) {
+            fail("WIREGUARD_FAILURE category=CONFIGURATION " +
+                "message=" + initialResult.optString("message"));
+        }
+
+        JSONObject initial = requireValue(initialResult);
+        if (!initial.optBoolean("wireguardConfigured", false)) {
+            fail("WIREGUARD_FAILURE category=CONFIGURATION message=" +
+                initial.optString("wireguardError", "SafeNet WireGuard is not configured."));
+        }
+        assertEquals(
+            "WIREGUARD_FAILURE category=CONFIGURATION message=unexpected_gateway_owner",
+            "SafeNet",
+            initial.optString("wireguardGatewayOwner")
+        );
+        assertNotEmptyGatewayField(initial, "wireguardGateway");
+        assertNotEmptyGatewayField(initial, "wireguardPeerPublicKey");
+        assertNotEmptyGatewayField(initial, "wireguardAllowedIps");
+        assertNotEmptyGatewayField(initial, "wireguardDnsServers");
+
+        JSONObject started;
+        boolean permissionPending = VpnService.prepare(context) != null;
+        try {
+            started = callVpn(
+                "window.Capacitor.Plugins.SafeNetVpn.startWireGuard({})",
+                true
+            );
+        } catch (AssertionError error) {
+            fail("WIREGUARD_FAILURE category=" +
+                (permissionPending ? "PERMISSION" : "GATEWAY_CONNECTIVITY") +
+                " " + error.getMessage());
+            return;
+        }
+        if (!started.optBoolean("ok", false)) {
+            String code = started.optString("code", "");
+            String category = "PERMISSION_DENIED".equals(code)
+                ? "PERMISSION"
+                : "WIREGUARD_NOT_CONFIGURED".equals(code)
+                    ? "CONFIGURATION"
+                    : "GATEWAY_CONNECTIVITY";
+            fail("WIREGUARD_FAILURE category=" + category +
+                " code=" + code + " message=" + started.optString("message"));
+        }
+
+        JSONObject running = requireValue(started);
+        if (!running.optBoolean("wireguardRunning", false) ||
+            !"wireguard".equals(running.optString("activeTunnel")) ||
+            !"SafeNet WireGuard".equals(running.optString("vpnPermissionOwner"))) {
+            fail("WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY " +
+                "message=wireguard_did_not_reach_running_state");
+        }
+
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        assertNotNull(
+            "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=connectivity_manager_unavailable",
+            connectivity
+        );
+        Network vpnNetwork = null;
+        LinkProperties vpnProperties = null;
+        for (Network network : connectivity.getAllNetworks()) {
+            NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                vpnNetwork = network;
+                vpnProperties = connectivity.getLinkProperties(network);
+                break;
+            }
+        }
+        assertNotNull(
+            "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=android_vpn_transport_missing",
+            vpnNetwork
+        );
+        assertNotNull(
+            "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=wireguard_link_properties_missing",
+            vpnProperties
+        );
+
+        JSONObject confirmed = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+        );
+        JSONObject confirmedStatus = requireValue(confirmed);
+        assertTrue(
+            "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=running_state_was_not_stable",
+            confirmedStatus.optBoolean("wireguardRunning", false)
+        );
+        try {
+            byte[] dnsResponse = queryWireGuardDns(confirmedStatus);
+            assertTrue(
+                "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=gateway_dns_response_too_short",
+                dnsResponse.length >= 12
+            );
+        } catch (Exception | AssertionError error) {
+            fail("WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY " +
+                "message=gateway_dns_probe_failed:" + error.getMessage());
+            return;
+        }
+        android.util.Log.i(
+            "SafeNetWireGuardSmoke",
+            "WIREGUARD_SMOKE result=PASS configuration=PASS permission=PASS " +
+                "gateway_identity=SafeNet tunnel=RUNNING android_vpn=PASS gateway_probe=PASS"
+        );
+    }
+
+    private void assertNotEmptyGatewayField(JSONObject status, String field) throws Exception {
+        assertTrue(
+            "WIREGUARD_FAILURE category=CONFIGURATION message=missing_" + field,
+            status.has(field) && !status.optString(field, "").trim().isEmpty()
+        );
+    }
+
+    private byte[] queryWireGuardDns(JSONObject status) throws Exception {
+        String configuredDns = status.getString("wireguardDnsServers")
+            .split("[,\\s]+", -1)[0]
+            .trim();
+        InetAddress resolver = InetAddress.getByName(configuredDns);
+        byte[] query = new byte[] {
+            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x07, 's', 'a', 'f', 'e', 'n', 'e', 't',
+            0x03, 'c', 'o', 'm', 0x00,
+            0x00, 0x01, 0x00, 0x01
+        };
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(5000);
+            socket.send(new DatagramPacket(
+                query,
+                query.length,
+                new InetSocketAddress(resolver, DNS_PORT)
+            ));
+            byte[] buffer = new byte[65535];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+            byte[] result = new byte[response.getLength()];
+            System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
+            assertEquals(
+                "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=gateway_dns_id_mismatch",
+                0x534e,
+                readUnsignedShort(result, 0)
+            );
+            return result;
+        }
     }
 
     @Test
@@ -384,6 +541,25 @@ public class SafeNetVpnInstrumentationTest {
         String category = classifyNetworkFailure(error);
         throw new AssertionError("VPN state did not become " + expected +
             " category=" + category + " error=" + error);
+    }
+
+    private void waitForWireGuardState(boolean expected, long timeoutSeconds) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            try {
+                JSONObject status = callVpn(
+                    "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+                );
+                if (status.getBoolean("ok") &&
+                    expected == status.getJSONObject("value").getBoolean("wireguardRunning")) {
+                    return;
+                }
+            } catch (Exception ignored) {
+                // The bridge may be busy completing the asynchronous stop.
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("WireGuard state did not become " + expected);
     }
 
     private void grantVpnPermissionDialog() throws Exception {

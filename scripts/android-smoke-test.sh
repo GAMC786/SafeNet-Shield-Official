@@ -233,6 +233,9 @@ mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/clerk-auth-instrumentation.log "$output_dir"/clerk-auth-logcat.txt \
     "$output_dir"/clerk-auth-result.txt \
+    "$output_dir"/wireguard-instrumentation.log "$output_dir"/wireguard-logcat.txt \
+    "$output_dir"/wireguard-connectivity.txt "$output_dir"/wireguard-vpn.txt \
+    "$output_dir"/wireguard-result.txt "$output_dir"/wireguard-failure-category.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
@@ -678,6 +681,82 @@ run_media_smoke() {
     echo "Android packaged media smoke passed. Evidence: $output_dir"
 }
 
+wireguard_smoke_failure() {
+    local category="$1"
+    local message="$2"
+    local configuration_status="PASS"
+    local permission_status="PASS"
+    local gateway_status="PASS"
+    if [[ "$category" == "CONFIGURATION" ]]; then
+        configuration_status="FAIL"
+        permission_status="NOT_RECORDED"
+        gateway_status="NOT_RECORDED"
+    elif [[ "$category" == "PERMISSION" ]]; then
+        permission_status="FAIL"
+        gateway_status="NOT_RECORDED"
+    fi
+    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
+    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
+    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+    printf '%s\n' "$category" | tee "$output_dir/wireguard-failure-category.txt" >&2
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'configuration=%s\npermission=%s\ngateway_connectivity=%s\ngateway_identity=%s\ntunnel=%s\nandroid_vpn=%s\n' \
+            "$configuration_status" "$permission_status" "$gateway_status" \
+            "NOT_CONFIRMED" "NOT_RUNNING" "NOT_CONFIRMED"
+        printf 'failure_category=%s\nresult=FAIL\nmessage=%s\n' "$category" "$message"
+    } | tee "$output_dir/wireguard-result.txt" "$output_dir/result.txt" >&2
+    echo "Android SafeNet WireGuard smoke failed ($category): $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_wireguard_smoke() {
+    local wireguard_status
+    local failure_category="GATEWAY_CONNECTIVITY"
+    local failure_message="the configured WireGuard tunnel did not reach a stable running state"
+
+    echo "Running configured SafeNet WireGuard tunnel smoke..."
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/wireguard-instrumentation.log"
+    wireguard_status="${PIPESTATUS[0]}"
+    set -e
+    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
+    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
+    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+
+    if grep -Eiq 'WIREGUARD_FAILURE category=CONFIGURATION' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="CONFIGURATION"
+        failure_message="the release APK did not contain a usable SafeNet WireGuard configuration"
+    elif grep -Eiq 'WIREGUARD_FAILURE category=PERMISSION' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="PERMISSION"
+        failure_message="Android VPN permission was not granted to SafeNet WireGuard"
+    elif grep -Eiq 'WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="GATEWAY_CONNECTIVITY"
+    fi
+
+    if [[ "$wireguard_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/wireguard-instrumentation.log" ||
+        ! grep -Fq 'WIREGUARD_SMOKE result=PASS' "$output_dir/wireguard-logcat.txt"; then
+        wireguard_smoke_failure "$failure_category" "$failure_message"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'configuration=PASS\npermission=PASS\ngateway_connectivity=PASS\ngateway_identity=SafeNet\ntunnel=RUNNING\nandroid_vpn=PASS\nfailure_category=PASS\nresult=PASS\n'
+    } | tee "$output_dir/wireguard-result.txt"
+    echo "Configured SafeNet WireGuard tunnel smoke passed. Evidence: $output_dir"
+}
+
 run_compact_startup_sampling() {
     local wm_size_output
     local compact_status
@@ -790,6 +869,8 @@ if ! install_release_apk "$test_apk_path"; then
     echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
     exit 1
 fi
+
+run_wireguard_smoke
 
 prepare_clerk_session || {
     echo "Android Clerk smoke could not prepare a real storage-state session." >&2
