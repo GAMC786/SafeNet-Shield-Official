@@ -103,7 +103,7 @@ export default function Settings() {
           <div className="flex items-center justify-center gap-2 text-yellow-500">
             <AlertTriangle className="w-4 h-4" />
               <span className="font-mono uppercase" data-testid="settings-version">
-                SafeNet Shield DNS v{appVersion}
+                SafeNet Shield DNS Server+ (Official) v{appVersion}
             </span>
           </div>
           <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
