@@ -5,7 +5,7 @@ import {
   useAntivirusEvents, useResolveAntivirusEvent, useAntivirusStats
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
-import { useClamAvStatus } from "@/hooks/use-clamav";
+import { useClamAvStatus, useVerifyClamAv } from "@/hooks/use-clamav";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -34,6 +34,7 @@ export default function Antivirus() {
   const { data: stats } = useAntivirusStats();
   const apkScanner = useApkScanner();
   const clamAv = useClamAvStatus();
+  const verifyClamAv = useVerifyClamAv();
   const { toast } = useToast();
   const antivirusEnabled = settings?.isEnabled ?? true;
 
@@ -52,6 +53,23 @@ export default function Antivirus() {
     phishingProtection: "Phishing protection",
     realTimeProtection: "Real-time protection",
     autoQuarantine: "Automatic quarantine",
+  };
+
+  const handleVerifyClamAv = async () => {
+    try {
+      const result = await verifyClamAv.mutateAsync();
+      toast({
+        title: result.verified ? "ClamAV protection verified" : "ClamAV proof did not pass",
+        description: result.message,
+        variant: result.verified ? "default" : "destructive",
+      });
+    } catch (error) {
+      toast({
+        title: "ClamAV verification failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAntivirusSettingToggle = (key: string, checked: boolean) => {
@@ -283,24 +301,80 @@ export default function Antivirus() {
         status={antivirusEnabled ? "active" : "inactive"}
       />
 
-      <CyberCard className={clamAv.data?.reachable
+      <CyberCard className={clamAv.data?.verified
         ? "border-emerald-500/30 bg-emerald-500/5"
         : "border-yellow-500/30 bg-yellow-500/5"}
       >
-        <div className="flex items-start gap-3">
-          <Shield className="mt-0.5 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-display text-lg tracking-wider">ClamAV REST engine</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {clamAv.isLoading ? "Checking the deployment scanner…" : clamAv.data?.message || "ClamAV status is unavailable."}
-            </p>
-            {!clamAv.data?.reachable && (
-              <p className="mt-2 text-xs text-yellow-100/80">
-                Cisco Endpoint Protection will not pretend a scan succeeded while the deployment scanner is unavailable.
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            {clamAv.data?.verified
+              ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-400" />
+              : <Shield className="mt-0.5 h-5 w-5 text-primary" />}
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-lg tracking-wider">ClamAV REST engine</h2>
+                <Badge
+                  variant="outline"
+                  className={clamAv.data?.verified
+                    ? "border-emerald-500/40 text-emerald-300"
+                    : "border-yellow-500/40 text-yellow-200"}
+                  data-testid="clamav-verification-status"
+                >
+                  {clamAv.isLoading ? "checking" : clamAv.data?.verified ? "verified" : "not verified"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {clamAv.isLoading ? "Checking the deployment scanner…" : clamAv.data?.message || "ClamAV status is unavailable."}
               </p>
-            )}
+              {clamAv.data?.lastVerifiedAt ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Last verified {format(new Date(clamAv.data.lastVerifiedAt), "PPpp")}
+                  {clamAv.data.engineVersion ? ` · Engine ${clamAv.data.engineVersion}` : ""}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-yellow-100/80">
+                  No successful clean-file and EICAR threat proof has been recorded. Remote scan results stay unavailable until this passes.
+                </p>
+              )}
+              {!clamAv.data?.verified && (
+                <p className="mt-2 text-xs text-yellow-100/80">
+                  SafeNet will not present a remote scan as protection while the deployment scanner is unavailable or unverified.
+                </p>
+              )}
+            </div>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => void handleVerifyClamAv()}
+            disabled={verifyClamAv.isPending}
+            data-testid="button-verify-clamav"
+          >
+            {verifyClamAv.isPending
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <RefreshCw className="mr-2 h-4 w-4" />}
+            Verify engine
+          </Button>
         </div>
+        {verifyClamAv.data && (
+          <div className="mt-4 grid gap-3 border-t border-white/10 pt-4 text-xs md:grid-cols-2" data-testid="clamav-verification-result">
+            <div className={`rounded-md border p-3 ${verifyClamAv.data.cleanScan?.verdict === "clean" ? "border-emerald-500/30 bg-emerald-500/10" : "border-yellow-500/30 bg-yellow-500/10"}`}>
+              <p className="font-medium">Clean fixture</p>
+              <p className="mt-1 text-muted-foreground">
+                {verifyClamAv.data.cleanScan?.verdict === "clean"
+                  ? "Passed: no threat detected."
+                  : `Did not pass: ${verifyClamAv.data.cleanScan?.message || "no response"}`}
+              </p>
+            </div>
+            <div className={`rounded-md border p-3 ${verifyClamAv.data.threatScan?.verdict === "threat" ? "border-emerald-500/30 bg-emerald-500/10" : "border-yellow-500/30 bg-yellow-500/10"}`}>
+              <p className="font-medium">EICAR test signature</p>
+              <p className="mt-1 text-muted-foreground">
+                {verifyClamAv.data.threatScan?.verdict === "threat"
+                  ? `Passed: ${verifyClamAv.data.threatScan.threatName || "test threat detected"}.`
+                  : `Did not pass: ${verifyClamAv.data.threatScan?.message || "no response"}`}
+              </p>
+            </div>
+          </div>
+        )}
       </CyberCard>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

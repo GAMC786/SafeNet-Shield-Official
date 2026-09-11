@@ -487,7 +487,25 @@ export async function registerRoutes(
 
   app.get("/api/antivirus/clamav/status", async (_req, res) => {
     const { getClamAvStatus } = await import("./clamav-service");
+    res.set("Cache-Control", "no-store");
     res.json(await getClamAvStatus());
+  });
+
+  app.post("/api/antivirus/clamav/verify", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      const { verifyClamAv } = await import("./clamav-service");
+      const result = await verifyClamAv();
+      res.status(result.verified ? 200 : 503).json(result);
+    } catch (error) {
+      res.status(503).json({
+        verified: false,
+        verifiedAt: new Date().toISOString(),
+        message: error instanceof Error ? error.message : "ClamAV verification failed.",
+        cleanScan: null,
+        threatScan: null,
+      });
+    }
   });
 
   app.post(
