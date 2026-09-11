@@ -1045,6 +1045,68 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue(cameraStarted.getBoolean("monitoring"));
+
+        JSONObject screenStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", screenStarted.getString("source"));
+        assertTrue("Starting screen monitoring must replace the camera capture",
+            screenStarted.getBoolean("monitoring"));
+
+        assertAiShieldSourceRemainsActive("screen");
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+    }
+
+    @Test
+    public void aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        JSONObject screenStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", screenStarted.getString("source"));
+        assertTrue(screenStarted.getBoolean("monitoring"));
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue("Starting camera monitoring must replace the projection",
+            cameraStarted.getBoolean("monitoring"));
+
+        assertAiShieldSourceRemainsActive("camera");
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+    }
+
+    @Test
     public void aiShieldSettingsShowsUnavailableForMissingOrInvalidModelMetadata() throws Exception {
         String missingMetadataStatus = modelUnavailableStatusPayload((String) null);
         String invalidMetadataStatus = modelUnavailableStatusPayload("{\"modelVersion\":\"wrong\"}");
@@ -1625,6 +1687,25 @@ public class SafeNetVpnUiInstrumentationTest {
         );
         assertTrue("A local inference result must include confidence",
             result.has("confidence") && !result.isNull("confidence"));
+    }
+
+    private void assertAiShieldSourceRemainsActive(String expectedSource) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            JSONObject status = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()"
+            ));
+            assertEquals(
+                "A callback from the previous AI Shield source changed the active source",
+                expectedSource,
+                status.getString("source")
+            );
+            assertTrue(
+                "A callback from the previous AI Shield source stopped the new capture",
+                status.getBoolean("monitoring")
+            );
+            Thread.sleep(250);
+        }
     }
 
     private JSONObject waitForAiShieldStatus(

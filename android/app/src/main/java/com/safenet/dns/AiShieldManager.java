@@ -284,12 +284,16 @@ public final class AiShieldManager {
             byte[] bytes = new byte[buffer.remaining()];
             buffer.get(bytes);
             bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-            analyzeAndEmit(bitmap, "camera");
+            analyzeAndEmit(bitmap, "camera", generation);
         } catch (Exception error) {
-            emit(AiShieldClassifier.captureUnavailable(
-                "camera",
-                "A camera frame could not be analyzed: " + safeMessage(error)
-            ));
+            synchronized (lock) {
+                if (isCaptureActiveLocked(generation, "camera")) {
+                    emitLocked(AiShieldClassifier.captureUnavailable(
+                        "camera",
+                        "A camera frame could not be analyzed: " + safeMessage(error)
+                    ));
+                }
+            }
         } finally {
             if (bitmap != null && !bitmap.isRecycled()) {
                 bitmap.recycle();
@@ -334,12 +338,16 @@ public final class AiShieldManager {
                 image.getWidth(),
                 image.getHeight()
             );
-            analyzeAndEmit(bitmap, "screen");
+            analyzeAndEmit(bitmap, "screen", generation);
         } catch (Exception error) {
-            emit(AiShieldClassifier.captureUnavailable(
-                "screen",
-                "The screen surface is unavailable: " + safeMessage(error)
-            ));
+            synchronized (lock) {
+                if (isCaptureActiveLocked(generation, "screen")) {
+                    emitLocked(AiShieldClassifier.captureUnavailable(
+                        "screen",
+                        "The screen surface is unavailable: " + safeMessage(error)
+                    ));
+                }
+            }
         } finally {
             if (bitmap != null && bitmap != fullBitmap && !bitmap.isRecycled()) {
                 bitmap.recycle();
@@ -353,8 +361,13 @@ public final class AiShieldManager {
         }
     }
 
-    private void analyzeAndEmit(Bitmap bitmap, String frameSource) {
-        emit(classifier.analyze(bitmap, frameSource));
+    private void analyzeAndEmit(Bitmap bitmap, String frameSource, long generation) {
+        AiShieldClassifier.Analysis analysis = classifier.analyze(bitmap, frameSource);
+        synchronized (lock) {
+            if (isCaptureActiveLocked(generation, frameSource)) {
+                emitLocked(analysis);
+            }
+        }
     }
 
     private boolean canAnalyzeNowLocked() {
@@ -393,7 +406,9 @@ public final class AiShieldManager {
             public void onOpened(CameraDevice openedCamera) {
                 synchronized (lock) {
                     if (!isCaptureActiveLocked(generation, "camera") || cameraReader == null) {
-                        openedCamera.close();
+                        if (camera != openedCamera) {
+                            openedCamera.close();
+                        }
                         return;
                     }
                     camera = openedCamera;
@@ -406,7 +421,9 @@ public final class AiShieldManager {
                                     synchronized (lock) {
                                         if (!isCaptureActiveLocked(generation, "camera")
                                             || camera != openedCamera) {
-                                            session.close();
+                                            if (cameraSession != session) {
+                                                session.close();
+                                            }
                                             return;
                                         }
                                         cameraSession = session;
@@ -442,7 +459,7 @@ public final class AiShieldManager {
                                             emitCameraUnavailableAfterStopLocked(
                                                 "Android could not configure the camera capture surface."
                                             );
-                                        } else {
+                                        } else if (cameraSession != session) {
                                             session.close();
                                         }
                                     }
@@ -455,7 +472,7 @@ public final class AiShieldManager {
                             emitCameraUnavailableAfterStopLocked(
                                 "Camera capture could not be configured: " + safeMessage(error)
                             );
-                        } else {
+                        } else if (camera != openedCamera) {
                             openedCamera.close();
                         }
                     }
@@ -464,11 +481,14 @@ public final class AiShieldManager {
 
             @Override
             public void onDisconnected(CameraDevice disconnectedCamera) {
-                disconnectedCamera.close();
                 synchronized (lock) {
                     if (!isCaptureActiveLocked(generation, "camera")) {
+                        if (camera != disconnectedCamera) {
+                            disconnectedCamera.close();
+                        }
                         return;
                     }
+                    disconnectedCamera.close();
                     stopLocked(false);
                     source = "camera";
                     emitLocked(AiShieldClassifier.captureUnavailable(
@@ -480,11 +500,14 @@ public final class AiShieldManager {
 
             @Override
             public void onError(CameraDevice erroredCamera, int error) {
-                erroredCamera.close();
                 synchronized (lock) {
                     if (!isCaptureActiveLocked(generation, "camera")) {
+                        if (camera != erroredCamera) {
+                            erroredCamera.close();
+                        }
                         return;
                     }
+                    erroredCamera.close();
                     stopLocked(false);
                     source = "camera";
                     emitLocked(AiShieldClassifier.captureUnavailable(
@@ -599,12 +622,6 @@ public final class AiShieldManager {
             captureThread.quitSafely();
             captureThread = null;
             captureHandler = null;
-        }
-    }
-
-    private void emit(AiShieldClassifier.Analysis analysis) {
-        synchronized (lock) {
-            emitLocked(analysis);
         }
     }
 
