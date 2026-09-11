@@ -282,20 +282,26 @@ export async function registerRoutes(
     res.json(updaters.map(publicDdnsUpdater));
   });
 
+  app.get("/api/integrations/cloudflare/status", async (_req, res) => {
+    const { getCloudflareStatus } = await import("./replit_integrations/cloudflare/client");
+    const status = await getCloudflareStatus();
+    res.status(status.connected ? 200 : 503).json(status);
+  });
+
   app.post("/api/ddns", async (req, res) => {
     try {
       const { hostname, provider, apiKey, customUrl, updateInterval, isEnabled } = req.body;
       if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      // IP Link requires customUrl, others require apiKey
+      // IP Link requires customUrl. Cloudflare uses the managed connector.
       if (provider === "iplink" && !customUrl) {
         return res.status(400).json({ message: "Custom URL is required for IP Link provider" });
       }
       if (provider === "iplink" && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-      if (provider !== "iplink" && !apiKey) {
+      if (provider !== "iplink" && provider !== "cloudflare" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
        const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);

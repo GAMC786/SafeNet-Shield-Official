@@ -5,6 +5,7 @@ import {
   DDNS_SCHEDULER_INTERVAL_SECONDS,
 } from "@shared/schema";
 import type { IStorage } from "./storage";
+import { getCloudflareStatus, updateCloudflareDns } from "./replit_integrations/cloudflare/client";
 
 type DdnsSchedulerStorage = Pick<
   IStorage,
@@ -63,6 +64,13 @@ export async function testDdnsConnection(
   provider: string,
   customUrl?: string | null,
 ): Promise<DdnsConnectivityResult> {
+  if (provider.toLowerCase() === "cloudflare") {
+    const status = await getCloudflareStatus();
+    return status.ready
+      ? { success: true, message: status.message }
+      : { success: false, error: status.message };
+  }
+
   let target: string;
   switch (provider.toLowerCase()) {
     case "duckdns":
@@ -73,9 +81,6 @@ export async function testDdnsConnection(
       break;
     case "dynu":
       target = "https://api.dynu.com";
-      break;
-    case "cloudflare":
-      target = "https://api.cloudflare.com";
       break;
     case "dnsexit":
       target = "https://update.dnsexit.com";
@@ -158,7 +163,8 @@ async function updateDnsRecord(
       case "dynu":
         return await updateDynu(hostname, apiKey, ipAddress);
       case "cloudflare":
-        return await updateCloudflare(hostname, apiKey, ipAddress);
+        await updateCloudflareDns(hostname, ipAddress);
+        return providerResponseSuccess();
       case "dnsexit":
         return await updateDnsExit(hostname, apiKey, ipAddress);
       case "dnsomatic":
@@ -214,68 +220,6 @@ async function updateDynu(hostname: string, apiKey: string, ip: string): Promise
   });
   if (response.ok) return providerResponseSuccess();
   return providerFailure("Dynu", response, await response.text());
-}
-
-async function updateCloudflare(hostname: string, apiToken: string, ip: string): Promise<DdnsUpdateResult> {
-  const labels = hostname.split(".").filter(Boolean);
-  if (labels.length < 2) {
-    return { success: false, error: "Cloudflare requires a fully qualified hostname." };
-  }
-  const zoneName = labels.slice(-2).join(".");
-  const headers = {
-    Authorization: `Bearer ${apiToken}`,
-    "Content-Type": "application/json",
-  };
-  const zoneResponse = await fetch(
-    `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(zoneName)}&status=active`,
-    { headers },
-  );
-  if (!zoneResponse.ok) {
-    return providerFailure("Cloudflare", zoneResponse, await zoneResponse.text());
-  }
-  const zonePayload = await zoneResponse.json() as {
-    result?: Array<{ id?: string }>;
-  };
-  const zoneId = zonePayload.result?.[0]?.id;
-  if (!zoneId) {
-    return { success: false, error: `Cloudflare zone ${zoneName} was not found or is not active.` };
-  }
-
-  const recordsResponse = await fetch(
-    `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?type=A&name=${encodeURIComponent(hostname)}`,
-    { headers },
-  );
-  if (!recordsResponse.ok) {
-    return providerFailure("Cloudflare", recordsResponse, await recordsResponse.text());
-  }
-  const recordsPayload = await recordsResponse.json() as {
-    result?: Array<{ id?: string }>;
-  };
-  const existingRecord = recordsPayload.result?.[0];
-  const recordPayload = {
-    type: "A",
-    name: hostname,
-    content: ip,
-    ttl: 1,
-    proxied: false,
-  };
-  const recordResponse = await fetch(
-    existingRecord?.id
-      ? `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${existingRecord.id}`
-      : `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
-    {
-      method: existingRecord?.id ? "PUT" : "POST",
-      headers,
-      body: JSON.stringify(recordPayload),
-    },
-  );
-  if (!recordResponse.ok) {
-    return providerFailure("Cloudflare", recordResponse, await recordResponse.text());
-  }
-  const recordResult = await recordResponse.json() as { success?: boolean };
-  return recordResult.success === false
-    ? { success: false, error: "Cloudflare rejected the DNS record update." }
-    : providerResponseSuccess();
 }
 
 async function updateDnsExit(hostname: string, credentials: string, ip: string): Promise<DdnsUpdateResult> {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDdnsUpdaters, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
+import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
+  const cloudflareStatus = useCloudflareStatus();
   const { data: publicIpData } = usePublicIp();
   const { data: dnsServers } = useDnsServers();
   const createUpdater = useCreateDdnsUpdater();
@@ -339,23 +340,44 @@ export default function DdnsUpdater() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                   <Label>{formData.provider === "iplink" ? "Auth Token (optional)" : "API Key / Token"}</Label>
-                <Input
-                  value={formData.apiKey}
-                  onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                     placeholder={
-                       editingUpdater
-                         ? "Leave blank to keep the current key"
-                         : formData.provider === "iplink"
-                           ? "Optional auth token"
-                           : "Your API key"
-                     }
-                  type="password"
-                  className="bg-background border-border font-mono"
-                     required={!editingUpdater && formData.provider !== "iplink"}
-                />
-              </div>
+              {formData.provider === "cloudflare" ? (
+                <div
+                  className={cn(
+                    "rounded-md border p-3 text-sm",
+                    cloudflareStatus.data?.ready
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                  )}
+                  role="status"
+                >
+                  <p className="font-medium">Managed Cloudflare connection</p>
+                  <p className="mt-1 text-xs opacity-90">
+                    {cloudflareStatus.isLoading
+                      ? "Checking the connected Cloudflare account..."
+                      : cloudflareStatus.data?.message
+                        || cloudflareStatus.error?.message
+                        || "Connect Cloudflare in Replit before creating this updater."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>{formData.provider === "iplink" ? "Auth Token (optional)" : "API Key / Token"}</Label>
+                  <Input
+                    value={formData.apiKey}
+                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                    placeholder={
+                      editingUpdater
+                        ? "Leave blank to keep the current key"
+                        : formData.provider === "iplink"
+                          ? "Optional auth token"
+                          : "Your API key"
+                    }
+                    type="password"
+                    className="bg-background border-border font-mono"
+                    required={!editingUpdater && formData.provider !== "iplink"}
+                  />
+                </div>
+              )}
 
               <div className="space-y-2">
                    <Label>Update Interval (minutes)</Label>
