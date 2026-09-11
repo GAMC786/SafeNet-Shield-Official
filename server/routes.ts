@@ -288,6 +288,12 @@ export async function registerRoutes(
     res.status(status.connected ? 200 : 503).json(status);
   });
 
+  app.get("/api/integrations/onesignal/status", async (_req, res) => {
+    const { getOneSignalStatus } = await import("./replit_integrations/onesignal/client");
+    const status = await getOneSignalStatus();
+    res.status(status.connected ? 200 : 503).json(status);
+  });
+
   app.post("/api/ddns", async (req, res) => {
     try {
       const { hostname, provider, apiKey, customUrl, updateInterval, isEnabled } = req.body;
@@ -638,6 +644,22 @@ export async function registerRoutes(
   app.post("/api/antivirus/events", async (req, res) => {
     try {
       const event = await storage.createAntivirusEvent(req.body);
+      if (event.severity === "high" || event.severity === "critical") {
+        const { notifySecurityEvent } = await import("./replit_integrations/onesignal/client");
+        try {
+          await notifySecurityEvent({
+            eventId: event.id,
+            severity: event.severity,
+            threatType: event.threatType,
+            action: event.action,
+          });
+        } catch (error) {
+          console.warn(
+            "OneSignal security notification failed:",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        }
+      }
       res.status(201).json(event);
     } catch (err) {
       res.status(500).json({ message: "Failed to create antivirus event" });

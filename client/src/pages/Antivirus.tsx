@@ -6,6 +6,7 @@ import {
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
 import { useClamAvStatus, useVerifyClamAv } from "@/hooks/use-clamav";
+import { useOneSignalStatus } from "@/hooks/use-onesignal";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -35,6 +36,7 @@ export default function Antivirus() {
   const apkScanner = useApkScanner();
   const clamAv = useClamAvStatus();
   const verifyClamAv = useVerifyClamAv();
+  const oneSignal = useOneSignalStatus();
   const { toast } = useToast();
   const antivirusEnabled = settings?.isEnabled ?? true;
 
@@ -300,6 +302,41 @@ export default function Antivirus() {
         subtitle="On-Device APK & DNS Threat Protection"
         status={antivirusEnabled ? "active" : "inactive"}
       />
+
+      <CyberCard className={oneSignal.data?.configured
+        ? "border-emerald-500/30 bg-emerald-500/5"
+        : "border-yellow-500/30 bg-yellow-500/5"}
+      >
+        <div className="flex items-start gap-3">
+          {oneSignal.data?.configured
+            ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-400" />
+            : <AlertCircle className="mt-0.5 h-5 w-5 text-yellow-400" />}
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-lg tracking-wider">Push security alerts</h2>
+              <Badge
+                variant="outline"
+                className={oneSignal.data?.configured
+                  ? "border-emerald-500/40 text-emerald-300"
+                  : "border-yellow-500/40 text-yellow-200"}
+                data-testid="onesignal-status"
+              >
+                {oneSignal.isLoading ? "checking" : oneSignal.data?.configured ? "ready" : "unavailable"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {oneSignal.isLoading
+                ? "Checking the OneSignal connection..."
+                : oneSignal.data?.message
+                  || oneSignal.error?.message
+                  || "OneSignal status is unavailable."}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              High and critical events send generic alerts without domains, file contents, or private DNS data.
+            </p>
+          </div>
+        </div>
+      </CyberCard>
 
       <CyberCard className={clamAv.data?.verified
         ? "border-emerald-500/30 bg-emerald-500/5"
