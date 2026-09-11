@@ -66,6 +66,55 @@ test("ClamAV scanning stays unavailable until verification passes", async () => 
   );
 });
 
+test("ClamAV proof is shared across instances and invalidated by engine changes", async () => {
+  process.env.CLAMAV_REST_URL = "http://shared-clamav.example.test";
+  let engineVersion = "1.2.3";
+  let persisted: Awaited<ReturnType<NonNullable<Parameters<typeof verifyClamAv>[0]>["getClamAvVerification"]>> = null;
+  const store = {
+    getClamAvVerification: async () => persisted,
+    saveClamAvVerification: async (record: NonNullable<typeof persisted>) => {
+      persisted = record;
+    },
+  };
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/health")) {
+      return new Response(JSON.stringify({ status: "ok", version: engineVersion }), { status: 200 });
+    }
+    const body = Buffer.from(init?.body as Uint8Array).toString("utf8");
+    return new Response(
+      body.includes("EICAR")
+        ? JSON.stringify({ infected: true, viruses: ["Eicar-Test-Signature"] })
+        : JSON.stringify({ infected: false, message: "OK" }),
+      { status: 200 },
+    );
+  };
+
+  await verifyClamAv(store);
+  assert.equal(persisted?.engineVersion, "1.2.3");
+
+  // A separate store object represents a fresh instance reading the shared
+  // row; it must not need process-local proof to report or perform scans.
+  const freshInstanceStore = {
+    getClamAvVerification: async () => persisted,
+    saveClamAvVerification: async () => {},
+  };
+  const sharedStatus = await getClamAvStatus(freshInstanceStore);
+  assert.equal(sharedStatus.verified, true);
+  assert.equal(sharedStatus.lastVerifiedEngineVersion, "1.2.3");
+  await scanWithClamAv(Buffer.from("a clean file"), freshInstanceStore);
+
+  engineVersion = "1.2.4";
+  const changedStatus = await getClamAvStatus(freshInstanceStore);
+  assert.equal(changedStatus.verified, false);
+  assert.equal(changedStatus.lastVerifiedEngineVersion, "1.2.3");
+  await assert.rejects(
+    () => scanWithClamAv(Buffer.from("a clean file"), freshInstanceStore),
+    /not verified/,
+  );
+});
+
 test("ClamAV configuration with embedded credentials is rejected", async () => {
   process.env.CLAMAV_REST_URL = "https://user:password@clamav.example.test";
 

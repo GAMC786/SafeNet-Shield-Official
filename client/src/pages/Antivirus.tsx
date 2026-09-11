@@ -329,7 +329,14 @@ export default function Antivirus() {
               {clamAv.data?.lastVerifiedAt ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Last verified {format(new Date(clamAv.data.lastVerifiedAt), "PPpp")}
-                  {clamAv.data.engineVersion ? ` · Engine ${clamAv.data.engineVersion}` : ""}
+                  {clamAv.data.lastVerifiedEngineVersion
+                    ? ` · Engine ${clamAv.data.lastVerifiedEngineVersion}`
+                    : ""}
+                  {clamAv.data.engineVersion &&
+                    clamAv.data.lastVerifiedEngineVersion &&
+                    clamAv.data.engineVersion !== clamAv.data.lastVerifiedEngineVersion
+                    ? ` · Current engine ${clamAv.data.engineVersion}`
+                    : ""}
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-yellow-100/80">

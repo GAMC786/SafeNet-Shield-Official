@@ -1,10 +1,11 @@
 import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
-  antivirusSettings, threatFeeds, antivirusEvents,
+  antivirusSettings, clamavVerifications, threatFeeds, antivirusEvents,
   type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
+import type { ClamAvVerificationRecord } from "./clamav-service";
 import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
 import { and, eq, desc, asc, count, isNull, lt, or } from "drizzle-orm";
 
@@ -48,6 +49,8 @@ export interface IStorage {
   // Antivirus
   getAntivirusSettings(): Promise<AntivirusSettings>;
   updateAntivirusSettings(updates: Partial<InsertAntivirusSettings>): Promise<AntivirusSettings>;
+  getClamAvVerification(): Promise<ClamAvVerificationRecord | null>;
+  saveClamAvVerification(record: ClamAvVerificationRecord): Promise<void>;
   getThreatFeeds(): Promise<ThreatFeed[]>;
   createThreatFeed(feed: InsertThreatFeed): Promise<ThreatFeed>;
   updateThreatFeed(id: number, updates: Partial<InsertThreatFeed>): Promise<ThreatFeed>;
@@ -286,6 +289,46 @@ export class DatabaseStorage implements IStorage {
       .where(eq(antivirusSettings.id, current.id))
       .returning();
     return updated;
+  }
+
+  async getClamAvVerification(): Promise<ClamAvVerificationRecord | null> {
+    const [record] = await db.select().from(clamavVerifications)
+      .where(eq(clamavVerifications.id, 1));
+    if (!record) return null;
+
+    return {
+      verified: true,
+      endpointUrl: record.endpointUrl,
+      engineVersion: record.engineVersion,
+      verifiedAt: record.verifiedAt.toISOString(),
+      message: record.message,
+      cleanScan: record.cleanScan as ClamAvVerificationRecord["cleanScan"],
+      threatScan: record.threatScan as ClamAvVerificationRecord["threatScan"],
+    };
+  }
+
+  async saveClamAvVerification(record: ClamAvVerificationRecord): Promise<void> {
+    await db.insert(clamavVerifications)
+      .values({
+        id: 1,
+        endpointUrl: record.endpointUrl,
+        engineVersion: record.engineVersion,
+        verifiedAt: new Date(record.verifiedAt),
+        message: record.message,
+        cleanScan: record.cleanScan,
+        threatScan: record.threatScan,
+      })
+      .onConflictDoUpdate({
+        target: clamavVerifications.id,
+        set: {
+          endpointUrl: record.endpointUrl,
+          engineVersion: record.engineVersion,
+          verifiedAt: new Date(record.verifiedAt),
+          message: record.message,
+          cleanScan: record.cleanScan,
+          threatScan: record.threatScan,
+        },
+      });
   }
 
   async getThreatFeeds(): Promise<ThreatFeed[]> {

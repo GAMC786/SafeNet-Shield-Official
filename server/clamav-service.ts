@@ -6,6 +6,7 @@ export type ClamAvStatus = {
   checkedAt: string;
   lastVerifiedAt: string | null;
   lastVerificationMessage: string | null;
+  lastVerifiedEngineVersion: string | null;
   engineVersion?: string;
 };
 
@@ -22,13 +23,25 @@ export type ClamAvVerification = {
   message: string;
   cleanScan: ClamAvScanResult | null;
   threatScan: ClamAvScanResult | null;
+  engineVersion: string | null;
 };
+
+export type ClamAvVerificationRecord = ClamAvVerification & {
+  endpointUrl: string;
+  engineVersion: string;
+};
+
+export interface ClamAvVerificationStore {
+  getClamAvVerification(): Promise<ClamAvVerificationRecord | null>;
+  saveClamAvVerification(record: ClamAvVerificationRecord): Promise<void>;
+}
 
 const EICAR_TEST_SIGNATURE =
   "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 
-let lastVerification: ClamAvVerification | null = null;
-let lastVerificationUrl: string | null = null;
+type LocalVerification = ClamAvVerification & { endpointUrl: string };
+
+let lastVerification: LocalVerification | null = null;
 
 function getClamAvUrl() {
   const configuredUrl = process.env.CLAMAV_REST_URL?.trim();
@@ -46,15 +59,20 @@ function getClamAvUrl() {
 }
 
 
-function unavailable(message: string, configured = Boolean(process.env.CLAMAV_REST_URL?.trim())): ClamAvStatus {
+function unavailable(
+  message: string,
+  verification: ClamAvVerificationRecord | LocalVerification | null,
+  configured = Boolean(process.env.CLAMAV_REST_URL?.trim()),
+): ClamAvStatus {
   return {
     configured,
     reachable: false,
     verified: false,
     message,
     checkedAt: new Date().toISOString(),
-    lastVerifiedAt: lastVerification?.verifiedAt ?? null,
-    lastVerificationMessage: lastVerification?.message ?? null,
+    lastVerifiedAt: verification?.verifiedAt ?? null,
+    lastVerificationMessage: verification?.message ?? null,
+    lastVerifiedEngineVersion: verification?.engineVersion ?? null,
   };
 }
 
@@ -140,40 +158,81 @@ async function requestHealth(url: string) {
   if (!response.ok) {
     throw new Error(`ClamAV REST health check failed with HTTP ${response.status}.`);
   }
-  return { body, message: responseMessage(body) };
+  const engineVersion = body && typeof body === "object"
+    ? (body as Record<string, unknown>).version ?? (body as Record<string, unknown>).clamav_version
+    : undefined;
+  return {
+    body,
+    message: responseMessage(body),
+    engineVersion: typeof engineVersion === "string" && engineVersion.trim()
+      ? engineVersion.trim()
+      : null,
+  };
 }
 
-export async function getClamAvStatus(): Promise<ClamAvStatus> {
+async function readVerification(store?: ClamAvVerificationStore) {
+  return store ? store.getClamAvVerification() : lastVerification;
+}
+
+function isCurrentVerification(
+  verification: ClamAvVerificationRecord | LocalVerification | null,
+  url: string,
+  engineVersion: string | null,
+) {
+  return Boolean(
+    verification?.verified &&
+    verification.endpointUrl === url &&
+    engineVersion &&
+    verification.engineVersion === engineVersion,
+  );
+}
+
+export async function getClamAvStatus(store?: ClamAvVerificationStore): Promise<ClamAvStatus> {
+  let verification: ClamAvVerificationRecord | LocalVerification | null = null;
+  let verificationReadError: unknown = null;
+  try {
+    verification = await readVerification(store);
+  } catch (error) {
+    verificationReadError = error;
+  }
+
   const url = getClamAvUrl();
   if (!url) {
     return unavailable(
       process.env.CLAMAV_REST_URL?.trim()
         ? "ClamAV REST configuration is invalid. Set CLAMAV_REST_URL to an http(s) URL without embedded credentials."
         : "ClamAV REST is not configured. Set CLAMAV_REST_URL in the deployment.",
+      verification,
       false,
     );
   }
   try {
-    const { body } = await requestHealth(url);
-    const engineVersion = body && typeof body === "object"
-      ? (body as Record<string, unknown>).version ?? (body as Record<string, unknown>).clamav_version
-      : undefined;
-    const verified = lastVerificationUrl === url && Boolean(lastVerification?.verified);
+    const { engineVersion } = await requestHealth(url);
+    const verified = !verificationReadError && isCurrentVerification(verification, url, engineVersion);
+    const message = verificationReadError
+      ? "ClamAV REST is reachable, but shared verification evidence could not be read."
+      : verified
+        ? "ClamAV REST is reachable and verified for explicit file scans."
+        : verification && verification.endpointUrl === url && verification.engineVersion !== engineVersion
+          ? "ClamAV REST is reachable, but its stored proof is stale for the current engine version."
+          : engineVersion
+            ? "ClamAV REST is reachable, but its clean and threat scan proof has not been verified for this engine."
+            : "ClamAV REST is reachable, but it did not report an engine version that can validate shared proof.";
     return {
       configured: true,
       reachable: true,
       verified,
-      message: verified
-        ? "ClamAV REST is reachable and verified for explicit file scans."
-        : "ClamAV REST is reachable, but its clean and threat scan proof has not been verified.",
+      message,
       checkedAt: new Date().toISOString(),
-      lastVerifiedAt: lastVerification?.verifiedAt ?? null,
-      lastVerificationMessage: lastVerification?.message ?? null,
-      ...(typeof engineVersion === "string" ? { engineVersion } : {}),
+      lastVerifiedAt: verification?.verifiedAt ?? null,
+      lastVerificationMessage: verification?.message ?? null,
+      lastVerifiedEngineVersion: verification?.engineVersion ?? null,
+      ...(engineVersion ? { engineVersion } : {}),
     };
   } catch (error) {
     return unavailable(
       `ClamAV REST could not be reached: ${error instanceof Error ? error.message : "request failed"}`,
+      verification,
       true,
     );
   }
@@ -202,7 +261,10 @@ async function scanRequest(url: string, payload: Buffer): Promise<ClamAvScanResu
   return parseScanResponse(body);
 }
 
-export async function scanWithClamAv(payload: Buffer): Promise<ClamAvScanResult> {
+export async function scanWithClamAv(
+  payload: Buffer,
+  store?: ClamAvVerificationStore,
+): Promise<ClamAvScanResult> {
   const url = getClamAvUrl();
   if (!url) {
     throw new Error("ClamAV REST is not configured. Scanning is unavailable.");
@@ -210,13 +272,20 @@ export async function scanWithClamAv(payload: Buffer): Promise<ClamAvScanResult>
   if (!payload.length) {
     throw new Error("The ClamAV scan payload is empty.");
   }
-  if (lastVerificationUrl !== url || !lastVerification?.verified) {
+  let verification: ClamAvVerificationRecord | LocalVerification | null = null;
+  try {
+    verification = await readVerification(store);
+  } catch {
+    throw new Error("ClamAV shared verification evidence could not be read. Scanning is unavailable.");
+  }
+  const { engineVersion } = await requestHealth(url);
+  if (!isCurrentVerification(verification, url, engineVersion)) {
     throw new Error("ClamAV REST is not verified. Run the clean-file and EICAR threat proof before scanning for protection.");
   }
   return scanRequest(url, payload);
 }
 
-export async function verifyClamAv(): Promise<ClamAvVerification> {
+export async function verifyClamAv(store?: ClamAvVerificationStore): Promise<ClamAvVerification> {
   const url = getClamAvUrl();
   const verifiedAt = new Date().toISOString();
   if (!url) {
@@ -224,16 +293,32 @@ export async function verifyClamAv(): Promise<ClamAvVerification> {
   }
 
   try {
-    await requestHealth(url);
+    const { engineVersion } = await requestHealth(url);
     const cleanScan = await scanRequest(url, Buffer.from("SafeNet ClamAV verification: clean fixture."));
     const threatScan = await scanRequest(url, Buffer.from(EICAR_TEST_SIGNATURE));
-    const verified = cleanScan.verdict === "clean" && threatScan.verdict === "threat";
+    const finalHealth = await requestHealth(url);
+    const engineStable = Boolean(
+      engineVersion &&
+      finalHealth.engineVersion &&
+      engineVersion === finalHealth.engineVersion,
+    );
+    const verified = cleanScan.verdict === "clean" &&
+      threatScan.verdict === "threat" &&
+      engineStable;
     const message = verified
       ? "ClamAV health, clean-file, and EICAR threat checks passed."
+      : !engineStable
+        ? "ClamAV engine version changed or was not reported consistently during verification."
       : "ClamAV is reachable, but the clean-file and EICAR threat checks did not produce the expected results.";
-    const result = { verified, verifiedAt, message, cleanScan, threatScan };
-    lastVerification = result;
-    lastVerificationUrl = url;
+    const result = { verified, verifiedAt, message, cleanScan, threatScan, engineVersion };
+    lastVerification = { ...result, endpointUrl: url };
+    if (verified && store && engineVersion) {
+      await store.saveClamAvVerification({
+        ...result,
+        endpointUrl: url,
+        engineVersion,
+      });
+    }
     return result;
   } catch (error) {
     lastVerification = {
@@ -242,8 +327,9 @@ export async function verifyClamAv(): Promise<ClamAvVerification> {
       message: error instanceof Error ? error.message : "ClamAV verification failed.",
       cleanScan: null,
       threatScan: null,
+      engineVersion: null,
+      endpointUrl: url,
     };
-    lastVerificationUrl = url;
     throw error;
   }
 }

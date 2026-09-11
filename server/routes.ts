@@ -488,14 +488,14 @@ export async function registerRoutes(
   app.get("/api/antivirus/clamav/status", async (_req, res) => {
     const { getClamAvStatus } = await import("./clamav-service");
     res.set("Cache-Control", "no-store");
-    res.json(await getClamAvStatus());
+    res.json(await getClamAvStatus(storage));
   });
 
   app.post("/api/antivirus/clamav/verify", async (_req, res) => {
     res.set("Cache-Control", "no-store");
     try {
       const { verifyClamAv } = await import("./clamav-service");
-      const result = await verifyClamAv();
+      const result = await verifyClamAv(storage);
       res.status(result.verified ? 200 : 503).json(result);
     } catch (error) {
       res.status(503).json({
@@ -504,6 +504,7 @@ export async function registerRoutes(
         message: error instanceof Error ? error.message : "ClamAV verification failed.",
         cleanScan: null,
         threatScan: null,
+        engineVersion: null,
       });
     }
   });
@@ -515,7 +516,7 @@ export async function registerRoutes(
       try {
         const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
         const { scanWithClamAv } = await import("./clamav-service");
-        res.json(await scanWithClamAv(payload));
+        res.json(await scanWithClamAv(payload, storage));
       } catch (error) {
         res.status(503).json({
           message: error instanceof Error ? error.message : "ClamAV REST scan failed.",

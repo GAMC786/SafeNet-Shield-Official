@@ -8,6 +8,7 @@ export type ClamAvStatus = {
   checkedAt: string;
   lastVerifiedAt: string | null;
   lastVerificationMessage: string | null;
+  lastVerifiedEngineVersion: string | null;
   engineVersion?: string;
 };
 
@@ -24,6 +25,7 @@ export type ClamAvVerification = {
   message: string;
   cleanScan: ClamAvScanResult | null;
   threatScan: ClamAvScanResult | null;
+  engineVersion: string | null;
 };
 
 export function useClamAvStatus() {

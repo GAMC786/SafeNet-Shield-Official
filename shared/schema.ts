@@ -114,6 +114,19 @@ export const antivirusSettings = pgTable("antivirus_settings", {
   lastUpdateTime: timestamp("last_update_time"),
 });
 
+// A successful ClamAV proof is deployment-wide state, not process-local state.
+// The fixed primary key keeps concurrent autoscaled instances updating one
+// record instead of creating competing proofs.
+export const clamavVerifications = pgTable("clamav_verifications", {
+  id: integer("id").primaryKey(),
+  endpointUrl: text("endpoint_url").notNull(),
+  engineVersion: text("engine_version").notNull(),
+  verifiedAt: timestamp("verified_at").notNull(),
+  message: text("message").notNull(),
+  cleanScan: json("clean_scan"),
+  threatScan: json("threat_scan"),
+});
+
 export const threatFeeds = pgTable("threat_feeds", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
