@@ -50,7 +50,12 @@ public final class SafeNetVpnTileService extends TileService {
                 && SafeNetVpnPlugin.TUNNEL_WIREGUARD.equals(
                     preferences.getString(SafeNetVpnPlugin.PREF_ACTIVE_TUNNEL, "")
                 )) {
+            String selectedDnsServers = preferences.getString(
+                SafeNetVpnPlugin.PREF_WIREGUARD_DNS_SERVERS,
+                SafeNetWireGuardConfig.defaultDnsServers()
+            );
             SafeNetWireGuardManager.get(this).startAsync(
+                selectedDnsServers,
                 this::postUpdateTile,
                 error -> postUpdateTile()
             );

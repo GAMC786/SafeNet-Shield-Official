@@ -22,6 +22,10 @@ const serviceSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnService.java", import.meta.url),
   "utf8",
 );
+const tileSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
+  "utf8",
+);
 
 test("Android native check is executable and forces the debug Java build", async () => {
   const scriptStats = await stat(
@@ -84,4 +88,12 @@ test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs",
   assert.match(classifierSource, /input\.dataType\(\)/);
   assert.match(classifierSource, /output\.dataType\(\)/);
   assert.doesNotMatch(classifierSource, /(?:input|output)\.type\(\)/);
+});
+
+test("the Quick Settings WireGuard tile forwards its selected DNS servers", () => {
+  assert.match(tileSource, /PREF_WIREGUARD_DNS_SERVERS/);
+  assert.match(
+    tileSource,
+    /startAsync\(\s*selectedDnsServers,\s*this::postUpdateTile/s,
+  );
 });
