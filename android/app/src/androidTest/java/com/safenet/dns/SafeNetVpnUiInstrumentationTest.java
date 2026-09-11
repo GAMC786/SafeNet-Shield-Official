@@ -50,6 +50,7 @@ import java.util.regex.Pattern;
 @RunWith(AndroidJUnit4.class)
 public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
+    private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
     private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
@@ -1104,6 +1105,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
     @Test
     public void aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive() throws Exception {
+        logAiShieldDeviceEvent("test_begin", "camera_to_screen");
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
             context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
@@ -1131,10 +1133,12 @@ public class SafeNetVpnUiInstrumentationTest {
 
         assertAiShieldSourceRemainsActive("screen");
         assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+        logAiShieldDeviceEvent("test_pass", "camera_to_screen");
     }
 
     @Test
     public void aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive() throws Exception {
+        logAiShieldDeviceEvent("test_begin", "screen_to_camera");
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
             context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
@@ -1162,6 +1166,7 @@ public class SafeNetVpnUiInstrumentationTest {
 
         assertAiShieldSourceRemainsActive("camera");
         assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+        logAiShieldDeviceEvent("test_pass", "screen_to_camera");
     }
 
     @Test
@@ -1555,7 +1560,9 @@ public class SafeNetVpnUiInstrumentationTest {
                 By.text(Pattern.compile("(?i)(while using the app|only this time|allow)"))
             );
             if (allow != null && allow.isEnabled()) {
+                logAiShieldDeviceEvent("camera_permission_dialog_shown", "camera");
                 allow.click();
+                logAiShieldDeviceEvent("camera_permission_granted", "camera");
                 return;
             }
             Thread.sleep(250);
@@ -1565,7 +1572,9 @@ public class SafeNetVpnUiInstrumentationTest {
 
     private void grantMediaProjectionDialog() throws Exception {
         UiObject2 start = waitForMediaProjectionDialog();
+        logAiShieldDeviceEvent("media_projection_consent_dialog_shown", "screen");
         start.click();
+        logAiShieldDeviceEvent("media_projection_consent_granted", "screen");
     }
 
     private UiObject2 waitForMediaProjectionDialog() throws Exception {
@@ -1833,6 +1842,7 @@ public class SafeNetVpnUiInstrumentationTest {
             );
             Thread.sleep(250);
         }
+        logAiShieldDeviceEvent("source_stable", expectedSource);
     }
 
     private JSONObject startAndVerifyAiShieldSource(
@@ -1855,6 +1865,15 @@ public class SafeNetVpnUiInstrumentationTest {
         assertAiShieldInference(waitForAiShieldInference(expectedSource), expectedSource);
         assertAiShieldSourceRemainsActive(expectedSource);
         return started;
+    }
+
+    private void logAiShieldDeviceEvent(String event, String source) {
+        Log.i(
+            AI_SHIELD_DEVICE_SMOKE_TAG,
+            "AI_SHIELD_DEVICE_EVENT event=" + event
+                + " source=" + source
+                + " test=" + testName.getMethodName()
+        );
     }
 
     private JSONObject waitForAiShieldStatus(

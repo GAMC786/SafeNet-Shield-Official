@@ -22,6 +22,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Surface;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -41,6 +42,8 @@ import java.util.List;
  * persisted, copied to app storage, or sent over the network.
  */
 public final class AiShieldManager {
+    private static final String TAG = "AiShieldManager";
+
     public interface ResultListener {
         void onResult(AiShieldClassifier.Analysis analysis);
     }
@@ -110,6 +113,7 @@ public final class AiShieldManager {
         synchronized (lock) {
             stopLocked(false);
             final long generation = captureGeneration;
+            logCallback("start_requested", "camera", generation, true);
             if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("camera", classifier.getUnavailableReason()));
                 return;
@@ -164,6 +168,7 @@ public final class AiShieldManager {
         synchronized (lock) {
             stopLocked(false);
             final long generation = captureGeneration;
+            logCallback("projection_result_received", "screen", generation, true);
             if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("screen", classifier.getUnavailableReason()));
                 return;
@@ -405,7 +410,10 @@ public final class AiShieldManager {
             @Override
             public void onOpened(CameraDevice openedCamera) {
                 synchronized (lock) {
-                    if (!isCaptureActiveLocked(generation, "camera") || cameraReader == null) {
+                    boolean active = isCaptureActiveLocked(generation, "camera") && cameraReader != null;
+                    logCallback("camera_opened", "camera", generation, active);
+                    if (!active) {
+                        logCallback("stale_camera_opened_ignored", "camera", generation, false);
                         if (camera != openedCamera) {
                             openedCamera.close();
                         }
@@ -419,8 +427,16 @@ public final class AiShieldManager {
                                 @Override
                                 public void onConfigured(CameraCaptureSession session) {
                                     synchronized (lock) {
-                                        if (!isCaptureActiveLocked(generation, "camera")
-                                            || camera != openedCamera) {
+                                        boolean active = isCaptureActiveLocked(generation, "camera")
+                                            && camera == openedCamera;
+                                        logCallback("camera_configured", "camera", generation, active);
+                                        if (!active) {
+                                            logCallback(
+                                                "stale_camera_configured_ignored",
+                                                "camera",
+                                                generation,
+                                                false
+                                            );
                                             if (cameraSession != session) {
                                                 session.close();
                                             }
@@ -482,7 +498,10 @@ public final class AiShieldManager {
             @Override
             public void onDisconnected(CameraDevice disconnectedCamera) {
                 synchronized (lock) {
-                    if (!isCaptureActiveLocked(generation, "camera")) {
+                    boolean active = isCaptureActiveLocked(generation, "camera");
+                    logCallback("camera_disconnected", "camera", generation, active);
+                    if (!active) {
+                        logCallback("stale_camera_disconnected_ignored", "camera", generation, false);
                         if (camera != disconnectedCamera) {
                             disconnectedCamera.close();
                         }
@@ -501,7 +520,10 @@ public final class AiShieldManager {
             @Override
             public void onError(CameraDevice erroredCamera, int error) {
                 synchronized (lock) {
-                    if (!isCaptureActiveLocked(generation, "camera")) {
+                    boolean active = isCaptureActiveLocked(generation, "camera");
+                    logCallback("camera_error", "camera", generation, active);
+                    if (!active) {
+                        logCallback("stale_camera_error_ignored", "camera", generation, false);
                         if (camera != erroredCamera) {
                             erroredCamera.close();
                         }
@@ -524,7 +546,10 @@ public final class AiShieldManager {
             @Override
             public void onStop() {
                 synchronized (lock) {
-                    if (!isCaptureActiveLocked(generation, "screen")) {
+                    boolean active = isCaptureActiveLocked(generation, "screen");
+                    logCallback("projection_stopped", "screen", generation, active);
+                    if (!active) {
+                        logCallback("stale_projection_stop_ignored", "screen", generation, false);
                         return;
                     }
                     closeScreenLocked(false);
@@ -547,6 +572,7 @@ public final class AiShieldManager {
 
     private void stopLocked(boolean emitIdle) {
         captureGeneration++;
+        logCallback("capture_stopped", source, captureGeneration, false);
         closeCameraLocked();
         closeScreenLocked(true);
         monitoring = false;
@@ -630,6 +656,16 @@ public final class AiShieldManager {
         if (listener != null) {
             listener.onResult(analysis);
         }
+    }
+
+    private void logCallback(String event, String callbackSource, long generation, boolean active) {
+        Log.i(
+            TAG,
+            "AI_SHIELD_CALLBACK event=" + event
+                + " source=" + callbackSource
+                + " generation=" + generation
+                + " active=" + active
+        );
     }
 
     private static String safeMessage(Exception error) {

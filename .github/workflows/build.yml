@@ -39,6 +39,11 @@ on:
         required: true
         default: false
         type: boolean
+      android_ai_shield_physical_validation:
+        description: "Run AI Shield source switching on an attached physical Android device"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -1758,6 +1763,52 @@ jobs:
           name: SafeNet-DNS-Android-startup-evidence-release
           path: android/app/build/reports/android-startup/latest
           if-no-files-found: error
+
+  android-ai-shield-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_ai_shield_physical_validation == true
+    # This job requires a maintainer-provided phone connected to the runner.
+    # Hosted emulators are intentionally rejected by the focused test script.
+    runs-on: [self-hosted, linux, x64, android-physical-device]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_AI_SHIELD_OUTPUT_DIR: android/app/build/reports/android-ai-shield-device/latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run physical-device AI Shield switching checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/android-ai-shield-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_AI_SHIELD_OUTPUT_DIR"
+
+      - name: Upload physical-device AI Shield evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-ai-shield-physical-evidence
+          path: android/app/build/reports/android-ai-shield-device/latest
+          if-no-files-found: warn
 
   release:
     needs: [build-android, android-release-smoke]

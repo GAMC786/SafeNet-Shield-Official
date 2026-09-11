@@ -37,6 +37,45 @@ Before release, evaluate a
 consent-cleared, representative fixture set and report precision, recall,
 false-positive rate, and false-negative rate for this exact engine version.
 
+## Physical-device source-switch validation
+
+The hosted emulator smoke lane is not physical-device evidence. To exercise the
+camera-driver and MediaProjection callback ordering on a real phone, connect
+exactly one Android device with USB debugging enabled and run the focused lane
+from the repository root:
+
+```sh
+./scripts/android-ai-shield-device-test.sh \
+  --apk android/app/build/outputs/apk/release/app-release.apk \
+  --test-apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk \
+  --serial <adb-serial> \
+  --output android/app/build/reports/android-ai-shield-device/latest
+```
+
+The APKs must be signed release APKs built for the same revision. The lane
+rejects an emulator, requires one online physical target, installs both APKs,
+and runs both rapid directions:
+
+- camera → MediaProjection screen
+- MediaProjection screen → camera
+
+It records `device-details.txt`, `instrumentation.log`, `consent-events.log`,
+and `callback-order.txt` in the evidence directory. The consent log must show
+camera permission and MediaProjection approval. The callback log contains
+generation-numbered `AI_SHIELD_CALLBACK` records, including callbacks ignored
+after a source replacement when the device delivers one late. `result.txt`
+reports each direction separately and keeps `generation_guards=UNCHANGED`; a
+failure or missing event is not converted to a pass.
+
+The same check is available as the opt-in
+`android_ai_shield_physical_validation` workflow-dispatch input on a
+self-hosted runner labeled `android-physical-device`. This workspace cannot
+access a phone attached to the user's local computer, so no physical-device
+pass should be inferred from local or hosted-emulator runs. OEM permission
+wording, revoked screen-capture surfaces, secure/DRM windows, and
+device-specific camera driver failures remain limitations and are preserved in
+the evidence rather than bypassed.
+
 ## Offline benchmark
 
 The repository includes a bounded benchmark for the bundled model:
