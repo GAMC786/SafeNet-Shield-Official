@@ -435,7 +435,7 @@ export default function Antivirus() {
               <FileSearch className="h-6 w-6 text-primary" />
             </div>
             <div className="space-y-1">
-              <h2 className="font-display text-lg tracking-wider">Built-In Antivirus</h2>
+              <h2 className="font-display text-lg tracking-wider">Cisco Endpoint Protection</h2>
               <p className="max-w-2xl text-sm text-muted-foreground">
                 Inspect APK files locally before you install them. Files stay on this device and are checked against
                 the bundled offline signature database.
