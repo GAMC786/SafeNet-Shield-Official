@@ -933,6 +933,38 @@ public class SafeNetVpnUiInstrumentationTest {
         JSONObject inference = waitForAiShieldInference("camera");
         assertAiShieldInference(inference, "camera");
 
+        rotateDevice();
+        JSONObject rotated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "camera".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Camera monitoring must remain active through rotation",
+            rotated.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
+        recreateActivity();
+        JSONObject recreated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && !status.optBoolean("monitoring", true)
+        );
+        assertEquals("none", recreated.getString("source"));
+        assertFalse("Activity recreation must not retain a stale safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(recreated.getString("state")));
+        assertFalse("An idle recreated manager must not retain frame confidence",
+            recreated.has("confidence") && !recreated.isNull("confidence"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            null
+        ));
+        assertEquals("camera", restarted.getString("source"));
+        assertTrue("Camera capture must be restartable after activity recreation",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
         device.pressHome();
         Thread.sleep(1000);
         relaunchActivity();
@@ -969,6 +1001,16 @@ public class SafeNetVpnUiInstrumentationTest {
         JSONObject inference = waitForAiShieldInference("screen");
         assertAiShieldInference(inference, "screen");
 
+        rotateDevice();
+        JSONObject rotated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Screen monitoring must remain active through rotation",
+            rotated.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+
         String revokeOutput = executeShellCommand("cmd media_projection stop " + PACKAGE_NAME);
         String normalizedRevokeOutput = revokeOutput.toLowerCase();
         assertFalse(
@@ -988,6 +1030,18 @@ public class SafeNetVpnUiInstrumentationTest {
             AiShieldClassifier.STATE_SAFE.equals(revoked.getString("state")));
         assertFalse("A revoked projection must not retain frame confidence",
             revoked.has("confidence") && !revoked.isNull("confidence"));
+
+        recreateActivity();
+        JSONObject recreated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && !status.optBoolean("monitoring", true)
+        );
+        assertFalse("Activity recreation after projection revocation must not restore a safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(recreated.getString("state")));
+        assertFalse("A recreated revoked projection must not expose frame confidence",
+            recreated.has("confidence") && !recreated.isNull("confidence"));
     }
 
     @Test
@@ -1376,6 +1430,19 @@ public class SafeNetVpnUiInstrumentationTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
         waitForCapacitorBridge();
+    }
+
+    private void recreateActivity() throws Exception {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.recreate());
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        relaunchActivity();
+    }
+
+    private void rotateDevice() throws Exception {
+        device.setOrientationLeft();
+        Thread.sleep(1000);
+        device.setOrientationNatural();
+        Thread.sleep(1000);
     }
 
     private void waitForCapacitorBridge() throws Exception {

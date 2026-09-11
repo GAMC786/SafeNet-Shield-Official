@@ -66,6 +66,8 @@ public final class AiShieldManager {
     private String source = "none";
     private long lastAnalysisAt;
     private AiShieldClassifier.Analysis lastAnalysis;
+    private long captureGeneration;
+    private MediaProjection.Callback projectionCallback;
 
     public AiShieldManager(Context context, ResultListener listener) {
         this.context = context.getApplicationContext();
@@ -107,6 +109,7 @@ public final class AiShieldManager {
     public void startCamera() {
         synchronized (lock) {
             stopLocked(false);
+            final long generation = captureGeneration;
             if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("camera", classifier.getUnavailableReason()));
                 return;
@@ -143,10 +146,10 @@ public final class AiShieldManager {
                     2
                 );
                 cameraReader.setOnImageAvailableListener(
-                    reader -> analyzeCameraImage(reader),
+                    reader -> analyzeCameraImage(reader, generation),
                     captureHandler
                 );
-                manager.openCamera(cameraId, cameraStateCallback, captureHandler);
+                manager.openCamera(createCameraStateCallback(generation), captureHandler);
             } catch (Exception error) {
                 emitLocked(AiShieldClassifier.captureUnavailable(
                     "camera",
@@ -160,6 +163,7 @@ public final class AiShieldManager {
     public void startScreen(int resultCode, Intent resultData) {
         synchronized (lock) {
             stopLocked(false);
+            final long generation = captureGeneration;
             if (!classifier.load(context)) {
                 emitLocked(AiShieldClassifier.modelUnavailable("screen", classifier.getUnavailableReason()));
                 return;
@@ -191,6 +195,7 @@ public final class AiShieldManager {
                 source = "screen";
                 monitoring = true;
                 startCaptureThreadLocked();
+                projectionCallback = createProjectionCallback(generation);
                 mediaProjection.registerCallback(projectionCallback, captureHandler);
 
                 DisplayMetrics metrics = context.getResources().getDisplayMetrics();
@@ -203,7 +208,7 @@ public final class AiShieldManager {
                     2
                 );
                 screenReader.setOnImageAvailableListener(
-                    reader -> analyzeScreenImage(reader),
+                    reader -> analyzeScreenImage(reader, generation),
                     captureHandler
                 );
                 virtualDisplay = mediaProjection.createVirtualDisplay(
@@ -262,7 +267,7 @@ public final class AiShieldManager {
         }
     }
 
-    private void analyzeCameraImage(ImageReader reader) {
+    private void analyzeCameraImage(ImageReader reader, long generation) {
         Image image = null;
         Bitmap bitmap = null;
         try {
@@ -271,7 +276,7 @@ public final class AiShieldManager {
                 return;
             }
             synchronized (lock) {
-                if (!monitoring || !"camera".equals(source) || !canAnalyzeNowLocked()) {
+                if (!isCaptureActiveLocked(generation, "camera") || !canAnalyzeNowLocked()) {
                     return;
                 }
             }
@@ -295,7 +300,7 @@ public final class AiShieldManager {
         }
     }
 
-    private void analyzeScreenImage(ImageReader reader) {
+    private void analyzeScreenImage(ImageReader reader, long generation) {
         Image image = null;
         Bitmap fullBitmap = null;
         Bitmap bitmap = null;
@@ -305,7 +310,7 @@ public final class AiShieldManager {
                 return;
             }
             synchronized (lock) {
-                if (!monitoring || !"screen".equals(source) || !canAnalyzeNowLocked()) {
+                if (!isCaptureActiveLocked(generation, "screen") || !canAnalyzeNowLocked()) {
                     return;
                 }
             }
@@ -382,109 +387,143 @@ public final class AiShieldManager {
         return fallback;
     }
 
-    private final CameraDevice.StateCallback cameraStateCallback = new CameraDevice.StateCallback() {
-        @Override
-        public void onOpened(CameraDevice openedCamera) {
-            synchronized (lock) {
-                if (!monitoring || !"camera".equals(source) || cameraReader == null) {
-                    openedCamera.close();
-                    return;
-                }
-                camera = openedCamera;
-                try {
-                    openedCamera.createCaptureSession(
-                        java.util.Collections.singletonList(cameraReader.getSurface()),
-                        new CameraCaptureSession.StateCallback() {
-                            @Override
-                            public void onConfigured(CameraCaptureSession session) {
-                                synchronized (lock) {
-                                    if (!monitoring || camera != openedCamera) {
-                                        session.close();
-                                        return;
-                                    }
-                                    cameraSession = session;
-                                    try {
-                                        CaptureRequest.Builder request =
-                                            openedCamera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                                        request.addTarget(cameraReader.getSurface());
-                                        request.set(
-                                            CaptureRequest.CONTROL_AF_MODE,
-                                            CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                                        );
-                                        session.setRepeatingRequest(request.build(), null, captureHandler);
-                                    } catch (Exception error) {
-                                        emitLocked(AiShieldClassifier.captureUnavailable(
-                                            "camera",
-                                            "Camera preview could not start: " + safeMessage(error)
-                                        ));
+    private CameraDevice.StateCallback createCameraStateCallback(final long generation) {
+        return new CameraDevice.StateCallback() {
+            @Override
+            public void onOpened(CameraDevice openedCamera) {
+                synchronized (lock) {
+                    if (!isCaptureActiveLocked(generation, "camera") || cameraReader == null) {
+                        openedCamera.close();
+                        return;
+                    }
+                    camera = openedCamera;
+                    try {
+                        openedCamera.createCaptureSession(
+                            java.util.Collections.singletonList(cameraReader.getSurface()),
+                            new CameraCaptureSession.StateCallback() {
+                                @Override
+                                public void onConfigured(CameraCaptureSession session) {
+                                    synchronized (lock) {
+                                        if (!isCaptureActiveLocked(generation, "camera")
+                                            || camera != openedCamera) {
+                                            session.close();
+                                            return;
+                                        }
+                                        cameraSession = session;
+                                        try {
+                                            CaptureRequest.Builder request =
+                                                openedCamera.createCaptureRequest(
+                                                    CameraDevice.TEMPLATE_PREVIEW
+                                                );
+                                            request.addTarget(cameraReader.getSurface());
+                                            request.set(
+                                                CaptureRequest.CONTROL_AF_MODE,
+                                                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                                            );
+                                            session.setRepeatingRequest(
+                                                request.build(),
+                                                null,
+                                                captureHandler
+                                            );
+                                        } catch (Exception error) {
+                                            emitLocked(AiShieldClassifier.captureUnavailable(
+                                                "camera",
+                                                "Camera preview could not start: "
+                                                    + safeMessage(error)
+                                            ));
+                                        }
                                     }
                                 }
-                            }
 
-                            @Override
-                            public void onConfigureFailed(CameraCaptureSession session) {
-                                synchronized (lock) {
-                                    emitCameraUnavailableAfterStopLocked(
-                                        "Android could not configure the camera capture surface."
-                                    );
+                                @Override
+                                public void onConfigureFailed(CameraCaptureSession session) {
+                                    synchronized (lock) {
+                                        if (isCaptureActiveLocked(generation, "camera")) {
+                                            emitCameraUnavailableAfterStopLocked(
+                                                "Android could not configure the camera capture surface."
+                                            );
+                                        } else {
+                                            session.close();
+                                        }
+                                    }
                                 }
-                            }
-                        },
-                        captureHandler
-                    );
-                } catch (Exception error) {
-                    emitCameraUnavailableAfterStopLocked(
-                        "Camera capture could not be configured: " + safeMessage(error)
-                    );
+                            },
+                            captureHandler
+                        );
+                    } catch (Exception error) {
+                        if (isCaptureActiveLocked(generation, "camera")) {
+                            emitCameraUnavailableAfterStopLocked(
+                                "Camera capture could not be configured: " + safeMessage(error)
+                            );
+                        } else {
+                            openedCamera.close();
+                        }
+                    }
                 }
             }
-        }
 
-        @Override
-        public void onDisconnected(CameraDevice disconnectedCamera) {
-            disconnectedCamera.close();
-            synchronized (lock) {
-                stopLocked(false);
-                source = "camera";
-                emitLocked(AiShieldClassifier.captureUnavailable(
-                    "camera",
-                    "The camera became unavailable."
-                ));
+            @Override
+            public void onDisconnected(CameraDevice disconnectedCamera) {
+                disconnectedCamera.close();
+                synchronized (lock) {
+                    if (!isCaptureActiveLocked(generation, "camera")) {
+                        return;
+                    }
+                    stopLocked(false);
+                    source = "camera";
+                    emitLocked(AiShieldClassifier.captureUnavailable(
+                        "camera",
+                        "The camera became unavailable."
+                    ));
+                }
             }
-        }
 
-        @Override
-        public void onError(CameraDevice erroredCamera, int error) {
-            erroredCamera.close();
-            synchronized (lock) {
-                stopLocked(false);
-                source = "camera";
-                emitLocked(AiShieldClassifier.captureUnavailable(
-                    "camera",
-                    "Android reported a camera capture error."
-                ));
+            @Override
+            public void onError(CameraDevice erroredCamera, int error) {
+                erroredCamera.close();
+                synchronized (lock) {
+                    if (!isCaptureActiveLocked(generation, "camera")) {
+                        return;
+                    }
+                    stopLocked(false);
+                    source = "camera";
+                    emitLocked(AiShieldClassifier.captureUnavailable(
+                        "camera",
+                        "Android reported a camera capture error."
+                    ));
+                }
             }
-        }
-    };
+        };
+    }
 
-    private final MediaProjection.Callback projectionCallback = new MediaProjection.Callback() {
-        @Override
-        public void onStop() {
-            synchronized (lock) {
-                closeScreenLocked(false);
-                monitoring = false;
-                source = "screen";
-                lastAnalysisAt = 0L;
-                classifier.release();
-                emitLocked(AiShieldClassifier.captureUnavailable(
-                    "screen",
-                    "Screen-capture consent was revoked or the projection stopped."
-                ));
+    private MediaProjection.Callback createProjectionCallback(final long generation) {
+        return new MediaProjection.Callback() {
+            @Override
+            public void onStop() {
+                synchronized (lock) {
+                    if (!isCaptureActiveLocked(generation, "screen")) {
+                        return;
+                    }
+                    closeScreenLocked(false);
+                    monitoring = false;
+                    source = "screen";
+                    lastAnalysisAt = 0L;
+                    classifier.release();
+                    emitLocked(AiShieldClassifier.captureUnavailable(
+                        "screen",
+                        "Screen-capture consent was revoked or the projection stopped."
+                    ));
+                }
             }
-        }
-    };
+        };
+    }
+
+    private boolean isCaptureActiveLocked(long generation, String expectedSource) {
+        return generation == captureGeneration && monitoring && expectedSource.equals(source);
+    }
 
     private void stopLocked(boolean emitIdle) {
+        captureGeneration++;
         closeCameraLocked();
         closeScreenLocked(true);
         monitoring = false;
@@ -541,15 +580,20 @@ public final class AiShieldManager {
             screenReader.close();
             screenReader = null;
         }
-        if (mediaProjection != null) {
+        MediaProjection projection = mediaProjection;
+        MediaProjection.Callback callback = projectionCallback;
+        mediaProjection = null;
+        projectionCallback = null;
+        if (projection != null) {
             try {
-                mediaProjection.unregisterCallback(projectionCallback);
+                if (callback != null) {
+                    projection.unregisterCallback(callback);
+                }
                 if (stopProjection) {
-                    mediaProjection.stop();
+                    projection.stop();
                 }
             } catch (Exception ignored) {
             }
-            mediaProjection = null;
         }
         if (captureThread != null) {
             captureThread.quitSafely();

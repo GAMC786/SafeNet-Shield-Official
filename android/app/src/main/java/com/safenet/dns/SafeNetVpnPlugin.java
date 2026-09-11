@@ -699,6 +699,7 @@ public class SafeNetVpnPlugin extends Plugin {
     protected void handleOnDestroy() {
         if (aiShieldManager != null) {
             aiShieldManager.handleDestroy();
+            aiShieldManager = null;
         }
         if (apkScannerExecutor != null) {
             apkScannerExecutor.shutdownNow();
