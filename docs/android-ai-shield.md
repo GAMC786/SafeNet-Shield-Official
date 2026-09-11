@@ -39,42 +39,67 @@ false-positive rate, and false-negative rate for this exact engine version.
 
 ## Physical-device source-switch validation
 
-The hosted emulator smoke lane is not physical-device evidence. To exercise the
-camera-driver and MediaProjection callback ordering on a real phone, connect
-exactly one Android device with USB debugging enabled and run the focused lane
-from the repository root:
+The hosted emulator smoke lane is not physical-device evidence. To exercise
+camera-driver and MediaProjection callback ordering across representative OEM
+stacks, the focused lane uses this small matrix:
+
+| Profile | Android version | OEM camera stack | Required runner label |
+| --- | --- | --- | --- |
+| `pixel-android-14` | 14 | Google Camera2 HAL | `android-physical-device-pixel` |
+| `samsung-android-13` | 13 | Samsung Camera2 HAL | `android-physical-device-samsung` |
+| `motorola-android-12` | 12 | Motorola Camera2 HAL | `android-physical-device-motorola` |
+
+Each label must identify a dedicated self-hosted Linux x64 runner with the
+matching phone connected over USB debugging. Keeping one phone per label lets
+the workflow matrix run with `fail-fast: false`, so a camera-stack failure on
+one device does not hide results from the other profiles. Each matrix job
+rejects emulators and verifies the observed manufacturer and Android major
+version against its profile before running the tests.
+
+For a local or maintenance-runner check, connect exactly one Android device and
+run the focused lane from the repository root:
 
 ```sh
 ./scripts/android-ai-shield-device-test.sh \
   --apk android/app/build/outputs/apk/release/app-release.apk \
   --test-apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk \
+  --profile pixel-android-14 \
   --serial <adb-serial> \
-  --output android/app/build/reports/android-ai-shield-device/latest
+  --output android/app/build/reports/android-ai-shield-device/pixel-android-14
 ```
 
 The APKs must be signed release APKs built for the same revision. The lane
-rejects an emulator, requires one online physical target, installs both APKs,
-and runs both rapid directions:
+rejects an emulator, requires one online physical target, records the Android
+and camera HAL properties plus `dumpsys media.camera`, installs both APKs, and
+runs both rapid directions:
 
 - camera → MediaProjection screen
 - MediaProjection screen → camera
 
-It records `device-details.txt`, `instrumentation.log`, `consent-events.log`,
-and `callback-order.txt` in the evidence directory. The consent log must show
-camera permission and MediaProjection approval. The callback log contains
-generation-numbered `AI_SHIELD_CALLBACK` records, including callbacks ignored
-after a source replacement when the device delivers one late. `result.txt`
-reports each direction separately and keeps `generation_guards=UNCHANGED`; a
-failure or missing event is not converted to a pass.
+It records `device-details.txt`, `device-profile.txt`, `camera-stack.txt`,
+`instrumentation.log`, `consent-events.log`, and `callback-order.txt` in each
+profile's evidence directory. The consent log must show camera permission and
+MediaProjection approval. The callback log contains generation-numbered
+`AI_SHIELD_CALLBACK` records, including callbacks ignored after a source
+replacement when the device delivers one late. `result.txt` reports each
+direction separately, keeps `generation_guards=UNCHANGED`, and includes
+`failure_class` and `failure_category`.
+
+`failure_class=DEVICE` is reserved for target-specific setup, consent, camera
+HAL, projection, or profile problems. `failure_class=APP` with
+`failure_category=APP_REGRESSION` means the instrumentation failed without a
+known device-specific signature. `failure_class=EVIDENCE` means the run did
+not produce the required evidence. A failure or missing event is never
+converted to a pass.
 
 The same check is available as the opt-in
 `android_ai_shield_physical_validation` workflow-dispatch input on a
-self-hosted runner labeled `android-physical-device`. This workspace cannot
-access a phone attached to the user's local computer, so no physical-device
-pass should be inferred from local or hosted-emulator runs. OEM permission
-wording, revoked screen-capture surfaces, secure/DRM windows, and
-device-specific camera driver failures remain limitations and are preserved in
-the evidence rather than bypassed.
+self-hosted runner matrix labeled by the three profiles above. This workspace
+cannot access a phone attached to the user's local computer, so no
+physical-device pass should be inferred from local or hosted-emulator runs.
+OEM permission wording, revoked screen-capture surfaces, secure/DRM windows,
+and device-specific camera driver failures remain limitations and are preserved
+in the profile evidence rather than bypassed.
 
 ## Offline benchmark
 

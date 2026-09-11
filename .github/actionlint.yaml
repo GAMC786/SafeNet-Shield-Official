@@ -8,5 +8,8 @@ self-hosted-runner:
   labels:
     - android-writable-system
     - android-physical-device
+    - android-physical-device-pixel
+    - android-physical-device-samsung
+    - android-physical-device-motorola
     # actionlint 1.7.0 predates this GitHub-hosted Intel label.
     - macos-15-intel

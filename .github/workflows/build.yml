@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       android_ai_shield_physical_validation:
-        description: "Run AI Shield source switching on an attached physical Android device"
+        description: "Run the representative AI Shield physical-device matrix"
         required: true
         default: false
         type: boolean
@@ -1769,14 +1769,27 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.android_ai_shield_physical_validation == true
-    # This job requires a maintainer-provided phone connected to the runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each label must identify a dedicated runner with the named phone
+          # attached. Keeping labels distinct prevents matrix jobs from racing
+          # over one USB target and makes OEM failures independently visible.
+          - profile: pixel-android-14
+            runner_label: android-physical-device-pixel
+          - profile: samsung-android-13
+            runner_label: android-physical-device-samsung
+          - profile: motorola-android-12
+            runner_label: android-physical-device-motorola
     # Hosted emulators are intentionally rejected by the focused test script.
-    runs-on: [self-hosted, linux, x64, android-physical-device]
+    runs-on: [self-hosted, linux, x64, "${{ matrix.runner_label }}"]
     timeout-minutes: 30
     permissions:
       contents: read
     env:
-      ANDROID_AI_SHIELD_OUTPUT_DIR: android/app/build/reports/android-ai-shield-device/latest
+      ANDROID_AI_SHIELD_DEVICE_PROFILE: ${{ matrix.profile }}
+      ANDROID_AI_SHIELD_OUTPUT_DIR: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -1800,14 +1813,15 @@ jobs:
           ./scripts/android-ai-shield-device-test.sh \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
             --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --profile "$ANDROID_AI_SHIELD_DEVICE_PROFILE" \
             --output "$GITHUB_WORKSPACE/$ANDROID_AI_SHIELD_OUTPUT_DIR"
 
       - name: Upload physical-device AI Shield evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SafeNet-DNS-Android-ai-shield-physical-evidence
-          path: android/app/build/reports/android-ai-shield-device/latest
+          name: SafeNet-DNS-Android-ai-shield-physical-evidence-${{ matrix.profile }}
+          path: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
           if-no-files-found: warn
 
   release:
