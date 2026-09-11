@@ -101,6 +101,18 @@ backend owns Android's single VPN permission while the tunnel is active, so
 SafeNet DNS and WireGuard start requests reject conflicting ownership. The
 Quick Settings tile follows whichever SafeNet tunnel is active.
 
+The release workflows read these same eight names from protected GitHub
+repository secrets: `SAFENET_WIREGUARD_GATEWAY_OWNER`,
+`SAFENET_WIREGUARD_GATEWAY_ENDPOINT`, `SAFENET_WIREGUARD_PEER_PUBLIC_KEY`,
+`SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY`, `SAFENET_WIREGUARD_CLIENT_ADDRESS`,
+`SAFENET_WIREGUARD_ALLOWED_IPS`, `SAFENET_WIREGUARD_DNS_SERVERS`, and
+`SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE`. The release job fails before
+packaging if any value is missing, and the private key is passed only to
+Gradle's native build configuration, never to the web build or frontend
+assets. A configured app status reports the SafeNet gateway owner, endpoint,
+peer public key, allowed IPs, and DNS servers; it never reports the client
+private key.
+
 ### Step 2: Open in Android Studio
 ```bash
 npx cap open android
