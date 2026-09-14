@@ -344,7 +344,7 @@ export default function DnsSettings() {
                     className="w-full"
                     disabled={isAdded || isMutating}
                     onClick={() => void handleAddPreset(preset)}
-                    data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                    data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`}
                   >
                     {isAdded ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</> : <><Plus className="mr-1 h-4 w-4" /> Add</>}
                   </Button>

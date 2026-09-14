@@ -386,4 +386,10 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(settingsSource, /object-contain/);
   assert.doesNotMatch(settingsSource, /clipPath|terry-fox-white-side-bar/);
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
+  assert.match(dnsSettingsSource, /AdGuard DNS \(Family\)/);
+  assert.match(dnsSettingsSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
+  assert.match(dnsSettingsSource, /NextDNS/);
+  assert.match(dnsSettingsSource, /45\.90\.28\.0/);
+  assert.match(dnsSettingsSource, /Control D/);
+  assert.match(dnsSettingsSource, /https:\/\/freedns\.controld\.com\/p2/);
 });
