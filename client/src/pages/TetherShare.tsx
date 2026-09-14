@@ -71,7 +71,7 @@ export default function TetherShare() {
       <Header
         title="Internet Share"
         subtitle="No-root Wi-Fi Direct gateway"
-        status={running ? "active" : status?.lastError ? "warning" : "inactive"}
+        status={running ? "sharing" : "not-sharing"}
       />
 
       {!supported && (
