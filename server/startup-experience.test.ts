@@ -25,7 +25,7 @@ const startupArtworkSource = readFileSync(
 const uploadedArtworkSource = readFileSync(
   path.resolve(
     process.cwd(),
-    "attached_assets/SafeNet_Astronaut_White_Background_1789368720151.png",
+    "attached_assets/SafeNet_Astronaut_White_Background_1789375663944.png",
   ),
 );
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
@@ -110,6 +110,8 @@ test("the app mounts directly with a Dashboard fallback", () => {
     assert.match(indexHtml, /width: 100%;/);
     assert.match(indexHtml, /height: 100%;/);
      assert.match(indexHtml, /object-fit: fill/);
+     assert.match(indexHtml, /color: #000000/);
+     assert.match(indexHtml, /background: #000000/);
     assert.match(indexHtml, /object-position: center center/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
@@ -118,7 +120,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Network/);
   assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-   assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*15_000/);
+   assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
   assert.match(mainSource, /STARTUP_LOADER_FADE_MS\s*=\s*180/);
   assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
   assert.match(mainSource, /safenet:startup-complete/);
