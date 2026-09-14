@@ -36,8 +36,8 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
-// Keep the branded startup experience visible for the full fifteen-second handoff.
-const STARTUP_LOADER_DURATION_MS = 15_000;
+// Keep the branded startup experience visible for the full ten-second handoff.
+const STARTUP_LOADER_DURATION_MS = 10_000;
 const STARTUP_LOADER_FADE_MS = 180;
 const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
 let startupDurationComplete = false;
