@@ -26,7 +26,13 @@ export function useSoundtrack() {
     if (audio) {
       audio.muted = !nextEnabled;
       if (nextEnabled) {
-        void audio.play().catch(() => undefined);
+        const playback = audio.play();
+        if (playback && typeof playback.catch === "function") {
+          void playback.catch(() => undefined);
+        }
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
       }
     }
     window.dispatchEvent(new Event(CHANGE_EVENT));

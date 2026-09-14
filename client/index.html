@@ -67,18 +67,15 @@
       .startup-loader-art-frame {
         position: relative;
         display: block;
-         width: min(1008px, 100vw);
-         height: min(2244px, 100dvh);
-         max-width: 100%;
-         max-height: 100%;
-         aspect-ratio: 1008 / 2244;
+          width: 100%;
+          height: 100%;
       }
       .startup-loader-art {
         display: block;
         width: 100%;
         height: 100%;
-        object-fit: contain;
-        object-position: center;
+         object-fit: contain;
+         object-position: center center;
       }
       .startup-loader-overlay {
         display: flex;
@@ -240,17 +237,39 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
+         const stopAudio = () => {
+           audio.pause();
+           audio.currentTime = 0;
+         };
          const startAudio = () => {
-           void audio.play().catch(() => undefined);
+           if (audio.muted) return;
+           const playback = audio.play();
+           if (playback && typeof playback.catch === "function") {
+             void playback.catch(() => undefined);
+           }
+         };
+         const syncAudioPreference = () => {
+           const isMuted = window.localStorage.getItem(mutedKey) === "true";
+           audio.muted = isMuted;
+           if (isMuted) {
+             stopAudio();
+           } else {
+             startAudio();
+           }
          };
          startAudio();
          window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
          window.addEventListener("keydown", startAudio, { once: true });
-        audio.addEventListener("ended", () => {
-          if (document.getElementById("startup-loader")) return;
-          audio.currentTime = 0;
-          void audio.play().catch(() => undefined);
-        });
+         window.addEventListener("safenet-soundtrack-change", syncAudioPreference);
+         window.addEventListener("pagehide", stopAudio);
+         document.addEventListener("visibilitychange", () => {
+           if (document.hidden) {
+             stopAudio();
+           } else {
+             startAudio();
+           }
+         });
+         audio.addEventListener("ended", startAudio);
 
       })();
     </script>

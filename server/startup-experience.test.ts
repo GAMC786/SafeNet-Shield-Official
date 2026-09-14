@@ -107,6 +107,10 @@ test("the app mounts directly with a Dashboard fallback", () => {
     );
     assert.doesNotMatch(indexHtml, /startup-loader-brand|startup-loader-brand-safenet|startup-loader-brand-shield/);
     assert.doesNotMatch(indexHtml, /SafeNet<\/span>|Shield<\/span>/);
+    assert.match(indexHtml, /width: 100%;/);
+    assert.match(indexHtml, /height: 100%;/);
+    assert.match(indexHtml, /object-fit: contain/);
+    assert.match(indexHtml, /object-position: center center/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);
@@ -163,9 +167,13 @@ test("the soundtrack is configured as a persistent loop with an ended fallback",
 test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(indexHtml, /autoplay/);
   assert.match(indexHtml, /addEventListener\("ended"/);
-  assert.match(indexHtml, /void audio\.play\(\)\.catch/);
+  assert.match(indexHtml, /playback && typeof playback\.catch === "function"/);
+  assert.match(indexHtml, /addEventListener\("pagehide", stopAudio\)/);
+  assert.match(indexHtml, /addEventListener\("visibilitychange"/);
+  assert.match(indexHtml, /safenet-soundtrack-change/);
   assert.doesNotMatch(appSource, /SoundtrackControl/);
-  assert.match(androidMainActivity, /!document\.getElementById\('startup-loader'\)/);
+  assert.match(androidMainActivity, /onPause\(\)/);
+  assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
 test("Measure Your Network keeps ISP profiling and uses the LibreSpeed transport", () => {

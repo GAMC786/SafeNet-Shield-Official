@@ -201,6 +201,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onPause() {
+        stopSoundtrack();
         super.onPause();
     }
 
@@ -236,8 +237,8 @@ public class MainActivity extends BridgeActivity {
         }
         getBridge().getWebView().evaluateJavascript(
                 "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
-                        "if(!document.getElementById('startup-loader')&&a&&!a.muted)" +
-                        "{void a.play().catch(()=>{});}})();",
+                        "if(a&&!a.muted){const p=a.play();" +
+                        "if(p&&typeof p.catch==='function'){p.catch(()=>{});}}})();",
                 null
         );
     }
