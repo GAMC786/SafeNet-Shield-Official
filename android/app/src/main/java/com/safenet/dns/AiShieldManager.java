@@ -34,6 +34,7 @@ import org.json.JSONObject;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.ByteArrayOutputStream;
 
 /**
  * Consent-gated Android capture sessions for the AI Shield classifier.
@@ -48,6 +49,10 @@ public final class AiShieldManager {
         void onResult(AiShieldClassifier.Analysis analysis);
     }
 
+    public interface FrameListener {
+        void onFrame(String source, byte[] jpegBytes);
+    }
+
     private static final long SAMPLE_INTERVAL_MS = 750L;
     private static final int CAMERA_WIDTH = 640;
     private static final int CAMERA_HEIGHT = 480;
@@ -55,6 +60,7 @@ public final class AiShieldManager {
     private final Context context;
     private final AiShieldClassifier classifier;
     private final ResultListener listener;
+    private final FrameListener frameListener;
     private final Object lock = new Object();
 
     private HandlerThread captureThread;
@@ -71,11 +77,17 @@ public final class AiShieldManager {
     private AiShieldClassifier.Analysis lastAnalysis;
     private long captureGeneration;
     private MediaProjection.Callback projectionCallback;
+    private boolean cloudUploadEnabled;
 
     public AiShieldManager(Context context, ResultListener listener) {
+        this(context, listener, null);
+    }
+
+    public AiShieldManager(Context context, ResultListener listener, FrameListener frameListener) {
         this.context = context.getApplicationContext();
         this.classifier = new AiShieldClassifier(context);
         this.listener = listener;
+        this.frameListener = frameListener;
         this.lastAnalysis = classifier.isMetadataAvailable()
             ? AiShieldClassifier.captureUnavailable("none", "AI Shield monitoring is idle.")
             : AiShieldClassifier.modelUnavailable("none", classifier.getUnavailableReason());
@@ -260,6 +272,12 @@ public final class AiShieldManager {
         }
     }
 
+    public void setCloudUploadEnabled(boolean enabled) {
+        synchronized (lock) {
+            cloudUploadEnabled = enabled;
+        }
+    }
+
     public void handlePause() {
         synchronized (lock) {
             stopLocked(true);
@@ -300,6 +318,7 @@ public final class AiShieldManager {
             byte[] bytes = new byte[buffer.remaining()];
             buffer.get(bytes);
             bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            emitFrameIfEnabled("camera", bytes);
             analyzeAndEmit(bitmap, "camera", generation);
         } catch (Exception error) {
             synchronized (lock) {
@@ -354,6 +373,7 @@ public final class AiShieldManager {
                 image.getWidth(),
                 image.getHeight()
             );
+            emitBitmapFrameIfEnabled("screen", bitmap);
             analyzeAndEmit(bitmap, "screen", generation);
         } catch (Exception error) {
             synchronized (lock) {
@@ -383,6 +403,31 @@ public final class AiShieldManager {
             if (isCaptureActiveLocked(generation, frameSource)) {
                 emitLocked(analysis);
             }
+        }
+    }
+
+    private void emitFrameIfEnabled(String frameSource, byte[] jpegBytes) {
+        FrameListener callback;
+        synchronized (lock) {
+            if (!cloudUploadEnabled || frameListener == null || jpegBytes.length == 0) {
+                return;
+            }
+            callback = frameListener;
+        }
+        callback.onFrame(frameSource, jpegBytes);
+    }
+
+    private void emitBitmapFrameIfEnabled(String frameSource, Bitmap bitmap) {
+        FrameListener callback;
+        synchronized (lock) {
+            if (!cloudUploadEnabled || frameListener == null) {
+                return;
+            }
+            callback = frameListener;
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        if (bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)) {
+            callback.onFrame(frameSource, output.toByteArray());
         }
     }
 

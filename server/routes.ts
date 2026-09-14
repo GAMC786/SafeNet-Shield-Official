@@ -23,6 +23,10 @@ import {
 import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
+import {
+  getDeepCleerStatus,
+  moderateDeepCleerImage,
+} from "./deepcleer-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -334,6 +338,29 @@ export async function registerRoutes(
     const { getOneSignalStatus } = await import("./replit_integrations/onesignal/client");
     const status = await getOneSignalStatus();
     res.status(status.connected ? 200 : 503).json(status);
+  });
+
+  app.get("/api/integrations/deepcleer/status", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(getDeepCleerStatus());
+  });
+
+  app.post("/api/integrations/deepcleer/image", async (req, res) => {
+    try {
+      const result = await moderateDeepCleerImage(req.body);
+      res.json(result);
+    } catch (error) {
+      const statusCode = error instanceof Error && "statusCode" in error
+        ? Number((error as { statusCode?: number }).statusCode) || 503
+        : 503;
+      res.status(statusCode).json({
+        provider: "deepcleer",
+        message: error instanceof Error ? error.message : "DeepCleer image moderation failed.",
+        code: error instanceof Error && "code" in error
+          ? (error as { code?: string }).code
+          : "DEEPCLEER_REQUEST_FAILED",
+      });
+    }
   });
 
   app.post("/api/ddns", async (req, res) => {

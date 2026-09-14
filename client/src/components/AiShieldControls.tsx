@@ -169,6 +169,48 @@ export function AiShieldControls() {
             </p>
           </div>
 
+          <div
+            className={`rounded-md border p-3 text-sm ${
+              shield.deepCleer?.available
+                ? "border-primary/30 bg-primary/10 text-primary-foreground"
+                : "border-white/10 bg-background/30 text-muted-foreground"
+            }`}
+            data-testid="deepcleer-provider-status"
+          >
+            <div className="flex flex-wrap items-center gap-2 font-medium">
+              <span>DeepCleer cloud provider</span>
+              <Badge variant="outline" className="text-[10px] uppercase">
+                {shield.deepCleer?.available ? "available" : "on-device only"}
+              </Badge>
+            </div>
+            <p className="mt-1">
+              {shield.deepCleer?.message ||
+                "Checking DeepCleer access. Camera and screen frames remain on-device until cloud access is explicitly enabled."}
+            </p>
+            {shield.deepCleer?.available && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Supported vendor modalities: {shield.deepCleer.capabilities.join(", ")}.
+                The camera and screen switches below still control the consented local capture session.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Send frames to DeepCleer</p>
+              <p className="text-xs text-muted-foreground">
+                Off by default. Enabling this sends consented camera or screen frames to the configured vendor.
+              </p>
+            </div>
+            <Switch
+              checked={shield.cloudEnabled}
+              onCheckedChange={shield.setCloudEnabled}
+              disabled={!shield.deepCleer?.available || shield.isBusy}
+              data-testid="switch-deepcleer-cloud"
+              aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
+            />
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
               <div className="flex min-w-0 items-center gap-2">

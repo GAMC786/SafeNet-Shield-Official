@@ -145,9 +145,14 @@ interface SafeNetVpnPlugin {
   startAiShieldCamera(): Promise<AiShieldResult>;
   startAiShieldScreen(): Promise<AiShieldResult>;
   stopAiShield(): Promise<AiShieldResult>;
+  setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
   addListener(
     eventName: "aiShieldResult",
     listenerFunc: (result: AiShieldResult) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "aiShieldFrame",
+    listenerFunc: (frame: { source: "camera" | "screen"; imageBase64: string }) => void,
   ): Promise<PluginListenerHandle>;
 }
 

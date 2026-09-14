@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
 import android.webkit.CookieManager;
+import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -559,6 +560,12 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setAiShieldCloudUploadEnabled(PluginCall call) {
+        aiShield().setCloudUploadEnabled(call.getBoolean("enabled", false));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void scanInstalledApks(PluginCall call) {
         scanExecutor().execute(() -> {
             List<ApkScanner.ScanResult> results = apkScanner().scanInstalledApplications();
@@ -624,7 +631,13 @@ public class SafeNetVpnPlugin extends Plugin {
         if (aiShieldManager == null) {
             aiShieldManager = new AiShieldManager(
                 getContext(),
-                analysis -> notifyListeners("aiShieldResult", toJsObject(analysis.toJson()))
+                analysis -> notifyListeners("aiShieldResult", toJsObject(analysis.toJson())),
+                (source, jpegBytes) -> {
+                    JSObject frame = new JSObject();
+                    frame.put("source", source);
+                    frame.put("imageBase64", Base64.encodeToString(jpegBytes, Base64.NO_WRAP));
+                    notifyListeners("aiShieldFrame", frame);
+                }
             );
         }
         return aiShieldManager;

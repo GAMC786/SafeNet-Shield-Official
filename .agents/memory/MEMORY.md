@@ -54,3 +54,4 @@
 - [WireGuard release secret boundary](wireguard-release-secret-boundary.md) — tagged Android builds fail closed until all protected WireGuard values exist as GitHub Actions secrets.
 - [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
 - [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
+- [DeepCleer integration boundary](deepcleer-integration-boundary.md) — vendor onboarding requires accessKey/appId/eventId/tokenId and explicit frame-sharing consent before cloud moderation.

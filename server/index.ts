@@ -70,7 +70,13 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+    if (capturedJsonResponse) {
+      if (path === "/api/integrations/deepcleer/image") {
+        capturedJsonResponse = {
+          provider: "deepcleer",
+          result: res.statusCode < 400 ? "received" : "failed",
+        };
+      }
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
