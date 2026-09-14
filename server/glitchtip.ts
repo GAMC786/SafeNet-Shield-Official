@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import type { Express } from "express";
 
-const packageVersion = process.env.npm_package_version ?? "1.0.69";
+const packageVersion = process.env.npm_package_version ?? "1.0.70";
 const release = process.env.GLITCHTIP_RELEASE?.trim() || `safenet-dns@${packageVersion}`;
 
 let initialized = false;
