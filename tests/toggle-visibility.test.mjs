@@ -962,7 +962,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("the ISP-based Measure Your Network UI separates SafeNet diagnostics from the official Cloudflare test", async () => {
+test("the built-in Cloudflare Measure Your Network UI has no external test button", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -978,11 +978,8 @@ test("the ISP-based Measure Your Network UI separates SafeNet diagnostics from t
 
   await page.getByText("Measure your network", { exact: true }).waitFor();
   await page.getByTestId("speedtest-wave-chart").waitFor();
-  const officialLink = page.getByTestId("button-official-cloudflare-speedtest");
-  assert.equal(await officialLink.count(), 1);
-  assert.equal(await officialLink.getAttribute("href"), "https://speed.cloudflare.com/");
-  assert.equal(await officialLink.getAttribute("target"), null);
-  assert.equal(await page.getByText("Official Cloudflare Speed Test", { exact: true }).count(), 1);
+  assert.equal(await page.getByTestId("button-official-cloudflare-speedtest").count(), 0);
+  assert.equal(await page.getByText("Open Official Test", { exact: true }).count(), 0);
 
   assert.deepEqual(
     pageErrors,
@@ -1019,7 +1016,7 @@ test("Measure Your Network completes Cloudflare phases and supports pause and re
   assert.ok((await page.getByText("Paused", { exact: true }).count()) >= 1, "paused state should be visible");
 
   await page.getByTestId("button-start-speedtest").click();
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 10_000 });
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 60_000 });
   assert.notEqual(await page.getByTestId("text-ping-result").textContent(), "—", "latency result should be populated");
   assert.notEqual(await page.getByTestId("text-download-result").textContent(), "—", "download result should be populated");
   assert.notEqual(await page.getByTestId("text-upload-result").textContent(), "—", "upload result should be populated");

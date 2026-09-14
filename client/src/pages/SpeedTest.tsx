@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock3,
   Download,
-  ExternalLink,
   Gauge,
   Globe2,
   Loader2,
@@ -58,23 +57,6 @@ const phaseProgress: Record<TestPhase, number> = {
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
-const cloudflareMeasurements = [
-  { type: "latency" as const, numPackets: 1 },
-  { type: "download" as const, bytes: 100_000, count: 1, bypassMinDuration: true },
-  { type: "latency" as const, numPackets: 8 },
-  { type: "download" as const, bytes: 100_000, count: 4 },
-  { type: "download" as const, bytes: 1_000_000, count: 2 },
-  { type: "upload" as const, bytes: 100_000, count: 4 },
-  {
-    type: "packetLoss" as const,
-    numPackets: 100,
-    batchSize: 10,
-    batchWaitTime: 10,
-    responsesWaitTime: 1_000,
-    connectionTimeout: 5_000,
-  },
-  { type: "upload" as const, bytes: 256_000, count: 2 },
-];
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -119,6 +101,17 @@ function cloudflareResultsToSpeedResults(results: Results): SpeedResults {
     upload: typeof summary.upload === "number" ? Number((summary.upload / 1_000_000).toFixed(2)) : null,
     packetLoss: typeof summary.packetLoss === "number" ? Number((summary.packetLoss * 100).toFixed(2)) : null,
   };
+}
+
+function signalFromResults(results: SpeedResults) {
+  if (results.download !== null || results.upload !== null) {
+    const throughput = Math.max(results.download ?? 0, results.upload ?? 0, 1);
+    return Math.max(0.18, Math.min(0.95, Math.log10(throughput) / 3));
+  }
+  if (results.latency !== null) {
+    return Math.max(0.18, Math.min(0.9, 1 - results.latency / 500));
+  }
+  return 0.18;
 }
 
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
@@ -239,27 +232,27 @@ export default function SpeedTest() {
       logMeasurementApiUrl: null,
       logAimApiUrl: null,
       turnServerCredsApiUrl: "/api/speedtest/turn-creds",
-      measurements: cloudflareMeasurements,
     });
     cloudflareSpeedTestRef.current = speedTest;
     const updateResults = (results: Results) => {
       if (runId !== runIdRef.current) return;
-      setResults(cloudflareResultsToSpeedResults(results));
-      appendWavePoint(0.38 + Math.random() * 0.5);
+      const nextResults = cloudflareResultsToSpeedResults(results);
+      setResults(nextResults);
+      appendWavePoint(signalFromResults(nextResults));
     };
     speedTest.onRunningChange = (running) => {
       if (runId === runIdRef.current) setIsRunning(running);
     };
-    speedTest.onPhaseChange = ({ measurementId, measurement }: PhaseChangePayload) => {
+    speedTest.onPhaseChange = ({ measurement }: PhaseChangePayload) => {
       if (runId !== runIdRef.current) return;
-      const progress = Math.min(94, Math.round(12 + (measurementId / cloudflareMeasurements.length) * 82));
       const nextPhase: TestPhase = measurement.type === "latency" || measurement.type === "packetLoss"
         ? "latency"
         : measurement.type === "download"
           ? "download"
           : "upload";
       setPhase(nextPhase);
-      setProgress(progress);
+      setProgress((current) => Math.max(current, phaseProgress[nextPhase]));
+      appendWavePoint(phaseProgress[nextPhase] / 100);
     };
     speedTest.onResultsChange = () => updateResults(speedTest.results);
     speedTest.onFinish = (results) => {
@@ -341,7 +334,7 @@ export default function SpeedTest() {
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">SafeNet&apos;s in-app diagnostic measures this device&apos;s connection against Cloudflare&apos;s global edge network. For Cloudflare&apos;s exact hosted experience, use the official test below.</p>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">SafeNet&apos;s built-in Cloudflare Speed Test measures this device&apos;s connection against Cloudflare&apos;s global edge network using Cloudflare&apos;s standard browser measurement sequence.</p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
                 <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">
@@ -351,22 +344,6 @@ export default function SpeedTest() {
                 <Button size="lg" onClick={pauseSpeedTest} variant="outline" className="px-8" data-testid="button-pause-speedtest"><Pause className="mr-2 h-5 w-5" />Pause Test</Button>
               )}
               {(phase === "complete" || phase === "error") && <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest"><RotateCcw className="mr-2 h-4 w-4" />Reset</Button>}
-            </div>
-            <div className="rounded-lg border border-sky-400/20 bg-sky-400/5 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-sky-100">Official Cloudflare Speed Test</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Opens Cloudflare&apos;s hosted speed.cloudflare.com experience in this tab.</p>
-                </div>
-                <a
-                  href="https://speed.cloudflare.com/"
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-sky-400/40 px-3 text-sm font-semibold text-sky-200 transition-colors hover:bg-sky-400/10 hover:text-white"
-                  data-testid="button-official-cloudflare-speedtest"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open Official Test
-                </a>
-              </div>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {phase === "complete" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : phase === "error" ? <AlertTriangle className="h-4 w-4 text-rose-400" /> : <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />}
