@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock3,
   Download,
+  ExternalLink,
   Gauge,
   Globe2,
   Loader2,
@@ -340,7 +341,7 @@ export default function SpeedTest() {
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">Measure this device&apos;s connection against Cloudflare&apos;s global edge network. The network profile below identifies this device&apos;s public IP separately.</p>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">SafeNet&apos;s in-app diagnostic measures this device&apos;s connection against Cloudflare&apos;s global edge network. For Cloudflare&apos;s exact hosted experience, use the official test below.</p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
                 <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">
@@ -350,6 +351,22 @@ export default function SpeedTest() {
                 <Button size="lg" onClick={pauseSpeedTest} variant="outline" className="px-8" data-testid="button-pause-speedtest"><Pause className="mr-2 h-5 w-5" />Pause Test</Button>
               )}
               {(phase === "complete" || phase === "error") && <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest"><RotateCcw className="mr-2 h-4 w-4" />Reset</Button>}
+            </div>
+            <div className="rounded-lg border border-sky-400/20 bg-sky-400/5 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-sky-100">Official Cloudflare Speed Test</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Opens Cloudflare&apos;s hosted speed.cloudflare.com experience in this tab.</p>
+                </div>
+                <a
+                  href="https://speed.cloudflare.com/"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-sky-400/40 px-3 text-sm font-semibold text-sky-200 transition-colors hover:bg-sky-400/10 hover:text-white"
+                  data-testid="button-official-cloudflare-speedtest"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open Official Test
+                </a>
+              </div>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {phase === "complete" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : phase === "error" ? <AlertTriangle className="h-4 w-4 text-rose-400" /> : <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />}

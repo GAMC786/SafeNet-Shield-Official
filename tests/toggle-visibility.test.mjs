@@ -962,7 +962,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("the ISP-based Measure Your Network UI uses Cloudflare without an external test link", async () => {
+test("the ISP-based Measure Your Network UI separates SafeNet diagnostics from the official Cloudflare test", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -978,8 +978,11 @@ test("the ISP-based Measure Your Network UI uses Cloudflare without an external 
 
   await page.getByText("Measure your network", { exact: true }).waitFor();
   await page.getByTestId("speedtest-wave-chart").waitFor();
-  assert.equal(await page.getByTestId("button-google-speedtest").count(), 0);
-  assert.equal(await page.getByText("Google Speed Test", { exact: true }).count(), 0);
+  const officialLink = page.getByTestId("button-official-cloudflare-speedtest");
+  assert.equal(await officialLink.count(), 1);
+  assert.equal(await officialLink.getAttribute("href"), "https://speed.cloudflare.com/");
+  assert.equal(await officialLink.getAttribute("target"), null);
+  assert.equal(await page.getByText("Official Cloudflare Speed Test", { exact: true }).count(), 1);
 
   assert.deepEqual(
     pageErrors,
