@@ -33,6 +33,7 @@ export default function Firewall() {
   const updateSettings = useUpdateSettings();
   const firewallEnabled = settings?.firewallEnabled ?? false;
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
+  const isProtected = firewallEnabled && preventDnsOverrides;
 
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
@@ -308,7 +309,7 @@ export default function Firewall() {
       <Header 
         title="Firewall Rules" 
         subtitle="Access Control Lists" 
-        status="active"
+        status={isProtected ? "active" : "unprotected"}
       />
 
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">

@@ -289,6 +289,8 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
+  assert.match(firewallSource, /const isProtected = firewallEnabled && preventDnsOverrides/);
+  assert.match(firewallSource, /status=\{isProtected \? "active" : "unprotected"\}/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);

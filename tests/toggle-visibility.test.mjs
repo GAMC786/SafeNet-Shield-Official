@@ -466,11 +466,15 @@ for (const viewport of viewports) {
     }
 
     assert.ok(backgroundColors.size >= 1, "the firewall access-rule switch must have a visible color");
+    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
 
     const firewallMaster = page.getByTestId("switch-firewall-master");
     await firewallMaster.click();
     await waitForAttribute(firewallMaster, "aria-checked", "true");
     assert.match(await page.getByText("Enforced while DNS Firewall is On.").textContent(), /Enforced/);
+    await page.getByText("Protected", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
 
     const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
     await focusWithKeyboard(page, dnsOverrides);
@@ -487,12 +491,15 @@ for (const viewport of viewports) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
+    await page.getByText("Unprotected", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
 
     for (const [name, expectedState] of [["Prevent DNS Overrides", "true"]]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
+    await page.getByText("Protected", { exact: true }).waitFor();
 
     await page.close();
   });
