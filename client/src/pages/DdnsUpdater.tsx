@@ -135,6 +135,15 @@ export default function DdnsUpdater() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.provider === "cloudflare" && cloudflareStatus.data?.ready !== true) {
+      toast({
+        title: "Active Cloudflare zone required",
+        description: cloudflareStatus.data?.message
+          || "Add and activate a domain zone in Cloudflare before creating this updater.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       if (editingUpdater) {
         const { apiKey, customUrl, ...updaterData } = formData;
@@ -380,6 +389,16 @@ export default function DdnsUpdater() {
                         || cloudflareStatus.error?.message
                         || "Connect Cloudflare in Replit before creating this updater."}
                   </p>
+                  {!cloudflareStatus.isLoading && cloudflareStatus.data?.ready !== true && (
+                    <a
+                      href="https://dash.cloudflare.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block font-medium underline underline-offset-4"
+                    >
+                      Open Cloudflare dashboard
+                    </a>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

@@ -364,6 +364,9 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
+  assert.match(ddnsSource, /Active Cloudflare zone required/);
+  assert.match(ddnsSource, /Add and activate a domain zone in Cloudflare/);
+  assert.match(ddnsSource, /https:\/\/dash\.cloudflare\.com\//);
   assert.match(ddnsSource, /Test/);
   assert.match(ddnsSource, /Manual update verification successful/);
   assert.match(ddnsSource, /Manual update verification unsuccessful/);
