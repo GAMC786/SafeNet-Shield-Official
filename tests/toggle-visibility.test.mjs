@@ -513,6 +513,7 @@ for (const viewport of viewports) {
 
     const activeToggle = page.getByRole("button", { name: "Turn Off home.example.com" });
     const inactiveToggle = page.getByRole("button", { name: "Turn On backup.example.com" });
+    const homeTestButton = page.getByTestId("button-test-ddns-1");
     assert.equal(await activeToggle.getAttribute("aria-pressed"), "true");
     assert.equal(await inactiveToggle.getAttribute("aria-pressed"), "false");
 
@@ -520,8 +521,11 @@ for (const viewport of viewports) {
     const enableHome = page.getByRole("button", { name: "Turn On home.example.com" });
     await enableHome.waitFor();
     assert.equal(await enableHome.getAttribute("aria-pressed"), "false");
+    assert.equal(await homeTestButton.isDisabled(), false, "manual DDNS verification remains available when auto updates are off");
+    assert.match(await homeTestButton.getAttribute("class"), /text-muted-foreground/);
     await enableHome.click();
     await page.getByRole("button", { name: "Turn Off home.example.com" }).waitFor();
+    assert.match(await homeTestButton.getAttribute("class"), /text-sky-300/);
 
     for (const [name, toggle] of [
       ["active DDNS toggle", page.getByRole("button", { name: "Turn Off home.example.com" })],
