@@ -105,9 +105,8 @@ test("the app mounts directly with a Dashboard fallback", () => {
       startupArtworkSource.subarray(0, 8),
       Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     );
-    assert.match(indexHtml, /startup-loader-brand-safenet/);
-    assert.match(indexHtml, /startup-loader-brand-shield/);
-    assert.match(indexHtml, /top: 8\.5%/);
+    assert.doesNotMatch(indexHtml, /startup-loader-brand|startup-loader-brand-safenet|startup-loader-brand-shield/);
+    assert.doesNotMatch(indexHtml, /SafeNet<\/span>|Shield<\/span>/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);

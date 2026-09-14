@@ -80,43 +80,6 @@
         object-fit: contain;
         object-position: center;
       }
-       .startup-loader-brand {
-         position: absolute;
-         top: 8.5%;
-         left: 50%;
-         display: flex;
-         align-items: baseline;
-         justify-content: center;
-         gap: .24em;
-         padding: .16em .52em .2em;
-         border-radius: 999px;
-         background: rgba(255, 255, 255, .9);
-         box-shadow: 0 1px 4px rgba(15, 23, 42, .12);
-         font-size: clamp(10px, 3vw, 16px);
-         font-weight: 800;
-         letter-spacing: -.025em;
-         line-height: 1;
-         white-space: nowrap;
-         transform: translate(-50%, -50%);
-       }
-       .startup-loader-brand-safenet {
-         background: linear-gradient(
-           90deg,
-           #ef4444 0%,
-           #f97316 16%,
-           #eab308 32%,
-           #22c55e 48%,
-           #06b6d4 64%,
-           #3b82f6 80%,
-           #8b5cf6 100%
-         );
-         -webkit-background-clip: text;
-         background-clip: text;
-         color: transparent;
-       }
-       .startup-loader-brand-shield {
-         color: #000000;
-       }
       .startup-loader-overlay {
         display: flex;
         align-items: center;
@@ -229,10 +192,6 @@
                 src="/SafeNet_Astronaut_White_Background.png"
                alt="SafeNet Shield artwork"
             />
-             <div class="startup-loader-brand" aria-label="SafeNet Shield">
-               <span class="startup-loader-brand-safenet">SafeNet</span>
-               <span class="startup-loader-brand-shield">Shield</span>
-             </div>
           </div>
         </div>
         <div class="startup-loader-overlay">
