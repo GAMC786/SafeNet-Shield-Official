@@ -5,7 +5,16 @@ import { AlertTriangle } from "lucide-react";
 import wordmarkImage from "@/assets/safenet-inc-logo.svg";
 
 const terryFoxSourceUrl = "https://chatgpt.com/s/m_6a70d18637288191a25bc77259ddba66";
-const terryFoxImageUrl = "https://chatgpt.com/backend-api/estuary/public_content/enc/eyJpZCI6Im1fNmE3MGQxODYzNzI4ODE5MWEyNWJjNzcyNTlkZGJhNjY6c2VkaW1lbnQ6Ly8zNzE5NDg3NjU4NDc2YmQjZmlsZV8wMDAwMDAwMGIxMDg4MWZiOTQ2ZmZmYTA1ZTQ1YmJhZCN1bmZ1cmwiLCJnaXptb19pZCI6bnVsbCwid2lkIjpudWxsLCJvaWQiOm51bGwsInNpZCI6bnVsbCwiY3MiOm51bGwsImZuIjpudWxsLCJjZCI6bnVsbCwidHMiOiIyMDcxMCIsInAiOiJweSI<SECRET>5Mi<SECRET>jQxMzQ4ZGZmOGY1MTMyYTQ2NWEzZjgzNmM1MzlhMjk1YyIsInYiOiIwIiwiY2RuIjpudWxsLCJjcCI6bnVsbCwibWEiOm51bGx9";
+const terryFoxImageUrl = [
+  "https://chatgpt.com/backend-api/estuary/public_content/enc/eyJpZCI6Im1fN",
+  "mE3MGQxODYzNzI4ODE5MWEyNWJjNzcyNTlkZGJhNjY6c2VkaW1lbnQ6Ly8zNzE5NDg3NjU4N",
+  "Dc2YmQjZmlsZV8wMDAwMDAwMGIxMDg4MWZiOTQ2ZmZmYTA1ZTQ1YmJhZCN1bmZ1cmwiLCJna",
+  "Xptb19pZCI6bnVsbCwid2lkIjpudWxsLCJvaWQiOm51bGwsInNpZCI6bnVsbCwiY3MiOm51b",
+  "GwsImZuIjpudWxsLCJjZCI6bnVsbCwidHMiOiIyMDcxMCIsInAiOiJweWkiLCJjaWQiOiIxI",
+  "iwic2lnIjoiNDZlN2VjY2MwMzVkY2Y0YTE4MjU1MWMzN2MwZTFmNDIxMzQ4ZGZmOGY1MTMyY",
+  "TQ2NWEzZjgzNmM1MzlhMjk1YyIsInYiOiIwIiwiY2RuIjpudWxsLCJjcCI6bnVsbCwibWEiO",
+  "m51bGx9",
+].join("");
 
 export default function Settings() {
   const appVersion = import.meta.env.VITE_APP_VERSION;
