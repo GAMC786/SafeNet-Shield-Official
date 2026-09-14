@@ -190,6 +190,7 @@ export function AiShieldControls() {
           <Button
             type="button"
             size="sm"
+            className="disabled:opacity-100"
             onClick={() => void run(shield.startCamera)}
             disabled={!shield.supported || shield.isBusy}
             data-testid="button-ai-start-camera"
@@ -199,6 +200,7 @@ export function AiShieldControls() {
           <Button
             type="button"
             size="sm"
+            className="disabled:opacity-100"
             onClick={() => void run(shield.startScreen)}
             disabled={!shield.supported || shield.isBusy}
             data-testid="button-ai-start-screen"
@@ -208,7 +210,8 @@ export function AiShieldControls() {
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="destructive"
+            className="disabled:opacity-100"
             onClick={() => void run(shield.stop)}
             disabled={!shield.supported || shield.isBusy || !monitoring}
             data-testid="button-ai-stop"
