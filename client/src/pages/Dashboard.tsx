@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
+import { WireGuardInfographic } from "@/components/WireGuardInfographic";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -255,53 +256,35 @@ export default function Dashboard() {
         </CyberCard>
       </div>
 
-      {vpn.supported && vpn.status?.wireguardConfigured && (
-        <CyberCard className="space-y-4" data-testid="dashboard-wireguard-card">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-bold text-white">SafeNet WireGuard</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Protected through the SafeNet-operated gateway{" "}
-                <span className="font-mono text-foreground">{vpn.status.wireguardGateway}</span>.
-              </p>
-            </div>
-            <Switch
-              checked={vpn.status.wireguardRunning ?? false}
-              onCheckedChange={(checked) => {
-                if (checked) {
-                  void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(() => undefined);
-                } else {
-                  void vpn.stopWireGuard().catch(() => undefined);
-                }
-              }}
-              disabled={
-                vpn.isBusy ||
-                vpn.status === null ||
-                (!vpn.status.wireguardRunning && vpn.status.running)
+      <CyberCard className="space-y-4">
+          <WireGuardInfographic
+            supported={vpn.supported}
+            configured={vpn.status?.wireguardConfigured === true}
+            running={vpn.status?.wireguardRunning === true}
+            disabled={
+              vpn.isBusy ||
+              vpn.status === null ||
+              (!vpn.status?.wireguardRunning && vpn.status?.running === true)
+            }
+            gateway={vpn.status?.wireguardGateway}
+            dnsServers={vpn.status?.wireguardDnsServers || selectedWireGuardDns}
+            onToggle={(checked) => {
+              if (checked) {
+                void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(() => undefined);
+              } else {
+                void vpn.stopWireGuard().catch(() => undefined);
               }
-              aria-label="SafeNet WireGuard On/Off"
-            />
-          </div>
-          <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-            <p>
-              SafeNet owns Android&apos;s single VPN permission for this tunnel. Stop DNS protection
-              before starting WireGuard; the two tunnels cannot run together.
-            </p>
-            <p className="mt-2">
-              Gateway peer: <span className="font-mono text-foreground">{vpn.status.wireguardPeerPublicKey}</span>
-            </p>
-            <p className="mt-2">
-              DNS inside tunnel:{" "}
-              <span className="font-mono text-foreground">
-                {vpn.status.wireguardDnsServers || selectedWireGuardDns || "not selected"}
-              </span>
-            </p>
-          </div>
-          {vpn.status.wireguardError && (
+            }}
+          />
+          {vpn.status?.wireguardError && (
             <p role="alert" className="text-xs text-destructive">{vpn.status.wireguardError}</p>
           )}
-        </CyberCard>
-      )}
+          {vpn.status?.running && !vpn.status.wireguardRunning && (
+            <p className="text-xs text-muted-foreground">
+              Stop SafeNet DNS protection before starting WireGuard; Android allows one active VPN tunnel at a time.
+            </p>
+          )}
+      </CyberCard>
 
       {vpn.supported && (
         <EulaDialog

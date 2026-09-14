@@ -621,6 +621,10 @@ test("editable Dashboard and security form values survive returning to the page"
 
   const soundtrack = page.getByRole("switch", { name: /Soundtrack/ });
   assert.equal(await soundtrack.getAttribute("aria-checked"), "true");
+  await page.getByTestId("dashboard-wireguard-card").waitFor();
+  const wireGuardToggle = page.getByRole("switch", { name: "SafeNet WireGuard On/Off" });
+  assert.equal(await wireGuardToggle.getAttribute("aria-checked"), "false");
+  assert.equal(await wireGuardToggle.isDisabled(), true);
   await soundtrack.click();
   await waitForAttribute(soundtrack, "aria-checked", "false");
   await page.reload();

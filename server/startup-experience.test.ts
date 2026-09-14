@@ -53,6 +53,10 @@ const headerSource = readFileSync(
   path.join(clientRoot, "src/components/Header.tsx"),
   "utf8",
 );
+const wireGuardInfographicSource = readFileSync(
+  path.join(clientRoot, "src/components/WireGuardInfographic.tsx"),
+  "utf8",
+);
 const navigationSource = readFileSync(
   path.join(clientRoot, "src/components/Navigation.tsx"),
   "utf8",
@@ -307,6 +311,10 @@ test("the Dashboard reports SafeNet VPN protection instead of generic system act
   assert.match(dashboardSource, /startAfterEula/);
   assert.match(dashboardSource, /Available in the SafeNet Android APK/);
    assert.match(dashboardSource, /SafeNet VPN protection is running/);
+  assert.match(dashboardSource, /WireGuardInfographic/);
+  assert.match(wireGuardInfographicSource, /Official WireGuard tunnel/);
+  assert.match(wireGuardInfographicSource, /SafeNet WireGuard On\/Off/);
+  assert.match(wireGuardInfographicSource, /Android Tunnel Library/);
   assert.doesNotMatch(dashboardSource, /System Active/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
@@ -318,8 +326,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.match(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Test/);
-  assert.match(ddnsSource, /Connection test successful/);
-  assert.match(ddnsSource, /Connection test unsuccessful/);
+  assert.match(ddnsSource, /Manual update verification successful/);
+  assert.match(ddnsSource, /Manual update verification unsuccessful/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
   assert.match(appSource, /useFirewallConfig/);
