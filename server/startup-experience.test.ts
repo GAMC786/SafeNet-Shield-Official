@@ -20,8 +20,13 @@ const nativeFallbackSource = readFileSync(
 );
 const indexHtml = readFileSync(path.join(clientRoot, "index.html"), "utf8");
 const startupArtworkSource = readFileSync(
-  path.join(clientRoot, "public/SafeNet_Astronaut_White_Background.svg"),
-  "utf8",
+  path.join(clientRoot, "public/SafeNet_Astronaut_White_Background.png"),
+);
+const uploadedArtworkSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "attached_assets/SafeNet_Astronaut_White_Background_1789368720151.png",
+  ),
 );
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
@@ -93,9 +98,16 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
   assert.match(indexHtml, /id="startup-loader"/);
   assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
-   assert.match(indexHtml, /SafeNet_Astronaut_White_Background\.svg/);
+    assert.match(indexHtml, /SafeNet_Astronaut_White_Background\.png/);
    assert.match(indexHtml, /background: #ffffff/);
-    assert.match(startupArtworkSource, /width="1008" height="2244"/);
+    assert.deepEqual(startupArtworkSource, uploadedArtworkSource);
+    assert.deepEqual(
+      startupArtworkSource.subarray(0, 8),
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    assert.match(indexHtml, /startup-loader-brand-safenet/);
+    assert.match(indexHtml, /startup-loader-brand-shield/);
+    assert.match(indexHtml, /top: 22%/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);
