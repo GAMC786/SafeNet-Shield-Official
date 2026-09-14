@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="preload" as="image" href="/safenet-astronaut-loader-transparent.png" />
+    <link rel="preload" as="image" href="/SafeNet_Astronaut_White_Background.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Rajdhani:wght@300..700&display=swap" rel="stylesheet">
@@ -27,8 +27,8 @@
         box-sizing: border-box;
         padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
         overflow: hidden;
-        background: #090b14;
-        color: #f8fafc;
+         background: #ffffff;
+         color: #111827;
         font-family: Arial, sans-serif;
         transition: opacity 220ms ease;
       }
@@ -37,13 +37,16 @@
         pointer-events: none;
       }
       .startup-loader-content {
-        display: flex;
-        width: min(100%, 420px);
+         position: relative;
+         display: flex;
+         width: 100%;
+         height: 100%;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: clamp(10px, 1.8vh, 18px);
-        text-align: center;
+         text-align: center;
+         isolation: isolate;
       }
       .startup-loader-kicker {
         margin: 0;
@@ -53,16 +56,22 @@
         letter-spacing: .28em;
         text-transform: uppercase;
       }
-      .startup-loader-stage {
-        display: contents;
-      }
+       .startup-loader-stage {
+         position: absolute;
+         inset: 0;
+         z-index: -1;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+       }
       .startup-loader-art-frame {
         position: relative;
         display: block;
-        width: auto;
-        height: min(43dvh, 560px);
-        max-width: min(76vw, 360px);
-        aspect-ratio: 900 / 1994;
+         width: min(1008px, 100vw);
+         height: min(2244px, 100dvh);
+         max-width: 100%;
+         max-height: 100%;
+         aspect-ratio: 1008 / 2244;
       }
       .startup-loader-art {
         display: block;
@@ -81,7 +90,7 @@
       .startup-loader-title {
         margin: 0;
         max-width: min(78vw, 330px);
-        color: #f8fafc;
+         color: #111827;
         font-size: clamp(14px, 3.8vw, 21px);
         font-weight: 700;
         letter-spacing: .06em;
@@ -92,9 +101,9 @@
         width: min(78vw, 280px);
         height: 5px;
         overflow: hidden;
-        border: 1px solid rgba(148,163,184,.25);
+         border: 1px solid rgba(71,85,105,.35);
         border-radius: 999px;
-        background: rgba(30,41,59,.8);
+         background: rgba(148,163,184,.35);
       }
       #startup-loader-progress-bar {
         width: 100%;
@@ -108,7 +117,7 @@
       }
       #startup-loader-percentage {
         min-width: 4ch;
-        color: #f87171;
+         color: #dc2626;
         font-family: monospace;
         font-size: 14px;
         font-weight: 700;
@@ -146,7 +155,6 @@
       @media (max-height: 600px) {
         #startup-loader { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
         .startup-loader-content { gap: 7px; }
-        .startup-loader-art-frame { height: min(34dvh, 250px); }
         .startup-loader-title { font-size: clamp(12px, 3.4vw, 17px); }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -156,7 +164,7 @@
       }
     </style>
   </head>
-  <body style="margin: 0; background: #090b14;">
+   <body style="margin: 0; background: #ffffff;">
     <audio
       id="safenet-soundtrack-audio"
       loop
@@ -176,18 +184,18 @@
       aria-valuenow="0"
       aria-busy="true"
     >
-      <div class="startup-loader-content">
-        <p class="startup-loader-kicker">SafeNet Shield</p>
+       <div class="startup-loader-content">
         <div class="startup-loader-stage">
           <div class="startup-loader-art-frame">
             <img
               class="startup-loader-art"
-              src="/safenet-astronaut-loader-transparent.png"
-              alt="SafeNet astronaut standing on the moon"
+               src="/SafeNet_Astronaut_White_Background.svg"
+               alt="SafeNet Shield artwork"
             />
           </div>
         </div>
         <div class="startup-loader-overlay">
+           <p class="startup-loader-kicker">SafeNet Shield</p>
            <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
           <div class="startup-loader-progress" aria-hidden="true">
             <div id="startup-loader-progress-bar"></div>
