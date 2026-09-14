@@ -237,6 +237,7 @@ export default function SpeedTest() {
       autoStart: false,
       logMeasurementApiUrl: null,
       logAimApiUrl: null,
+      turnServerCredsApiUrl: "/api/speedtest/turn-creds",
       measurements: cloudflareMeasurements,
     });
     cloudflareSpeedTestRef.current = speedTest;

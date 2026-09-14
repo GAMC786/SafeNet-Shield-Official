@@ -314,6 +314,12 @@ function mockApi(
         response = antivirusStats;
       } else if (url.pathname === "/api/ddns" && method === "GET") {
         response = updaters;
+      } else if (url.pathname === "/api/speedtest/turn-creds" && method === "GET") {
+        response = {
+          username: "test-user",
+          credential: "test-password",
+          server: "turn.speed.cloudflare.com:50000",
+        };
       } else if (url.pathname === "/api/ddns/update-all" && method === "POST") {
         const configuredResponse = ddnsUpdateResponses[ddnsUpdateAttempt] || { status: 200, body: {} };
         ddnsUpdateAttempt += 1;

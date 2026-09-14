@@ -47,12 +47,22 @@ app.use((req, res, next) => {
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse =
-      path === "/api/telemetry/glitchtip" &&
+    if (
+      (path === "/api/telemetry/glitchtip" || path === "/api/speedtest/turn-creds") &&
       bodyJson &&
       typeof bodyJson === "object"
-        ? { ...bodyJson, dsn: bodyJson.dsn ? "[configured]" : null }
-        : bodyJson;
+    ) {
+      capturedJsonResponse =
+        path === "/api/telemetry/glitchtip"
+          ? { ...bodyJson, dsn: bodyJson.dsn ? "[configured]" : null }
+          : {
+              ...bodyJson,
+              username: bodyJson.username ? "[configured]" : null,
+              credential: bodyJson.credential ? "[configured]" : null,
+            };
+    } else {
+      capturedJsonResponse = bodyJson;
+    }
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 

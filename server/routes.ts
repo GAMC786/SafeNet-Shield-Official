@@ -110,6 +110,42 @@ export async function registerRoutes(
     res.json(getGlitchTipClientConfig());
   });
 
+  app.get("/api/speedtest/turn-creds", async (_req, res) => {
+    try {
+      const response = await fetch("https://speed.cloudflare.com/turn-creds", {
+        headers: {
+          Accept: "application/json",
+          Origin: "https://speed.cloudflare.com",
+        },
+      });
+      if (!response.ok) {
+        return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
+      }
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const username = typeof payload.username === "string" ? payload.username : null;
+      const credential = typeof payload.credential === "string" ? payload.credential : null;
+      const turnUrls = Array.isArray(payload.urls)
+        ? payload.urls.filter((url): url is string => typeof url === "string" && url.length > 0)
+        : [];
+      const turnServerUrl = turnUrls.find((url) => /^turn:/i.test(url));
+      const normalizedTurnServer = turnServerUrl
+        ?.replace(/^turn:/i, "")
+        .split("?")[0]
+        .trim();
+      const server =
+        typeof payload.server === "string" && payload.server.length > 0
+          ? payload.server
+          : normalizedTurnServer || null;
+      if (!username || !credential || !server) {
+        return res.status(502).json({ message: "Cloudflare returned incomplete TURN credentials." });
+      }
+      return res.json({ username, credential, server });
+    } catch {
+      return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
+    }
+  });
+
   app.post(
     api.logs.ingest.path,
     async (req, res) => {

@@ -232,6 +232,10 @@ test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser eng
   assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
   assert.match(speedTestSource, /@cloudflare\/speedtest/);
   assert.match(speedTestSource, /Cloudflare.*global edge network/);
+  assert.match(speedTestSource, /turnServerCredsApiUrl: "\/api\/speedtest\/turn-creds"/);
+  assert.match(routesSource, /speed\.cloudflare\.com\/turn-creds/);
+  assert.match(routesSource, /Origin: "https:\/\/speed\.cloudflare\.com"/);
+  assert.match(routesSource, /api\/speedtest\/turn-creds/);
   assert.doesNotMatch(speedTestSource, /LibreSpeed|librespeed/);
   assert.doesNotMatch(speedTestSource, /fiber\.google\.com|Google Speed Test/);
 });
