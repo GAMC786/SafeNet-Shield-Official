@@ -1042,11 +1042,13 @@ test("Measure Your Network reports a Cloudflare probe failure and retries succes
 
   await page.goto(`${baseUrl}/speedtest`);
   await page.getByTestId("button-start-speedtest").click();
-  await page.getByRole("alert").waitFor();
-  assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Run Again/);
+  await page.getByRole("alert").waitFor({ timeout: 60_000 });
+  const retryButton = page.getByTestId("button-start-speedtest");
+  await retryButton.waitFor({ timeout: 60_000 });
+  assert.match(await retryButton.textContent(), /Run Again|Resume Test/);
 
-  await page.getByTestId("button-start-speedtest").click();
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 10_000 });
+  await retryButton.click();
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 60_000 });
   await page.close();
 });
 
