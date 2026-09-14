@@ -274,6 +274,8 @@ test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser eng
   assert.match(speedTestSource, /@cloudflare\/speedtest/);
   assert.match(speedTestSource, /Cloudflare.*global edge network/);
   assert.match(speedTestSource, /standard browser measurement sequence/);
+  assert.match(speedTestSource, /setResourceTimingBufferSize/);
+  assert.match(speedTestSource, /clearResourceTimings/);
   assert.doesNotMatch(speedTestSource, /cloudflareMeasurements/);
   assert.doesNotMatch(speedTestSource, /Math\.random/);
   assert.doesNotMatch(speedTestSource, /button-official-cloudflare-speedtest|Open Official Test/);

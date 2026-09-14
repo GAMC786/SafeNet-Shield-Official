@@ -114,6 +114,12 @@ function signalFromResults(results: SpeedResults) {
   return 0.18;
 }
 
+function prepareResourceTimingBuffer() {
+  if (typeof performance === "undefined") return;
+  performance.setResourceTimingBufferSize?.(10_000);
+  performance.clearResourceTimings();
+}
+
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
   const chartPoints = points.length ? points : initialWavePoints;
   const line = chartPoints
@@ -220,6 +226,7 @@ export default function SpeedTest() {
 
   const runSpeedTest = useCallback(() => {
     const runId = ++runIdRef.current;
+    prepareResourceTimingBuffer();
     setError(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
