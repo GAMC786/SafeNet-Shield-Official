@@ -387,6 +387,11 @@ test("Settings show the current version without firewall controls", async () => 
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
   await page.getByRole("heading", { name: "DeepCleer Ai Camera and Screen Detector" }).waitFor();
+  assert.equal(await page.getByTestId("switch-ai-camera").count(), 1);
+  assert.equal(await page.getByTestId("switch-ai-screen").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-start-camera").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-start-screen").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-stop").count(), 1);
   assert.equal(
     await page.getByText("Detects Images, Videos, Livestreams, Texts, and Audios.", { exact: true }).count(),
     1,

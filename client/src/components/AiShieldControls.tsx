@@ -2,6 +2,7 @@ import { useAiShield } from "@/hooks/use-ai-shield";
 import type { AiShieldResult } from "@/hooks/use-vpn";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
@@ -10,7 +11,9 @@ import {
   CheckCircle2,
   Eye,
   Monitor,
+  Play,
   ShieldAlert,
+  Square,
 } from "lucide-react";
 
 function statePresentation(result: AiShieldResult | null) {
@@ -128,7 +131,94 @@ export function AiShieldControls() {
         <p className="rounded-md border border-white/10 bg-background/40 p-3 text-sm text-muted-foreground">
           Camera and screen monitoring are only available in the SafeNet Android APK. The server AI Shield setting does not inspect browser or device pixels.
         </p>
-      ) : (
+      ) : null}
+
+      <div className="space-y-3" data-testid="ai-shield-detector-controls">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Detector controls</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Choose one capture source at a time. Starting one source automatically stops the other.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Camera className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Monitor camera</p>
+                <p className="text-xs text-muted-foreground">Analyze consented camera frames</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {cameraEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={cameraEnabled}
+                onCheckedChange={(checked) => void toggleSource("camera", checked)}
+                disabled={!shield.supported || shield.isBusy}
+                data-testid="switch-ai-camera"
+                aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Monitor className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Monitor screen</p>
+                <p className="text-xs text-muted-foreground">Analyze consented screen pixels</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {screenEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={screenEnabled}
+                onCheckedChange={(checked) => void toggleSource("screen", checked)}
+                disabled={!shield.supported || shield.isBusy}
+                data-testid="switch-ai-screen"
+                aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void run(shield.startCamera)}
+            disabled={!shield.supported || shield.isBusy}
+            data-testid="button-ai-start-camera"
+          >
+            <Play className="mr-2 h-4 w-4" /> Start Camera
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void run(shield.startScreen)}
+            disabled={!shield.supported || shield.isBusy}
+            data-testid="button-ai-start-screen"
+          >
+            <Play className="mr-2 h-4 w-4" /> Start Screen
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void run(shield.stop)}
+            disabled={!shield.supported || shield.isBusy || !monitoring}
+            data-testid="button-ai-stop"
+          >
+            <Square className="mr-2 h-4 w-4" /> Stop Detector
+          </Button>
+        </div>
+      </div>
+
+      {shield.supported && (
         <>
           <div
             className={`rounded-md border p-3 ${
@@ -209,51 +299,6 @@ export function AiShieldControls() {
               data-testid="switch-deepcleer-cloud"
               aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
             />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Camera className="h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">Monitor camera</p>
-                  <p className="text-xs text-muted-foreground">Analyze consented camera frames</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {cameraEnabled ? "On" : "Off"}
-                </span>
-                <Switch
-                  checked={cameraEnabled}
-                   onCheckedChange={(checked) => void toggleSource("camera", checked)}
-                  disabled={shield.isBusy}
-                  data-testid="switch-ai-camera"
-                  aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Monitor className="h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">Monitor screen</p>
-                  <p className="text-xs text-muted-foreground">Analyze consented screen pixels</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {screenEnabled ? "On" : "Off"}
-                </span>
-                <Switch
-                  checked={screenEnabled}
-                   onCheckedChange={(checked) => void toggleSource("screen", checked)}
-                  disabled={shield.isBusy}
-                  data-testid="switch-ai-screen"
-                  aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
-                />
-              </div>
-            </div>
           </div>
 
           <div

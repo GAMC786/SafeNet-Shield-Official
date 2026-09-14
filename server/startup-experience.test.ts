@@ -373,6 +373,10 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(appSource, /useFirewallConfig/);
   assert.match(aiShieldSource, /switch-ai-camera/);
   assert.match(aiShieldSource, /switch-ai-screen/);
+  assert.match(aiShieldSource, /button-ai-start-camera/);
+  assert.match(aiShieldSource, /button-ai-start-screen/);
+  assert.match(aiShieldSource, /button-ai-stop/);
+  assert.match(aiShieldSource, /Detector controls/);
   assert.match(aiShieldSource, /DeepCleer Ai Camera and Screen Detector/);
   assert.match(aiShieldSource, /Detects Images, Videos, Livestreams, Texts, and Audios\./);
   assert.match(aiShieldSource, /cameraEnabled/);
