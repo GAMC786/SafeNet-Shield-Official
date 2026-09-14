@@ -95,6 +95,15 @@ export function AiShieldControls() {
     }
   };
 
+  const toggleSource = (source: "camera" | "screen", enabled: boolean) =>
+    run(
+      enabled
+        ? source === "camera"
+          ? shield.startCamera
+          : shield.startScreen
+        : shield.stop,
+    );
+
   return (
     <CyberCard className="space-y-4" data-testid="ai-shield-controls">
       <div className="flex items-start justify-between gap-4">
@@ -103,9 +112,9 @@ export function AiShieldControls() {
             <Eye className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h2 className="font-display text-lg tracking-wider">AI Shield · Android only</h2>
+            <h2 className="font-display text-lg tracking-wider">DeepCleer Ai Camera and Screen Detector</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Analyze consented camera frames or visible screen pixels locally. Raw frames are released immediately and never uploaded or saved.
+              Detects Images, Videos, Livestreams, Texts, and Audios.
             </p>
           </div>
         </div>
@@ -175,7 +184,7 @@ export function AiShieldControls() {
                 </span>
                 <Switch
                   checked={cameraEnabled}
-                   onCheckedChange={(checked) => void run(checked ? shield.startCamera : shield.stop)}
+                   onCheckedChange={(checked) => void toggleSource("camera", checked)}
                   disabled={shield.isBusy}
                   data-testid="switch-ai-camera"
                   aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
@@ -196,7 +205,7 @@ export function AiShieldControls() {
                 </span>
                 <Switch
                   checked={screenEnabled}
-                   onCheckedChange={(checked) => void run(checked ? shield.startScreen : shield.stop)}
+                   onCheckedChange={(checked) => void toggleSource("screen", checked)}
                   disabled={shield.isBusy}
                   data-testid="switch-ai-screen"
                   aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
@@ -239,6 +248,9 @@ export function AiShieldControls() {
           <p className="text-xs text-muted-foreground">
             Screen monitoring requires Android MediaProjection consent and only covers pixels Android makes available. Secure/DRM surfaces, revoked projections, and hidden app content are unavailable; results are never a promise of perfect detection.
           </p>
+           <p className="text-xs text-muted-foreground">
+             Camera and screen detection share one Android capture session. Turning on one source automatically turns off the other.
+           </p>
           {shield.error && <p className="text-xs text-destructive">{shield.error}</p>}
         </>
       )}

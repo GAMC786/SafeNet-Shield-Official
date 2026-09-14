@@ -386,6 +386,11 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
+  await page.getByRole("heading", { name: "DeepCleer Ai Camera and Screen Detector" }).waitFor();
+  assert.equal(
+    await page.getByText("Detects Images, Videos, Livestreams, Texts, and Audios.", { exact: true }).count(),
+    1,
+  );
 
   assert.equal(await page.getByRole("switch", { name: "Prevent DNS Overrides" }).count(), 0);
   await page.getByTestId("settings-version").waitFor();
