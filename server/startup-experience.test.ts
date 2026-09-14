@@ -212,14 +212,14 @@ test("Android proves soundtrack playback resumes at the ended boundary", () => {
   assert.match(androidInstrumentationSource, /console\.error/);
 });
 
-test("Measure Your Network keeps ISP profiling and uses the Ookla CLI transport", () => {
+test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser engine", () => {
   assert.match(speedTestSource, /ISP-based connection telemetry/);
   assert.match(speedTestSource, /Measure your network/);
   assert.match(speedTestSource, /https:\/\/ipapi\.co\/json\//);
   assert.match(speedTestSource, /https:\/\/ipinfo\.io\/json/);
   assert.match(speedTestSource, /https:\/\/ipwho\.is\//);
-  assert.match(speedTestSource, /api\.speedtest\.ookla\.path/);
-  assert.match(speedTestSource, /official Ookla Speedtest CLI/);
+  assert.match(speedTestSource, /@cloudflare\/speedtest/);
+  assert.match(speedTestSource, /Cloudflare.*global edge network/);
   assert.doesNotMatch(speedTestSource, /LibreSpeed|librespeed/);
   assert.doesNotMatch(speedTestSource, /fiber\.google\.com|Google Speed Test/);
 });

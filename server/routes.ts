@@ -2,7 +2,6 @@ import type { Express } from "express";
 import express from "express";
 import { isIP } from "node:net";
 import type { Server } from "http";
-import { OoklaSpeedtestError, runOoklaSpeedtest } from "./ookla-speedtest";
 import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -689,32 +688,6 @@ export async function registerRoutes(
       res.json({ ip });
     } catch (err) {
       res.status(500).json({ message: "Failed to get public IP" });
-    }
-  });
-
-  // === Speed Test ===
-  app.post("/api/speedtest/ookla", async (req, res) => {
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    req.once("aborted", abort);
-    res.once("close", abort);
-    try {
-      const result = await runOoklaSpeedtest(controller.signal);
-      if (!res.writableEnded) res.json(result);
-    } catch (error) {
-      if (error instanceof OoklaSpeedtestError && error.code === "aborted") return;
-      const status = error instanceof OoklaSpeedtestError && error.code === "unavailable"
-        ? 503
-        : error instanceof OoklaSpeedtestError && error.code === "timeout"
-          ? 504
-          : 500;
-      const message = error instanceof OoklaSpeedtestError
-        ? error.message
-        : "The Ookla Speedtest failed.";
-      if (!res.writableEnded) res.status(status).json({ message });
-    } finally {
-      req.removeListener("aborted", abort);
-      res.removeListener("close", abort);
     }
   });
 

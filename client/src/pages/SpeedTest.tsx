@@ -23,8 +23,7 @@ import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "@/lib/api";
-import { api } from "@shared/routes";
+import CloudflareSpeedTest, { type PhaseChangePayload, type Results } from "@cloudflare/speedtest";
 
 type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
 interface SpeedResults {
@@ -58,9 +57,30 @@ const phaseProgress: Record<TestPhase, number> = {
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
+const cloudflareMeasurements = [
+  { type: "latency" as const, numPackets: 1 },
+  { type: "download" as const, bytes: 100_000, count: 1, bypassMinDuration: true },
+  { type: "latency" as const, numPackets: 8 },
+  { type: "download" as const, bytes: 100_000, count: 4 },
+  { type: "download" as const, bytes: 1_000_000, count: 2 },
+  { type: "upload" as const, bytes: 100_000, count: 4 },
+  {
+    type: "packetLoss" as const,
+    numPackets: 100,
+    batchSize: 10,
+    batchWaitTime: 10,
+    responsesWaitTime: 1_000,
+    connectionTimeout: 5_000,
+  },
+  { type: "upload" as const, bytes: 256_000, count: 2 },
+];
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function parseNetworkProfile(data: Record<string, unknown>): NetworkProfile {
@@ -90,8 +110,14 @@ function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
+function cloudflareResultsToSpeedResults(results: Results): SpeedResults {
+  const summary = results.getSummary();
+  return {
+    latency: typeof summary.latency === "number" ? Number(summary.latency.toFixed(2)) : null,
+    download: typeof summary.download === "number" ? Number((summary.download / 1_000_000).toFixed(2)) : null,
+    upload: typeof summary.upload === "number" ? Number((summary.upload / 1_000_000).toFixed(2)) : null,
+    packetLoss: typeof summary.packetLoss === "number" ? Number((summary.packetLoss * 100).toFixed(2)) : null,
+  };
 }
 
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
@@ -153,9 +179,8 @@ export default function SpeedTest() {
   const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
   const pausedRef = useRef(false);
-  const measurementErrorRef = useRef(false);
   const runIdRef = useRef(0);
-  const ooklaAbortRef = useRef<AbortController | null>(null);
+  const cloudflareSpeedTestRef = useRef<CloudflareSpeedTest | null>(null);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -199,10 +224,8 @@ export default function SpeedTest() {
     };
   }, [networkProfileReloadKey]);
 
-  const runSpeedTest = useCallback(async () => {
+  const runSpeedTest = useCallback(() => {
     const runId = ++runIdRef.current;
-    const controller = new AbortController();
-    measurementErrorRef.current = false;
     setError(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
@@ -210,90 +233,84 @@ export default function SpeedTest() {
     setIsRunning(true);
     setPhase("latency");
     setProgress(phaseProgress.latency);
-    ooklaAbortRef.current = controller;
-    const startedAt = performance.now();
-    const progressTimer = window.setInterval(() => {
+    const speedTest = new CloudflareSpeedTest({
+      autoStart: false,
+      logMeasurementApiUrl: null,
+      logAimApiUrl: null,
+      measurements: cloudflareMeasurements,
+    });
+    cloudflareSpeedTestRef.current = speedTest;
+    const updateResults = (results: Results) => {
       if (runId !== runIdRef.current) return;
-      const elapsed = performance.now() - startedAt;
-      const nextProgress = elapsed < 5_000
-        ? 12 + Math.min(elapsed / 5_000, 1) * 16
-        : elapsed < 25_000
-          ? 28 + Math.min((elapsed - 5_000) / 20_000, 1) * 42
-          : 70 + Math.min((elapsed - 25_000) / 25_000, 1) * 24;
-      const nextPhase: TestPhase = nextProgress < 28 ? "latency" : nextProgress < 70 ? "download" : "upload";
+      setResults(cloudflareResultsToSpeedResults(results));
+      appendWavePoint(0.38 + Math.random() * 0.5);
+    };
+    speedTest.onRunningChange = (running) => {
+      if (runId === runIdRef.current) setIsRunning(running);
+    };
+    speedTest.onPhaseChange = ({ measurementId, measurement }: PhaseChangePayload) => {
+      if (runId !== runIdRef.current) return;
+      const progress = Math.min(94, Math.round(12 + (measurementId / cloudflareMeasurements.length) * 82));
+      const nextPhase: TestPhase = measurement.type === "latency" || measurement.type === "packetLoss"
+        ? "latency"
+        : measurement.type === "download"
+          ? "download"
+          : "upload";
       setPhase(nextPhase);
-      setProgress(Math.min(Math.round(nextProgress), 94));
-      appendWavePoint(0.3 + Math.min(nextProgress / 100, 0.65) + (Math.random() - 0.5) * 0.08);
-    }, 180);
-    try {
-      const response = await apiFetch(api.speedtest.ookla.path, {
-        method: "POST",
-        signal: controller.signal,
-        timeoutMs: 100_000,
-      });
-      const payload = await response.json() as Record<string, unknown>;
-      if (!response.ok) {
-        throw new Error(typeof payload.message === "string" ? payload.message : `Ookla Speedtest returned HTTP ${response.status}.`);
-      }
-      const server = typeof payload.server === "object" && payload.server !== null
-        ? payload.server as Record<string, unknown>
-        : {};
+      setProgress(progress);
+    };
+    speedTest.onResultsChange = () => updateResults(speedTest.results);
+    speedTest.onFinish = (results) => {
       if (runId !== runIdRef.current) return;
-      setResults({
-        latency: typeof payload.latency === "number" ? payload.latency : null,
-        download: typeof payload.downloadMbps === "number" ? payload.downloadMbps : null,
-        upload: typeof payload.uploadMbps === "number" ? payload.uploadMbps : null,
-        packetLoss: typeof payload.packetLoss === "number" ? payload.packetLoss : null,
-      });
+      updateResults(results);
       setProgress(100);
       setPhase("complete");
       setIsRunning(false);
-      toast({
-        title: "Speed test complete",
-        description: typeof server.name === "string" ? `Measured through ${server.name}.` : "Latency and throughput results are ready below.",
-      });
-    } catch (caughtError) {
-      if (runId !== runIdRef.current) return;
-      if (pausedRef.current || isAbortError(caughtError)) return;
-      const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
-      measurementErrorRef.current = true;
-      setError(message);
-      setPhase("error");
-      setIsRunning(false);
-      toast({ title: "Speed test could not be completed", description: message, variant: "destructive" });
-    } finally {
-      window.clearInterval(progressTimer);
-      if (ooklaAbortRef.current === controller) ooklaAbortRef.current = null;
-    }
+      toast({ title: "Speed test complete", description: "Cloudflare edge latency and throughput results are ready below." });
+    };
+    speedTest.onError = (message) => {
+      if (runId !== runIdRef.current || pausedRef.current) return;
+      const partialMeasurement = /upload|packet loss|turn|ice|credential/i.test(message);
+      const userMessage = partialMeasurement
+        ? /upload/i.test(message)
+          ? "The Cloudflare upload probe was unavailable; latency and download results are still available."
+          : "Packet-loss measurement was unavailable; latency and throughput results will still be reported."
+        : message;
+      setError(userMessage);
+      if (!partialMeasurement) {
+        setPhase("error");
+        setIsRunning(false);
+        toast({ title: "Speed test could not be completed", description: userMessage, variant: "destructive" });
+      }
+    };
+    speedTest.play();
   }, [appendWavePoint, toast]);
 
   useEffect(() => () => {
     runIdRef.current += 1;
-    ooklaAbortRef.current?.abort();
+    cloudflareSpeedTestRef.current?.pause();
   }, []);
 
   const startSpeedTest = () => {
     if (hasStarted && !isRunning && phase !== "complete" && phase !== "error") {
       pausedRef.current = false;
-      void runSpeedTest();
+      cloudflareSpeedTestRef.current?.play();
       toast({ title: "Speed test resumed", description: "Continuing the network measurement." });
       return;
     }
     pausedRef.current = false;
-    void runSpeedTest();
+    runSpeedTest();
   };
   const pauseSpeedTest = () => {
     pausedRef.current = true;
-    ooklaAbortRef.current?.abort();
-    setIsRunning(false);
+    cloudflareSpeedTestRef.current?.pause();
     toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
   };
   const resetTest = () => {
     runIdRef.current += 1;
     pausedRef.current = false;
-    measurementErrorRef.current = false;
-    ooklaAbortRef.current?.abort();
-    ooklaAbortRef.current = null;
+    cloudflareSpeedTestRef.current?.pause();
+    cloudflareSpeedTestRef.current = null;
     setIsRunning(false);
     setHasStarted(false);
     setPhase("idle");
@@ -303,7 +320,9 @@ export default function SpeedTest() {
     setError(null);
   };
   const isPaused = hasStarted && !isRunning && phase !== "complete" && phase !== "error";
-  const phaseLabel = { idle: "Ready to test", latency: "Measuring latency", download: "Measuring download", upload: "Measuring upload", complete: "Test complete", error: "Test interrupted" }[phase];
+  const phaseLabel = isPaused
+    ? "Paused"
+    : { idle: "Ready to test", latency: "Measuring latency", download: "Measuring download", upload: "Measuring upload", complete: "Test complete", error: "Test interrupted" }[phase];
   const colorForSpeed = (value: number | null) => value === null ? "text-muted-foreground" : value >= 100 ? "text-emerald-400" : value >= 50 ? "text-primary" : value >= 20 ? "text-amber-400" : "text-rose-400";
   const colorForLatency = (value: number | null) => value === null ? "text-muted-foreground" : value <= 20 ? "text-emerald-400" : value <= 50 ? "text-primary" : value <= 100 ? "text-amber-400" : "text-rose-400";
 
@@ -320,7 +339,7 @@ export default function SpeedTest() {
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">Measure the SafeNet service connection with the official Ookla Speedtest CLI. The network profile below identifies this device&apos;s public IP separately.</p>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">Measure this device&apos;s connection against Cloudflare&apos;s global edge network. The network profile below identifies this device&apos;s public IP separately.</p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
                 <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">

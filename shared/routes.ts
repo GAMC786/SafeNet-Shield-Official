@@ -25,37 +25,7 @@ export const errorSchemas = {
   }),
 };
 
-const ooklaSpeedtestResultSchema = z.object({
-  engine: z.literal('ookla'),
-  timestamp: z.string(),
-  latency: z.number().nullable(),
-  jitter: z.number().nullable(),
-  downloadMbps: z.number().nullable(),
-  uploadMbps: z.number().nullable(),
-  packetLoss: z.number().nullable(),
-  isp: z.string().nullable(),
-  publicIp: z.string().nullable(),
-  server: z.object({
-    name: z.string().nullable(),
-    location: z.string().nullable(),
-    country: z.string().nullable(),
-  }),
-  resultUrl: z.string().nullable(),
-});
-
 export const api = {
-  speedtest: {
-    ookla: {
-      method: 'POST' as const,
-      path: '/api/speedtest/ookla',
-      responses: {
-        200: ooklaSpeedtestResultSchema,
-        409: errorSchemas.internal,
-        503: errorSchemas.internal,
-        504: errorSchemas.internal,
-      },
-    },
-  },
   dns: {
     list: {
       method: 'GET' as const,

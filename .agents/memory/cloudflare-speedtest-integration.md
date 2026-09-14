@@ -9,6 +9,12 @@ Cloudflare’s public Internet Speed Test page sends `X-Frame-Options: DENY`, so
 
 **How to apply:** Keep the Cloudflare engine behind the app’s own page shell. Disable result logging only when the product intentionally does not want to submit the test’s final AIM result; the engine’s documentation notes that Cloudflare may still collect measurement results for aggregated connection insights.
 
+SafeNet uses the engine directly in the browser with a bounded measurement plan: upload probes stay small enough for Android/WebView, final AIM/result logging is disabled for this product flow, and upload or TURN failures remain non-fatal partial results while latency/download data is preserved.
+
+**Why:** The browser engine measures the user device rather than the server, but mobile WebViews can fail on large uploads and the public TURN dependency can be unavailable. A completed partial result is more useful than a stuck test or a raw endpoint error.
+
+**How to apply:** Keep `__down`, `__up`, and TURN credential requests on Cloudflare’s public endpoints; convert bps to Mbps and packet-loss ratios to percentages only at the SafeNet UI boundary. Treat upload-only and packet-loss errors as bounded warnings.
+
 For browser regression tests, keep the engine's default phase sequence intact but stub the TURN data channel, cap only large generated upload bodies, and compress the loaded-latency timer in the page test setup. This avoids multi-megabyte uploads and long throttle waits without changing production configuration.
 
 **Why:** A happy-path completion check must exercise latency, download, upload, and packet-loss callbacks, while the real payload sizes and TURN dependency make a local browser test slow and environment-dependent.

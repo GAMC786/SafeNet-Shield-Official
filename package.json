@@ -11,8 +11,6 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "predev": "bash scripts/ensure-ookla-speedtest.sh",
-    "prestart": "bash scripts/ensure-ookla-speedtest.sh",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",
@@ -29,6 +27,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.0.0",
+    "@cloudflare/speedtest": "^1.14.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^1.0.2",

@@ -6,4 +6,3 @@ vite.config.ts.*
 *.tar.gz
 .tools/
 .auth/
-.cache/ookla-speedtest/
