@@ -397,7 +397,11 @@ test("Settings show the current version without firewall controls", async () => 
     1,
   );
   assert.equal(await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).count(), 1);
-  assert.equal(await page.getByTestId("terry-fox-white-side-bar").count(), 2);
+  assert.equal(await page.getByTestId("terry-fox-white-side-bar").count(), 0);
+  assert.equal(
+    await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).evaluate((image) => image.style.clipPath),
+    "inset(0px 20.25%)",
+  );
 
   assert.equal(await page.getByRole("switch", { name: "Prevent DNS Overrides" }).count(), 0);
   await page.getByTestId("settings-version").waitFor();

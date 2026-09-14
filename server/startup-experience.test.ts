@@ -354,6 +354,6 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(settingsSource, /aspect-\[1200\/630\]/);
   assert.match(settingsSource, /bg-white/);
   assert.match(settingsSource, /object-contain/);
-  assert.match(settingsSource, /terry-fox-white-side-bar/);
+  assert.match(settingsSource, /clipPath: "inset\(0 20\.25%\)"/);
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
 });

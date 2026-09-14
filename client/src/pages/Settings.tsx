@@ -39,21 +39,12 @@ export default function Settings() {
               rel="noreferrer"
               aria-label="Open Terry Fox Marathon of Hope source"
             >
-              <div className="relative mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded border border-yellow-500/20 bg-white">
+              <div className="mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded bg-white">
                 <img
                   src={terryFoxImageUrl}
                   alt="Terry Fox Marathon of Hope"
                   className="h-full w-full object-contain"
-                />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 left-0 w-[20.25%] bg-white"
-                  data-testid="terry-fox-white-side-bar"
-                />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 right-0 w-[20.25%] bg-white"
-                  data-testid="terry-fox-white-side-bar"
+                  style={{ clipPath: "inset(0 20.25%)" }}
                 />
               </div>
             </a>
