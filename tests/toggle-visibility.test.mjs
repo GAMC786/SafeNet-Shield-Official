@@ -652,13 +652,20 @@ test("editable Dashboard and security form values survive returning to the page"
   await page.close();
 });
 
-test("Antivirus dashboard hides the status toggle and settings switches recover after an update error", async () => {
+test("Antivirus dashboard toggles protection status and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);
   await page.goto(`${baseUrl}/antivirus`);
   await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
 
-  assert.equal(await page.getByTestId("switch-antivirus-enabled").count(), 0);
+  const antivirusSwitch = page.getByTestId("switch-antivirus-enabled");
+  await waitForAttribute(antivirusSwitch, "aria-checked", "true");
+  const antivirusUpdate = page.waitForRequest((request) =>
+    request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
+  );
+  await antivirusSwitch.click();
+  await antivirusUpdate;
+  await waitForAttribute(antivirusSwitch, "aria-checked", "false");
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const malwareSwitch = page.getByTestId("switch-malware-settings");
