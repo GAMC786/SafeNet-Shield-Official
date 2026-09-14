@@ -89,7 +89,9 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /id="dashboard-fallback"/);
   assert.match(indexHtml, /id="startup-loader"/);
   assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
-  assert.match(indexHtml, /safenet-astronaut-loader-transparent\.png/);
+   assert.match(indexHtml, /SafeNet_Astronaut_White_Background\.svg/);
+   assert.match(indexHtml, /width="1008" height="2244"/);
+   assert.match(indexHtml, /background: #ffffff/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
   assert.match(indexHtml, /Command Center/);
@@ -97,7 +99,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
   assert.match(indexHtml, /Network/);
   assert.match(indexHtml, /Protected/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-  assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
+   assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*15_000/);
   assert.match(mainSource, /STARTUP_LOADER_FADE_MS\s*=\s*180/);
   assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
   assert.match(mainSource, /safenet:startup-complete/);
