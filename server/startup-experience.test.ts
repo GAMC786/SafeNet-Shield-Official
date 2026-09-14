@@ -176,6 +176,23 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
+test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {
+  assert.match(
+    androidInstrumentationSource,
+    /soundtrackToggleSurvivesAndroidPauseAndResume/,
+  );
+  assert.match(androidInstrumentationSource, /data-testid=.*switch-soundtrack/);
+  assert.match(androidInstrumentationSource, /By\.desc\("Soundtrack On"\)/);
+  assert.match(androidInstrumentationSource, /By\.desc\("Soundtrack Off"\)/);
+  assert.match(androidInstrumentationSource, /safenet-soundtrack-muted/);
+  assert.match(androidInstrumentationSource, /audio\.pause\(\)/);
+  assert.match(androidInstrumentationSource, /audio\.currentTime <= 0\.05/);
+  assert.match(androidInstrumentationSource, /audio\.currentTime > 0/);
+  assert.match(androidInstrumentationSource, /pauseAndResumeActivity\(\)/);
+  assert.match(androidInstrumentationSource, /unhandledrejection/);
+  assert.match(androidInstrumentationSource, /console\.error/);
+});
+
 test("Measure Your Network keeps ISP profiling and uses the LibreSpeed transport", () => {
   assert.match(speedTestSource, /ISP-based connection telemetry/);
   assert.match(speedTestSource, /Measure your network/);

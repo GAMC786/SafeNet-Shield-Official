@@ -603,6 +603,110 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void soundtrackToggleSurvivesAndroidPauseAndResume() throws Exception {
+        openDashboardWithoutActiveResolver();
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-soundtrack\"]') !== null && " +
+                "document.querySelector('[aria-label=\"Soundtrack On\"]') !== null"
+        );
+
+        JSONObject capture = callWebView(
+            "(() => {" +
+                "if (window.__safeNetSoundtrackErrors) return true;" +
+                "const errors = [];" +
+                "window.__safeNetSoundtrackErrors = errors;" +
+                "window.addEventListener('error', (event) => " +
+                    "errors.push('error:' + String(event.message || event.error || 'unknown')));" +
+                "window.addEventListener('unhandledrejection', (event) => " +
+                    "errors.push('unhandledrejection:' + String(event.reason || 'unknown')));" +
+                "const originalConsoleError = console.error.bind(console);" +
+                "console.error = (...args) => {" +
+                    "errors.push('console.error:' + args.map(String).join(' '));" +
+                    "originalConsoleError(...args);" +
+                "};" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not install soundtrack error capture",
+            capture.optBoolean("value", false));
+
+        UiObject2 soundtrackOn = device.wait(
+            Until.findObject(By.desc("Soundtrack On")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must be accessible when enabled",
+            soundtrackOn);
+        soundtrackOn.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        pauseAndResumeActivity();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        UiObject2 soundtrackOff = device.wait(
+            Until.findObject(By.desc("Soundtrack Off")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must remain off after resume",
+            soundtrackOff);
+        soundtrackOff.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "toggle.getAttribute('aria-checked') === 'true' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.paused && !audio.muted && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        pauseAndResumeActivity();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.paused && !audio.muted && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject errors = callWebView(
+            "window.__safeNetSoundtrackErrors || []"
+        );
+        assertEquals("Soundtrack toggle and lifecycle handling must not emit browser errors",
+            0, errors.getJSONArray("value").length());
+        Log.i(
+            "SafeNetMediaSmoke",
+            "SOUNDTRACK_LIFECYCLE result=PASS off_pause_resume=PASS " +
+                "on_pause_resume=PASS browser_errors=0"
+        );
+    }
+
+    @Test
     public void clerkSignInStartsFreshAndRetainsClerkSession() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
             waitForWebView("document.body.innerText.includes('Command Center')");
@@ -1821,6 +1925,12 @@ public class SafeNetVpnUiInstrumentationTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
         waitForCapacitorBridge();
+    }
+
+    private void pauseAndResumeActivity() throws Exception {
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
     }
 
     private void recreateActivity() throws Exception {

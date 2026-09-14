@@ -659,7 +659,7 @@ run_media_smoke() {
     set +e
     adb_run shell am instrument -w -r \
         "${preserve_auth_args[@]}" \
-        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies \
+        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/media-smoke-instrumentation.log"
     media_status="${PIPESTATUS[0]}"
@@ -669,14 +669,15 @@ run_media_smoke() {
     if [[ "$media_status" -ne 0 ]] ||
         grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
             "$output_dir/media-smoke-instrumentation.log" ||
-        ! grep -Fq 'MEDIA_SMOKE result=PASS' "$output_dir/media-smoke-logcat.txt"; then
+        ! grep -Fq 'MEDIA_SMOKE result=PASS' "$output_dir/media-smoke-logcat.txt" ||
+        ! grep -Fq 'SOUNDTRACK_LIFECYCLE result=PASS' "$output_dir/media-smoke-logcat.txt"; then
         media_smoke_failure "the packaged OpenSpeedTest or soundtrack check did not pass"
     fi
 
     {
         printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
-        printf 'speedtest_frame=PASS\nfull_page_fallback=PASS\nsoundtrack=PLAYING\nresult=PASS\n'
+        printf 'speedtest_frame=PASS\nfull_page_fallback=PASS\nsoundtrack=PLAYING\nsoundtrack_lifecycle=PASS\nresult=PASS\n'
     } | tee "$output_dir/media-smoke-result.txt"
     echo "Android packaged media smoke passed. Evidence: $output_dir"
 }
