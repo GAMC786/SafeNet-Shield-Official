@@ -439,19 +439,28 @@ export async function registerRoutes(
       if (!updater) {
         return res.status(404).json({ message: "DDNS updater not found" });
       }
-      const { testDdnsConnection } = await import("./ddns-service");
-      const result = await testDdnsConnection(updater.provider, updater.customUrl);
+      const { forceUpdateDdns } = await import("./ddns-service");
+      const clientIp = typeof req.body?.clientIp === "string" ? req.body.clientIp.trim() : undefined;
+      const result = await forceUpdateDdns(id, clientIp, storage);
       if (!result.success) {
-        return res.status(502).json({ message: result.error });
+        return res.status(502).json({
+          message: `DDNS update verification failed for ${result.hostname}: ${result.error}`,
+          result,
+        });
       }
       return res.json({
         success: true,
         provider: updater.provider,
         hostname: updater.hostname,
-        message: "Provider endpoint is reachable. No DNS record was changed.",
+        ipAddress: result.ipAddress,
+        message: `Manual update succeeded for ${updater.hostname}. Credentials and provider URL configuration are valid.`,
       });
     } catch (error) {
-      return res.status(500).json({ message: "DDNS connectivity test failed" });
+      return res.status(502).json({
+        message: error instanceof Error
+          ? `DDNS update verification failed: ${error.message}`
+          : "DDNS update verification failed",
+      });
     }
   });
 

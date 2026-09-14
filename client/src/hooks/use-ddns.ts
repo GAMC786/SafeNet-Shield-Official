@@ -178,13 +178,17 @@ export function useUpdateDdnsWithIp() {
 }
 
 export function useTestDdnsUpdater() {
+  const reactQueryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, clientIp }: { id: number; clientIp?: string }) => {
       try {
-        return await apiRequest("POST", `/api/ddns/${id}/test`);
+        return await apiRequest("POST", `/api/ddns/${id}/test`, clientIp ? { clientIp } : {});
       } catch (error) {
         throw getDdnsUpdateError(error);
       }
+    },
+    onSettled: () => {
+      void reactQueryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
     },
   });
 }

@@ -314,6 +314,11 @@ function mockApi(
         response = antivirusStats;
       } else if (url.pathname === "/api/ddns" && method === "GET") {
         response = updaters;
+      } else if (url.pathname.startsWith("/api/ddns/") && url.pathname.endsWith("/test") && method === "POST") {
+        response = {
+          success: true,
+          message: "Manual update succeeded for home.example.com. Credentials and provider URL configuration are valid.",
+        };
       } else if (url.pathname === "/api/speedtest/turn-creds" && method === "GET") {
         response = {
           username: "test-user",
@@ -349,7 +354,7 @@ function mockApi(
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ ip: "198.51.100.24" }),
       }),
     ),
     page.route("https://ipapi.co/**", (route) =>
@@ -549,6 +554,26 @@ for (const viewport of viewports) {
     await page.close();
   });
 }
+
+test("DDNS Test forces the selected provider update with the current public IP", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/ddns`);
+  await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
+
+  const testButton = page.getByRole("button", { name: "Test DDNS update for home.example.com" });
+  const updateRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && request.url().endsWith("/api/ddns/1/test"),
+  );
+  await testButton.click();
+  const request = await updateRequest;
+  assert.deepEqual(request.postDataJSON(), { clientIp: "198.51.100.24" });
+
+  const result = page.getByTestId("ddns-test-result-1");
+  await result.waitFor();
+  assert.match(await result.textContent(), /Manual update verification successful/);
+  await page.close();
+});
 
 test("DNS resolver management supports activation and CRUD controls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });

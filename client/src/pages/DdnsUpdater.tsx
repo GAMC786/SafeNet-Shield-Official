@@ -173,18 +173,21 @@ export default function DdnsUpdater() {
   const handleTestUpdater = async (updater: PublicDdnsUpdater) => {
     setTestingUpdaterId(updater.id);
     try {
-      const result = await testUpdater.mutateAsync(updater.id) as { message?: string };
+      const result = await testUpdater.mutateAsync({
+        id: updater.id,
+        clientIp: publicIpData?.ip,
+      }) as { message?: string };
       setTestResults((current) => ({
         ...current,
         [updater.id]: {
           ok: true,
-          message: result.message || `${updater.provider.toUpperCase()} is reachable. No record was changed.`,
+          message: result.message || `${updater.provider.toUpperCase()} accepted the forced update.`,
           testedAt: Date.now(),
         },
       }));
       toast({
-        title: "DDNS connectivity passed",
-        description: result.message || `${updater.provider.toUpperCase()} is reachable. No record was changed.`,
+        title: "DDNS update verification passed",
+        description: result.message || `${updater.provider.toUpperCase()} accepted the forced update.`,
       });
     } catch (error) {
       setTestResults((current) => ({
@@ -196,7 +199,7 @@ export default function DdnsUpdater() {
         },
       }));
       toast({
-        title: "DDNS connectivity failed",
+        title: "DDNS update verification failed",
         description: error instanceof Error ? error.message : "The provider endpoint could not be reached.",
         variant: "destructive",
       });
@@ -485,6 +488,10 @@ export default function DdnsUpdater() {
                            {new Date(updater.lastFailureTime).toLocaleString()}
                          </p>
                        )}
+                     </div>
+                   </div>
+                 </div>
+               )}
 
                {testResults[updater.id] && (
                  <div
@@ -498,16 +505,14 @@ export default function DdnsUpdater() {
                    )}
                  >
                    <p className="font-semibold">
-                     {testResults[updater.id].ok ? "Connection test successful" : "Connection test unsuccessful"}
+                     {testResults[updater.id].ok
+                       ? "Manual update verification successful"
+                       : "Manual update verification unsuccessful"}
                    </p>
                    <p className="mt-1 break-words">{testResults[updater.id].message}</p>
                    <p className="mt-1 text-xs opacity-80">
                      Tested {new Date(testResults[updater.id].testedAt).toLocaleString()}
                    </p>
-                 </div>
-               )}
-                     </div>
-                   </div>
                  </div>
                )}
 
@@ -517,7 +522,7 @@ export default function DdnsUpdater() {
                    size="sm"
                    onClick={() => void handleTestUpdater(updater)}
                    disabled={testingUpdaterId !== null || updateUpdater.isPending}
-                   aria-label={`Test connectivity for ${updater.hostname}`}
+                    aria-label={`Test DDNS update for ${updater.hostname}`}
                    className="min-h-10 flex-1 border-sky-400/40 text-sky-300 hover:border-sky-300 hover:bg-sky-400/10"
                  >
                    {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}

@@ -27,6 +27,10 @@ export type DdnsUpdateAttempt = DdnsUpdateResult & {
   hostname: string;
 };
 
+export type DdnsForcedUpdateResult = DdnsUpdateAttempt & {
+  ipAddress: string;
+};
+
 function providerFailure(provider: string, response: Response, body?: string): DdnsUpdateResult {
   const detail = body?.trim().slice(0, 200);
   return {
@@ -278,6 +282,59 @@ async function updateIpLink(hostname: string, ip: string, customUrl?: string | n
   return response.ok
     ? providerResponseSuccess()
     : providerFailure("IP Link", response, await response.text());
+}
+
+export async function forceUpdateDdns(
+  targetUpdaterId: number,
+  clientIp?: string,
+  schedulerStorage: DdnsSchedulerStorage = storage,
+): Promise<DdnsForcedUpdateResult> {
+  const updater = (await schedulerStorage.getDdnsUpdaters()).find(
+    (entry) => entry.id === targetUpdaterId,
+  );
+  if (!updater) {
+    throw new Error("DDNS updater not found");
+  }
+
+  const currentIp = clientIp || await getCurrentPublicIp();
+  if (activeDdnsUpdates.has(updater.id)) {
+    return {
+      updaterId: updater.id,
+      hostname: updater.hostname,
+      ipAddress: currentIp,
+      success: false,
+      error: "A DDNS update is already in progress for this updater.",
+    };
+  }
+
+  activeDdnsUpdates.add(updater.id);
+  try {
+    const result = await updateDnsRecord(
+      updater.hostname,
+      updater.provider,
+      updater.apiKey,
+      currentIp,
+      updater.customUrl,
+    );
+    const attempt: DdnsForcedUpdateResult = {
+      updaterId: updater.id,
+      hostname: updater.hostname,
+      ipAddress: currentIp,
+      ...result,
+    };
+
+    if (result.success) {
+      await schedulerStorage.updateDdnsIpInfo(updater.id, currentIp);
+      console.log(`Manual DDNS update verified for ${updater.hostname}: ${currentIp}`);
+    } else {
+      await schedulerStorage.updateDdnsFailureInfo?.(updater.id, result.error);
+      console.error(`Manual DDNS update failed for ${updater.hostname}: ${result.error}`);
+    }
+
+    return attempt;
+  } finally {
+    activeDdnsUpdates.delete(updater.id);
+  }
 }
 
 // Check and update all enabled DDNS updaters

@@ -126,19 +126,29 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     assert.match((await invalidIntervalResponse.json()).message, /minute/);
     assert.equal(providerRequests, 0);
 
-    globalThis.fetch = async (_input, init) => {
-      assert.equal(init?.method, "HEAD");
+    const storedUpdaters = await storage.getDdnsUpdaters();
+    storedUpdaters[0].isEnabled = false;
+    storedUpdaters[0].lastUpdateTime = new Date();
+    globalThis.fetch = async (input, init) => {
+      assert.match(String(input), /https:\/\/updates\.example\.test\/198\.51\.100\.20$/);
+      assert.equal(init?.method, undefined);
       return new Response(null, { status: 204 });
     };
-    const connectivityResponse = await request(`${baseUrl}/api/ddns/1/test`, {
+    const manualUpdateResponse = await request(`${baseUrl}/api/ddns/1/test`, {
       method: "POST",
-      headers: { Origin: "https://localhost" },
+      headers: {
+        Origin: "https://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ clientIp: "198.51.100.20" }),
     });
-    assert.equal(connectivityResponse.status, 200);
-    const connectivityPayload = await connectivityResponse.json();
-    assert.equal(connectivityPayload.success, true);
-    assert.match(connectivityPayload.message, /No DNS record was changed/);
-    assert.equal("apiKey" in connectivityPayload, false);
+    assert.equal(manualUpdateResponse.status, 200);
+    const manualUpdatePayload = await manualUpdateResponse.json();
+    assert.equal(manualUpdatePayload.success, true);
+    assert.match(manualUpdatePayload.message, /Manual update succeeded/);
+    assert.equal(manualUpdatePayload.ipAddress, "198.51.100.20");
+    assert.equal("apiKey" in manualUpdatePayload, false);
+    assert.equal(storedUpdaters[0].lastIpAddress, "198.51.100.20");
   } finally {
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve, reject) => {
