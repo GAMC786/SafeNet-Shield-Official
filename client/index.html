@@ -242,7 +242,11 @@
            audio.currentTime = 0;
          };
          const startAudio = () => {
-           if (audio.muted) return;
+            if (window.localStorage.getItem(mutedKey) === "true") {
+              audio.muted = true;
+              return;
+            }
+            audio.muted = false;
            const playback = audio.play();
            if (playback && typeof playback.catch === "function") {
              void playback.catch(() => undefined);

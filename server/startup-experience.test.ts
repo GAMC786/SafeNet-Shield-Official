@@ -168,6 +168,8 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(indexHtml, /autoplay/);
   assert.match(indexHtml, /addEventListener\("ended"/);
   assert.match(indexHtml, /playback && typeof playback\.catch === "function"/);
+  assert.match(indexHtml, /window\.localStorage\.getItem\(mutedKey\) === "true"/);
+  assert.match(indexHtml, /audio\.muted = false/);
   assert.match(indexHtml, /addEventListener\("pagehide", stopAudio\)/);
   assert.match(indexHtml, /addEventListener\("visibilitychange"/);
   assert.match(indexHtml, /safenet-soundtrack-change/);
@@ -189,6 +191,19 @@ test("Android proves the Dashboard soundtrack toggle survives pause and resume",
   assert.match(androidInstrumentationSource, /audio\.currentTime <= 0\.05/);
   assert.match(androidInstrumentationSource, /audio\.currentTime > 0/);
   assert.match(androidInstrumentationSource, /pauseAndResumeActivity\(\)/);
+  assert.match(androidInstrumentationSource, /unhandledrejection/);
+  assert.match(androidInstrumentationSource, /console\.error/);
+});
+
+test("Android proves soundtrack playback resumes at the ended boundary", () => {
+  assert.match(
+    androidInstrumentationSource,
+    /soundtrackResumesAfterEndedBoundaryWithToggleEnabled/,
+  );
+  assert.match(androidInstrumentationSource, /audio\.dispatchEvent\(new Event\('ended'\)\)/);
+  assert.match(androidInstrumentationSource, /toggle\.getAttribute\('aria-label'\) === 'Soundtrack On'/);
+  assert.match(androidInstrumentationSource, /window\.localStorage\.getItem\('safenet-soundtrack-muted'\) === 'false'/);
+  assert.match(androidInstrumentationSource, /audio\.currentTime > 0/);
   assert.match(androidInstrumentationSource, /unhandledrejection/);
   assert.match(androidInstrumentationSource, /console\.error/);
 });

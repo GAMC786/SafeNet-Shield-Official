@@ -707,6 +707,111 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    @Test
+    public void soundtrackResumesAfterEndedBoundaryWithToggleEnabled() throws Exception {
+        openDashboardWithoutActiveResolver();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') !== 'true');" +
+            "})()"
+        );
+
+        JSONObject capture = installSoundtrackErrorCapture();
+        assertTrue("Could not install soundtrack boundary error capture",
+            capture.optBoolean("value", false));
+
+        UiObject2 soundtrackOn = device.wait(
+            Until.findObject(By.desc("Soundtrack On")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must be accessible when enabled",
+            soundtrackOn);
+        soundtrackOn.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted);" +
+            "})()"
+        );
+
+        UiObject2 soundtrackOff = device.wait(
+            Until.findObject(By.desc("Soundtrack Off")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must remain accessible when disabled",
+            soundtrackOff);
+        soundtrackOff.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.muted && !audio.paused && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject boundary = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "if (!(audio instanceof HTMLAudioElement) || !toggle) return false;" +
+                "audio.pause();" +
+                "audio.currentTime = 0;" +
+                "audio.dispatchEvent(new Event('ended'));" +
+                "return {" +
+                    "dispatched: true," +
+                    "loop: audio.loop," +
+                    "toggle: toggle.getAttribute('aria-label')," +
+                    "persisted: window.localStorage.getItem('safenet-soundtrack-muted')" +
+                "};" +
+            "})()"
+        );
+        assertTrue("Could not simulate the soundtrack ended boundary",
+            boundary.optBoolean("ok", false));
+        JSONObject boundaryState = boundary.getJSONObject("value");
+        assertTrue("The soundtrack boundary event must be dispatched",
+            boundaryState.getBoolean("dispatched"));
+        assertTrue("The soundtrack must remain configured to loop at its boundary",
+            boundaryState.getBoolean("loop"));
+        assertEquals("Soundtrack On", boundaryState.getString("toggle"));
+        assertEquals("false", boundaryState.getString("persisted"));
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "toggle.getAttribute('aria-checked') === 'true' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.muted && !audio.paused && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject errors = callWebView(
+            "window.__safeNetSoundtrackErrors || []"
+        );
+        assertEquals("Soundtrack ended-boundary recovery must not emit browser errors",
+            0, errors.getJSONArray("value").length());
+        Log.i(
+            "SafeNetMediaSmoke",
+            "SOUNDTRACK_BOUNDARY result=PASS ended_dispatched=PASS resumed=PASS " +
+                "toggle_persisted_on=PASS browser_errors=0"
+        );
+    }
+
     private JSONObject installSoundtrackErrorCapture() throws Exception {
         return callWebView(
             "(() => {" +
