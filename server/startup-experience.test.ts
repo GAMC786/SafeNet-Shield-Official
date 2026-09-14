@@ -109,7 +109,7 @@ test("the app mounts directly with a Dashboard fallback", () => {
     assert.doesNotMatch(indexHtml, /SafeNet<\/span>|Shield<\/span>/);
     assert.match(indexHtml, /width: 100%;/);
     assert.match(indexHtml, /height: 100%;/);
-    assert.match(indexHtml, /object-fit: contain/);
+     assert.match(indexHtml, /object-fit: fill/);
     assert.match(indexHtml, /object-position: center center/);
   assert.match(indexHtml, /startup-loader-dot/);
   assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
