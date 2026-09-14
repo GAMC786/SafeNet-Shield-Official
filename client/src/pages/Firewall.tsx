@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -32,15 +33,32 @@ export default function Firewall() {
   const updateSettings = useUpdateSettings();
   const firewallEnabled = settings?.firewallEnabled ?? false;
 
-  const [newDomain, setNewDomain] = useState("");
-  const [newDomainAction, setNewDomainAction] = useState<"allow" | "block">("block");
-  const [newKeyword, setNewKeyword] = useState("");
-  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
+  const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
+  const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
+    "safenet-firewall-new-domain-action",
+    "block",
+  );
+  const [newKeyword, setNewKeyword] = usePersistentState("safenet-firewall-new-keyword", "");
+  const [isRuleDialogOpen, setIsRuleDialogOpen] = usePersistentState("safenet-firewall-rule-dialog-open", false);
   const [editingRule, setEditingRule] = useState<FirewallRule | null>(null);
+  const [editingRuleId, setEditingRuleId, clearEditingRuleId] = usePersistentState<number | null>(
+    "safenet-firewall-editing-rule-id",
+    null,
+  );
   const [editingBlocklist, setEditingBlocklist] = useState<Blocklist | null>(null);
-  const [editedBlocklistContent, setEditedBlocklistContent] = useState("");
-  const [editedBlocklistAction, setEditedBlocklistAction] = useState<"allow" | "block">("block");
-  const [newRule, setNewRule] = useState<InsertFirewallRule>({
+  const [editingBlocklistId, setEditingBlocklistId, clearEditingBlocklistId] = usePersistentState<number | null>(
+    "safenet-firewall-editing-blocklist-id",
+    null,
+  );
+  const [editedBlocklistContent, setEditedBlocklistContent, clearEditedBlocklistContent] = usePersistentState(
+    "safenet-firewall-edited-blocklist-content",
+    "",
+  );
+  const [editedBlocklistAction, setEditedBlocklistAction, clearEditedBlocklistAction] = usePersistentState<"allow" | "block">(
+    "safenet-firewall-edited-blocklist-action",
+    "block",
+  );
+  const [newRule, setNewRule, clearNewRule] = usePersistentState<InsertFirewallRule>("safenet-firewall-new-rule", {
     name: "",
     sourceInterface: "lan",
     sourceAddress: "Any",
@@ -49,6 +67,28 @@ export default function Firewall() {
     service: "dns",
     action: "deny" as const,
   });
+
+  useEffect(() => {
+    if (!editingRuleId || !rules) return;
+    const rule = rules.find((candidate) => candidate.id === editingRuleId);
+    if (rule) {
+      setEditingRule(rule);
+    } else {
+      setEditingRule(null);
+      clearEditingRuleId();
+    }
+  }, [clearEditingRuleId, editingRuleId, rules]);
+
+  useEffect(() => {
+    if (!editingBlocklistId || !blocklists) return;
+    const blocklist = blocklists.find((candidate) => candidate.id === editingBlocklistId);
+    if (blocklist) {
+      setEditingBlocklist(blocklist);
+    } else {
+      setEditingBlocklist(null);
+      clearEditingBlocklistId();
+    }
+  }, [blocklists, clearEditingBlocklistId, editingBlocklistId]);
 
   const handleAddDomain = () => {
     if (!newDomain) return;
@@ -98,15 +138,8 @@ export default function Firewall() {
   };
 
   const resetRuleForm = () => {
-    setNewRule({
-      name: "",
-      sourceInterface: "lan",
-      sourceAddress: "Any",
-      destinationInterface: "wan",
-      destinationAddress: "Any",
-      service: "dns",
-      action: "deny",
-    });
+    clearNewRule();
+    clearEditingRuleId();
     setEditingRule(null);
   };
 
@@ -117,6 +150,7 @@ export default function Firewall() {
 
   const openEditRuleDialog = (rule: FirewallRule) => {
     setEditingRule(rule);
+    setEditingRuleId(rule.id);
     setNewRule({
       name: rule.name,
       sourceInterface: rule.sourceInterface,
@@ -155,14 +189,16 @@ export default function Firewall() {
 
   const openEditBlocklistDialog = (item: Blocklist) => {
     setEditingBlocklist(item);
+    setEditingBlocklistId(item.id);
     setEditedBlocklistContent(item.content);
     setEditedBlocklistAction(item.action === "allow" ? "allow" : "block");
   };
 
   const closeEditBlocklistDialog = () => {
+    clearEditingBlocklistId();
+    clearEditedBlocklistContent();
+    clearEditedBlocklistAction();
     setEditingBlocklist(null);
-    setEditedBlocklistContent("");
-    setEditedBlocklistAction("block");
   };
 
   const handleSaveBlocklist = () => {

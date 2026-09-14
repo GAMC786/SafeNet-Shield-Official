@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
@@ -25,8 +26,12 @@ export default function DdnsUpdater() {
   const updateUpdater = useUpdateDdnsUpdater();
   const testUpdater = useTestDdnsUpdater();
   const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = usePersistentState("safenet-ddns-dialog-open", false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
+  const [editingUpdaterId, setEditingUpdaterId, clearEditingUpdaterId] = usePersistentState<number | null>(
+    "safenet-ddns-editing-id",
+    null,
+  );
   const [testingUpdaterId, setTestingUpdaterId] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, {
     ok: boolean;
@@ -68,14 +73,14 @@ export default function DdnsUpdater() {
     }
   };
 
-  const [formData, setFormData] = useState<{
+  const [formData, setFormData, clearFormData] = usePersistentState<{
     hostname: string;
     provider: PublicDdnsUpdater["provider"];
     apiKey: string;
     customUrl: string;
     updateIntervalMinutes: number;
     isEnabled: boolean;
-  }>({
+  }>("safenet-ddns-draft", {
     hostname: "",
     provider: "duckdns" as PublicDdnsUpdater["provider"],
     apiKey: "",
@@ -84,7 +89,20 @@ export default function DdnsUpdater() {
     isEnabled: true,
   });
 
+  useEffect(() => {
+    if (!editingUpdaterId || !updaters) return;
+    const updater = updaters.find((candidate) => candidate.id === editingUpdaterId);
+    if (updater) {
+      setEditingUpdater(updater);
+    } else {
+      setEditingUpdater(null);
+      clearEditingUpdaterId();
+    }
+  }, [clearEditingUpdaterId, editingUpdaterId, updaters]);
+
   const resetForm = () => {
+    clearFormData();
+    clearEditingUpdaterId();
     setFormData({
       hostname: "",
       provider: "duckdns",
@@ -103,6 +121,7 @@ export default function DdnsUpdater() {
 
   const openEditDialog = (updater: PublicDdnsUpdater) => {
     setEditingUpdater(updater);
+    setEditingUpdaterId(updater.id);
     setFormData({
       hostname: updater.hostname,
       provider: updater.provider,

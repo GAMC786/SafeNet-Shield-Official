@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { 
   useAntivirusSettings, useUpdateAntivirusSettings,
   useThreatFeeds, useCreateThreatFeed, useUpdateThreatFeed, useDeleteThreatFeed,
@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 export default function Antivirus() {
   const { data: settings } = useAntivirusSettings();
@@ -40,9 +41,13 @@ export default function Antivirus() {
   const { toast } = useToast();
   const antivirusEnabled = settings?.isEnabled ?? true;
 
-  const [isFeedDialogOpen, setIsFeedDialogOpen] = useState(false);
+  const [isFeedDialogOpen, setIsFeedDialogOpen] = usePersistentState("safenet-antivirus-feed-dialog-open", false);
   const [editingFeed, setEditingFeed] = useState<ThreatFeed | null>(null);
-  const [newFeed, setNewFeed] = useState({
+  const [editingFeedId, setEditingFeedId, clearEditingFeedId] = usePersistentState<number | null>(
+    "safenet-antivirus-editing-feed-id",
+    null,
+  );
+  const [newFeed, setNewFeed, clearNewFeed] = usePersistentState("safenet-antivirus-feed-draft", {
     name: "",
     type: "malware" as "malware" | "phishing" | "ransomware" | "botnet" | "spam",
     url: "",
@@ -56,6 +61,17 @@ export default function Antivirus() {
     realTimeProtection: "Real-time protection",
     autoQuarantine: "Automatic quarantine",
   };
+
+  useEffect(() => {
+    if (!editingFeedId || !feeds) return;
+    const feed = feeds.find((candidate) => candidate.id === editingFeedId);
+    if (feed) {
+      setEditingFeed(feed);
+    } else {
+      setEditingFeed(null);
+      clearEditingFeedId();
+    }
+  }, [clearEditingFeedId, editingFeedId, feeds]);
 
   const handleVerifyClamAv = async () => {
     try {
@@ -166,7 +182,8 @@ export default function Antivirus() {
   const maxThreatTypeCount = Math.max(1, ...Object.values(threatTypeCounts));
 
   const resetFeedForm = () => {
-    setNewFeed({ name: "", type: "malware", url: "", isEnabled: true });
+    clearNewFeed();
+    clearEditingFeedId();
     setEditingFeed(null);
   };
 
@@ -177,6 +194,7 @@ export default function Antivirus() {
 
   const openEditFeedDialog = (feed: ThreatFeed) => {
     setEditingFeed(feed);
+    setEditingFeedId(feed.id);
     setNewFeed({
       name: feed.name,
       type: feed.type,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useActivateDnsServer,
   useCreateDnsServer,
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 type ResolverForm = {
   name: string;
@@ -77,12 +78,31 @@ export default function DnsSettings() {
   const deleteServer = useDeleteDnsServer();
   const vpn = useSafeNetVpn();
   const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
-  const [formData, setFormData] = useState<ResolverForm>(emptyResolver);
+  const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
+    "safenet-dns-resolver-editing-id",
+    null,
+  );
+  const [formData, setFormData, clearFormData] = usePersistentState<ResolverForm>(
+    "safenet-dns-resolver-draft",
+    emptyResolver,
+  );
+
+  useEffect(() => {
+    if (!editingResolverId || !servers) return;
+    const resolver = servers.find((server) => server.id === editingResolverId);
+    if (resolver) {
+      setEditingResolver(resolver);
+    } else {
+      setEditingResolver(null);
+      clearEditingResolverId();
+    }
+  }, [clearEditingResolverId, editingResolverId, servers]);
 
   const resetForm = () => {
-    setFormData(emptyResolver);
+    clearFormData();
+    clearEditingResolverId();
     setEditingResolver(null);
   };
 
@@ -93,6 +113,7 @@ export default function DnsSettings() {
 
   const openEditDialog = (server: DnsServer) => {
     setEditingResolver(server);
+    setEditingResolverId(server.id);
     setFormData({
       name: server.name,
       type: server.type,
