@@ -336,7 +336,6 @@ export default function DdnsUpdater() {
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
                      <SelectItem value="cloudflare">Cloudflare</SelectItem>
-                     <SelectItem value="dnsexit">DNSExit</SelectItem>
                     <SelectItem value="dnsomatic">DNS-O-MATIC</SelectItem>
                     <SelectItem value="iplink">IP Link (Custom URL)</SelectItem>
                   </SelectContent>

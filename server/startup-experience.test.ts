@@ -363,7 +363,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
-  assert.match(ddnsSource, /DNSExit/);
+  assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Test/);
   assert.match(ddnsSource, /Manual update verification successful/);
   assert.match(ddnsSource, /Manual update verification unsuccessful/);
