@@ -350,10 +350,10 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(settingsSource, /Marathon of Hope/);
   assert.match(settingsSource, /In Loving Memory of Mr\. Terry Stanley Fox\. \(1958 – 1981\)/);
   assert.match(settingsSource, /terryFoxSourceUrl/);
-  assert.match(settingsSource, /terryFoxImageUrl/);
+  assert.match(settingsSource, /terryFoxImage/);
   assert.match(settingsSource, /aspect-\[1200\/630\]/);
   assert.match(settingsSource, /bg-white/);
   assert.match(settingsSource, /object-contain/);
-  assert.match(settingsSource, /clipPath: "inset\(0 20\.25%\)"/);
+  assert.doesNotMatch(settingsSource, /clipPath|terry-fox-white-side-bar/);
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
 });
