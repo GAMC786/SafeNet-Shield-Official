@@ -141,7 +141,7 @@ export function AiShieldControls() {
 
       {!shield.supported ? (
         <p className="rounded-md border border-white/10 bg-background/40 p-3 text-sm text-muted-foreground">
-          Camera and screen monitoring are only available in the SafeNet Android APK. The server AI Shield setting does not inspect browser or device pixels.
+          Camera and screen monitoring are available in the SafeNet Android APK. Start a consented capture session to analyze selected media locally; captured frames are released immediately.
         </p>
       ) : null}
 

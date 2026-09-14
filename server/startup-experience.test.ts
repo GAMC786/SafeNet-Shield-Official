@@ -387,6 +387,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(aiShieldSource, /key: "texts"/);
   assert.match(aiShieldSource, /key: "audios"/);
   assert.match(aiShieldSource, /mediaPreferences/);
+  assert.match(aiShieldSource, /captured frames are released immediately/);
+  assert.doesNotMatch(aiShieldSource, /The server AI Shield setting does not inspect browser or device pixels/);
   assert.match(aiShieldSource, /cameraEnabled/);
   assert.match(aiShieldSource, /screenEnabled/);
   assert.match(aiShieldSource, /toggleSource/);
