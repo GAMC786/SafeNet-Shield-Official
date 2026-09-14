@@ -3,6 +3,7 @@ import express from "express";
 import { isIP } from "node:net";
 import type { Server } from "http";
 import { storage as defaultStorage, type IStorage } from "./storage";
+import { getGlitchTipClientConfig } from "./glitchtip";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import {
@@ -104,6 +105,11 @@ export async function registerRoutes(
   options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
+
+  app.get("/api/telemetry/glitchtip", (_req, res) => {
+    res.json(getGlitchTipClientConfig());
+  });
+
   app.post(
     api.logs.ingest.path,
     async (req, res) => {

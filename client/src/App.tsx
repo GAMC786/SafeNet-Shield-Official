@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
+import * as Sentry from "@sentry/react";
+import { captureGlitchTipException } from "./lib/glitchtip";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -59,12 +61,35 @@ function AppContent() {
 
 function App() {
   return (
-    <WouterRouter base={basePath}>
-      <QueryClientProvider client={queryClient}>
-        <AppContent />
-        <Toaster />
-      </QueryClientProvider>
-    </WouterRouter>
+    <Sentry.ErrorBoundary
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background px-6 text-center text-foreground">
+          <div className="max-w-md space-y-4">
+            <h1 className="font-display text-2xl font-bold">SafeNet Shield needs to reload</h1>
+            <p className="text-sm text-muted-foreground">
+              An unexpected error interrupted the security console. Reload the app to continue.
+            </p>
+            <button
+              type="button"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              onClick={() => window.location.reload()}
+            >
+              Reload SafeNet Shield
+            </button>
+          </div>
+        </div>
+      }
+      onError={(error, componentStack) =>
+        captureGlitchTipException(error, { componentStack })
+      }
+    >
+      <WouterRouter base={basePath}>
+        <QueryClientProvider client={queryClient}>
+          <AppContent />
+          <Toaster />
+        </QueryClientProvider>
+      </WouterRouter>
+    </Sentry.ErrorBoundary>
   );
 }
 

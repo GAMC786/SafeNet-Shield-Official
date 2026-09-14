@@ -1,6 +1,13 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import {
+  initializeGlitchTip,
+  installGlitchTipGlobalHandlers,
+} from "./lib/glitchtip";
+
+void initializeGlitchTip();
+installGlitchTipGlobalHandlers();
 
 // Register the service worker for the production PWA only. A cache-first
 // service worker must not intercept Vite's development modules or HMR.

@@ -343,7 +343,7 @@ export default function SpeedTest() {
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
                 <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">
-                  <Play className="mr-2 h-5 w-5" />{isPaused ? "Resume Test" : phase === "complete" ? "Run Again" : phase === "error" ? "Retry Test" : "Start Test"}
+                  <Play className="mr-2 h-5 w-5" />{isPaused ? "Resume Test" : phase === "complete" || phase === "error" ? "Run Again" : "Start Test"}
                 </Button>
               ) : (
                 <Button size="lg" onClick={pauseSpeedTest} variant="outline" className="px-8" data-testid="button-pause-speedtest"><Pause className="mr-2 h-5 w-5" />Pause Test</Button>

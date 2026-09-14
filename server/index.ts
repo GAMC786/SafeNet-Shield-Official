@@ -1,9 +1,11 @@
+import "./instrumentation";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startDdnsScheduler } from "./ddns-service";
 import { registerRequestOriginMiddleware } from "./request-origin";
+import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 
 const app = express();
 const httpServer = createServer(app);
@@ -45,7 +47,12 @@ app.use((req, res, next) => {
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
+    capturedJsonResponse =
+      path === "/api/telemetry/glitchtip" &&
+      bodyJson &&
+      typeof bodyJson === "object"
+        ? { ...bodyJson, dsn: bodyJson.dsn ? "[configured]" : null }
+        : bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
@@ -66,6 +73,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+  installGlitchTipExpressErrorHandler(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

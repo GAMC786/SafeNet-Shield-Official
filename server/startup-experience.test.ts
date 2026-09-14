@@ -30,6 +30,18 @@ const uploadedArtworkSource = readFileSync(
 );
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
+const serverIndexSource = readFileSync(
+  path.resolve(process.cwd(), "server/index.ts"),
+  "utf8",
+);
+const glitchTipSource = readFileSync(
+  path.resolve(process.cwd(), "server/glitchtip.ts"),
+  "utf8",
+);
+const instrumentationSource = readFileSync(
+  path.resolve(process.cwd(), "server/instrumentation.ts"),
+  "utf8",
+);
 const androidInstrumentationSource = readFileSync(
   path.resolve(
     process.cwd(),
@@ -222,6 +234,20 @@ test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser eng
   assert.match(speedTestSource, /Cloudflare.*global edge network/);
   assert.doesNotMatch(speedTestSource, /LibreSpeed|librespeed/);
   assert.doesNotMatch(speedTestSource, /fiber\.google\.com|Google Speed Test/);
+});
+
+test("GlitchTip error reporting is initialized without reviving the dismissed Sentry connector", () => {
+  assert.match(glitchTipSource, /GLITCHTIP_DSN/);
+  assert.match(glitchTipSource, /skipOpenTelemetrySetup: true/);
+  assert.match(glitchTipSource, /expressErrorHandler/);
+  assert.match(instrumentationSource, /initializeGlitchTip/);
+  assert.match(serverIndexSource, /import "\.\/instrumentation"/);
+  assert.match(serverIndexSource, /installGlitchTipExpressErrorHandler/);
+  assert.match(mainSource, /initializeGlitchTip/);
+  assert.match(mainSource, /installGlitchTipGlobalHandlers/);
+  assert.match(appSource, /ErrorBoundary/);
+  assert.match(appSource, /captureGlitchTipException/);
+  assert.doesNotMatch(glitchTipSource, /connector_catalog:sentry|mcp:sentry/);
 });
 
 test("Android 12+ launch surface does not show the Shield Logo", () => {
