@@ -610,23 +610,7 @@ public class SafeNetVpnUiInstrumentationTest {
                 "document.querySelector('[aria-label=\"Soundtrack On\"]') !== null"
         );
 
-        JSONObject capture = callWebView(
-            "(() => {" +
-                "if (window.__safeNetSoundtrackErrors) return true;" +
-                "const errors = [];" +
-                "window.__safeNetSoundtrackErrors = errors;" +
-                "window.addEventListener('error', (event) => " +
-                    "errors.push('error:' + String(event.message || event.error || 'unknown')));" +
-                "window.addEventListener('unhandledrejection', (event) => " +
-                    "errors.push('unhandledrejection:' + String(event.reason || 'unknown')));" +
-                "const originalConsoleError = console.error.bind(console);" +
-                "console.error = (...args) => {" +
-                    "errors.push('console.error:' + args.map(String).join(' '));" +
-                    "originalConsoleError(...args);" +
-                "};" +
-                "return true;" +
-            "})()"
-        );
+        JSONObject capture = installSoundtrackErrorCapture();
         assertTrue("Could not install soundtrack error capture",
             capture.optBoolean("value", false));
 
@@ -662,11 +646,28 @@ public class SafeNetVpnUiInstrumentationTest {
             "})()"
         );
 
+        stopAndRelaunchAppProcess();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        JSONObject restartedCapture = installSoundtrackErrorCapture();
+        assertTrue("Could not install soundtrack error capture after process restart",
+            restartedCapture.optBoolean("value", false));
+
         UiObject2 soundtrackOff = device.wait(
             Until.findObject(By.desc("Soundtrack Off")),
             UI_TIMEOUT_MILLIS
         );
-        assertNotNull("The Dashboard Soundtrack toggle must remain off after resume",
+        assertNotNull("The Dashboard Soundtrack toggle must remain off after process restart",
             soundtrackOff);
         soundtrackOff.click();
 
@@ -702,7 +703,27 @@ public class SafeNetVpnUiInstrumentationTest {
         Log.i(
             "SafeNetMediaSmoke",
             "SOUNDTRACK_LIFECYCLE result=PASS off_pause_resume=PASS " +
-                "on_pause_resume=PASS browser_errors=0"
+                "off_process_restart=PASS on_pause_resume=PASS browser_errors=0"
+        );
+    }
+
+    private JSONObject installSoundtrackErrorCapture() throws Exception {
+        return callWebView(
+            "(() => {" +
+                "if (window.__safeNetSoundtrackErrors) return true;" +
+                "const errors = [];" +
+                "window.__safeNetSoundtrackErrors = errors;" +
+                "window.addEventListener('error', (event) => " +
+                    "errors.push('error:' + String(event.message || event.error || 'unknown')));" +
+                "window.addEventListener('unhandledrejection', (event) => " +
+                    "errors.push('unhandledrejection:' + String(event.reason || 'unknown')));" +
+                "const originalConsoleError = console.error.bind(console);" +
+                "console.error = (...args) => {" +
+                    "errors.push('console.error:' + args.map(String).join(' '));" +
+                    "originalConsoleError(...args);" +
+                "};" +
+                "return true;" +
+            "})()"
         );
     }
 
@@ -1929,6 +1950,12 @@ public class SafeNetVpnUiInstrumentationTest {
 
     private void pauseAndResumeActivity() throws Exception {
         device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+    }
+
+    private void stopAndRelaunchAppProcess() throws Exception {
+        executeShellCommand("am force-stop " + PACKAGE_NAME);
         Thread.sleep(1000);
         relaunchActivity();
     }

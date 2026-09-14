@@ -257,7 +257,11 @@
              startAudio();
            }
          };
-         startAudio();
+         if (savedMuted) {
+           stopAudio();
+         } else {
+           startAudio();
+         }
          window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
          window.addEventListener("keydown", startAudio, { once: true });
          window.addEventListener("safenet-soundtrack-change", syncAudioPreference);
