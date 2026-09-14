@@ -17,6 +17,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 function CopyValue({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -43,8 +44,27 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 
 export default function TetherShare() {
   const { supported, status, isBusy, start, stop, openWifiSettings } = useTetherShare();
+  const { toast } = useToast();
   const running = status?.running === true;
   const starting = status?.starting === true || isBusy;
+  const handleToggle = async () => {
+    if (!supported) {
+      toast({
+        title: "Android device required",
+        description: "Internet Share uses Android Wi-Fi Direct and can be started from the SafeNet Android APK.",
+      });
+      return;
+    }
+    try {
+      await (running ? stop() : start());
+    } catch (error) {
+      toast({
+        title: "Internet Share could not be changed",
+        description: error instanceof Error ? error.message : "Android could not change the sharing state.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -100,8 +120,8 @@ export default function TetherShare() {
             type="button"
             size="lg"
             variant={running ? "destructive" : "default"}
-            disabled={!supported || starting}
-            onClick={() => void (running ? stop() : start())}
+            disabled={starting}
+            onClick={() => void handleToggle()}
             data-testid="button-tether-toggle"
           >
             {starting ? "Starting…" : running ? <><Square className="mr-2 h-4 w-4 fill-current" /> Stop sharing</> : <><Share2 className="mr-2 h-4 w-4" /> Start sharing</>}
