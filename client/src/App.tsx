@@ -15,6 +15,7 @@ import SpeedTest from "@/pages/SpeedTest";
 import Firewall from "@/pages/Firewall";
 import Antivirus from "@/pages/Antivirus";
 import Logs from "@/pages/Logs";
+import TetherShare from "@/pages/TetherShare";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
@@ -46,6 +47,7 @@ function MainLayout() {
           <Route path="/firewall" component={Firewall} />
           <Route path="/antivirus" component={Antivirus} />
           <Route path="/logs" component={Logs} />
+          <Route path="/tether" component={TetherShare} />
           <Route path="/settings" component={Settings} />
           <Route component={NotFound} />
         </Switch>

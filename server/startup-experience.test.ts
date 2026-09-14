@@ -61,6 +61,10 @@ const navigationSource = readFileSync(
   path.join(clientRoot, "src/components/Navigation.tsx"),
   "utf8",
 );
+const tetherShareSource = readFileSync(
+  path.join(clientRoot, "src/pages/TetherShare.tsx"),
+  "utf8",
+);
 const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
@@ -166,6 +170,16 @@ test("the navigation panel is mounted without the old header arrow control", () 
   assert.match(appSource, /<Navigation \/>/);
   assert.match(navigationSource, /navItems/);
   assert.doesNotMatch(headerSource, /ArrowLeft|Back to Command Center/);
+});
+
+test("the Activity tab is replaced by Android Internet Share", () => {
+  assert.match(navigationSource, /path: "\/tether", label: "Internet Share", icon: Share2/);
+  assert.doesNotMatch(navigationSource, /label: "Activity"/);
+  assert.match(appSource, /Route path="\/tether" component=\{TetherShare\}/);
+  assert.match(tetherShareSource, /No-root Wi-Fi Direct gateway/);
+  assert.match(tetherShareSource, /Start sharing/);
+  assert.match(tetherShareSource, /Proxy host/);
+  assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
 });
 
 test("Android keeps a Dashboard recovery state instead of a permanent dark screen", () => {

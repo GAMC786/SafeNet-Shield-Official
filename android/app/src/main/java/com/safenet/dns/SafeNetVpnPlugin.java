@@ -36,7 +36,9 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(
     name = "SafeNetVpn",
     permissions = {
-        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA })
+        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA }),
+        @Permission(alias = "nearbyWifi", strings = { Manifest.permission.NEARBY_WIFI_DEVICES }),
+        @Permission(alias = "wifiLocation", strings = { Manifest.permission.ACCESS_FINE_LOCATION })
     }
 )
 public class SafeNetVpnPlugin extends Plugin {
@@ -120,6 +122,93 @@ public class SafeNetVpnPlugin extends Plugin {
         JSObject result = status();
         result.put("protection", toJsObject(SafeNetProtectionStatus.get(getContext())));
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getTetherStatus(PluginCall call) {
+        call.resolve(tetherStatus());
+    }
+
+    @PluginMethod
+    public void startTetherShare(PluginCall call) {
+        if (!tetherPermissionGranted()) {
+            if (Build.VERSION.SDK_INT >= 33 && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
+                requestPermissionForAlias("nearbyWifi", call, "tetherPermissionResult");
+            } else {
+                requestPermissionForAlias("wifiLocation", call, "tetherPermissionResult");
+            }
+            return;
+        }
+        startTetherService();
+        call.resolve(tetherStatus());
+    }
+
+    @PermissionCallback
+    private void tetherPermissionResult(PluginCall call) {
+        if (call == null) return;
+        if (!tetherPermissionGranted()) {
+            call.reject("Nearby Wi-Fi permission was denied.", "TETHER_PERMISSION_DENIED");
+            return;
+        }
+        startTetherService();
+        call.resolve(tetherStatus());
+    }
+
+    @PluginMethod
+    public void stopTetherShare(PluginCall call) {
+        TetherShareManager.get(getContext()).stop();
+        getContext().stopService(new Intent(getContext(), TetherShareService.class).setAction(TetherShareService.ACTION_STOP));
+        call.resolve(tetherStatus());
+    }
+
+    @PluginMethod
+    public void openTetherWifiSettings(PluginCall call) {
+        Intent settingsIntent = new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS);
+        getActivity().startActivity(settingsIntent);
+        call.resolve();
+    }
+
+    private boolean tetherPermissionGranted() {
+        if (Build.VERSION.SDK_INT >= 33
+                && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
+            return false;
+        }
+        return Build.VERSION.SDK_INT >= 33
+            || getPermissionState("wifiLocation") == PermissionState.GRANTED;
+    }
+
+    private void startTetherService() {
+        Intent serviceIntent = new Intent(getContext(), TetherShareService.class)
+            .setAction(TetherShareService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= 26) {
+            getContext().startForegroundService(serviceIntent);
+        } else {
+            getContext().startService(serviceIntent);
+        }
+    }
+
+    private JSObject tetherStatus() {
+        TetherShareManager.Snapshot snapshot = TetherShareManager.get(getContext()).snapshot();
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        result.put("running", snapshot.running);
+        result.put("starting", snapshot.starting);
+        result.put("networkName", snapshot.networkName);
+        result.put("passphrase", snapshot.passphrase);
+        result.put("proxyHost", snapshot.proxyHost);
+        result.put("proxyPort", snapshot.proxyPort);
+        result.put("groupOwner", snapshot.groupOwner);
+        result.put("lastError", snapshot.lastError);
+        result.put("requiresManualProxy", true);
+        JSArray connectedDevices = new JSArray();
+        for (TetherShareManager.DeviceSnapshot device : snapshot.devices) {
+            JSObject connectedDevice = new JSObject();
+            connectedDevice.put("name", device.name);
+            connectedDevice.put("address", device.address);
+            connectedDevices.put(connectedDevice);
+        }
+        result.put("connectedDevices", connectedDevices);
+        return result;
     }
 
     @PluginMethod

@@ -146,6 +146,10 @@ interface SafeNetVpnPlugin {
   startAiShieldScreen(): Promise<AiShieldResult>;
   stopAiShield(): Promise<AiShieldResult>;
   setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
+  getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
+  startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
+  stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
+  openTetherWifiSettings(): Promise<void>;
   addListener(
     eventName: "aiShieldResult",
     listenerFunc: (result: AiShieldResult) => void,
