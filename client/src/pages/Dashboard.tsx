@@ -1,6 +1,8 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { useSettings } from "@/hooks/use-settings";
+import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { EulaDialog } from "@/components/EulaDialog";
@@ -20,10 +22,16 @@ export default function Dashboard() {
   const { data: logs } = logsQuery;
   const { data: dnsServers } = useDnsServers();
   const vpn = useSafeNetVpn();
+  const { data: settings } = useSettings();
+  const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
+  const isProtected =
+    vpn.status?.running === true &&
+    settings?.firewallEnabled === true &&
+    antivirusSettings?.isEnabled === true;
   
   const activeDns = dnsServers?.find(s => s.isActive);
   const selectedWireGuardDns = activeDns
@@ -72,7 +80,7 @@ export default function Dashboard() {
       <Header 
         title="Command Center" 
         subtitle={isServerAvailable ? "System Status: Online" : "Server connection unavailable"}
-        status={isServerAvailable ? "active" : "warning"}
+        status={isProtected ? "active" : "unprotected"}
       />
 
       {/* Connection Status Bar */}

@@ -264,6 +264,13 @@ test("Settings use the current package version and expose only current controls"
 
 test("the Dashboard reports SafeNet VPN protection instead of generic system activity", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
+  assert.match(dashboardSource, /useSettings/);
+  assert.match(dashboardSource, /useAntivirusSettings/);
+  assert.match(dashboardSource, /settings\?\.firewallEnabled === true/);
+  assert.match(dashboardSource, /antivirusSettings\?\.isEnabled === true/);
+  assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
+  assert.match(headerSource, /"Unprotected"/);
+  assert.match(headerSource, /yellow-500/);
   assert.match(dashboardSource, /SafeNet VPN/);
   assert.match(dashboardSource, /SafeNet VPN On\/Off/);
   assert.match(dashboardSource, /startAfterEula/);
