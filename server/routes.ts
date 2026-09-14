@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { isIP } from "node:net";
 import type { Server } from "http";
+import { OoklaSpeedtestError, runOoklaSpeedtest } from "./ookla-speedtest";
 import { storage as defaultStorage, type IStorage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -692,74 +693,29 @@ export async function registerRoutes(
   });
 
   // === Speed Test ===
-  // Download test - returns uncached, incompressible data for client-side timing.
-  // Keep the standard payload ready so server-side random-data generation does
-  // not become part of the measured network throughput.
-  const standardSpeedTestPayload = Buffer.alloc(4_000_000, 0xa5);
-  app.get("/api/speedtest/download", (req, res) => {
-    const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
-    const maxSize = 10000000; // Max 10MB
-    const actualSize = Math.min(size, maxSize);
-    const payload = actualSize === standardSpeedTestPayload.length
-      ? standardSpeedTestPayload
-      : Buffer.alloc(actualSize, 0xa5);
-    
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Length", actualSize);
-    res.setHeader("Content-Encoding", "identity");
-    res.setHeader("X-SpeedTest-Bytes", actualSize);
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    
-    // End with the complete fixed-length buffer. Streaming through the
-    // development proxy can be truncated before the drain callback fires,
-    // which makes the client measure a partial download.
-    res.end(payload);
-  });
-
-  // Upload test - receives the full payload so the client can measure the
-  // complete request round trip with the same clock used for downloads.
-  app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
-    const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    if (bytesReceived === 0) {
-      return res.status(400).json({ message: "The upload payload was empty." });
+  app.post("/api/speedtest/ookla", async (req, res) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    req.once("aborted", abort);
+    res.once("close", abort);
+    try {
+      const result = await runOoklaSpeedtest(controller.signal);
+      if (!res.writableEnded) res.json(result);
+    } catch (error) {
+      if (error instanceof OoklaSpeedtestError && error.code === "aborted") return;
+      const status = error instanceof OoklaSpeedtestError && error.code === "unavailable"
+        ? 503
+        : error instanceof OoklaSpeedtestError && error.code === "timeout"
+          ? 504
+          : 500;
+      const message = error instanceof OoklaSpeedtestError
+        ? error.message
+        : "The Ookla Speedtest failed.";
+      if (!res.writableEnded) res.status(status).json({ message });
+    } finally {
+      req.removeListener("aborted", abort);
+      res.removeListener("close", abort);
     }
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("X-SpeedTest-Bytes", bytesReceived);
-    return res.json({ bytesReceived });
-  });
-
-  // Ping test
-  app.get("/api/speedtest/ping", (req, res) => {
-    res.json({ timestamp: Date.now() });
-  });
-
-  // LibreSpeed-compatible same-origin endpoints. The React page uses the
-  // LibreSpeed measurement pattern while keeping SafeNet's existing UI.
-  app.get("/api/speedtest/librespeed/garbage.php", (req, res) => {
-    const size = Math.min(Math.max(Number.parseInt(String(req.query.size ?? "4000000"), 10) || 4_000_000, 256_000), 10_000_000);
-    const payload = size === standardSpeedTestPayload.length
-      ? standardSpeedTestPayload
-      : Buffer.alloc(size, 0xa5);
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Length", payload.length);
-    res.setHeader("Content-Encoding", "identity");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.setHeader("X-SpeedTest-Bytes", payload.length);
-    res.end(payload);
-  });
-
-  app.all(
-    "/api/speedtest/librespeed/empty.php",
-    express.raw({ type: "*/*", limit: "64mb" }),
-    (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.status(204).end();
-    },
-  );
-
-  app.get("/api/speedtest/librespeed/getIP.php", (req, res) => {
-    const clientIp = String(req.ip ?? "").replace(/^::ffff:/, "");
-    res.json({ processedString: clientIp, rawIspInfo: "" });
   });
 
   // === SEED DATA ===

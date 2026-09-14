@@ -11,6 +11,8 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
+    "predev": "bash scripts/ensure-ookla-speedtest.sh",
+    "prestart": "bash scripts/ensure-ookla-speedtest.sh",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",

@@ -87,8 +87,7 @@ function mockApi(
   {
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
-    libreSpeedResponses = [],
-    libreSpeedPingDelayMs = 0,
+    ooklaSpeedtestResponses = [],
     settingsDelayMs = 0,
     dnsDelayMs = 0,
   } = {},
@@ -162,16 +161,14 @@ function mockApi(
   };
   let ddnsUpdateAttempt = 0;
   let threatFeedUpdateAttempt = 0;
-  const usedLibreSpeedResponses = new Set();
-  const nextLibreSpeedResponse = (pathname, method) => {
-    const responseIndex = libreSpeedResponses.findIndex((candidate, index) =>
-      !usedLibreSpeedResponses.has(index) &&
-      (!candidate.path || candidate.path === pathname) &&
-      (!candidate.method || candidate.method === method),
+  const usedOoklaSpeedtestResponses = new Set();
+  const nextOoklaSpeedtestResponse = () => {
+    const responseIndex = ooklaSpeedtestResponses.findIndex((candidate, index) =>
+      !usedOoklaSpeedtestResponses.has(index),
     );
     if (responseIndex < 0) return null;
-    usedLibreSpeedResponses.add(responseIndex);
-    return libreSpeedResponses[responseIndex];
+    usedOoklaSpeedtestResponses.add(responseIndex);
+    return ooklaSpeedtestResponses[responseIndex];
   };
   const updaters = [
     {
@@ -264,50 +261,32 @@ function mockApi(
         }
         antivirusSettings = { ...antivirusSettings, ...update };
         response = antivirusSettings;
-      } else if (url.pathname.startsWith("/api/speedtest/librespeed/")) {
-        const configuredResponse = nextLibreSpeedResponse(url.pathname, method);
-        if (configuredResponse?.delayMs || (method === "GET" && url.pathname.endsWith("/empty.php") && libreSpeedPingDelayMs)) {
-          await new Promise((resolve) => setTimeout(resolve, configuredResponse?.delayMs || libreSpeedPingDelayMs));
-        }
-        if (configuredResponse?.hang) {
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
-        }
+      } else if (url.pathname === "/api/speedtest/ookla" && method === "POST") {
+        const configuredResponse = nextOoklaSpeedtestResponse();
         if (configuredResponse) {
+          if (configuredResponse.delayMs) {
+            await new Promise((resolve) => setTimeout(resolve, configuredResponse.delayMs));
+          }
           await route.fulfill({
             status: configuredResponse.status ?? 200,
-            contentType: configuredResponse.contentType ?? "application/json",
-            body: configuredResponse.body ?? "",
+            contentType: "application/json",
+            body: JSON.stringify(configuredResponse.body ?? {}),
           });
           return;
         }
-        if (url.pathname.endsWith("/garbage.php")) {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/octet-stream",
-            headers: { "cache-control": "no-store" },
-            body: Buffer.alloc(250_000, 0xa5),
-          });
-          return;
-        }
-        if (url.pathname.endsWith("/getIP.php")) {
-          response = { processedString: "198.51.100.24", rawIspInfo: "" };
-        } else {
-          await route.fulfill({ status: 204, body: "" });
-          return;
-        }
-      } else if (url.pathname === "/api/speedtest/ping" && method === "GET") {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        response = { timestamp: Date.now() };
-      } else if (url.pathname === "/api/speedtest/download" && method === "GET") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/octet-stream",
-          headers: { "cache-control": "no-store" },
-          body: Buffer.alloc(Number(url.searchParams.get("size")) || 100000),
-        });
-        return;
-      } else if (url.pathname === "/api/speedtest/upload" && method === "POST") {
-        response = { bytesReceived: 4000000 };
+        response = {
+          engine: "ookla",
+          timestamp: new Date().toISOString(),
+          latency: 18.4,
+          jitter: 1.2,
+          downloadMbps: 214.6,
+          uploadMbps: 42.1,
+          packetLoss: 0,
+          isp: "SafeNet Test ISP",
+          publicIp: "203.0.113.10",
+          server: { name: "Toronto Ookla", location: "Toronto", country: "Canada" },
+          resultUrl: null,
+        };
       } else if (url.pathname === "/api/antivirus/feeds" && method === "GET") {
         response = threatFeeds;
       } else if (url.pathname.startsWith("/api/antivirus/feeds/") && method === "PATCH") {
@@ -903,7 +882,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("the ISP-based Measure Your Network UI uses LibreSpeed without an external test link", async () => {
+test("the ISP-based Measure Your Network UI uses Ookla without an external test link", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -935,14 +914,30 @@ test("the ISP-based Measure Your Network UI uses LibreSpeed without an external 
   await page.close();
 });
 
-test("Measure Your Network completes LibreSpeed phases and supports pause and resume", async () => {
+test("Measure Your Network completes Ookla phases and supports pause and resume", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
-  const requestedPaths = [];
-  await mockApi(page, { libreSpeedPingDelayMs: 250 });
+  let speedtestCalls = 0;
+  const ooklaResult = {
+    engine: "ookla",
+    timestamp: new Date().toISOString(),
+    latency: 18.4,
+    jitter: 1.2,
+    downloadMbps: 214.6,
+    uploadMbps: 42.1,
+    packetLoss: 0,
+    isp: "SafeNet Test ISP",
+    publicIp: "203.0.113.10",
+    server: { name: "Toronto Ookla", location: "Toronto", country: "Canada" },
+    resultUrl: null,
+  };
+  await mockApi(page, {
+    ooklaSpeedtestResponses: [
+      { delayMs: 250, body: ooklaResult },
+      { delayMs: 250, body: ooklaResult },
+    ],
+  });
   page.on("request", (request) => {
-    if (request.url().includes("/api/speedtest/librespeed/")) {
-      requestedPaths.push(new URL(request.url()).pathname);
-    }
+    if (request.url().includes("/api/speedtest/ookla")) speedtestCalls += 1;
   });
 
   await page.goto(`${baseUrl}/speedtest`);
@@ -961,27 +956,22 @@ test("Measure Your Network completes LibreSpeed phases and supports pause and re
   assert.notEqual(await page.getByTestId("text-upload-result").textContent(), "—", "upload result should be populated");
   assert.ok(await page.getByTestId("text-download-result").evaluate((element) => Number.parseFloat(element.textContent) > 0), "download result should be positive");
   assert.ok(await page.getByTestId("text-upload-result").evaluate((element) => Number.parseFloat(element.textContent) > 0), "upload result should be positive");
-  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/getIP.php"));
-  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/garbage.php"));
-  assert.ok(requestedPaths.includes("/api/speedtest/librespeed/empty.php"));
+  assert.equal(speedtestCalls, 2, "pause and resume should start a fresh Ookla CLI request");
   await page.close();
 });
 
-test("Measure Your Network reports LibreSpeed endpoint errors and retries successfully", async () => {
+test("Measure Your Network reports Ookla CLI errors and retries successfully", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, {
-    libreSpeedResponses: [{
-      path: "/api/speedtest/librespeed/getIP.php",
-      method: "GET",
+    ooklaSpeedtestResponses: [{
       status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({ message: "measurement backend unavailable" }),
+      body: { message: "Ookla Speedtest CLI is not installed on this server." },
     }],
   });
 
   await page.goto(`${baseUrl}/speedtest`);
   await page.getByTestId("button-start-speedtest").click();
-  await page.getByRole("alert").filter({ hasText: "LibreSpeed endpoint returned HTTP 503." }).waitFor();
+  await page.getByRole("alert").filter({ hasText: "Ookla Speedtest CLI is not installed on this server." }).waitFor();
   assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Retry Test/);
 
   await page.getByTestId("button-start-speedtest").click();
@@ -989,19 +979,18 @@ test("Measure Your Network reports LibreSpeed endpoint errors and retries succes
   await page.close();
 });
 
-test("Measure Your Network fails clearly when a LibreSpeed endpoint stalls", async () => {
+test("Measure Your Network fails clearly when the Ookla CLI stalls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, {
-    libreSpeedResponses: [{
-      path: "/api/speedtest/librespeed/getIP.php",
-      method: "GET",
-      hang: true,
+    ooklaSpeedtestResponses: [{
+      status: 504,
+      body: { message: "Ookla Speedtest timed out after 90 seconds." },
     }],
   });
 
   await page.goto(`${baseUrl}/speedtest`);
   await page.getByTestId("button-start-speedtest").click();
-  await page.getByRole("alert").filter({ hasText: /LibreSpeed endpoint timed out after \d+ms\./ }).waitFor({ timeout: 5_000 });
+  await page.getByRole("alert").filter({ hasText: "Ookla Speedtest timed out after 90 seconds." }).waitFor({ timeout: 5_000 });
   assert.match(await page.getByText("Test interrupted", { exact: true }).textContent(), /Test interrupted/);
   await page.close();
 });

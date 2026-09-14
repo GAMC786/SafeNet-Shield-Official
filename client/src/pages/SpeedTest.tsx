@@ -23,14 +23,10 @@ import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { LibreSpeedClient, type LibreSpeedStatus } from "@/lib/librespeed-client";
+import { apiFetch } from "@/lib/api";
+import { api } from "@shared/routes";
 
 type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
-
-function configuredNumber(value: string | undefined, fallback: number, minimum: number) {
-  const configured = Number(value);
-  return Number.isFinite(configured) && configured >= minimum ? configured : fallback;
-}
 interface SpeedResults {
   latency: number | null;
   download: number | null;
@@ -98,11 +94,6 @@ function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function numericStatus(value: string) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
   const chartPoints = points.length ? points : initialWavePoints;
   const line = chartPoints
@@ -164,8 +155,7 @@ export default function SpeedTest() {
   const pausedRef = useRef(false);
   const measurementErrorRef = useRef(false);
   const runIdRef = useRef(0);
-  const libreSpeedRef = useRef<LibreSpeedClient | null>(null);
-  const lastWaveUpdateRef = useRef(0);
+  const ooklaAbortRef = useRef<AbortController | null>(null);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
@@ -211,6 +201,7 @@ export default function SpeedTest() {
 
   const runSpeedTest = useCallback(async () => {
     const runId = ++runIdRef.current;
+    const controller = new AbortController();
     measurementErrorRef.current = false;
     setError(null);
     setResults(initialResults);
@@ -219,94 +210,66 @@ export default function SpeedTest() {
     setIsRunning(true);
     setPhase("latency");
     setProgress(phaseProgress.latency);
-    measurementErrorRef.current = false;
-
+    ooklaAbortRef.current = controller;
+    const startedAt = performance.now();
+    const progressTimer = window.setInterval(() => {
+      if (runId !== runIdRef.current) return;
+      const elapsed = performance.now() - startedAt;
+      const nextProgress = elapsed < 5_000
+        ? 12 + Math.min(elapsed / 5_000, 1) * 16
+        : elapsed < 25_000
+          ? 28 + Math.min((elapsed - 5_000) / 20_000, 1) * 42
+          : 70 + Math.min((elapsed - 25_000) / 25_000, 1) * 24;
+      const nextPhase: TestPhase = nextProgress < 28 ? "latency" : nextProgress < 70 ? "download" : "upload";
+      setPhase(nextPhase);
+      setProgress(Math.min(Math.round(nextProgress), 94));
+      appendWavePoint(0.3 + Math.min(nextProgress / 100, 0.65) + (Math.random() - 0.5) * 0.08);
+    }, 180);
     try {
-      const client = new LibreSpeedClient({
-        baseUrl: window.location.origin,
-        downloadPath: "/api/speedtest/librespeed/garbage.php",
-        uploadPath: "/api/speedtest/librespeed/empty.php",
-        pingPath: "/api/speedtest/librespeed/empty.php",
-        getIpPath: "/api/speedtest/librespeed/getIP.php",
-        downloadSeconds: measurementConfig.downloadSeconds,
-        uploadSeconds: measurementConfig.uploadSeconds,
-        pingCount: measurementConfig.pingCount,
-        uploadBytes: measurementConfig.uploadBytes,
-        requestTimeoutMs: measurementConfig.requestTimeoutMs,
-        onUpdate: (status: LibreSpeedStatus) => {
-          if (runId !== runIdRef.current) return;
-          const latency = numericStatus(status.pingStatus);
-          const download = numericStatus(status.dlStatus);
-          const upload = numericStatus(status.ulStatus);
-          setResults((current) => ({
-            ...current,
-            latency: latency ?? current.latency,
-            download: download ?? current.download,
-            upload: upload ?? current.upload,
-            packetLoss: status.testState === 2 ? status.packetLoss : current.packetLoss,
-          }));
-          if (status.testState === 2) {
-            setPhase("latency");
-            setProgress(Math.min(32, phaseProgress.latency + status.pingProgress * 20));
-          } else if (status.testState === 1) {
-            setPhase("download");
-            setProgress(Math.min(68, 32 + status.dlProgress * 36));
-          } else if (status.testState === 3) {
-            setPhase("upload");
-            setProgress(Math.min(94, 76 + status.ulProgress * 18));
-          }
-          const now = performance.now();
-          if (now - lastWaveUpdateRef.current >= 180) {
-            lastWaveUpdateRef.current = now;
-            const signal = status.testState === 2
-              ? 0.35 + Math.min((latency ?? 0) / 180, 0.45)
-              : status.testState === 1
-                ? 0.42 + Math.min((download ?? 0) / 500, 0.5)
-                : 0.52 + Math.min((upload ?? 0) / 500, 0.4);
-            appendWavePoint(signal);
-          }
-        },
-        onEnd: (aborted) => {
-          if (runId !== runIdRef.current) return;
-          if (aborted) {
-            if (pausedRef.current) return;
-            if (measurementErrorRef.current) return;
-            setError("The LibreSpeed measurement was interrupted.");
-            setPhase("error");
-            setIsRunning(false);
-            toast({ title: "Speed test could not be completed", description: "The measurement was interrupted.", variant: "destructive" });
-            return;
-          }
-          setProgress(100);
-          setPhase("complete");
-          setIsRunning(false);
-          toast({ title: "Speed test complete", description: "Latency and throughput results are ready below." });
-        },
-        onError: (measurementError) => {
-          if (runId !== runIdRef.current) return;
-          measurementErrorRef.current = true;
-          setError(measurementError.message);
-          setPhase("error");
-          setIsRunning(false);
-          toast({ title: "Speed test could not be completed", description: measurementError.message, variant: "destructive" });
-        },
+      const response = await apiFetch(api.speedtest.ookla.path, {
+        method: "POST",
+        signal: controller.signal,
+        timeoutMs: 100_000,
       });
-      libreSpeedRef.current = client;
-      client.start();
+      const payload = await response.json() as Record<string, unknown>;
+      if (!response.ok) {
+        throw new Error(typeof payload.message === "string" ? payload.message : `Ookla Speedtest returned HTTP ${response.status}.`);
+      }
+      const server = typeof payload.server === "object" && payload.server !== null
+        ? payload.server as Record<string, unknown>
+        : {};
+      if (runId !== runIdRef.current) return;
+      setResults({
+        latency: typeof payload.latency === "number" ? payload.latency : null,
+        download: typeof payload.downloadMbps === "number" ? payload.downloadMbps : null,
+        upload: typeof payload.uploadMbps === "number" ? payload.uploadMbps : null,
+        packetLoss: typeof payload.packetLoss === "number" ? payload.packetLoss : null,
+      });
+      setProgress(100);
+      setPhase("complete");
+      setIsRunning(false);
+      toast({
+        title: "Speed test complete",
+        description: typeof server.name === "string" ? `Measured through ${server.name}.` : "Latency and throughput results are ready below.",
+      });
     } catch (caughtError) {
       if (runId !== runIdRef.current) return;
+      if (pausedRef.current || isAbortError(caughtError)) return;
       const message = caughtError instanceof Error ? caughtError.message : "The speed test was interrupted.";
       measurementErrorRef.current = true;
       setError(message);
       setPhase("error");
       setIsRunning(false);
       toast({ title: "Speed test could not be completed", description: message, variant: "destructive" });
+    } finally {
+      window.clearInterval(progressTimer);
+      if (ooklaAbortRef.current === controller) ooklaAbortRef.current = null;
     }
   }, [appendWavePoint, toast]);
 
   useEffect(() => () => {
     runIdRef.current += 1;
-    libreSpeedRef.current?.abort();
+    ooklaAbortRef.current?.abort();
   }, []);
 
   const startSpeedTest = () => {
@@ -321,7 +284,7 @@ export default function SpeedTest() {
   };
   const pauseSpeedTest = () => {
     pausedRef.current = true;
-    libreSpeedRef.current?.abort();
+    ooklaAbortRef.current?.abort();
     setIsRunning(false);
     toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
   };
@@ -329,8 +292,8 @@ export default function SpeedTest() {
     runIdRef.current += 1;
     pausedRef.current = false;
     measurementErrorRef.current = false;
-    libreSpeedRef.current?.abort();
-    libreSpeedRef.current = null;
+    ooklaAbortRef.current?.abort();
+    ooklaAbortRef.current = null;
     setIsRunning(false);
     setHasStarted(false);
     setPhase("idle");
@@ -357,7 +320,7 @@ export default function SpeedTest() {
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">Measure the connection from this device to SafeNet and identify the ISP associated with your public IP. The chart updates as each measurement completes.</p>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">Measure the SafeNet service connection with the official Ookla Speedtest CLI. The network profile below identifies this device&apos;s public IP separately.</p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
                 <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">
@@ -440,11 +403,3 @@ export default function SpeedTest() {
     </div>
   );
 }
-
-const measurementConfig = {
-  downloadSeconds: configuredNumber(import.meta.env.VITE_SPEEDTEST_DOWNLOAD_SECONDS, 8, 0.05),
-  uploadSeconds: configuredNumber(import.meta.env.VITE_SPEEDTEST_UPLOAD_SECONDS, 8, 0.05),
-  pingCount: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_PING_COUNT, 10, 1)),
-  uploadBytes: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_UPLOAD_BYTES, 2_000_000, 1_024)),
-  requestTimeoutMs: Math.floor(configuredNumber(import.meta.env.VITE_SPEEDTEST_REQUEST_TIMEOUT_MS, 10_000, 100)),
-};
