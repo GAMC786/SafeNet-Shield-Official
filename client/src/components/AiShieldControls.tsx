@@ -7,13 +7,18 @@ import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
   AlertCircle,
+  AudioLines,
   Camera,
   CheckCircle2,
   Eye,
+  Image as ImageIcon,
   Monitor,
   Play,
+  Radio,
   ShieldAlert,
   Square,
+  Type,
+  Video,
 } from "lucide-react";
 
 function statePresentation(result: AiShieldResult | null) {
@@ -77,6 +82,13 @@ export function AiShieldControls() {
   const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
+  const mediaControls = [
+    { key: "images", label: "Images", description: "Analyze image frames", icon: ImageIcon },
+    { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
+    { key: "livestreams", label: "Livestreams", description: "Analyze live frames", icon: Radio },
+    { key: "texts", label: "Texts", description: "Enable text detection", icon: Type },
+    { key: "audios", label: "Audios", description: "Enable audio detection", icon: AudioLines },
+  ] as const;
 
   const run = async (action: () => Promise<AiShieldResult>) => {
     try {
@@ -115,9 +127,9 @@ export function AiShieldControls() {
             <Eye className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h2 className="font-display text-lg tracking-wider">DeepCleer Ai Camera and Screen Detector</h2>
+            <h2 className="font-display text-lg tracking-wider">DeepCleer Ai Detector</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Detects Images, Videos, Livestreams, Texts, and Audios.
+              Choose the media types DeepCleer Ai should detect while monitoring.
             </p>
           </div>
         </div>
@@ -184,6 +196,37 @@ export function AiShieldControls() {
               />
             </div>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {mediaControls.map(({ key, label, description, icon: Icon }) => {
+            const enabled = shield.mediaPreferences[key];
+            return (
+              <div
+                key={key}
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {enabled ? "On" : "Off"}
+                  </span>
+                  <Switch
+                    checked={enabled}
+                    onCheckedChange={(checked) => shield.setMediaPreference(key, checked)}
+                    data-testid={`switch-ai-${key}`}
+                    aria-label={`${label} detection ${enabled ? "On" : "Off"}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3">

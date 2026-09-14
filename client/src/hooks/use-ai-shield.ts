@@ -11,6 +11,36 @@ export interface DeepCleerStatus {
   message: string;
 }
 
+export type AiShieldMediaType = "images" | "videos" | "livestreams" | "texts" | "audios";
+
+export type AiShieldMediaPreferences = Record<AiShieldMediaType, boolean>;
+
+const AI_SHIELD_MEDIA_PREFERENCES_KEY = "safenet-ai-shield-media-preferences";
+
+const defaultMediaPreferences: AiShieldMediaPreferences = {
+  images: true,
+  videos: true,
+  livestreams: true,
+  texts: true,
+  audios: true,
+};
+
+function readMediaPreferences(): AiShieldMediaPreferences {
+  if (typeof window === "undefined") {
+    return defaultMediaPreferences;
+  }
+
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(AI_SHIELD_MEDIA_PREFERENCES_KEY) || "null") as Partial<AiShieldMediaPreferences> | null;
+    return {
+      ...defaultMediaPreferences,
+      ...(stored || {}),
+    };
+  } catch {
+    return defaultMediaPreferences;
+  }
+}
+
 const idleResult: AiShieldResult = {
   state: "capture_unavailable",
   source: "none",
@@ -29,6 +59,7 @@ export function useAiShield() {
   const [error, setError] = useState<string | null>(null);
   const [deepCleer, setDeepCleer] = useState<DeepCleerStatus | null>(null);
   const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [mediaPreferences, setMediaPreferences] = useState<AiShieldMediaPreferences>(readMediaPreferences);
   const cloudEnabledRef = useRef(false);
   const deepCleerRef = useRef<DeepCleerStatus | null>(null);
   const latestStatusTimestamp = useRef(0);
@@ -148,6 +179,18 @@ export function useAiShield() {
     }
   }, [supported]);
 
+  const setMediaPreference = useCallback((mediaType: AiShieldMediaType, enabled: boolean) => {
+    setMediaPreferences((previous) => {
+      const next = { ...previous, [mediaType]: enabled };
+      try {
+        window.localStorage.setItem(AI_SHIELD_MEDIA_PREFERENCES_KEY, JSON.stringify(next));
+      } catch {
+        // Preferences still apply for this session when browser storage is unavailable.
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!supported) {
       return;
@@ -259,6 +302,8 @@ export function useAiShield() {
     deepCleer,
     cloudEnabled,
     setCloudEnabled: updateCloudEnabled,
+    mediaPreferences,
+    setMediaPreference,
     refresh,
     startCamera,
     startScreen,

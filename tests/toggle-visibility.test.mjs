@@ -386,16 +386,22 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
-  await page.getByRole("heading", { name: "DeepCleer Ai Camera and Screen Detector" }).waitFor();
+  await page.getByRole("heading", { name: "DeepCleer Ai Detector" }).waitFor();
   assert.equal(await page.getByTestId("switch-ai-camera").count(), 1);
   assert.equal(await page.getByTestId("switch-ai-screen").count(), 1);
+  for (const mediaType of ["images", "videos", "livestreams", "texts", "audios"]) {
+    const mediaSwitch = page.getByTestId(`switch-ai-${mediaType}`);
+    assert.equal(await mediaSwitch.count(), 1);
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
+    await mediaSwitch.click();
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "unchecked");
+    await mediaSwitch.click();
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
+  }
   assert.equal(await page.getByTestId("button-ai-start-camera").count(), 1);
   assert.equal(await page.getByTestId("button-ai-start-screen").count(), 1);
   assert.equal(await page.getByTestId("button-ai-stop").count(), 1);
-  assert.equal(
-    await page.getByText("Detects Images, Videos, Livestreams, Texts, and Audios.", { exact: true }).count(),
-    1,
-  );
+  assert.equal(await page.getByText("Choose the media types DeepCleer Ai should detect while monitoring.", { exact: true }).count(), 1);
   await page.getByRole("heading", { name: "Marathon of Hope" }).waitFor();
   assert.equal(
     await page.getByText("In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)", { exact: true }).count(),
