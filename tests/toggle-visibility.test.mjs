@@ -608,6 +608,71 @@ test("DNS resolver management supports activation and CRUD controls", async () =
   await page.close();
 });
 
+test("editable Dashboard and security form values survive returning to the page", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/`);
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  await page.evaluate(() => window.localStorage.clear());
+
+  const soundtrack = page.getByRole("switch", { name: /Soundtrack/ });
+  assert.equal(await soundtrack.getAttribute("aria-checked"), "true");
+  await soundtrack.click();
+  await waitForAttribute(soundtrack, "aria-checked", "false");
+  await page.reload();
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  assert.equal(
+    await page.getByRole("switch", { name: /Soundtrack/ }).getAttribute("aria-checked"),
+    "false",
+    "Dashboard checkmark entries should survive a return",
+  );
+
+  await page.goto(`${baseUrl}/dns`);
+  await page.getByRole("heading", { name: "DNS Servers" }).waitFor();
+  await page.getByRole("button", { name: "Add a Resolver" }).click();
+  await page.getByTestId("input-resolver-name").fill("Persistent resolver");
+  await page.getByTestId("input-resolver-primary").fill("9.9.9.9");
+  await page.reload();
+  await page.getByRole("heading", { name: "Add a Resolver" }).waitFor();
+  assert.equal(await page.getByTestId("input-resolver-name").inputValue(), "Persistent resolver");
+  assert.equal(await page.getByTestId("input-resolver-primary").inputValue(), "9.9.9.9");
+
+  await page.goto(`${baseUrl}/ddns`);
+  await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
+  await page.getByRole("button", { name: "Add DDNS" }).click();
+  await page.getByTestId("input-ddns-hostname").fill("persistent.example.com");
+  await page.getByTestId("input-ddns-interval").fill("120");
+  await page.reload();
+  await page.getByRole("heading", { name: "New DDNS Updater" }).waitFor();
+  assert.equal(await page.getByTestId("input-ddns-interval").inputValue(), "120");
+  assert.equal(await page.getByTestId("input-ddns-hostname").inputValue(), "persistent.example.com");
+
+  await page.goto(`${baseUrl}/firewall`);
+  await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
+  await page.getByRole("button", { name: "New Rule" }).click();
+  await page.getByRole("heading", { name: "Create Firewall Rule" }).waitFor();
+  await page.getByTestId("input-firewall-rule-name").fill("Persistent firewall rule");
+  await page.getByTestId("input-firewall-source-address").fill("192.0.2.10");
+  await page.reload();
+  await page.getByRole("heading", { name: "Create Firewall Rule" }).waitFor();
+  assert.equal(await page.getByTestId("input-firewall-rule-name").inputValue(), "Persistent firewall rule");
+  assert.equal(await page.getByTestId("input-firewall-source-address").inputValue(), "192.0.2.10");
+
+  await page.goto(`${baseUrl}/antivirus`);
+  await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
+  await page.getByRole("tab", { name: /Threat Feeds/ }).click();
+  await page.getByTestId("button-add-feed").click();
+  await page.getByTestId("input-feed-name").fill("Persistent threat feed");
+  await page.getByTestId("input-feed-url").fill("https://example.com/feed.txt");
+  await page.reload();
+  await page.getByRole("tab", { name: /Threat Feeds/ }).click();
+  await page.getByRole("heading", { name: "Add Threat Feed" }).waitFor();
+  assert.equal(await page.getByTestId("input-feed-name").inputValue(), "Persistent threat feed");
+  assert.equal(await page.getByTestId("input-feed-url").inputValue(), "https://example.com/feed.txt");
+
+  await page.close();
+});
+
 test("Antivirus dashboard hides the status toggle and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);

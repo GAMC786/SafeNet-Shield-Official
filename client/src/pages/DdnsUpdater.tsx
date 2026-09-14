@@ -310,6 +310,7 @@ export default function DdnsUpdater() {
               <div className="space-y-2">
                 <Label>Hostname</Label>
                 <Input
+                  data-testid="input-ddns-hostname"
                   value={formData.hostname}
                   onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
                   placeholder="example.duckdns.org"
@@ -401,6 +402,7 @@ export default function DdnsUpdater() {
               <div className="space-y-2">
                    <Label>Update Interval (minutes)</Label>
                 <Input
+                   data-testid="input-ddns-interval"
                    value={formData.updateIntervalMinutes}
                    onChange={(e) => setFormData({ ...formData, updateIntervalMinutes: parseInt(e.target.value, 10) || DDNS_MIN_INTERVAL_MINUTES })}
                   type="number"

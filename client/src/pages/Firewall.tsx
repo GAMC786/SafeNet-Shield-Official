@@ -101,17 +101,19 @@ export default function Firewall() {
       action: newDomainAction,
       isActive: true
     }, {
-      onSuccess: () => toast({
-        title: "URL rule added",
-        description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
-      }),
+      onSuccess: () => {
+        setNewDomain("");
+        toast({
+          title: "URL rule added",
+          description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
+        });
+      },
       onError: (error) => toast({
         title: "URL rule could not be added",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
     });
-    setNewDomain("");
   };
 
   const handleAddKeyword = () => {
@@ -124,17 +126,19 @@ export default function Firewall() {
       category: "custom",
       isActive: true
     }, {
-      onSuccess: () => toast({
-        title: "Keyword filter added",
-        description: `${content} will be filtered from DNS requests.`,
-      }),
+      onSuccess: () => {
+        setNewKeyword("");
+        toast({
+          title: "Keyword filter added",
+          description: `${content} will be filtered from DNS requests.`,
+        });
+      },
       onError: (error) => toast({
         title: "Keyword filter could not be added",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
     });
-    setNewKeyword("");
   };
 
   const resetRuleForm = () => {
@@ -368,6 +372,7 @@ export default function Firewall() {
                   <div className="space-y-2">
                     <Label>Rule Name</Label>
                     <Input
+                       data-testid="input-firewall-rule-name"
                       value={newRule.name}
                       onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
                       placeholder="e.g., Block DNS"
@@ -379,6 +384,7 @@ export default function Firewall() {
                     <div className="space-y-2">
                       <Label>Source Address</Label>
                       <Input
+                         data-testid="input-firewall-source-address"
                         value={newRule.sourceAddress || ""}
                         onChange={(e) => setNewRule({ ...newRule, sourceAddress: e.target.value || "Any" })}
                         placeholder="Any or CIDR"

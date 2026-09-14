@@ -52,3 +52,4 @@
 - [Local ClamAV sidecar](local-clamav-sidecar.md) — when no external service is available, run token-protected clamd locally but re-verify on every fresh autoscale instance.
 - [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
 - [WireGuard release secret boundary](wireguard-release-secret-boundary.md) — tagged Android builds fail closed until all protected WireGuard values exist as GitHub Actions secrets.
+- [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
