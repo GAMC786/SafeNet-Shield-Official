@@ -705,6 +705,17 @@ test("Antivirus dashboard toggles protection status and settings switches recove
   await antivirusSwitch.click();
   await antivirusUpdate;
   await waitForAttribute(antivirusSwitch, "aria-checked", "false");
+  await page.getByText("Unprotected", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
+
+  const antivirusEnableUpdate = page.waitForRequest((request) =>
+    request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
+  );
+  await antivirusSwitch.click();
+  await antivirusEnableUpdate;
+  await waitForAttribute(antivirusSwitch, "aria-checked", "true");
+  await page.getByText("Protected", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const malwareSwitch = page.getByTestId("switch-malware-settings");

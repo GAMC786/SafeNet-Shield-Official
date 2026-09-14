@@ -318,7 +318,7 @@ export default function Antivirus() {
       <Header 
         title="Built-In Antivirus"
         subtitle="On-Device APK & DNS Threat Protection"
-        status={antivirusEnabled ? "active" : "inactive"}
+        status={antivirusEnabled ? "active" : "unprotected"}
       />
 
       <CyberCard className={oneSignal.data?.configured

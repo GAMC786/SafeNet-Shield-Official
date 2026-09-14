@@ -336,6 +336,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsSource, /Manual update verification unsuccessful/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
+  assert.match(antivirusSource, /status=\{antivirusEnabled \? "active" : "unprotected"\}/);
   assert.match(appSource, /useFirewallConfig/);
   assert.match(aiShieldSource, /switch-ai-camera/);
   assert.match(aiShieldSource, /switch-ai-screen/);
