@@ -184,6 +184,9 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.doesNotMatch(navigationSource, /label: "Activity"/);
   assert.match(appSource, /Route path="\/tether" component=\{TetherShare\}/);
   assert.match(tetherShareSource, /No-root Wi-Fi Direct gateway/);
+  assert.match(tetherShareSource, /Recommended family DNS setup/);
+  assert.match(tetherShareSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
+  assert.match(tetherShareSource, /AdGuard DNS \(Family\) is the active SafeNet resolver/);
   assert.match(tetherShareSource, /running \? "sharing" : "not-sharing"/);
   assert.match(headerSource, /status === "sharing" \? "Sharing"/);
   assert.match(headerSource, /status === "not-sharing" \? "Not Sharing"/);

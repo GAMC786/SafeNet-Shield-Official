@@ -1,4 +1,5 @@
 import { useTetherShare } from "@/hooks/use-tether-share";
+import { useDnsServers } from "@/hooks/use-dns";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   LockKeyhole,
   Router,
   Share2,
+  ShieldCheck,
   Smartphone,
   Square,
   Wifi,
@@ -18,6 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 function CopyValue({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -44,9 +47,13 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 
 export default function TetherShare() {
   const { supported, status, isBusy, start, stop, openWifiSettings } = useTetherShare();
+  const { data: dnsServers } = useDnsServers();
   const { toast } = useToast();
   const running = status?.running === true;
   const starting = status?.starting === true || isBusy;
+  const activeResolver = dnsServers?.find((server) => server.isActive);
+  const familyResolver = dnsServers?.find((server) => server.name === "AdGuard DNS (Family)");
+  const familyResolverIsActive = activeResolver?.id === familyResolver?.id;
   const handleToggle = async () => {
     if (!supported) {
       toast({
@@ -126,6 +133,41 @@ export default function TetherShare() {
           >
             {starting ? "Starting…" : running ? <><Square className="mr-2 h-4 w-4 fill-current" /> Stop sharing</> : <><Share2 className="mr-2 h-4 w-4" /> Start sharing</>}
           </Button>
+        </div>
+      </CyberCard>
+
+      <CyberCard className="border-emerald-400/20 bg-emerald-400/[0.04]">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-lg font-bold text-white">Recommended family DNS setup</h2>
+              <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                AdGuard DNS (Family)
+              </span>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              For the strongest family filtering while sharing, select AdGuard DNS (Family) as SafeNet&apos;s active resolver before starting Internet Share. The encrypted DNS-over-HTTPS endpoint protects the phone&apos;s resolver path without requiring a custom profile.
+            </p>
+            <CopyValue value="https://family.adguard-dns.com/dns-query" label="Recommended DNS-over-HTTPS endpoint" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className={`text-xs ${familyResolverIsActive ? "text-emerald-300" : "text-yellow-200"}`}>
+                {familyResolverIsActive
+                  ? "AdGuard DNS (Family) is the active SafeNet resolver."
+                  : familyResolver
+                    ? "AdGuard DNS (Family) is added. Select it as active before sharing."
+                    : "Add AdGuard DNS (Family) from DNS Servers, then select it as active."}
+              </p>
+              <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
+                <Link href="/dns">
+                  <ExternalLink className="mr-2 h-4 w-4" /> Open DNS Servers
+                </Link>
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Internet Share uses a manual HTTP proxy and does not decrypt HTTPS traffic. Keep SafeNet protection enabled on the phone; connected devices still need the proxy settings shown below.
+            </p>
+          </div>
         </div>
       </CyberCard>
 
