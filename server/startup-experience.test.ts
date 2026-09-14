@@ -65,6 +65,13 @@ const tetherShareSource = readFileSync(
   path.join(clientRoot, "src/pages/TetherShare.tsx"),
   "utf8",
 );
+const tetherShareManagerSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/TetherShareManager.java",
+  ),
+  "utf8",
+);
 const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
@@ -180,6 +187,12 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Start sharing/);
   assert.match(tetherShareSource, /Proxy host/);
   assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
+  assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);
+  assert.match(tetherShareSource, /separate from SafeNet&apos;s VPN tunnel/);
+  assert.match(tetherShareManagerSource, /PROXY_HOST = "192\.168\.49\.1"/);
+  assert.match(tetherShareManagerSource, /PROXY_PORT = 8080/);
+  assert.match(tetherShareManagerSource, /"CONNECT"\.equalsIgnoreCase\(method\)/);
+  assert.match(tetherShareManagerSource, /getClientList\(\)/);
 });
 
 test("Android keeps a Dashboard recovery state instead of a permanent dark screen", () => {
