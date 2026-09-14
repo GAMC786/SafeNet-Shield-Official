@@ -39,11 +39,13 @@ export default function Settings() {
               rel="noreferrer"
               aria-label="Open Terry Fox Marathon of Hope source"
             >
-              <img
-                src={terryFoxImageUrl}
-                alt="Terry Fox Marathon of Hope"
-                className="mx-auto w-full max-w-2xl rounded border border-yellow-500/20 object-cover"
-              />
+              <div className="mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded border border-yellow-500/20 bg-white">
+                <img
+                  src={terryFoxImageUrl}
+                  alt="Terry Fox Marathon of Hope"
+                  className="h-full w-full object-contain"
+                />
+              </div>
             </a>
             <h2 className="mt-3 font-display text-lg tracking-wider">Marathon of Hope</h2>
             <p className="mt-1 text-sm text-muted-foreground">

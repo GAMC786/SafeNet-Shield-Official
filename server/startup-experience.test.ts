@@ -351,5 +351,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(settingsSource, /In Loving Memory of Mr\. Terry Stanley Fox\. \(1958 – 1981\)/);
   assert.match(settingsSource, /terryFoxSourceUrl/);
   assert.match(settingsSource, /terryFoxImageUrl/);
+  assert.match(settingsSource, /aspect-\[1200\/630\]/);
+  assert.match(settingsSource, /bg-white/);
+  assert.match(settingsSource, /object-contain/);
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
 });
