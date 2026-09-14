@@ -3,16 +3,22 @@ import type { AiShieldResult } from "@/hooks/use-vpn";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
   AlertCircle,
+  AudioLines,
   Camera,
   CheckCircle2,
   Eye,
-  Loader2,
+  Image as ImageIcon,
   Monitor,
+  Play,
+  Radio,
   ShieldAlert,
   Square,
+  Type,
+  Video,
 } from "lucide-react";
 
 function statePresentation(result: AiShieldResult | null) {
@@ -41,6 +47,12 @@ function statePresentation(result: AiShieldResult | null) {
         className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-100",
         icon: <AlertCircle className="h-4 w-4 text-yellow-400" />,
       };
+    case "capture_unavailable":
+      return {
+        label: result?.source === "screen" ? "Screen capture unavailable" : "Capture unavailable",
+        className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-100",
+        icon: <AlertCircle className="h-4 w-4 text-yellow-400" />,
+      };
     case "model_unavailable":
       return {
         label: "Engine unavailable",
@@ -65,8 +77,18 @@ export function AiShieldControls() {
   const { toast } = useToast();
   const presentation = statePresentation(shield.status);
   const monitoring = shield.status?.monitoring ?? false;
+  const activeSource = shield.status?.source;
+  const cameraEnabled = monitoring && activeSource === "camera";
+  const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
+  const mediaControls = [
+    { key: "images", label: "Images", description: "Analyze image frames", icon: ImageIcon },
+    { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
+    { key: "livestreams", label: "Livestreams", description: "Analyze live frames", icon: Radio },
+    { key: "texts", label: "Texts", description: "Enable text detection", icon: Type },
+    { key: "audios", label: "Audios", description: "Enable audio detection", icon: AudioLines },
+  ] as const;
 
   const run = async (action: () => Promise<AiShieldResult>) => {
     try {
@@ -88,6 +110,15 @@ export function AiShieldControls() {
     }
   };
 
+  const toggleSource = (source: "camera" | "screen", enabled: boolean) =>
+    run(
+      enabled
+        ? source === "camera"
+          ? shield.startCamera
+          : shield.startScreen
+        : shield.stop,
+    );
+
   return (
     <CyberCard className="space-y-4" data-testid="ai-shield-controls">
       <div className="flex items-start justify-between gap-4">
@@ -96,9 +127,9 @@ export function AiShieldControls() {
             <Eye className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h2 className="font-display text-lg tracking-wider">AI Shield · Android only</h2>
+            <h2 className="font-display text-lg tracking-wider">DeepCleer Ai Detector</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Analyze consented camera frames or visible screen pixels locally. Raw frames are released immediately and never uploaded or saved.
+              Choose the media types DeepCleer Ai should detect while monitoring.
             </p>
           </div>
         </div>
@@ -110,9 +141,130 @@ export function AiShieldControls() {
 
       {!shield.supported ? (
         <p className="rounded-md border border-white/10 bg-background/40 p-3 text-sm text-muted-foreground">
-          Camera and screen monitoring are only available in the SafeNet Android APK. The server AI Shield setting does not inspect browser or device pixels.
+          Camera and screen monitoring are available in the SafeNet Android APK. Start a consented capture session to analyze selected media locally; captured frames are released immediately.
         </p>
-      ) : (
+      ) : null}
+
+      <div className="space-y-3" data-testid="ai-shield-detector-controls">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Detector controls</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Choose one capture source at a time. Starting one source automatically stops the other.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Camera className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Monitor camera</p>
+                <p className="text-xs text-muted-foreground">Analyze consented camera frames</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {cameraEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={cameraEnabled}
+                onCheckedChange={(checked) => void toggleSource("camera", checked)}
+                disabled={!shield.supported || shield.isBusy}
+                data-testid="switch-ai-camera"
+                aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Monitor className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Monitor screen</p>
+                <p className="text-xs text-muted-foreground">Analyze consented screen pixels</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {screenEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={screenEnabled}
+                onCheckedChange={(checked) => void toggleSource("screen", checked)}
+                disabled={!shield.supported || shield.isBusy}
+                data-testid="switch-ai-screen"
+                aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {mediaControls.map(({ key, label, description, icon: Icon }) => {
+            const enabled = shield.mediaPreferences[key];
+            return (
+              <div
+                key={key}
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 p-3"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {enabled ? "On" : "Off"}
+                  </span>
+                  <Switch
+                    checked={enabled}
+                    onCheckedChange={(checked) => shield.setMediaPreference(key, checked)}
+                    data-testid={`switch-ai-${key}`}
+                    aria-label={`${label} detection ${enabled ? "On" : "Off"}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button
+            type="button"
+            size="sm"
+            className="disabled:opacity-100"
+            onClick={() => void run(shield.startCamera)}
+            disabled={!shield.supported || shield.isBusy}
+            data-testid="button-ai-start-camera"
+          >
+            <Play className="mr-2 h-4 w-4" /> Start Camera
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="disabled:opacity-100"
+            onClick={() => void run(shield.startScreen)}
+            disabled={!shield.supported || shield.isBusy}
+            data-testid="button-ai-start-screen"
+          >
+            <Play className="mr-2 h-4 w-4" /> Start Screen
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="disabled:opacity-100"
+            onClick={() => void run(shield.stop)}
+            disabled={!shield.supported || shield.isBusy || !monitoring}
+            data-testid="button-ai-stop"
+          >
+            <Square className="mr-2 h-4 w-4" /> Stop Detector
+          </Button>
+        </div>
+      </div>
+
+      {shield.supported && (
         <>
           <div
             className={`rounded-md border p-3 ${
@@ -153,39 +305,53 @@ export function AiShieldControls() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={() => void run(shield.startCamera)}
-              disabled={shield.isBusy || monitoring}
-              data-testid="button-start-ai-camera"
-            >
-              {shield.isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-              Monitor camera
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run(shield.startScreen)}
-              disabled={shield.isBusy || monitoring}
-              data-testid="button-start-ai-screen"
-            >
-              <Monitor className="mr-2 h-4 w-4" />
-              Monitor screen
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run(shield.stop)}
-              disabled={shield.isBusy || !monitoring}
-              data-testid="button-stop-ai-shield"
-            >
-              <Square className="mr-2 h-4 w-4" />
-              Stop
-            </Button>
+          <div
+            className={`rounded-md border p-3 text-sm ${
+              shield.deepCleer?.available
+                ? "border-primary/30 bg-primary/10 text-primary-foreground"
+                : "border-white/10 bg-background/30 text-muted-foreground"
+            }`}
+            data-testid="deepcleer-provider-status"
+          >
+            <div className="flex flex-wrap items-center gap-2 font-medium">
+              <span>DeepCleer cloud provider</span>
+              <Badge variant="outline" className="text-[10px] uppercase">
+                {shield.deepCleer?.available ? "available" : "on-device only"}
+              </Badge>
+            </div>
+            <p className="mt-1">
+              {shield.deepCleer?.message ||
+                "Checking DeepCleer access. Camera and screen frames remain on-device until cloud access is explicitly enabled."}
+            </p>
+            {shield.deepCleer?.available && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Supported vendor modalities: {shield.deepCleer.capabilities.join(", ")}.
+                The camera and screen switches below still control the consented local capture session.
+              </p>
+            )}
           </div>
 
-          <div className={`rounded-md border p-3 ${presentation.className}`} data-testid="ai-shield-result">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Send frames to DeepCleer</p>
+              <p className="text-xs text-muted-foreground">
+                Off by default. Enabling this sends consented camera or screen frames to the configured vendor.
+              </p>
+            </div>
+            <Switch
+              checked={shield.cloudEnabled}
+              onCheckedChange={shield.setCloudEnabled}
+              disabled={!shield.deepCleer?.available || shield.isBusy}
+              data-testid="switch-deepcleer-cloud"
+              aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
+            />
+          </div>
+
+          <div
+            className={`rounded-md border p-3 ${presentation.className}`}
+            data-testid="ai-shield-result"
+            data-state={shield.status?.state || "idle"}
+          >
             <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
               {presentation.icon}
               <span>{presentation.label}</span>
@@ -198,8 +364,13 @@ export function AiShieldControls() {
             </div>
             <p className="mt-2 text-sm">{shield.status?.message || "Loading Android AI Shield status."}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Engine {shield.status?.modelVersion || "safenet-nudity-engine-1.0.0"}
+              Engine {shield.status?.modelVersion || "safenet-nudity-tflite-1.0.0"}
             </p>
+            {shield.status?.state === "model_unavailable" && (
+              <p className="mt-2 text-sm font-medium text-destructive">
+                AI Shield is unavailable until the bundled on-device model loads successfully. No frame was treated as safe.
+              </p>
+            )}
             {shield.status?.state === "nudity_detected" && (
               <p className="mt-2 text-sm font-medium text-destructive">
                 Shield event: high-confidence content was detected in the available frame.
@@ -210,6 +381,9 @@ export function AiShieldControls() {
           <p className="text-xs text-muted-foreground">
             Screen monitoring requires Android MediaProjection consent and only covers pixels Android makes available. Secure/DRM surfaces, revoked projections, and hidden app content are unavailable; results are never a promise of perfect detection.
           </p>
+           <p className="text-xs text-muted-foreground">
+             Camera and screen detection share one Android capture session. Turning on one source automatically turns off the other.
+           </p>
           {shield.error && <p className="text-xs text-destructive">{shield.error}</p>}
         </>
       )}

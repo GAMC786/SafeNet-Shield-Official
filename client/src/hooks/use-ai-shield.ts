@@ -1,12 +1,51 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AiShieldResult, ProtectionStatus, SafeNetVpn } from "@/hooks/use-vpn";
+import { apiFetch } from "@/lib/api";
+
+export interface DeepCleerStatus {
+  provider: "deepcleer";
+  available: boolean;
+  configured: boolean;
+  capabilities: Array<"image" | "video" | "livestream" | "text" | "audio">;
+  message: string;
+}
+
+export type AiShieldMediaType = "images" | "videos" | "livestreams" | "texts" | "audios";
+
+export type AiShieldMediaPreferences = Record<AiShieldMediaType, boolean>;
+
+const AI_SHIELD_MEDIA_PREFERENCES_KEY = "safenet-ai-shield-media-preferences";
+
+const defaultMediaPreferences: AiShieldMediaPreferences = {
+  images: true,
+  videos: true,
+  livestreams: true,
+  texts: true,
+  audios: true,
+};
+
+function readMediaPreferences(): AiShieldMediaPreferences {
+  if (typeof window === "undefined") {
+    return defaultMediaPreferences;
+  }
+
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(AI_SHIELD_MEDIA_PREFERENCES_KEY) || "null") as Partial<AiShieldMediaPreferences> | null;
+    return {
+      ...defaultMediaPreferences,
+      ...(stored || {}),
+    };
+  } catch {
+    return defaultMediaPreferences;
+  }
+}
 
 const idleResult: AiShieldResult = {
   state: "capture_unavailable",
   source: "none",
   confidence: null,
-  modelVersion: "safenet-nudity-engine-1.0.0",
+  modelVersion: "safenet-nudity-tflite-1.0.0",
   timestamp: 0,
   message: "AI Shield monitoring is idle.",
   monitoring: false,
@@ -18,6 +57,20 @@ export function useAiShield() {
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deepCleer, setDeepCleer] = useState<DeepCleerStatus | null>(null);
+  const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [mediaPreferences, setMediaPreferences] = useState<AiShieldMediaPreferences>(readMediaPreferences);
+  const cloudEnabledRef = useRef(false);
+  const deepCleerRef = useRef<DeepCleerStatus | null>(null);
+  const latestStatusTimestamp = useRef(0);
+
+  const applyStatus = useCallback((nextStatus: AiShieldResult) => {
+    if (nextStatus.timestamp < latestStatusTimestamp.current) {
+      return;
+    }
+    latestStatusTimestamp.current = nextStatus.timestamp;
+    setStatus(nextStatus);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!supported) {
@@ -25,7 +78,7 @@ export function useAiShield() {
     }
     try {
       const nextStatus = await SafeNetVpn.getAiShieldStatus();
-      setStatus(nextStatus);
+      applyStatus(nextStatus);
       setError(null);
       return nextStatus;
     } catch (statusError) {
@@ -35,7 +88,7 @@ export function useAiShield() {
       setError(message);
       return null;
     }
-  }, [supported]);
+  }, [applyStatus, supported]);
 
   const refreshProtection = useCallback(async () => {
     if (!supported) {
@@ -67,6 +120,78 @@ export function useAiShield() {
   }, [supported]);
 
   useEffect(() => {
+    let disposed = false;
+    const refreshDeepCleer = async () => {
+      try {
+        const response = await apiFetch("/api/integrations/deepcleer/status");
+        if (!response.ok) {
+          throw new Error("DeepCleer provider status is unavailable.");
+        }
+        const nextStatus = await response.json() as DeepCleerStatus;
+        if (!disposed) {
+          setDeepCleer(nextStatus);
+          deepCleerRef.current = nextStatus;
+          if (!nextStatus.available) {
+            cloudEnabledRef.current = false;
+            setCloudEnabled(false);
+            if (supported) {
+              void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
+            }
+          }
+        }
+      } catch {
+        if (!disposed) {
+          const unavailable: DeepCleerStatus = {
+            provider: "deepcleer",
+            available: false,
+            configured: false,
+            capabilities: [],
+            message: "DeepCleer provider status is unavailable. No data is sent.",
+          };
+          setDeepCleer(unavailable);
+          deepCleerRef.current = unavailable;
+          cloudEnabledRef.current = false;
+          setCloudEnabled(false);
+          if (supported) {
+            void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
+          }
+        }
+      }
+    };
+    void refreshDeepCleer();
+    const deepCleerInterval = window.setInterval(() => void refreshDeepCleer(), 5000);
+    return () => {
+      disposed = true;
+      window.clearInterval(deepCleerInterval);
+    };
+  }, []);
+
+  const updateCloudEnabled = useCallback((enabled: boolean) => {
+    const nextEnabled = enabled && Boolean(deepCleerRef.current?.available);
+    cloudEnabledRef.current = nextEnabled;
+    setCloudEnabled(nextEnabled);
+    if (supported) {
+      void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: nextEnabled }).catch(() => {
+        cloudEnabledRef.current = false;
+        setCloudEnabled(false);
+        setError("DeepCleer cloud sharing could not be enabled.");
+      });
+    }
+  }, [supported]);
+
+  const setMediaPreference = useCallback((mediaType: AiShieldMediaType, enabled: boolean) => {
+    setMediaPreferences((previous) => {
+      const next = { ...previous, [mediaType]: enabled };
+      try {
+        window.localStorage.setItem(AI_SHIELD_MEDIA_PREFERENCES_KEY, JSON.stringify(next));
+      } catch {
+        // Preferences still apply for this session when browser storage is unavailable.
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
     if (!supported) {
       return;
     }
@@ -78,7 +203,7 @@ export function useAiShield() {
     let listener: { remove: () => Promise<void> } | null = null;
     let disposed = false;
     void SafeNetVpn.addListener("aiShieldResult", (result) => {
-      setStatus(result);
+       applyStatus(result);
       setError(null);
     }).then((nextListener) => {
       if (disposed) {
@@ -87,14 +212,50 @@ export function useAiShield() {
         listener = nextListener;
       }
     }).catch(() => undefined);
+    let frameListener: { remove: () => Promise<void> } | null = null;
+    void SafeNetVpn.addListener("aiShieldFrame", (frame) => {
+      if (!cloudEnabledRef.current || !deepCleerRef.current?.available) {
+        return;
+      }
+      void apiFetch("/api/integrations/deepcleer/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consent: true,
+          source: frame.source,
+          imageBase64: frame.imageBase64,
+        }),
+        timeoutMs: 15000,
+      }).then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null) as { message?: string } | null;
+          throw new Error(payload?.message || "DeepCleer image moderation failed.");
+        }
+      }).catch((frameError) => {
+        cloudEnabledRef.current = false;
+        setCloudEnabled(false);
+        void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
+        setError(frameError instanceof Error ? frameError.message : "DeepCleer image moderation failed.");
+      });
+    }).then((nextListener) => {
+      if (disposed) {
+        void nextListener.remove();
+      } else {
+        frameListener = nextListener;
+      }
+    }).catch(() => undefined);
     return () => {
       window.clearInterval(interval);
       disposed = true;
+      void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
       if (listener) {
         void listener.remove();
       }
+      if (frameListener) {
+        void frameListener.remove();
+      }
     };
-  }, [refresh, refreshProtection, supported]);
+  }, [applyStatus, refresh, refreshProtection, supported]);
 
   const run = useCallback(async (
     action: () => Promise<AiShieldResult>,
@@ -106,7 +267,7 @@ export function useAiShield() {
     setError(null);
     try {
       const nextStatus = await action();
-      setStatus(nextStatus);
+      applyStatus(nextStatus);
       return nextStatus;
     } catch (actionError) {
       const message = actionError instanceof Error
@@ -117,7 +278,7 @@ export function useAiShield() {
     } finally {
       setIsBusy(false);
     }
-  }, [supported]);
+  }, [applyStatus, supported]);
 
   const startCamera = useCallback(
     () => run(() => SafeNetVpn.startAiShieldCamera()),
@@ -138,6 +299,11 @@ export function useAiShield() {
     protection,
     isBusy,
     error,
+    deepCleer,
+    cloudEnabled,
+    setCloudEnabled: updateCloudEnabled,
+    mediaPreferences,
+    setMediaPreference,
     refresh,
     startCamera,
     startScreen,

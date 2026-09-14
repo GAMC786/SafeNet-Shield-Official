@@ -62,6 +62,16 @@ export interface VpnStatus {
   permissionGranted: boolean;
   eulaVersion: string;
   eulaAccepted: boolean;
+  wireguardConfigured?: boolean;
+  wireguardRunning?: boolean;
+  activeTunnel?: "dns" | "wireguard" | "none" | string;
+  vpnPermissionOwner?: "SafeNet DNS" | "SafeNet WireGuard" | "none" | string;
+  wireguardGateway?: string;
+  wireguardGatewayOwner?: string;
+  wireguardPeerPublicKey?: string;
+  wireguardAllowedIps?: string;
+  wireguardDnsServers?: string;
+  wireguardError?: string | null;
   error?: string;
   protection?: ProtectionStatus;
 }
@@ -123,21 +133,30 @@ interface SafeNetVpnPlugin {
   acceptEula(options: { version: string }): Promise<VpnStatus>;
   start(options: {
     type: string;
+    ipVersion: "ipv4" | "ipv6";
     primaryAddress: string;
     secondaryAddress?: string | null;
   }): Promise<VpnStatus>;
   stop(): Promise<VpnStatus>;
-  openSystemSettings(options: {
-    target: "vpn" | "device-admin";
-  }): Promise<{ opened: boolean }>;
+  startWireGuard(options?: { dnsServers?: string }): Promise<VpnStatus>;
+  stopWireGuard(): Promise<VpnStatus>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
   startAiShieldScreen(): Promise<AiShieldResult>;
   stopAiShield(): Promise<AiShieldResult>;
+  setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
+  getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
+  startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
+  stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
+  openTetherWifiSettings(): Promise<void>;
   addListener(
     eventName: "aiShieldResult",
     listenerFunc: (result: AiShieldResult) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "aiShieldFrame",
+    listenerFunc: (frame: { source: "camera" | "screen"; imageBase64: string }) => void,
   ): Promise<PluginListenerHandle>;
 }
 
@@ -164,6 +183,10 @@ export function useSafeNetVpn() {
         permissionGranted: previous?.permissionGranted ?? false,
         eulaVersion: previous?.eulaVersion ?? SAFE_NET_VPN_EULA_VERSION,
         eulaAccepted: previous?.eulaAccepted ?? false,
+        wireguardConfigured: previous?.wireguardConfigured ?? false,
+        wireguardRunning: previous?.wireguardRunning ?? false,
+        activeTunnel: previous?.activeTunnel ?? "none",
+        vpnPermissionOwner: previous?.vpnPermissionOwner ?? "none",
         error: `DNS protection status is unavailable. ${message}`,
       }));
       throw error;
@@ -192,6 +215,7 @@ export function useSafeNetVpn() {
 
   const start = useCallback(async (options: {
     type: string;
+    ipVersion: "ipv4" | "ipv6";
     primaryAddress: string;
     secondaryAddress?: string | null;
   }) => {
@@ -217,12 +241,38 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  const openSystemSettings = useCallback(async (target: "vpn" | "device-admin") => {
-    if (!supported) {
-      throw new Error("Android system settings are available in the SafeNet APK.");
+  const startWireGuard = useCallback(async (options?: { dnsServers?: string }) => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SafeNetVpn.startWireGuard(options ?? {});
+      setStatus(nextStatus);
+      await refresh();
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
     }
-    return SafeNetVpn.openSystemSettings({ target });
-  }, [supported]);
+  }, [refresh]);
 
-  return { supported, status, isBusy, refresh, acceptEula, start, stop, openSystemSettings };
+  const stopWireGuard = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SafeNetVpn.stopWireGuard();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  return {
+    supported,
+    status,
+    isBusy,
+    refresh,
+    acceptEula,
+    start,
+    stop,
+    startWireGuard,
+    stopWireGuard,
+  };
 }

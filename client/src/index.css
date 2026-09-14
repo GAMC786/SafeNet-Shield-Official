@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Clerk renders its own inputs outside Tailwind's generated utility markup. */
+/* Keep native and embedded form controls consistent with the SafeNet theme. */
 .cl-formFieldInput::placeholder {
   color: #94a3b8;
   opacity: 1;

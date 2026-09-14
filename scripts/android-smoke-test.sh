@@ -13,6 +13,7 @@ readonly FIXTURE_DOT_PORT=853
 readonly FIXTURE_HTTP_PORT=18080
 readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
+readonly COMPACT_STARTUP_WM_SIZE="480x640"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -20,6 +21,7 @@ serial="${ANDROID_SERIAL:-}"
 output_dir="${ANDROID_SMOKE_OUTPUT_DIR:-android/app/build/reports/android-smoke/latest}"
 preflight_only=false
 startup_only=false
+compact_startup=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
@@ -33,16 +35,38 @@ emulator_api_level="${ANDROID_EMULATOR_API_LEVEL:-$DEFAULT_EMULATOR_METADATA_VAL
 emulator_target="${ANDROID_EMULATOR_TARGET:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_arch="${ANDROID_EMULATOR_ARCH:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADATA_VALUE}"
+clerk_origin="${ANDROID_SMOKE_CLERK_ORIGIN:-${MOBILE_API_URL:-}}"
+clerk_origin="${clerk_origin%/}"
+clerk_storage_state="${AUTH_SMOKE_STORAGE_STATE:-}"
+clerk_cookie_payload=""
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
+compact_wm_override=""
+compact_wm_size_applied=false
 openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
+adb_args=()
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
 fi
 
+restore_compact_wm_size() {
+    if [[ "$compact_wm_size_applied" != true ]] ||
+        ! command -v adb >/dev/null 2>&1; then
+        return
+    fi
+
+    if [[ -n "$compact_wm_override" ]]; then
+        timeout 30s adb "${adb_args[@]}" shell wm size "$compact_wm_override" >/dev/null 2>&1 || true
+    else
+        timeout 30s adb "${adb_args[@]}" shell wm size reset >/dev/null 2>&1 || true
+    fi
+    compact_wm_size_applied=false
+}
+
 cleanup_fixture() {
+    restore_compact_wm_size
     if [[ -n "$fixture_pid" ]] && kill -0 "$fixture_pid" 2>/dev/null; then
         kill "$fixture_pid" 2>/dev/null || true
         wait "$fixture_pid" 2>/dev/null || true
@@ -80,9 +104,15 @@ Options:
   --serial ID      adb device/emulator serial (or set ANDROID_SERIAL)
   --output DIR     Evidence directory (default: android/app/build/reports/android-smoke/latest)
   --preflight      Probe Android system trust capabilities without installing APKs or running instrumentation
-  --startup-only   Install the signed app APK and verify direct WebView startup
+  --startup-only   Install the signed app APK and verify startup plus packaged media
+  --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
   --help           Show this help
+
+The full smoke lane also requires AUTH_SMOKE_STORAGE_STATE and
+ANDROID_SMOKE_CLERK_ORIGIN (or MOBILE_API_URL). The storage-state fixture is
+used only to seed a real Clerk session into the fresh WebView after the
+unauthenticated sign-in screen has been recorded.
 
 Fixture mode starts a controlled plain DNS, DoH, DoT, and HTTPS fixture on the
 emulator host (10.0.2.2 by default). Public mode uses external resolvers and
@@ -123,6 +153,10 @@ while [[ $# -gt 0 ]]; do
             startup_only=true
             shift
             ;;
+        --compact-startup)
+            compact_startup=true
+            shift
+            ;;
         --resolver-mode)
             [[ $# -ge 2 ]] || { echo "ERROR: --resolver-mode requires fixture or public." >&2; exit 2; }
             resolver_mode="$2"
@@ -150,6 +184,10 @@ if [[ "$validation_mode" != "hosted-emulator-reduced" &&
     echo "ERROR: ANDROID_SMOKE_VALIDATION_MODE must be hosted-emulator-reduced, hosted-emulator-full, or real-device; got: $validation_mode" >&2
     exit 2
 fi
+if [[ "$compact_startup" == true && "$startup_only" != true ]]; then
+    echo "ERROR: --compact-startup requires --startup-only." >&2
+    exit 2
+fi
 if [[ -z "$device_kind" ]]; then
     echo "ERROR: ANDROID_SMOKE_DEVICE_KIND must not be empty." >&2
     exit 2
@@ -168,7 +206,8 @@ if [[ "$preflight_only" != true && "$(basename "$apk_path")" != "app-release.apk
     echo "ERROR: Android smoke tests require the explicitly named app-release.apk; got: $apk_path" >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && "$startup_only" != true &&
+if [[ "$preflight_only" != true &&
+    "$startup_only" != true &&
     "$(basename "$test_apk_path")" != "app-release-androidTest.apk" ]]; then
     echo "ERROR: Android smoke tests require the explicitly named app-release-androidTest.apk; got: $test_apk_path" >&2
     exit 2
@@ -178,7 +217,9 @@ if [[ "$preflight_only" != true && ! -f "$apk_path" ]]; then
     echo "Build android/app/build/outputs/apk/release/app-release.apk first." >&2
     exit 2
 fi
-if [[ "$preflight_only" != true && "$startup_only" != true && ! -f "$test_apk_path" ]]; then
+if [[ "$preflight_only" != true &&
+    "$startup_only" != true &&
+    ! -f "$test_apk_path" ]]; then
     echo "ERROR: Release instrumentation APK not found: $test_apk_path" >&2
     echo "Build app-release-androidTest.apk with assembleReleaseAndroidTest first." >&2
     exit 2
@@ -189,20 +230,28 @@ command -v adb >/dev/null 2>&1 || {
 }
 
 mkdir -p "$output_dir"
-rm -f "$output_dir"/instrumentation.log "$output_dir"/pin-smoke-evidence.txt "$output_dir"/result.txt \
+rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
+    "$output_dir"/clerk-auth-instrumentation.log "$output_dir"/clerk-auth-logcat.txt \
+    "$output_dir"/clerk-auth-result.txt \
+    "$output_dir"/wireguard-instrumentation.log "$output_dir"/wireguard-logcat.txt \
+    "$output_dir"/wireguard-connectivity.txt "$output_dir"/wireguard-vpn.txt \
+    "$output_dir"/wireguard-result.txt "$output_dir"/wireguard-failure-category.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
     "$output_dir"/startup-initial-ui.xml "$output_dir"/startup-transition-ui.xml \
     "$output_dir"/startup-failure-ui.xml "$output_dir"/startup-logcat.txt \
-    "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt
+    "$output_dir"/startup-window-state.txt "$output_dir"/startup-result.txt \
+    "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
+    "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
+    "$output_dir"/media-smoke-result.txt \
+    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
 } > "$output_dir/coverage.txt"
 
-adb_args=()
 if [[ -n "$serial" ]]; then
     adb_args=(-s "$serial")
 fi
@@ -216,6 +265,43 @@ capture() {
         echo "\$ $*"
         "$@" 2>&1 || echo "[command exited $?, evidence may be incomplete]"
     } > "$output_dir/$name"
+}
+
+prepare_clerk_session() {
+    if [[ -z "$clerk_origin" ]]; then
+        echo "ERROR: ANDROID_SMOKE_CLERK_ORIGIN or MOBILE_API_URL is required for Clerk smoke." >&2
+        return 1
+    fi
+    if [[ -z "$clerk_storage_state" ]]; then
+        echo "ERROR: AUTH_SMOKE_STORAGE_STATE is required for the Android Clerk smoke." >&2
+        return 1
+    fi
+    clerk_cookie_payload="$(
+        AUTH_SMOKE_STORAGE_STATE="$clerk_storage_state" node --input-type=module - <<'NODE'
+const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+let state;
+try {
+  state = JSON.parse(raw);
+} catch {
+  console.error("AUTH_SMOKE_STORAGE_STATE is not valid JSON.");
+  process.exit(1);
+}
+
+const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
+const lines = cookies
+  .filter((cookie) => typeof cookie?.name === "string" && typeof cookie?.value === "string")
+  .map((cookie) => `${cookie.name}=${cookie.value}`);
+if (lines.length === 0) {
+  console.error("AUTH_SMOKE_STORAGE_STATE does not contain browser cookies.");
+  process.exit(1);
+}
+process.stdout.write(Buffer.from(lines.join("\n"), "utf8").toString("base64"));
+NODE
+    )" || return 1
+    if [[ -z "$clerk_cookie_payload" ]]; then
+        echo "ERROR: AUTH_SMOKE_STORAGE_STATE did not produce a Clerk session." >&2
+        return 1
+    fi
 }
 
 fixture_failure() {
@@ -421,7 +507,7 @@ if [[ -z "$apksigner_bin" ]]; then
     exit 2
 fi
 signed_apks=("$apk_path")
-if [[ "$startup_only" != true ]]; then
+if [[ "$startup_only" != true || "$compact_startup" == true ]]; then
     signed_apks+=("$test_apk_path")
 fi
 for signed_apk in "${signed_apks[@]}"; do
@@ -494,6 +580,27 @@ capture_startup_screenshot() {
         > "$output_dir/$evidence_name" 2> "$output_dir/${evidence_name%.png}.error" || true
 }
 
+verify_startup_evidence() {
+    local missing_evidence=()
+    local evidence_name
+    local required_evidence=(
+        startup-initial.png
+        startup-progress.png
+        startup-handoff.png
+        startup-logcat.txt
+    )
+
+    for evidence_name in "${required_evidence[@]}"; do
+        if [[ ! -s "$output_dir/$evidence_name" ]]; then
+            missing_evidence+=("$evidence_name")
+        fi
+    done
+
+    if (( ${#missing_evidence[@]} > 0 )); then
+        startup_failure "startup evidence is incomplete; missing or empty files: ${missing_evidence[*]}"
+    fi
+}
+
 startup_failure() {
     local message="$1"
     capture_startup_ui startup-failure-ui.xml
@@ -502,13 +609,188 @@ startup_failure() {
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=REMOVED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
+        printf 'native_loader=REMOVED\nweb_loader=NOT_RECORDED\nwebview_transition=NOT_RECORDED\nresult=FAIL\nmessage=%s\n' \
             "$message"
     } | tee "$output_dir/startup-result.txt" "$output_dir/result.txt" >&2
     printf 'STARTUP_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
     echo "Android startup check failed: $message" >&2
     echo "Evidence: $output_dir" >&2
     exit 1
+}
+
+compact_startup_failure() {
+    local message="$1"
+    restore_compact_wm_size
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'compact_wm_size=%s\nsampling=RECORDED\nresult=FAIL\nmessage=%s\n' \
+            "$COMPACT_STARTUP_WM_SIZE" "$message"
+    } | tee "$output_dir/compact-startup-result.txt" >&2
+    echo "Android compact startup sampling failed: $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+media_smoke_failure() {
+    local message="$1"
+    capture media-smoke-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'speedtest_frame=FAIL\nfull_page_fallback=FAIL\nsoundtrack=FAIL\nresult=FAIL\nmessage=%s\n' \
+            "$message"
+    } | tee "$output_dir/media-smoke-result.txt" "$output_dir/result.txt" >&2
+    printf '%s\n' 'NON_NETWORK_FAILURE' | tee "$output_dir/failure-category.txt" >&2
+    echo "Android packaged media smoke failed: $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_media_smoke() {
+    local media_status
+    local preserve_auth_args=()
+
+    if [[ "$startup_only" != true ]]; then
+        preserve_auth_args=(-e preserve-auth-session true)
+    fi
+
+    echo "Running packaged OpenSpeedTest and soundtrack smoke..."
+    set +e
+    adb_run shell am instrument -w -r \
+        "${preserve_auth_args[@]}" \
+        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/media-smoke-instrumentation.log"
+    media_status="${PIPESTATUS[0]}"
+    set -e
+    capture media-smoke-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+
+    if [[ "$media_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/media-smoke-instrumentation.log" ||
+        ! grep -Fq 'MEDIA_SMOKE result=PASS' "$output_dir/media-smoke-logcat.txt" ||
+        ! grep -Fq 'SOUNDTRACK_LIFECYCLE result=PASS' "$output_dir/media-smoke-logcat.txt"; then
+        media_smoke_failure "the packaged OpenSpeedTest or soundtrack check did not pass"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'speedtest_frame=PASS\nfull_page_fallback=PASS\nsoundtrack=PLAYING\nsoundtrack_lifecycle=PASS\nresult=PASS\n'
+    } | tee "$output_dir/media-smoke-result.txt"
+    echo "Android packaged media smoke passed. Evidence: $output_dir"
+}
+
+wireguard_smoke_failure() {
+    local category="$1"
+    local message="$2"
+    local configuration_status="PASS"
+    local permission_status="PASS"
+    local gateway_status="PASS"
+    if [[ "$category" == "CONFIGURATION" ]]; then
+        configuration_status="FAIL"
+        permission_status="NOT_RECORDED"
+        gateway_status="NOT_RECORDED"
+    elif [[ "$category" == "PERMISSION" ]]; then
+        permission_status="FAIL"
+        gateway_status="NOT_RECORDED"
+    fi
+    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
+    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
+    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+    printf '%s\n' "$category" | tee "$output_dir/wireguard-failure-category.txt" >&2
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'configuration=%s\npermission=%s\ngateway_connectivity=%s\ngateway_identity=%s\ntunnel=%s\nandroid_vpn=%s\n' \
+            "$configuration_status" "$permission_status" "$gateway_status" \
+            "NOT_CONFIRMED" "NOT_RUNNING" "NOT_CONFIRMED"
+        printf 'failure_category=%s\nresult=FAIL\nmessage=%s\n' "$category" "$message"
+    } | tee "$output_dir/wireguard-result.txt" "$output_dir/result.txt" >&2
+    echo "Android SafeNet WireGuard smoke failed ($category): $message" >&2
+    echo "Evidence: $output_dir" >&2
+    exit 1
+}
+
+run_wireguard_smoke() {
+    local wireguard_status
+    local failure_category="GATEWAY_CONNECTIVITY"
+    local failure_message="the configured WireGuard tunnel did not reach a stable running state"
+
+    echo "Running configured SafeNet WireGuard tunnel smoke..."
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/wireguard-instrumentation.log"
+    wireguard_status="${PIPESTATUS[0]}"
+    set -e
+    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
+    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
+    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+
+    if grep -Eiq 'WIREGUARD_FAILURE category=CONFIGURATION' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="CONFIGURATION"
+        failure_message="the release APK did not contain a usable SafeNet WireGuard configuration"
+    elif grep -Eiq 'WIREGUARD_FAILURE category=PERMISSION' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="PERMISSION"
+        failure_message="Android VPN permission was not granted to SafeNet WireGuard"
+    elif grep -Eiq 'WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY' \
+        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
+        failure_category="GATEWAY_CONNECTIVITY"
+    fi
+
+    if [[ "$wireguard_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/wireguard-instrumentation.log" ||
+        ! grep -Fq 'WIREGUARD_SMOKE result=PASS' "$output_dir/wireguard-logcat.txt"; then
+        wireguard_smoke_failure "$failure_category" "$failure_message"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'configuration=PASS\npermission=PASS\ngateway_connectivity=PASS\ngateway_identity=SafeNet\ntunnel=RUNNING\nandroid_vpn=PASS\nfailure_category=PASS\nresult=PASS\n'
+    } | tee "$output_dir/wireguard-result.txt"
+    echo "Configured SafeNet WireGuard tunnel smoke passed. Evidence: $output_dir"
+}
+
+run_compact_startup_sampling() {
+    local wm_size_output
+    local compact_status
+
+    echo "Running startup sampling on compact Android viewport $COMPACT_STARTUP_WM_SIZE..."
+    wm_size_output="$(timeout 30s adb "${adb_args[@]}" shell wm size 2>/dev/null | tr -d '\r' || true)"
+    compact_wm_override="$(sed -n 's/^Override size: //p' <<<"$wm_size_output" | head -n 1)"
+    if ! timeout 30s adb "${adb_args[@]}" shell wm size "$COMPACT_STARTUP_WM_SIZE"; then
+        compact_startup_failure "the emulator display could not be set to $COMPACT_STARTUP_WM_SIZE"
+    fi
+    compact_wm_size_applied=true
+
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/compact-startup-instrumentation.log"
+    compact_status="${PIPESTATUS[0]}"
+    set -e
+
+    restore_compact_wm_size
+    if [[ "$compact_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/compact-startup-instrumentation.log"; then
+        compact_startup_failure "the compact startup sampling test failed"
+    fi
+
+    {
+        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
+        printf 'compact_wm_size=%s\nsampling=RECORDED\nresult=PASS\n' \
+            "$COMPACT_STARTUP_WM_SIZE"
+    } | tee "$output_dir/compact-startup-result.txt"
 }
 
 run_startup_check() {
@@ -527,8 +809,9 @@ run_startup_check() {
     )"
     printf '%s\n' "$launch_output" > "$output_dir/startup-launch.txt"
 
-    # The native startup surface has been removed. Capture the initial state
-    # and wait for the real WebView to appear directly.
+    # Capture the first WebView frame, an in-progress loader frame, and the
+    # post-handoff frame. MainActivity logs the loader's DOM state while it
+    # waits for the timed progress and first React render to complete.
     for _ in {1..30}; do
         capture_startup_ui startup-initial-ui.xml
         initial_ui="$(cat "$output_dir/startup-initial-ui.xml" 2>/dev/null || true)"
@@ -543,15 +826,29 @@ run_startup_check() {
         startup_failure "the WebView was not visible after launching MainActivity"
     fi
 
-    cp "$output_dir/startup-initial-ui.xml" "$output_dir/startup-transition-ui.xml"
-    cp "$output_dir/startup-initial.png" "$output_dir/startup-transition.png"
+    sleep 4
+    capture_startup_ui startup-progress-ui.xml
+    capture_startup_screenshot startup-progress.png
+    cp "$output_dir/startup-progress-ui.xml" "$output_dir/startup-transition-ui.xml"
+    cp "$output_dir/startup-progress.png" "$output_dir/startup-transition.png"
+    sleep 7
+    capture_startup_ui startup-handoff-ui.xml
+    capture_startup_screenshot startup-handoff.png
 
     capture startup-logcat.txt adb "${adb_args[@]}" shell logcat -d -t 600
+    verify_startup_evidence
+    if ! grep -Fq 'WebView startup handoff complete' "$output_dir/startup-logcat.txt"; then
+        startup_failure "the WebView startup loader did not report a completed handoff"
+    fi
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'native_loader=REMOVED\nwebview_transition=PASS\nresult=PASS\n'
+        printf 'native_loader=REMOVED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
+    if ! install_release_apk "$test_apk_path"; then
+        media_smoke_failure "the release instrumentation APK could not be installed"
+    fi
+    run_media_smoke
     echo "Android startup check passed. Evidence: $output_dir"
 }
 
@@ -560,6 +857,9 @@ timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || tr
 timeout 30s adb "${adb_args[@]}" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
 if [[ "$startup_only" == true ]]; then
     run_startup_check
+    if [[ "$compact_startup" == true ]]; then
+        run_compact_startup_sampling
+    fi
     exit 0
 fi
 if ! install_release_apk "$apk_path"; then
@@ -570,6 +870,41 @@ if ! install_release_apk "$test_apk_path"; then
     echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
     exit 1
 fi
+
+run_wireguard_smoke
+
+prepare_clerk_session || {
+    echo "Android Clerk smoke could not prepare a real storage-state session." >&2
+    exit 2
+}
+
+echo "Running fresh Android Clerk sign-in smoke..."
+set +e
+adb_run shell am instrument -w -r \
+    -e clerk-origin "$clerk_origin" \
+    -e clerk-cookie-base64 "$clerk_cookie_payload" \
+    -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/clerk-auth-instrumentation.log"
+clerk_auth_status="${PIPESTATUS[0]}"
+set -e
+capture clerk-auth-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+if [[ "$clerk_auth_status" -ne 0 ]] ||
+    ! grep -Fq 'CLERK_AUTH_SMOKE result=PASS' "$output_dir/clerk-auth-logcat.txt"; then
+    {
+        printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$apk_path" "$validation_mode" "$device_kind"
+        printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=FAIL\nresult=FAIL\n'
+    } | tee "$output_dir/clerk-auth-result.txt" "$output_dir/result.txt" >&2
+    echo "Android Clerk sign-in smoke failed." >&2
+    exit "${clerk_auth_status:-1}"
+fi
+{
+    printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+        "$serial" "$apk_path" "$validation_mode" "$device_kind"
+    printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=PASS\nretained_after_reload=PASS\nlegacy_access_code=ABSENT\nresult=PASS\n'
+} | tee "$output_dir/clerk-auth-result.txt"
+
+run_media_smoke
 
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(make_temp_dir)"
@@ -739,7 +1074,8 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 echo "Running SafeNet DNS instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
-    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetPinInstrumentationTest \
+    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest \
+    -e preserve-auth-session true \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
@@ -749,19 +1085,6 @@ adb_run shell am instrument -w -r \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
 set -e
-
-# Keep the PIN smoke evidence structured and free of entered PINs or recovery
-# codes. The test emits only named PASS outcomes; missing outcomes are useful
-# evidence when instrumentation stops before completing the case.
-{
-    for pin_outcome in initial_gate relaunch_gate incorrect_pin fifth_attempt_lockout recovery_reset; do
-        if grep -q "PIN_SMOKE_OUTCOME ${pin_outcome}=PASS" "$output_dir/instrumentation.log"; then
-            echo "${pin_outcome}=PASS"
-        else
-            echo "${pin_outcome}=NOT_RECORDED"
-        fi
-    done
-} > "$output_dir/pin-smoke-evidence.txt"
 
 # Capture the VPN and network state even after a failed test. This is the
 # evidence needed to tell a route problem from an upstream resolver problem.
@@ -775,6 +1098,26 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
         "$output_dir/instrumentation.log"; then
     test_failed=1
 fi
+
+# Keep the consent-gated AI Shield lifecycle evidence easy to find without
+# claiming success when a runner skipped or failed either device test.
+grep -E 'aiShield(CameraConsentInfersAndPauseReleasesCapture|ScreenConsentInfersAndProjectionRevocationFailsClosed)' \
+    "$output_dir/instrumentation.log" > "$output_dir/ai-shield-instrumentation.log" || true
+ai_shield_status="PASS"
+if ! grep -q 'aiShieldCameraConsentInfersAndPauseReleasesCapture' \
+    "$output_dir/ai-shield-instrumentation.log" ||
+    ! grep -q 'aiShieldScreenConsentInfersAndProjectionRevocationFailsClosed' \
+    "$output_dir/ai-shield-instrumentation.log"; then
+    ai_shield_status="NOT_RECORDED"
+    test_failed=1
+elif grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+    "$output_dir/ai-shield-instrumentation.log"; then
+    ai_shield_status="FAIL"
+    test_failed=1
+fi
+printf 'ai_shield_status=%s\n' "$ai_shield_status" |
+    tee "$output_dir/ai-shield-result.txt"
+
 fixture_process_failed=0
 if [[ "$resolver_mode" == "fixture" ]] &&
     { [[ -z "$fixture_pid" ]] || ! kill -0 "$fixture_pid" 2>/dev/null; }; then
@@ -798,8 +1141,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nfailure_category=%s\n' \
-    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

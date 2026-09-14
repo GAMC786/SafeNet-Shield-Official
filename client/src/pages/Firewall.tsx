@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
 import { useFirewallRules, useCreateFirewallRule, useUpdateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
@@ -6,7 +7,7 @@ import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
+import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -26,16 +29,38 @@ export default function Firewall() {
   const createRule = useCreateFirewallRule();
   const updateRule = useUpdateFirewallRule();
   const deleteRule = useDeleteFirewallRule();
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const firewallEnabled = settings?.firewallEnabled ?? false;
+  const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
+  const isProtected = firewallEnabled && preventDnsOverrides;
 
-  const [newDomain, setNewDomain] = useState("");
-  const [newDomainAction, setNewDomainAction] = useState<"allow" | "block">("block");
-  const [newKeyword, setNewKeyword] = useState("");
-  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
+  const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
+  const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
+    "safenet-firewall-new-domain-action",
+    "block",
+  );
+  const [newKeyword, setNewKeyword] = usePersistentState("safenet-firewall-new-keyword", "");
+  const [isRuleDialogOpen, setIsRuleDialogOpen] = usePersistentState("safenet-firewall-rule-dialog-open", false);
   const [editingRule, setEditingRule] = useState<FirewallRule | null>(null);
+  const [editingRuleId, setEditingRuleId, clearEditingRuleId] = usePersistentState<number | null>(
+    "safenet-firewall-editing-rule-id",
+    null,
+  );
   const [editingBlocklist, setEditingBlocklist] = useState<Blocklist | null>(null);
-  const [editedBlocklistContent, setEditedBlocklistContent] = useState("");
-  const [editedBlocklistAction, setEditedBlocklistAction] = useState<"allow" | "block">("block");
-  const [newRule, setNewRule] = useState<InsertFirewallRule>({
+  const [editingBlocklistId, setEditingBlocklistId, clearEditingBlocklistId] = usePersistentState<number | null>(
+    "safenet-firewall-editing-blocklist-id",
+    null,
+  );
+  const [editedBlocklistContent, setEditedBlocklistContent, clearEditedBlocklistContent] = usePersistentState(
+    "safenet-firewall-edited-blocklist-content",
+    "",
+  );
+  const [editedBlocklistAction, setEditedBlocklistAction, clearEditedBlocklistAction] = usePersistentState<"allow" | "block">(
+    "safenet-firewall-edited-blocklist-action",
+    "block",
+  );
+  const [newRule, setNewRule, clearNewRule] = usePersistentState<InsertFirewallRule>("safenet-firewall-new-rule", {
     name: "",
     sourceInterface: "lan",
     sourceAddress: "Any",
@@ -44,6 +69,28 @@ export default function Firewall() {
     service: "dns",
     action: "deny" as const,
   });
+
+  useEffect(() => {
+    if (!editingRuleId || !rules) return;
+    const rule = rules.find((candidate) => candidate.id === editingRuleId);
+    if (rule) {
+      setEditingRule(rule);
+    } else {
+      setEditingRule(null);
+      clearEditingRuleId();
+    }
+  }, [clearEditingRuleId, editingRuleId, rules]);
+
+  useEffect(() => {
+    if (!editingBlocklistId || !blocklists) return;
+    const blocklist = blocklists.find((candidate) => candidate.id === editingBlocklistId);
+    if (blocklist) {
+      setEditingBlocklist(blocklist);
+    } else {
+      setEditingBlocklist(null);
+      clearEditingBlocklistId();
+    }
+  }, [blocklists, clearEditingBlocklistId, editingBlocklistId]);
 
   const handleAddDomain = () => {
     if (!newDomain) return;
@@ -56,17 +103,19 @@ export default function Firewall() {
       action: newDomainAction,
       isActive: true
     }, {
-      onSuccess: () => toast({
-        title: "URL rule added",
-        description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
-      }),
+      onSuccess: () => {
+        setNewDomain("");
+        toast({
+          title: "URL rule added",
+          description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
+        });
+      },
       onError: (error) => toast({
         title: "URL rule could not be added",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
     });
-    setNewDomain("");
   };
 
   const handleAddKeyword = () => {
@@ -79,29 +128,24 @@ export default function Firewall() {
       category: "custom",
       isActive: true
     }, {
-      onSuccess: () => toast({
-        title: "Keyword filter added",
-        description: `${content} will be filtered from DNS requests.`,
-      }),
+      onSuccess: () => {
+        setNewKeyword("");
+        toast({
+          title: "Keyword filter added",
+          description: `${content} will be filtered from DNS requests.`,
+        });
+      },
       onError: (error) => toast({
         title: "Keyword filter could not be added",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
     });
-    setNewKeyword("");
   };
 
   const resetRuleForm = () => {
-    setNewRule({
-      name: "",
-      sourceInterface: "lan",
-      sourceAddress: "Any",
-      destinationInterface: "wan",
-      destinationAddress: "Any",
-      service: "dns",
-      action: "deny",
-    });
+    clearNewRule();
+    clearEditingRuleId();
     setEditingRule(null);
   };
 
@@ -112,6 +156,7 @@ export default function Firewall() {
 
   const openEditRuleDialog = (rule: FirewallRule) => {
     setEditingRule(rule);
+    setEditingRuleId(rule.id);
     setNewRule({
       name: rule.name,
       sourceInterface: rule.sourceInterface,
@@ -150,14 +195,16 @@ export default function Firewall() {
 
   const openEditBlocklistDialog = (item: Blocklist) => {
     setEditingBlocklist(item);
+    setEditingBlocklistId(item.id);
     setEditedBlocklistContent(item.content);
     setEditedBlocklistAction(item.action === "allow" ? "allow" : "block");
   };
 
   const closeEditBlocklistDialog = () => {
+    clearEditingBlocklistId();
+    clearEditedBlocklistContent();
+    clearEditedBlocklistAction();
     setEditingBlocklist(null);
-    setEditedBlocklistContent("");
-    setEditedBlocklistAction("block");
   };
 
   const handleSaveBlocklist = () => {
@@ -262,7 +309,7 @@ export default function Firewall() {
       <Header 
         title="Firewall Rules" 
         subtitle="Access Control Lists" 
-        status="active"
+        status={isProtected ? "active" : "unprotected"}
       />
 
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
@@ -275,6 +322,18 @@ export default function Firewall() {
             <p className="text-muted-foreground">
               Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {firewallEnabled ? "On" : "Off"}
+            </span>
+            <Switch
+              checked={firewallEnabled}
+              disabled={!settings || updateSettings.isPending}
+              onCheckedChange={(checked) => updateSettings.mutate({ firewallEnabled: checked })}
+              aria-label="DNS Firewall On/Off"
+              data-testid="switch-firewall-master"
+            />
           </div>
         </div>
       </CyberCard>
@@ -295,6 +354,33 @@ export default function Firewall() {
           <div className="flex-1">
 
         <TabsContent value="rules" className="mt-0 space-y-4">
+          <CyberCard className="border-primary/20 bg-primary/5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div>
+                  <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Keep DNS requests on SafeNet&apos;s protected resolver path so apps cannot silently switch
+                    to another resolver.
+                  </p>
+                  <p className="mt-2 text-xs text-primary/80">
+                    {firewallEnabled
+                      ? "Enforced while DNS Firewall is On."
+                      : "Turn on DNS Firewall above to enforce this access rule."}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={preventDnsOverrides}
+                disabled={!settings || updateSettings.isPending}
+                onCheckedChange={(checked) => updateSettings.mutate({ preventDnsOverrides: checked })}
+                aria-label="Prevent DNS Overrides"
+                data-testid="switch-prevent-dns-overrides"
+              />
+            </div>
+          </CyberCard>
+
           <div className="flex justify-end mb-4">
             <Dialog open={isRuleDialogOpen} onOpenChange={(open) => {
               setIsRuleDialogOpen(open);
@@ -315,6 +401,7 @@ export default function Firewall() {
                   <div className="space-y-2">
                     <Label>Rule Name</Label>
                     <Input
+                       data-testid="input-firewall-rule-name"
                       value={newRule.name}
                       onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
                       placeholder="e.g., Block DNS"
@@ -326,6 +413,7 @@ export default function Firewall() {
                     <div className="space-y-2">
                       <Label>Source Address</Label>
                       <Input
+                         data-testid="input-firewall-source-address"
                         value={newRule.sourceAddress || ""}
                         onChange={(e) => setNewRule({ ...newRule, sourceAddress: e.target.value || "Any" })}
                         placeholder="Any or CIDR"
@@ -561,26 +649,31 @@ export default function Firewall() {
             {domains.map(item => (
               <div 
                 key={item.id} 
-                className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border transition-colors group ${
+                className={`flex min-w-0 items-center justify-between gap-3 p-3 rounded-lg bg-card/50 border transition-colors group ${
                     item.action === "block" ? "border-destructive/20 hover:border-destructive/40" : "border-primary/20 hover:border-primary/40"
                   } ${!item.isActive ? "opacity-50" : ""}`}
                 data-testid={`url-rule-${item.id}`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   {item.action === "block" ? (
-                    <X className="w-4 h-4 text-destructive" />
+                    <X className="w-4 h-4 shrink-0 text-destructive" />
                   ) : (
-                    <Check className="w-4 h-4 text-primary" />
+                    <Check className="w-4 h-4 shrink-0 text-primary" />
                   )}
-                  <span className="font-mono text-sm">{item.content}</span>
+                  <span
+                    className="min-w-0 flex-1 break-words font-mono text-sm [overflow-wrap:anywhere]"
+                    title={item.content}
+                  >
+                    {item.content}
+                  </span>
                   <Badge 
                     variant={item.action === "block" ? "destructive" : "default"} 
-                    className="text-[10px]"
+                    className="shrink-0 text-[10px]"
                   >
                     {item.action?.toUpperCase() || "BLOCK"}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"

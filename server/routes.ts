@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import express from "express";
-import { randomInt } from "node:crypto";
+import { isIP } from "node:net";
 import type { Server } from "http";
 import { storage as defaultStorage, type IStorage } from "./storage";
+import { getGlitchTipClientConfig } from "./glitchtip";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import {
@@ -13,41 +14,35 @@ import {
   firewallConfigSchema,
   insertAntivirusSettingsSchema,
   insertFirewallRuleSchema,
+  DDNS_DEFAULT_INTERVAL_SECONDS,
   DDNS_DEFAULT_INTERVAL_MS,
+  DDNS_MIN_INTERVAL_MINUTES,
+  DDNS_MIN_INTERVAL_SECONDS,
   DDNS_MIN_INTERVAL_MS,
 } from "@shared/schema";
 import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 import {
-  clearPinAttempts,
-  getPinRetryAfterSeconds,
-  recordFailedPinAttempt,
-  createRequireAuthentication,
-  createRequireExistingAuthentication,
-  getClerkUserId,
-} from "./auth";
-import { hashPin, isHashedPin, verifyPin } from "./pin-security";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
-import {
-  getGmailFailureStage,
-  PIN_RECOVERY_CODE_TTL_MS,
-  sendPinRecoveryCode,
-  sendPinSecurityNotification,
-} from "./gmail";
-import { CLERK_PROXY_PATH, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
+  getDeepCleerStatus,
+  moderateDeepCleerImage,
+} from "./deepcleer-service";
 
 function publicSettings(settings: AppSettings) {
   const {
     pinCode: _pinCode,
+    pinRecoveryEmail: _pinRecoveryEmail,
     pinRecoveryCodeHash: _pinRecoveryCodeHash,
     pinRecoveryCodeExpiresAt: _pinRecoveryCodeExpiresAt,
+    isPinEnabled: _isPinEnabled,
     ...safeSettings
   } = settings;
   return {
     ...safeSettings,
-    pinRecoveryEmail: safeSettings.pinRecoveryEmail ?? null,
-    pinConfigured: Boolean(settings.pinCode),
+    // Existing installations may predate the setting. The safe default is to
+    // keep resolver override protection on until the user explicitly turns it
+    // off.
+    preventDnsOverrides: settings.preventDnsOverrides ?? true,
   };
 }
 
@@ -61,7 +56,9 @@ function publicDdnsUpdater(updater: DdnsUpdater) {
     lastFailureMessage: updater.lastFailureMessage,
     lastFailureTime: updater.lastFailureTime,
     isEnabled: updater.isEnabled,
-    updateInterval: updater.updateInterval,
+    updateInterval: updater.updateInterval === null
+      ? DDNS_DEFAULT_INTERVAL_SECONDS
+      : Math.max(DDNS_MIN_INTERVAL_MINUTES, Math.round(updater.updateInterval / 60000)),
   };
 }
 
@@ -73,179 +70,88 @@ function isSecureDdnsUrl(value: string) {
   }
 }
 
+function validateDnsResolverAddresses(input: {
+  type?: string;
+  ipVersion?: string;
+  primaryAddress?: string;
+  secondaryAddress?: string | null;
+}) {
+  const type = input.type ?? "plain";
+  const ipVersion = input.ipVersion ?? "ipv4";
+  const expectedFamily = ipVersion === "ipv6" ? 6 : 4;
+  const addresses = [input.primaryAddress, input.secondaryAddress].filter(
+    (address): address is string => Boolean(address?.trim()),
+  );
+  if (!addresses.length) throw new Error("A primary DNS resolver address is required.");
+  if (type === "plain") {
+    for (const address of addresses) {
+      if (isIP(address.trim()) !== expectedFamily) {
+        throw new Error(`Every plain DNS address must be a valid ${ipVersion === "ipv6" ? "IPv6" : "IPv4"} address.`);
+      }
+    }
+    return;
+  }
+  for (const address of addresses) {
+    if (type === "doh") {
+      if (new URL(address).protocol !== "https:") {
+        throw new Error("DNS over HTTPS endpoints must use HTTPS.");
+      }
+    } else if (type === "dot" && !/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(address) && isIP(address) !== expectedFamily) {
+      throw new Error("DNS over TLS endpoints must be a hostname or a matching IP address.");
+    }
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
   routeStorage?: IStorage,
-  options: {
-    seed?: boolean;
-    generatePinRecoveryCode?: () => string;
-    sendPinRecoveryCode?: (to: string, code: string) => Promise<void>;
-  } = {},
+  options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
-  const generatePinRecoveryCode =
-    options.generatePinRecoveryCode ?? (() => String(randomInt(100000, 1000000)));
-  const deliverPinRecoveryCode = options.sendPinRecoveryCode ?? sendPinRecoveryCode;
 
-  // These endpoints are the only unauthenticated API surface. They contain no
-  // settings, PIN, provider, or user data.
-  app.get(api.auth.config.path, (req, res) => {
-    const publishableKey = process.env.CLERK_PUBLISHABLE_KEY
-      ? publishableKeyFromHost(getClerkProxyHost(req) ?? "", process.env.CLERK_PUBLISHABLE_KEY)
-      : undefined;
-
-    if (!publishableKey) {
-      return res.status(503).json({
-        message: "Clerk publishable-key configuration is unavailable.",
-      });
-    }
-
-    const protocol = req.headers["x-forwarded-proto"]?.toString().split(",")[0]?.trim() || req.protocol;
-    const host = getClerkProxyHost(req);
-    if (!host) {
-      return res.status(503).json({
-        message: "SafeNet public host configuration is unavailable.",
-      });
-    }
-
-    res.setHeader("Cache-Control", "no-store");
-    return res.json({
-      publishableKey,
-      proxyUrl: `${protocol}://${host}${CLERK_PROXY_PATH}`,
-    });
+  app.get("/api/telemetry/glitchtip", (_req, res) => {
+    res.json(getGlitchTipClientConfig());
   });
 
-  app.get(api.auth.status.path, async (req, res) => {
-    // Authentication state changes after PIN verification. Prevent browsers
-    // and proxies from replaying the pre-verification 304 response.
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    const settings = await storage.getSettings();
-    const pinRequired = settings.isPinEnabled === true;
-    const clerkUserId = getClerkUserId(req);
-
-    if (!pinRequired) {
-      req.session.authenticated = true;
-    }
-
-    res.json({
-      authenticated: req.session.authenticated === true || clerkUserId !== null,
-      pinRequired,
-    });
-  });
-
-  app.post(api.settings.verifyPin.path, async (req, res) => {
-    const retryAfter = getPinRetryAfterSeconds(req);
-    if (retryAfter > 0) {
-      res.setHeader("Retry-After", retryAfter);
-      return res.status(429).json({
-        message: "Too many PIN attempts. Try again later.",
+  app.get("/api/speedtest/turn-creds", async (_req, res) => {
+    try {
+      const response = await fetch("https://speed.cloudflare.com/turn-creds", {
+        headers: {
+          Accept: "application/json",
+          Origin: "https://speed.cloudflare.com",
+        },
       });
-    }
-
-    const parsed = api.settings.verifyPin.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: "PIN must contain exactly four digits." });
-    }
-
-    const settings = await storage.getSettings();
-    const valid = settings.isPinEnabled !== true || verifyPin(settings.pinCode, parsed.data.pin);
-
-    if (!valid) {
-      recordFailedPinAttempt(req);
-      return res.status(401).json({
-        valid: false,
-        message: "Invalid PIN",
-      });
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      req.session.regenerate((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      });
-    });
-    if (settings.pinCode && !isHashedPin(settings.pinCode)) {
-      await storage.updateSettings({ pinCode: hashPin(parsed.data.pin) });
-    }
-    req.session.authenticated = true;
-    clearPinAttempts(req);
-
-    res.json({ valid: true });
-  });
-
-  app.post("/api/settings/pin-recovery/request", async (req, res) => {
-    const parsed = api.settings.requestPinRecovery.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ sent: false, message: "Enter a valid recovery email address." });
-    }
-
-    const settings = await storage.getSettings();
-    const emailMatches = settings.pinRecoveryEmail?.toLowerCase() === parsed.data.email.toLowerCase();
-    if (emailMatches && settings.isPinEnabled === true) {
-      const code = generatePinRecoveryCode();
-      await storage.updateSettings({
-        pinRecoveryCodeHash: hashPin(code),
-        pinRecoveryCodeExpiresAt: new Date(Date.now() + PIN_RECOVERY_CODE_TTL_MS),
-      });
-      try {
-        await deliverPinRecoveryCode(parsed.data.email, code);
-      } catch (error) {
-        console.error(`PIN recovery email failed at Gmail ${getGmailFailureStage(error)} stage.`);
-        return res.status(502).json({ sent: false, message: "The recovery email could not be sent. Check the Gmail connection and try again." });
+      if (!response.ok) {
+        return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
       }
-    }
 
-    return res.json({
-      sent: true,
-      message: "If that address is configured for SafeNet, a recovery code will arrive shortly.",
-    });
+      const payload = (await response.json()) as Record<string, unknown>;
+      const username = typeof payload.username === "string" ? payload.username : null;
+      const credential = typeof payload.credential === "string" ? payload.credential : null;
+      const turnUrls = Array.isArray(payload.urls)
+        ? payload.urls.filter((url): url is string => typeof url === "string" && url.length > 0)
+        : [];
+      const turnServerUrl = turnUrls.find((url) => /^turn:/i.test(url));
+      const normalizedTurnServer = turnServerUrl
+        ?.replace(/^turn:/i, "")
+        .split("?")[0]
+        .trim();
+      const server =
+        typeof payload.server === "string" && payload.server.length > 0
+          ? payload.server
+          : normalizedTurnServer || null;
+      if (!username || !credential || !server) {
+        return res.status(502).json({ message: "Cloudflare returned incomplete TURN credentials." });
+      }
+      return res.json({ username, credential, server });
+    } catch {
+      return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
+    }
   });
 
-  app.post("/api/settings/pin-recovery/reset", async (req, res) => {
-    const retryAfter = getPinRetryAfterSeconds(req);
-    if (retryAfter > 0) {
-      res.setHeader("Retry-After", retryAfter);
-      return res.status(429).json({ message: "Too many recovery attempts. Try again later." });
-    }
-
-    const parsed = api.settings.resetPinRecovery.input.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ valid: false, message: "Enter the recovery email, six-digit code, and a four-digit PIN." });
-    }
-
-    const resetApplied = await storage.resetPinWithRecoveryCode(
-      parsed.data.email,
-      parsed.data.code,
-      parsed.data.pin,
-    );
-    if (!resetApplied) {
-      recordFailedPinAttempt(req);
-      return res.status(401).json({ valid: false, message: "The recovery code is invalid or expired." });
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      req.session.regenerate((error) => (error ? reject(error) : resolve()));
-    });
-    req.session.authenticated = true;
-    clearPinAttempts(req);
-    void sendPinSecurityNotification(parsed.data.email).catch((error) => {
-      console.error("PIN recovery notification failed:", error);
-    });
-    return res.json({ valid: true });
-  });
-
-  // Device reporters must present an already-authenticated web session. This
-  // route intentionally sits before the general middleware, which can
-  // bootstrap a session when PIN protection is disabled.
   app.post(
     api.logs.ingest.path,
-    createRequireExistingAuthentication(),
     async (req, res) => {
       try {
         const input = api.logs.ingest.input.parse(req.body);
@@ -263,10 +169,6 @@ export async function registerRoutes(
     },
   );
 
-  // Every remaining API route, including the AI integrations, requires either
-  // a Clerk session or the short-lived local PIN session created above.
-  app.use("/api", createRequireAuthentication(storage));
-
   // Register AI Integrations
   registerChatRoutes(app);
   registerImageRoutes(app);
@@ -280,6 +182,7 @@ export async function registerRoutes(
   app.post(api.dns.create.path, async (req, res) => {
     try {
       const input = api.dns.create.input.parse(req.body);
+      validateDnsResolverAddresses(input);
       const server = await storage.createDnsServer(input);
       res.status(201).json(server);
     } catch (err) {
@@ -293,6 +196,12 @@ export async function registerRoutes(
   app.put(api.dns.update.path, async (req, res) => {
     try {
       const input = api.dns.update.input.parse(req.body);
+      const current = await storage.getDnsServers();
+      const existing = current.find((server) => server.id === Number(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "DNS resolver not found" });
+      }
+      validateDnsResolverAddresses({ ...existing, ...input });
       const server = await storage.updateDnsServer(Number(req.params.id), input);
       if (!server) {
         return res.status(404).json({ message: "DNS resolver not found" });
@@ -406,34 +315,7 @@ export async function registerRoutes(
   app.put(api.settings.update.path, async (req, res) => {
     try {
       const input = api.settings.update.input.parse(req.body);
-      if (typeof input.pinCode === "string" && !/^\d{4}$/.test(input.pinCode)) {
-        return res.status(400).json({ message: "PIN must contain exactly four digits." });
-      }
-      if (input.pinRecoveryEmail !== undefined && input.pinRecoveryEmail !== null) {
-        const email = z.string().email().safeParse(input.pinRecoveryEmail);
-        if (!email.success) {
-          return res.status(400).json({ message: "Recovery email must be a valid email address." });
-        }
-      }
-      const currentSettings = await storage.getSettings();
-      const nextPinCode = input.pinCode === undefined ? currentSettings.pinCode : input.pinCode;
-      const nextPinEnabled = input.isPinEnabled === undefined
-        ? currentSettings.isPinEnabled
-        : input.isPinEnabled;
-      if (nextPinEnabled === true && !nextPinCode) {
-        return res.status(400).json({
-          message: "Set a four-digit PIN before enabling PIN protection.",
-        });
-      }
-      const settings = await storage.updateSettings({
-        ...input,
-        ...(typeof input.pinCode === "string" ? { pinCode: hashPin(input.pinCode) } : {}),
-      });
-      if (typeof input.pinCode === "string" && settings.pinRecoveryEmail) {
-        void sendPinSecurityNotification(settings.pinRecoveryEmail).catch((error) => {
-          console.error("PIN security notification failed:", error);
-        });
-      }
+      const settings = await storage.updateSettings(input);
       res.json(publicSettings(settings));
     } catch (err) {
       throw err;
@@ -446,26 +328,61 @@ export async function registerRoutes(
     res.json(updaters.map(publicDdnsUpdater));
   });
 
+  app.get("/api/integrations/cloudflare/status", async (_req, res) => {
+    const { getCloudflareStatus } = await import("./replit_integrations/cloudflare/client");
+    const status = await getCloudflareStatus();
+    res.status(status.connected ? 200 : 503).json(status);
+  });
+
+  app.get("/api/integrations/onesignal/status", async (_req, res) => {
+    const { getOneSignalStatus } = await import("./replit_integrations/onesignal/client");
+    const status = await getOneSignalStatus();
+    res.status(status.connected ? 200 : 503).json(status);
+  });
+
+  app.get("/api/integrations/deepcleer/status", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(getDeepCleerStatus());
+  });
+
+  app.post("/api/integrations/deepcleer/image", async (req, res) => {
+    try {
+      const result = await moderateDeepCleerImage(req.body);
+      res.json(result);
+    } catch (error) {
+      const statusCode = error instanceof Error && "statusCode" in error
+        ? Number((error as { statusCode?: number }).statusCode) || 503
+        : 503;
+      res.status(statusCode).json({
+        provider: "deepcleer",
+        message: error instanceof Error ? error.message : "DeepCleer image moderation failed.",
+        code: error instanceof Error && "code" in error
+          ? (error as { code?: string }).code
+          : "DEEPCLEER_REQUEST_FAILED",
+      });
+    }
+  });
+
   app.post("/api/ddns", async (req, res) => {
     try {
       const { hostname, provider, apiKey, customUrl, updateInterval, isEnabled } = req.body;
       if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      // IP Link requires customUrl, others require apiKey
+      // IP Link requires customUrl. Cloudflare uses the managed connector.
       if (provider === "iplink" && !customUrl) {
         return res.status(400).json({ message: "Custom URL is required for IP Link provider" });
       }
       if (provider === "iplink" && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-      if (provider !== "iplink" && !apiKey) {
+      if (provider !== "iplink" && provider !== "cloudflare" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MS).safeParse(updateInterval);
+       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MS} milliseconds`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MINUTES} minute`,
          });
        }
        const updater = await storage.createDdnsUpdater({
@@ -473,7 +390,9 @@ export async function registerRoutes(
         provider,
         apiKey: apiKey || "",
         customUrl: customUrl || null,
-         updateInterval: parsedInterval.success ? parsedInterval.data : DDNS_DEFAULT_INTERVAL_MS,
+          updateInterval: parsedInterval.success
+             ? parsedInterval.data * 60000
+            : DDNS_DEFAULT_INTERVAL_MS,
         isEnabled: isEnabled !== false,
       });
       res.status(201).json(publicDdnsUpdater(updater));
@@ -489,10 +408,10 @@ export async function registerRoutes(
       if (customUrl !== undefined && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-       const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MS).safeParse(updateInterval);
+        const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);
        if (updateInterval !== undefined && !parsedInterval.success) {
          return res.status(400).json({
-           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MS} milliseconds`,
+           message: `Update interval must be at least ${DDNS_MIN_INTERVAL_MINUTES} minute`,
          });
        }
        const updater = await storage.updateDdnsUpdater(id, {
@@ -500,7 +419,9 @@ export async function registerRoutes(
         ...(provider && { provider }),
         ...(apiKey !== undefined && { apiKey }),
         ...(customUrl !== undefined && { customUrl }),
-         ...(updateInterval !== undefined && { updateInterval: parsedInterval.data }),
+          ...(updateInterval !== undefined && parsedInterval.success
+             ? { updateInterval: parsedInterval.data * 60000 }
+            : {}),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
       res.json(publicDdnsUpdater(updater));
@@ -520,9 +441,10 @@ export async function registerRoutes(
 
   app.post("/api/ddns/:id/update", async (req, res) => {
     try {
+      const id = Number(req.params.id);
       const { clientIp } = req.body;
       const { checkAndUpdateDdns } = await import("./ddns-service");
-      const results = await checkAndUpdateDdns(clientIp, storage);
+      const results = await checkAndUpdateDdns(clientIp, storage, id);
       const failures = results.filter((result) => !result.success);
       if (failures.length > 0) {
         return res.status(502).json({
@@ -534,6 +456,38 @@ export async function registerRoutes(
       res.json(updaters.map(publicDdnsUpdater));
     } catch (err) {
       res.status(500).json({ message: "Failed to update DDNS" });
+    }
+  });
+
+  app.post("/api/ddns/:id/test", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const updater = (await storage.getDdnsUpdaters()).find((entry) => entry.id === id);
+      if (!updater) {
+        return res.status(404).json({ message: "DDNS updater not found" });
+      }
+      const { forceUpdateDdns } = await import("./ddns-service");
+      const clientIp = typeof req.body?.clientIp === "string" ? req.body.clientIp.trim() : undefined;
+      const result = await forceUpdateDdns(id, clientIp, storage);
+      if (!result.success) {
+        return res.status(502).json({
+          message: `DDNS update verification failed for ${result.hostname}: ${result.error}`,
+          result,
+        });
+      }
+      return res.json({
+        success: true,
+        provider: updater.provider,
+        hostname: updater.hostname,
+        ipAddress: result.ipAddress,
+        message: `Manual update succeeded for ${updater.hostname}. Credentials and provider URL configuration are valid.`,
+      });
+    } catch (error) {
+      return res.status(502).json({
+        message: error instanceof Error
+          ? `DDNS update verification failed: ${error.message}`
+          : "DDNS update verification failed",
+      });
     }
   });
 
@@ -616,10 +570,90 @@ export async function registerRoutes(
   });
 
   // === Antivirus ===
+  app.get("/internal/clamav/health", async (req, res) => {
+    const {
+      isAuthorizedLocalClamAvRequest,
+      localClamAvHealth,
+    } = await import("./clamav-local");
+    if (!isAuthorizedLocalClamAvRequest(req.get("x-safenet-clamav-token"))) {
+      return res.status(404).end();
+    }
+    try {
+      return res.json(await localClamAvHealth());
+    } catch (error) {
+      return res.status(503).json({
+        status: "unavailable",
+        message: error instanceof Error ? error.message : "ClamAV is unavailable.",
+      });
+    }
+  });
+
+  app.post(
+    "/internal/clamav/scan",
+    express.raw({ type: "application/octet-stream", limit: "64mb" }),
+    async (req, res) => {
+      const {
+        isAuthorizedLocalClamAvRequest,
+        scanWithLocalClamAv,
+      } = await import("./clamav-local");
+      if (!isAuthorizedLocalClamAvRequest(req.get("x-safenet-clamav-token"))) {
+        return res.status(404).end();
+      }
+      try {
+        const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+        return res.json(await scanWithLocalClamAv(payload));
+      } catch (error) {
+        return res.status(503).json({
+          message: error instanceof Error ? error.message : "ClamAV is unavailable.",
+        });
+      }
+    },
+  );
+
   app.get("/api/antivirus/settings", async (req, res) => {
     const settings = await storage.getAntivirusSettings();
     res.json(settings);
   });
+
+  app.get("/api/antivirus/clamav/status", async (_req, res) => {
+    const { getClamAvStatus } = await import("./clamav-service");
+    res.set("Cache-Control", "no-store");
+    res.json(await getClamAvStatus(storage));
+  });
+
+  app.post("/api/antivirus/clamav/verify", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      const { verifyClamAv } = await import("./clamav-service");
+      const result = await verifyClamAv(storage);
+      res.status(result.verified ? 200 : 503).json(result);
+    } catch (error) {
+      res.status(503).json({
+        verified: false,
+        verifiedAt: new Date().toISOString(),
+        message: error instanceof Error ? error.message : "ClamAV verification failed.",
+        cleanScan: null,
+        threatScan: null,
+        engineVersion: null,
+      });
+    }
+  });
+
+  app.post(
+    "/api/antivirus/clamav/scan",
+    express.raw({ type: "application/octet-stream", limit: "64mb" }),
+    async (req, res) => {
+      try {
+        const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+        const { scanWithClamAv } = await import("./clamav-service");
+        res.json(await scanWithClamAv(payload, storage));
+      } catch (error) {
+        res.status(503).json({
+          message: error instanceof Error ? error.message : "ClamAV REST scan failed.",
+        });
+      }
+    },
+  );
 
   app.put("/api/antivirus/settings", async (req, res) => {
     try {
@@ -688,6 +722,22 @@ export async function registerRoutes(
   app.post("/api/antivirus/events", async (req, res) => {
     try {
       const event = await storage.createAntivirusEvent(req.body);
+      if (event.severity === "high" || event.severity === "critical") {
+        const { notifySecurityEvent } = await import("./replit_integrations/onesignal/client");
+        try {
+          await notifySecurityEvent({
+            eventId: event.id,
+            severity: event.severity,
+            threatType: event.threatType,
+            action: event.action,
+          });
+        } catch (error) {
+          console.warn(
+            "OneSignal security notification failed:",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        }
+      }
       res.status(201).json(event);
     } catch (err) {
       res.status(500).json({ message: "Failed to create antivirus event" });
@@ -717,64 +767,6 @@ export async function registerRoutes(
     } catch (err) {
       res.status(500).json({ message: "Failed to get public IP" });
     }
-  });
-
-  // === Speed Test ===
-  // Download test - returns uncached, incompressible data for client-side timing.
-  // Keep the standard payload ready so server-side random-data generation does
-  // not become part of the measured network throughput.
-  const standardSpeedTestPayload = Buffer.alloc(4_000_000, 0xa5);
-  app.get("/api/speedtest/download", (req, res) => {
-    const size = parseInt(req.query.size as string) || 1000000; // Default 1MB
-    const maxSize = 10000000; // Max 10MB
-    const actualSize = Math.min(size, maxSize);
-    const payload = actualSize === standardSpeedTestPayload.length
-      ? standardSpeedTestPayload
-      : Buffer.alloc(actualSize, 0xa5);
-    
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Length", actualSize);
-    res.setHeader("Content-Encoding", "identity");
-    res.setHeader("X-SpeedTest-Bytes", actualSize);
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    
-    // Stream the same bytes in both directions without compression or
-    // per-chunk payload generation affecting the timing.
-    const chunkSize = 65536; // 64KB chunks
-    let offset = 0;
-    
-    const sendChunk = () => {
-      while (offset < actualSize) {
-        const nextOffset = Math.min(offset + chunkSize, actualSize);
-        const chunk = payload.subarray(offset, nextOffset);
-        const canContinue = res.write(chunk);
-        offset = nextOffset;
-        if (!canContinue) {
-          res.once("drain", sendChunk);
-          return;
-        }
-      }
-      res.end();
-    };
-    
-    sendChunk();
-  });
-
-  // Upload test - receives the full payload so the client can measure the
-  // complete request round trip with the same clock used for downloads.
-  app.post("/api/speedtest/upload", express.raw({ type: "application/octet-stream", limit: "10mb" }), (req, res) => {
-    const bytesReceived = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    if (bytesReceived === 0) {
-      return res.status(400).json({ message: "The upload payload was empty." });
-    }
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("X-SpeedTest-Bytes", bytesReceived);
-    return res.json({ bytesReceived });
-  });
-
-  // Ping test
-  app.get("/api/speedtest/ping", (req, res) => {
-    res.json({ timestamp: Date.now() });
   });
 
   // === SEED DATA ===

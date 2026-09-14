@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useActivateDnsServer,
   useCreateDnsServer,
@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 type ResolverForm = {
   name: string;
@@ -34,8 +36,65 @@ const emptyResolver: ResolverForm = {
   secondaryAddress: "",
 };
 
+const resolverPresets = [
+  {
+    name: "AdGuard DNS (Family)",
+    type: "doh" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "https://family.adguard-dns.com/dns-query",
+    secondaryAddress: null,
+    description: "Blocks ads, trackers, malware, and adult content.",
+  },
+  {
+    name: "NextDNS",
+    type: "plain" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "45.90.28.0",
+    secondaryAddress: "45.90.30.0",
+    description: "Public NextDNS anycast resolvers without a profile ID.",
+  },
+  {
+    name: "Control D",
+    type: "doh" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "https://freedns.controld.com/p2",
+    secondaryAddress: null,
+    description: "Encrypted Ads & Tracking filtered resolver.",
+  },
+] as const;
+
 function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
+}
+
+function resolverAddressPlaceholder(type: DnsServer["type"], ipVersion: ResolverForm["ipVersion"]) {
+  if (type === "doh") return "https://dns.google/dns-query";
+  if (type === "dot") return "dns.google";
+  return ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1";
+}
+
+function isValidResolverAddress(
+  type: DnsServer["type"],
+  ipVersion: ResolverForm["ipVersion"],
+  address: string,
+) {
+  if (type === "plain") {
+    const version = ipVersion === "ipv6" ? 6 : 4;
+    if (typeof window !== "undefined" && window.location) {
+      const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(address);
+      const ipv6 = address.includes(":") && /^[0-9a-f:]+$/i.test(address);
+      return version === 4 ? ipv4 : ipv6;
+    }
+    return false;
+  }
+  if (type === "doh") {
+    try {
+      return new URL(address).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  return /^[a-z0-9.-]+(?::\d{1,5})?$/i.test(address) || address.includes(":");
 }
 
 export default function DnsSettings() {
@@ -44,13 +103,33 @@ export default function DnsSettings() {
   const createServer = useCreateDnsServer();
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
+  const vpn = useSafeNetVpn();
   const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
-  const [formData, setFormData] = useState<ResolverForm>(emptyResolver);
+  const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
+    "safenet-dns-resolver-editing-id",
+    null,
+  );
+  const [formData, setFormData, clearFormData] = usePersistentState<ResolverForm>(
+    "safenet-dns-resolver-draft",
+    emptyResolver,
+  );
+
+  useEffect(() => {
+    if (!editingResolverId || !servers) return;
+    const resolver = servers.find((server) => server.id === editingResolverId);
+    if (resolver) {
+      setEditingResolver(resolver);
+    } else {
+      setEditingResolver(null);
+      clearEditingResolverId();
+    }
+  }, [clearEditingResolverId, editingResolverId, servers]);
 
   const resetForm = () => {
-    setFormData(emptyResolver);
+    clearFormData();
+    clearEditingResolverId();
     setEditingResolver(null);
   };
 
@@ -61,6 +140,7 @@ export default function DnsSettings() {
 
   const openEditDialog = (server: DnsServer) => {
     setEditingResolver(server);
+    setEditingResolverId(server.id);
     setFormData({
       name: server.name,
       type: server.type,
@@ -74,6 +154,21 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
+      const wireGuardDns = [server.primaryAddress, server.secondaryAddress]
+        .filter(Boolean)
+        .join(",");
+      if (vpn.supported && vpn.status?.wireguardRunning) {
+        await vpn.stopWireGuard();
+        await vpn.startWireGuard({ dnsServers: wireGuardDns });
+      } else if (vpn.supported && vpn.status?.running) {
+        await vpn.stop();
+        await vpn.start({
+          type: server.type,
+          ipVersion: server.ipVersion,
+          primaryAddress: server.primaryAddress,
+          secondaryAddress: server.secondaryAddress,
+        });
+      }
       toast({
         title: "DNS resolver activated",
         description: `${server.name} is now the active SafeNet resolver.`,
@@ -91,10 +186,29 @@ export default function DnsSettings() {
     event.preventDefault();
     const name = formData.name.trim();
     const primaryAddress = formData.primaryAddress.trim();
+    const secondaryAddress = formData.secondaryAddress.trim();
     if (!name || !primaryAddress) {
       toast({
         title: "Resolver details required",
         description: "Enter a resolver name and primary address.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!isValidResolverAddress(formData.type, formData.ipVersion, primaryAddress)) {
+      toast({
+        title: "Primary address does not match the selection",
+        description: formData.type === "plain"
+          ? `Enter a valid ${formData.ipVersion === "ipv6" ? "IPv6" : "IPv4"} address.`
+          : `Enter a valid ${resolverTypeLabel(formData.type)} endpoint.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (secondaryAddress && !isValidResolverAddress(formData.type, formData.ipVersion, secondaryAddress)) {
+      toast({
+        title: "Secondary address does not match the selection",
+        description: "Use the same protocol and address family as the primary resolver.",
         variant: "destructive",
       });
       return;
@@ -105,7 +219,7 @@ export default function DnsSettings() {
       type: formData.type,
       ipVersion: formData.ipVersion,
       primaryAddress,
-      secondaryAddress: formData.secondaryAddress.trim() || null,
+      secondaryAddress: secondaryAddress || null,
     };
 
     try {
@@ -128,6 +242,37 @@ export default function DnsSettings() {
       toast({
         title: editingResolver ? "Resolver could not be updated" : "Resolver could not be added",
         description: error instanceof Error ? error.message : "Please check the resolver details and try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddPreset = async (preset: (typeof resolverPresets)[number]) => {
+    if (servers?.some((server) => server.name === preset.name)) {
+      toast({
+        title: "Resolver already added",
+        description: `${preset.name} is already in your resolver list.`,
+      });
+      return;
+    }
+    try {
+      await createServer.mutateAsync({
+        name: preset.name,
+        type: preset.type,
+        ipVersion: preset.ipVersion,
+        primaryAddress: preset.primaryAddress,
+        secondaryAddress: preset.secondaryAddress,
+        isActive: !servers?.length,
+        isCustom: false,
+      });
+      toast({
+        title: "Resolver added",
+        description: `${preset.name} is ready to use.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Resolver could not be added",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     }
@@ -175,6 +320,39 @@ export default function DnsSettings() {
             <Plus className="mr-2 h-4 w-4" /> Add a Resolver
           </Button>
         </div>
+        <div className="mt-5 border-t border-white/10 pt-5">
+          <div className="mb-3">
+            <h3 className="font-display text-sm font-bold uppercase tracking-wider text-white">Popular resolvers</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Add a trusted provider without entering its addresses manually.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {resolverPresets.map((preset) => {
+              const isAdded = servers?.some((server) => server.name === preset.name) ?? false;
+              return (
+                <div key={preset.name} className="flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold text-white">{preset.name}</h4>
+                      <Badge variant="outline" className="shrink-0 text-[10px] uppercase">{preset.type}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{preset.description}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isAdded ? "outline" : "default"}
+                    className="w-full"
+                    disabled={isAdded || isMutating}
+                    onClick={() => void handleAddPreset(preset)}
+                    data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`}
+                  >
+                    {isAdded ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</> : <><Plus className="mr-1 h-4 w-4" /> Add</>}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </CyberCard>
 
       <Dialog
@@ -206,7 +384,12 @@ export default function DnsSettings() {
               <Label>Protocol</Label>
               <Select
                 value={formData.type}
-                onValueChange={(value: DnsServer["type"]) => setFormData({ ...formData, type: value })}
+                onValueChange={(value: DnsServer["type"]) => setFormData({
+                  ...formData,
+                  type: value,
+                  primaryAddress: "",
+                  secondaryAddress: "",
+                })}
               >
                 <SelectTrigger data-testid="select-resolver-type">
                   <SelectValue />
@@ -218,24 +401,31 @@ export default function DnsSettings() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Address family</Label>
-              <Select
-                value={formData.ipVersion}
-                onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({ ...formData, ipVersion: value })}
-              >
-                <SelectTrigger data-testid="select-resolver-ip-version">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ipv4">IPv4</SelectItem>
-                  <SelectItem value="ipv6">IPv6</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Choose whether this resolver uses IPv4 or IPv6 addresses.
-              </p>
-            </div>
+            {formData.type === "plain" && (
+              <div className="space-y-2">
+                <Label>Address family</Label>
+                <Select
+                  value={formData.ipVersion}
+                  onValueChange={(value: ResolverForm["ipVersion"]) => setFormData({
+                    ...formData,
+                    ipVersion: value,
+                    primaryAddress: "",
+                    secondaryAddress: "",
+                  })}
+                >
+                  <SelectTrigger data-testid="select-resolver-ip-version">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ipv4">IPv4</SelectItem>
+                    <SelectItem value="ipv6">IPv6</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Choose whether this plain resolver uses IPv4 or IPv6 addresses.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="resolver-primary">Primary address</Label>
               <Input
@@ -243,7 +433,7 @@ export default function DnsSettings() {
                 data-testid="input-resolver-primary"
                 value={formData.primaryAddress}
                 onChange={(event) => setFormData({ ...formData, primaryAddress: event.target.value })}
-                 placeholder={formData.ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1"}
+                placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
                 required
               />
             </div>
@@ -254,7 +444,7 @@ export default function DnsSettings() {
                 data-testid="input-resolver-secondary"
                 value={formData.secondaryAddress}
                 onChange={(event) => setFormData({ ...formData, secondaryAddress: event.target.value })}
-                placeholder="Optional fallback address"
+                placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
               />
             </div>
             <Button type="submit" disabled={isSaving} className="w-full">
@@ -303,7 +493,9 @@ export default function DnsSettings() {
                     {server.isCustom && <Badge variant="outline">Custom</Badge>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{resolverTypeLabel(server.type)}</p>
-                   <p className="mt-1 text-xs font-mono uppercase tracking-wider text-primary">{server.ipVersion}</p>
+                   {server.type === "plain" && (
+                     <p className="mt-1 text-xs font-mono uppercase tracking-wider text-primary">{server.ipVersion}</p>
+                   )}
                   <p className="mt-1 break-all font-mono text-sm text-muted-foreground">
                     {server.primaryAddress}
                     {server.secondaryAddress && <span className="opacity-50"> • {server.secondaryAddress}</span>}

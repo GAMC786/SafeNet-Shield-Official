@@ -40,30 +40,35 @@ public final class DnsFirewall {
     private static final String ANY = "any";
     private static final String DNS = "dns";
     private static final String ALL = "all";
+    private static final String VIRTUAL_DNS_V4 = "10.248.0.1";
+    private static final String VIRTUAL_DNS_V6 = "fd00:534e:5348::1";
 
     private final boolean enabled;
+    private final boolean preventDnsOverrides;
     private final List<AccessRule> accessRules;
     private final List<Filter> filters;
     private final boolean failClosed;
 
     private DnsFirewall(
         boolean enabled,
+        boolean preventDnsOverrides,
         List<AccessRule> accessRules,
         List<Filter> filters,
         boolean failClosed
     ) {
         this.enabled = enabled;
+        this.preventDnsOverrides = preventDnsOverrides;
         this.accessRules = Collections.unmodifiableList(new ArrayList<>(accessRules));
         this.filters = Collections.unmodifiableList(new ArrayList<>(filters));
         this.failClosed = failClosed;
     }
 
     public static DnsFirewall allowAll() {
-        return new DnsFirewall(false, Collections.emptyList(), Collections.emptyList(), false);
+        return new DnsFirewall(false, true, Collections.emptyList(), Collections.emptyList(), false);
     }
 
     public static DnsFirewall failClosed() {
-        return new DnsFirewall(true, Collections.emptyList(), Collections.emptyList(), true);
+        return new DnsFirewall(true, true, Collections.emptyList(), Collections.emptyList(), true);
     }
 
     boolean isEnabled() {
@@ -76,11 +81,15 @@ public final class DnsFirewall {
         JSONArray rulesJson = root.optJSONArray("rules");
         JSONArray filtersJson = root.optJSONArray("blocklists");
         if (settings == null || rulesJson == null || filtersJson == null ||
-            !settings.has("firewallEnabled")) {
+            !settings.has("firewallEnabled") ||
+            !settings.has("preventDnsOverrides")) {
             throw new JSONException("The firewall snapshot is incomplete.");
         }
         if (!(settings.opt("firewallEnabled") instanceof Boolean)) {
             throw new JSONException("The firewall enabled setting is invalid.");
+        }
+        if (!(settings.opt("preventDnsOverrides") instanceof Boolean)) {
+            throw new JSONException("The DNS override protection setting is invalid.");
         }
 
         List<AccessRule> rules = new ArrayList<>();
@@ -137,6 +146,7 @@ public final class DnsFirewall {
 
         return new DnsFirewall(
             settings.optBoolean("firewallEnabled", false),
+            settings.optBoolean("preventDnsOverrides", true),
             rules,
             filters,
             false
@@ -166,6 +176,10 @@ public final class DnsFirewall {
             return new Evaluation(Decision.BLOCK, "invalid_dns_query");
         }
 
+        if (preventDnsOverrides && !isVirtualDnsDestination(destinationAddress)) {
+            return new Evaluation(Decision.BLOCK, "dns_override_prevented");
+        }
+
         for (AccessRule rule : accessRules) {
             if (rule.matches(sourceAddress, destinationAddress)) {
                 return rule.action.equals("allow")
@@ -190,6 +204,14 @@ public final class DnsFirewall {
             }
         }
         return new Evaluation(Decision.ALLOW, "allowed_by_policy");
+    }
+
+    private static boolean isVirtualDnsDestination(String destinationAddress) {
+        if (destinationAddress == null) {
+            return false;
+        }
+        String normalized = destinationAddress.trim().toLowerCase(Locale.US);
+        return normalized.equals(VIRTUAL_DNS_V4) || normalized.equals(VIRTUAL_DNS_V6);
     }
 
     public static String queryDomain(byte[] query) {

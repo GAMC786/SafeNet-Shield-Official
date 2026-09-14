@@ -2,8 +2,16 @@ import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const DDNS_DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
-export const DDNS_MIN_INTERVAL_MS = 1000;
+// The API and UI expose provider write intervals in minutes. Persistence keeps
+// the historical millisecond representation for compatibility with existing
+// installations and scheduler code.
+export const DDNS_DEFAULT_INTERVAL_MINUTES = 60;
+export const DDNS_MIN_INTERVAL_MINUTES = 1;
+export const DDNS_DEFAULT_INTERVAL_SECONDS = DDNS_DEFAULT_INTERVAL_MINUTES * 60;
+export const DDNS_MIN_INTERVAL_SECONDS = DDNS_MIN_INTERVAL_MINUTES * 60;
+export const DDNS_SCHEDULER_INTERVAL_SECONDS = 1;
+export const DDNS_DEFAULT_INTERVAL_MS = DDNS_DEFAULT_INTERVAL_SECONDS * 1000;
+export const DDNS_MIN_INTERVAL_MS = DDNS_MIN_INTERVAL_SECONDS * 1000;
 
 // === TABLE DEFINITIONS ===
 
@@ -20,6 +28,7 @@ export const dnsServers = pgTable("dns_servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type", { enum: ["plain", "doh", "dot"] }).notNull(),
+  ipVersion: text("ip_version", { enum: ["ipv4", "ipv6"] }).notNull().default("ipv4"),
   primaryAddress: text("primary_address").notNull(),
   secondaryAddress: text("secondary_address"),
   isActive: boolean("is_active").default(false),
@@ -47,6 +56,8 @@ export const accessLogs = pgTable("access_logs", {
 
 export const appSettings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
+  // Legacy PIN columns are retained for non-destructive database compatibility.
+  // The PIN feature is no longer part of the active application model or API.
   pinCode: text("pin_code"),
   pinRecoveryEmail: text("pin_recovery_email"),
   pinRecoveryCodeHash: text("pin_recovery_code_hash"),
@@ -56,13 +67,14 @@ export const appSettings = pgTable("app_settings", {
   alwaysOnEnabled: boolean("always_on_enabled").default(false),
   deviceAdminEnabled: boolean("device_admin_enabled").default(false),
   firewallEnabled: boolean("firewall_enabled").default(false),
+  preventDnsOverrides: boolean("prevent_dns_overrides").default(true),
   theme: text("theme").default("red-gray-blue"),
 });
 
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
-  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"] }).notNull(),
+  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"] }).notNull(),
   apiKey: text("api_key").notNull(),
   customUrl: text("custom_url"), // For IP Link - URL with {ip} and {hostname} placeholders
   lastIpAddress: text("last_ip_address"),
@@ -70,7 +82,7 @@ export const ddnsUpdaters = pgTable("ddns_updaters", {
   lastFailureMessage: text("last_failure_message"),
   lastFailureTime: timestamp("last_failure_time"),
   isEnabled: boolean("is_enabled").default(true),
-  updateInterval: integer("update_interval").default(DDNS_DEFAULT_INTERVAL_MS), // milliseconds
+  updateInterval: integer("update_interval").default(DDNS_DEFAULT_INTERVAL_MS), // internal milliseconds
 });
 
 export const firewallRules = pgTable("firewall_rules", {
@@ -100,6 +112,19 @@ export const antivirusSettings = pgTable("antivirus_settings", {
   autoQuarantine: boolean("auto_quarantine").default(true),
   lastScanTime: timestamp("last_scan_time"),
   lastUpdateTime: timestamp("last_update_time"),
+});
+
+// A successful ClamAV proof is deployment-wide state, not process-local state.
+// The fixed primary key keeps concurrent autoscaled instances updating one
+// record instead of creating competing proofs.
+export const clamavVerifications = pgTable("clamav_verifications", {
+  id: integer("id").primaryKey(),
+  endpointUrl: text("endpoint_url").notNull(),
+  engineVersion: text("engine_version").notNull(),
+  verifiedAt: timestamp("verified_at").notNull(),
+  message: text("message").notNull(),
+  cleanScan: json("clean_scan"),
+  threatScan: json("threat_scan"),
 });
 
 export const threatFeeds = pgTable("threat_feeds", {
@@ -139,7 +164,14 @@ export const activityLogSchema = z.object({
   status: z.enum(["allowed", "blocked"]),
   reason: z.string().trim().min(1).max(120).nullable().optional(),
 });
-export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
+export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({
+  id: true,
+  pinCode: true,
+  pinRecoveryEmail: true,
+  pinRecoveryCodeHash: true,
+  pinRecoveryCodeExpiresAt: true,
+  isPinEnabled: true,
+});
 export const insertDdnsUpdaterSchema = createInsertSchema(ddnsUpdaters).omit({
   id: true,
   lastIpAddress: true,
@@ -152,18 +184,11 @@ export const insertFirewallRuleSchema = createInsertSchema(firewallRules).omit({
 // API response schemas intentionally exclude secrets stored in these tables.
 export const publicAppSettingsSchema = z.object({
   id: z.number(),
-  // Older published/mobile builds may receive a response created before this
-  // field existed. Defaulting the omitted field keeps those clients usable
-  // while new responses continue to return null when it is unset.
-  pinRecoveryEmail: z.string().nullable().default(null),
-  // Never expose the PIN itself; this only lets clients avoid enabling a PIN
-  // lock before a code has been configured.
-  pinConfigured: z.boolean().default(false),
-  isPinEnabled: z.boolean().nullable(),
   aiShieldEnabled: z.boolean().nullable(),
   alwaysOnEnabled: z.boolean().nullable(),
   deviceAdminEnabled: z.boolean().nullable(),
   firewallEnabled: z.boolean().nullable(),
+  preventDnsOverrides: z.boolean().default(true),
   theme: z.string().nullable(),
 });
 
@@ -175,7 +200,7 @@ export const firewallConfigSchema = z.object({
 export const publicDdnsUpdaterSchema = z.object({
   id: z.number(),
   hostname: z.string(),
-  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsomatic", "iplink"]),
+  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"]),
   lastIpAddress: z.string().nullable(),
   lastUpdateTime: z.coerce.date().nullable(),
   lastFailureMessage: z.string().nullable(),

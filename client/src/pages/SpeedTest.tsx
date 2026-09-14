@@ -16,20 +16,16 @@ import {
   RotateCcw,
   Upload,
   Wifi,
+  type LucideIcon,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import CloudflareSpeedTest, {
-  type MeasurementConfig,
-  type MeasurementType,
-  type Results as CloudflareResults,
-} from "@cloudflare/speedtest";
+import CloudflareSpeedTest, { type PhaseChangePayload, type Results } from "@cloudflare/speedtest";
 
-type TestPhase = "idle" | "latency" | "download" | "upload" | "packetLoss" | "complete" | "error";
-
+type TestPhase = "idle" | "latency" | "download" | "upload" | "complete" | "error";
 interface SpeedResults {
   latency: number | null;
   download: number | null;
@@ -44,8 +40,30 @@ interface NetworkProfile {
   asn: string | null;
 }
 
+const initialResults: SpeedResults = {
+  latency: null,
+  download: null,
+  upload: null,
+  packetLoss: null,
+};
+
+const phaseProgress: Record<TestPhase, number> = {
+  idle: 0,
+  latency: 12,
+  download: 42,
+  upload: 76,
+  complete: 100,
+  error: 0,
+};
+
+const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
+
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function parseNetworkProfile(data: Record<string, unknown>): NetworkProfile {
@@ -71,75 +89,41 @@ function parseNetworkProfile(data: Record<string, unknown>): NetworkProfile {
   return { isp, publicIp, location, asn };
 }
 
-const initialResults: SpeedResults = {
-  latency: null,
-  download: null,
-  upload: null,
-  packetLoss: null,
-};
-
-const phaseProgress: Record<TestPhase, number> = {
-  idle: 0,
-  latency: 12,
-  download: 42,
-  upload: 76,
-  packetLoss: 90,
-  complete: 100,
-  error: 0,
-};
-
-const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
-
-const EDGE_MEASUREMENTS: MeasurementConfig[] = [
-  { type: "latency", numPackets: 10 },
-  { type: "download", bytes: 100_000, count: 3, bypassMinDuration: true },
-  { type: "download", bytes: 1_000_000, count: 4 },
-  { type: "upload", bytes: 100_000, count: 3, bypassMinDuration: true },
-  { type: "packetLoss", numPackets: 100, batchSize: 20, batchWaitTime: 20, responsesWaitTime: 1_000 },
-  { type: "upload", bytes: 1_000_000, count: 4 },
-  { type: "download", bytes: 10_000_000, count: 2 },
-  { type: "upload", bytes: 10_000_000, count: 2 },
-];
-
 function formatMetric(value: number | null, unit: string) {
   return value === null ? "—" : `${value} ${unit}`;
 }
 
-function roundedMbps(bitsPerSecond: number | undefined) {
-  if (typeof bitsPerSecond !== "number" || !Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) {
-    return null;
+function cloudflareResultsToSpeedResults(results: Results): SpeedResults {
+  const summary = results.getSummary();
+  return {
+    latency: typeof summary.latency === "number" ? Number(summary.latency.toFixed(2)) : null,
+    download: typeof summary.download === "number" ? Number((summary.download / 1_000_000).toFixed(2)) : null,
+    upload: typeof summary.upload === "number" ? Number((summary.upload / 1_000_000).toFixed(2)) : null,
+    packetLoss: typeof summary.packetLoss === "number" ? Number((summary.packetLoss * 100).toFixed(2)) : null,
+  };
+}
+
+function signalFromResults(results: SpeedResults) {
+  if (results.download !== null || results.upload !== null) {
+    const throughput = Math.max(results.download ?? 0, results.upload ?? 0, 1);
+    return Math.max(0.18, Math.min(0.95, Math.log10(throughput) / 3));
   }
-  return Math.round((bitsPerSecond / 1_000_000) * 100) / 100;
+  if (results.latency !== null) {
+    return Math.max(0.18, Math.min(0.9, 1 - results.latency / 500));
+  }
+  return 0.18;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
+function prepareResourceTimingBuffer() {
+  if (typeof performance === "undefined") return;
+  performance.setResourceTimingBufferSize?.(10_000);
+  performance.clearResourceTimings();
 }
 
-function phaseForMeasurement(type: MeasurementType): TestPhase | null {
-  if (type === "latency" || type === "latencyUnderLoad") return "latency";
-  if (type === "download") return "download";
-  if (type === "upload") return "upload";
-  if (type === "packetLoss" || type === "packetLossUnderLoad") return "packetLoss";
-  return null;
-}
-
-function WaveChart({
-  points,
-  progress,
-  phase,
-}: {
-  points: number[];
-  progress: number;
-  phase: TestPhase;
-}) {
+function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
   const chartPoints = points.length ? points : initialWavePoints;
   const line = chartPoints
-    .map((point, index) => {
-      const x = (index / Math.max(chartPoints.length - 1, 1)) * 100;
-      const y = 88 - point * 62;
-      return `${x},${y}`;
-    })
+    .map((point, index) => `${(index / Math.max(chartPoints.length - 1, 1)) * 100},${88 - point * 62}`)
     .join(" ");
   const area = `0,100 ${line} 100,100`;
 
@@ -160,15 +144,7 @@ function WaveChart({
         </div>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-36 w-full" aria-hidden="true">
           <polygon points={area} fill="url(#waveFill)" opacity="0.32" />
-          <polyline
-            points={line}
-            fill="none"
-            stroke="url(#waveStroke)"
-            strokeWidth="1.8"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <polyline points={line} fill="none" stroke="url(#waveStroke)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
           <defs>
             <linearGradient id="waveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#38bdf8" />
@@ -182,10 +158,7 @@ function WaveChart({
           </defs>
         </svg>
         <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-          <span>0s</span>
-          <span>Response</span>
-          <span>Throughput</span>
-          <span>Now</span>
+          <span>0s</span><span>Response</span><span>Throughput</span><span>Now</span>
         </div>
       </div>
     </div>
@@ -198,58 +171,35 @@ export default function SpeedTest() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<TestPhase>("idle");
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<SpeedResults>(initialResults);
+  const [results, setResults] = useState(initialResults);
   const [wavePoints, setWavePoints] = useState(initialWavePoints);
   const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
   const [networkProfile, setNetworkProfile] = useState<NetworkProfile | null>(null);
   const [networkProfileError, setNetworkProfileError] = useState<string | null>(null);
   const [isLoadingNetworkProfile, setIsLoadingNetworkProfile] = useState(true);
   const [networkProfileReloadKey, setNetworkProfileReloadKey] = useState(0);
-  const speedTestRef = useRef<InstanceType<typeof CloudflareSpeedTest> | null>(null);
+  const pausedRef = useRef(false);
+  const runIdRef = useRef(0);
+  const cloudflareSpeedTestRef = useRef<CloudflareSpeedTest | null>(null);
 
   const appendWavePoint = useCallback((value: number) => {
     setWavePoints((current) => [...current.slice(-35), Math.max(0.08, Math.min(value, 0.98))]);
   }, []);
 
-  const applyCloudflareResults = useCallback((cloudflareResults: CloudflareResults) => {
-    const summary = cloudflareResults.getSummary();
-    setResults((current) => ({
-      latency: typeof summary.latency === "number" ? Math.round(summary.latency) : current.latency,
-      download: roundedMbps(summary.download) ?? current.download,
-      upload: roundedMbps(summary.upload) ?? current.upload,
-      packetLoss:
-        typeof summary.packetLoss === "number"
-          ? Math.round(summary.packetLoss * 10000) / 100
-          : current.packetLoss,
-    }));
-  }, []);
-
   useEffect(() => {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 7000);
-
     const loadNetworkProfile = async () => {
       setIsLoadingNetworkProfile(true);
       setNetworkProfileError(null);
       try {
-        const providers = [
-          "https://ipapi.co/json/",
-          "https://ipinfo.io/json",
-          "https://ipwho.is/",
-        ];
+        const providers = ["https://ipapi.co/json/", "https://ipinfo.io/json", "https://ipwho.is/"];
         let lastError: Error | null = null;
         for (const provider of providers) {
           try {
-            const response = await fetch(provider, {
-              cache: "no-store",
-              signal: controller.signal,
-            });
-            if (!response.ok) {
-              throw new Error(`ISP profile provider returned HTTP ${response.status}.`);
-            }
-            const profile = parseNetworkProfile((await response.json()) as Record<string, unknown>);
-            setNetworkProfile(profile);
+            const response = await fetch(provider, { cache: "no-store", signal: controller.signal });
+            if (!response.ok) throw new Error(`ISP profile provider returned HTTP ${response.status}.`);
+            setNetworkProfile(parseNetworkProfile((await response.json()) as Record<string, unknown>));
             return;
           } catch (caughtError) {
             if (isAbortError(caughtError)) throw caughtError;
@@ -258,17 +208,15 @@ export default function SpeedTest() {
         }
         throw lastError ?? new Error("No ISP profile provider returned usable network information.");
       } catch (caughtError) {
-        if (isAbortError(caughtError)) return;
-        setNetworkProfileError(
-          caughtError instanceof Error ? caughtError.message : "The ISP profile could not be loaded.",
-        );
-        setNetworkProfile(null);
+        if (!isAbortError(caughtError)) {
+          setNetworkProfileError(caughtError instanceof Error ? caughtError.message : "The ISP profile could not be loaded.");
+          setNetworkProfile(null);
+        }
       } finally {
         window.clearTimeout(timeoutId);
         setIsLoadingNetworkProfile(false);
       }
     };
-
     void loadNetworkProfile();
     return () => {
       window.clearTimeout(timeoutId);
@@ -277,100 +225,94 @@ export default function SpeedTest() {
   }, [networkProfileReloadKey]);
 
   const runSpeedTest = useCallback(() => {
+    const runId = ++runIdRef.current;
+    prepareResourceTimingBuffer();
     setError(null);
-    setWarning(null);
     setResults(initialResults);
     setWavePoints(initialWavePoints);
     setHasStarted(true);
     setIsRunning(true);
     setPhase("latency");
     setProgress(phaseProgress.latency);
-    const engine = new CloudflareSpeedTest({
+    const speedTest = new CloudflareSpeedTest({
       autoStart: false,
-      measurements: EDGE_MEASUREMENTS,
-      bandwidthFinishRequestDuration: 600,
-      // Cloudflare's engine measures directly against its edge network and
-      // computes bandwidth from Resource Timing rather than response length.
-      // Keep final AIM logging off because this app only needs local results.
+      logMeasurementApiUrl: null,
       logAimApiUrl: null,
+      turnServerCredsApiUrl: "/api/speedtest/turn-creds",
     });
-    engine.onPhaseChange = ({ measurement }) => {
-      const nextPhase = phaseForMeasurement(measurement.type);
-      if (nextPhase) {
-        setPhase(nextPhase);
-        setProgress(phaseProgress[nextPhase]);
-      }
+    cloudflareSpeedTestRef.current = speedTest;
+    const updateResults = (results: Results) => {
+      if (runId !== runIdRef.current) return;
+      const nextResults = cloudflareResultsToSpeedResults(results);
+      setResults(nextResults);
+      appendWavePoint(signalFromResults(nextResults));
     };
-    engine.onRunningChange = (running) => setIsRunning(running);
-    engine.onResultsChange = ({ type }) => {
-      applyCloudflareResults(engine.results);
-      if (type === "download" || type === "upload") {
-        const points =
-          type === "download"
-            ? engine.results.getDownloadBandwidthPoints()
-            : engine.results.getUploadBandwidthPoints();
-        const lastPoint = points.at(-1);
-        if (lastPoint) {
-          appendWavePoint(0.35 + Math.min(lastPoint.bps / 1_000_000_000, 0.6));
-        }
-      }
+    speedTest.onRunningChange = (running) => {
+      if (runId === runIdRef.current) setIsRunning(running);
     };
-    engine.onError = (message) => {
-      // Packet loss uses WebRTC TURN and can be unavailable on restricted
-      // networks; preserve valid bandwidth results and report the limitation.
-      setWarning(message);
+    speedTest.onPhaseChange = ({ measurement }: PhaseChangePayload) => {
+      if (runId !== runIdRef.current) return;
+      const nextPhase: TestPhase = measurement.type === "latency" || measurement.type === "packetLoss"
+        ? "latency"
+        : measurement.type === "download"
+          ? "download"
+          : "upload";
+      setPhase(nextPhase);
+      setProgress((current) => Math.max(current, phaseProgress[nextPhase]));
+      appendWavePoint(phaseProgress[nextPhase] / 100);
     };
-    engine.onFinish = (finishedResults) => {
-      applyCloudflareResults(finishedResults);
-      const summary = finishedResults.getSummary();
-      if (
-        typeof summary.latency !== "number" ||
-        typeof summary.download !== "number" ||
-        typeof summary.upload !== "number"
-      ) {
-        const message = "Cloudflare could not complete all required edge measurements.";
-        setError(message);
-        setPhase("error");
-        setIsRunning(false);
-        toast({ title: "Speed test could not be completed", description: message, variant: "destructive" });
-        return;
-      }
+    speedTest.onResultsChange = () => updateResults(speedTest.results);
+    speedTest.onFinish = (results) => {
+      if (runId !== runIdRef.current) return;
+      updateResults(results);
       setProgress(100);
       setPhase("complete");
       setIsRunning(false);
-      toast({
-        title: "Speed test complete",
-        description: "Cloudflare edge latency and throughput results are ready below.",
-      });
+      toast({ title: "Speed test complete", description: "Cloudflare edge latency and throughput results are ready below." });
     };
-    speedTestRef.current = engine;
-    engine.play();
-  }, [appendWavePoint, applyCloudflareResults, toast]);
+    speedTest.onError = (message) => {
+      if (runId !== runIdRef.current || pausedRef.current) return;
+      const partialMeasurement = /upload|packet loss|turn|ice|credential/i.test(message);
+      const userMessage = partialMeasurement
+        ? /upload/i.test(message)
+          ? "The Cloudflare upload probe was unavailable; latency and download results are still available."
+          : "Packet-loss measurement was unavailable; latency and throughput results will still be reported."
+        : message;
+      setError(userMessage);
+      if (!partialMeasurement) {
+        setPhase("error");
+        setIsRunning(false);
+        toast({ title: "Speed test could not be completed", description: userMessage, variant: "destructive" });
+      }
+    };
+    speedTest.play();
+  }, [appendWavePoint, toast]);
 
-  useEffect(() => {
-    return () => {
-      speedTestRef.current?.pause();
-    };
+  useEffect(() => () => {
+    runIdRef.current += 1;
+    cloudflareSpeedTestRef.current?.pause();
   }, []);
 
-  const startSpeedTest = useCallback(() => {
+  const startSpeedTest = () => {
     if (hasStarted && !isRunning && phase !== "complete" && phase !== "error") {
-      speedTestRef.current?.play();
+      pausedRef.current = false;
+      cloudflareSpeedTestRef.current?.play();
       toast({ title: "Speed test resumed", description: "Continuing the network measurement." });
       return;
     }
-    toast({ title: "Speed test started", description: "Measuring latency and throughput." });
+    pausedRef.current = false;
     runSpeedTest();
-  }, [hasStarted, isRunning, phase, runSpeedTest, toast]);
-
-  const pauseSpeedTest = useCallback(() => {
-    speedTestRef.current?.pause();
+  };
+  const pauseSpeedTest = () => {
+    pausedRef.current = true;
+    cloudflareSpeedTestRef.current?.pause();
     toast({ title: "Speed test paused", description: "Resume when you are ready to continue." });
-  }, [toast]);
-
-  const resetTest = useCallback(() => {
-    speedTestRef.current?.pause();
-    speedTestRef.current = null;
+  };
+  const resetTest = () => {
+    runIdRef.current += 1;
+    pausedRef.current = false;
+    cloudflareSpeedTestRef.current?.pause();
+    cloudflareSpeedTestRef.current = null;
     setIsRunning(false);
     setHasStarted(false);
     setPhase("idle");
@@ -378,115 +320,44 @@ export default function SpeedTest() {
     setResults(initialResults);
     setWavePoints(initialWavePoints);
     setError(null);
-    setWarning(null);
-    toast({ title: "Speed test reset", description: "Previous measurements were cleared." });
-  }, [toast]);
-
+  };
   const isPaused = hasStarted && !isRunning && phase !== "complete" && phase !== "error";
-  const actionLabel =
-    phase === "complete" ? "Run Again" : phase === "error" ? "Retry Test" : "Start Test";
-  const phaseLabel = {
-    idle: "Ready to test",
-    latency: "Measuring latency",
-    download: "Measuring download",
-    upload: "Measuring upload",
-    packetLoss: "Measuring packet loss",
-    complete: "Test complete",
-    error: "Test interrupted",
-  }[phase];
-
-  const getSpeedColor = (speed: number | null) => {
-    if (speed === null) return "text-muted-foreground";
-    if (speed >= 100) return "text-emerald-400";
-    if (speed >= 50) return "text-primary";
-    if (speed >= 20) return "text-amber-400";
-    return "text-rose-400";
-  };
-
-  const getLatencyColor = (latency: number | null) => {
-    if (latency === null) return "text-muted-foreground";
-    if (latency <= 20) return "text-emerald-400";
-    if (latency <= 50) return "text-primary";
-    if (latency <= 100) return "text-amber-400";
-    return "text-rose-400";
-  };
+  const phaseLabel = isPaused
+    ? "Paused"
+    : { idle: "Ready to test", latency: "Measuring latency", download: "Measuring download", upload: "Measuring upload", complete: "Test complete", error: "Test interrupted" }[phase];
+  const colorForSpeed = (value: number | null) => value === null ? "text-muted-foreground" : value >= 100 ? "text-emerald-400" : value >= 50 ? "text-primary" : value >= 20 ? "text-amber-400" : "text-rose-400";
+  const colorForLatency = (value: number | null) => value === null ? "text-muted-foreground" : value <= 20 ? "text-emerald-400" : value <= 50 ? "text-primary" : value <= 100 ? "text-amber-400" : "text-rose-400";
 
   return (
     <div className="space-y-6">
-      <Header title="Speed Test" subtitle="SafeNet Network Diagnostics" />
-
+      <Header title="Speed Test" subtitle="ISP-Based Network Diagnostics" />
       <CyberCard className="overflow-hidden border-primary/20">
         <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr] lg:items-center">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-primary/15 p-3">
-                <BarChart3 className="h-6 w-6 text-primary" />
-              </div>
+              <div className="rounded-lg bg-primary/15 p-3"><BarChart3 className="h-6 w-6 text-primary" /></div>
               <div>
-               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">ISP-based connection telemetry</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">ISP-based connection telemetry</p>
                 <h2 className="font-display text-xl font-bold text-white">Measure your network</h2>
               </div>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-               Measure the connection from this device to SafeNet and identify the ISP associated with your public IP. The chart updates as each measurement completes.
-            </p>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">SafeNet&apos;s built-in Cloudflare Speed Test measures this device&apos;s connection against Cloudflare&apos;s global edge network using Cloudflare&apos;s standard browser measurement sequence.</p>
             <div className="flex flex-wrap gap-3">
               {!isRunning ? (
-                <Button
-                  size="lg"
-                  onClick={startSpeedTest}
-                  className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90"
-                  data-testid="button-start-speedtest"
-                >
-                  <Play className="mr-2 h-5 w-5" />
-                  {isPaused ? "Resume Test" : actionLabel}
+                <Button size="lg" onClick={startSpeedTest} className="bg-primary px-8 font-bold text-primary-foreground hover:bg-primary/90" data-testid="button-start-speedtest">
+                  <Play className="mr-2 h-5 w-5" />{isPaused ? "Resume Test" : phase === "complete" || phase === "error" ? "Run Again" : "Start Test"}
                 </Button>
               ) : (
-                <Button
-                  size="lg"
-                  onClick={pauseSpeedTest}
-                  variant="outline"
-                  className="px-8"
-                  data-testid="button-pause-speedtest"
-                >
-                  <Pause className="mr-2 h-5 w-5" />
-                  Pause Test
-                </Button>
+                <Button size="lg" onClick={pauseSpeedTest} variant="outline" className="px-8" data-testid="button-pause-speedtest"><Pause className="mr-2 h-5 w-5" />Pause Test</Button>
               )}
-              {(phase === "complete" || phase === "error") && (
-                <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest">
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-              )}
+              {(phase === "complete" || phase === "error") && <Button size="lg" variant="outline" onClick={resetTest} data-testid="button-reset-speedtest"><RotateCcw className="mr-2 h-4 w-4" />Reset</Button>}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {phase === "complete" ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              ) : phase === "error" ? (
-                <AlertTriangle className="h-4 w-4 text-rose-400" />
-              ) : (
-                <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />
-              )}
-              <span>{phaseLabel}</span>
-              <span className="ml-auto font-mono text-primary">{progress}%</span>
+              {phase === "complete" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : phase === "error" ? <AlertTriangle className="h-4 w-4 text-rose-400" /> : <Activity className={cn("h-4 w-4 text-primary", isRunning && "animate-pulse")} />}
+              <span>{phaseLabel}</span><span className="ml-auto font-mono text-primary">{progress}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted/20">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            {error && (
-              <p className="text-xs text-rose-400" role="alert">
-                {error}
-              </p>
-            )}
-            {warning && !error && (
-              <p className="text-xs text-amber-300" role="status">
-                {warning}
-              </p>
-            )}
+            <div className="h-2 overflow-hidden rounded-full bg-muted/20"><div className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 transition-all duration-300" style={{ width: `${progress}%` }} /></div>
+            {error && <p className="text-xs text-rose-400" role="alert">{error}</p>}
           </div>
           <WaveChart points={wavePoints} progress={progress} phase={phase} />
         </div>
@@ -495,154 +366,59 @@ export default function SpeedTest() {
       <CyberCard className="border-sky-400/20 bg-gradient-to-r from-sky-400/5 to-transparent">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-sky-400/15 p-3">
-              <Globe2 className="h-5 w-5 text-sky-300" />
-            </div>
+            <div className="rounded-lg bg-sky-400/15 p-3"><Globe2 className="h-5 w-5 text-sky-300" /></div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Network identity</p>
               <h2 className="font-display text-lg font-bold text-white">ISP-based connection profile</h2>
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                ISP details are inferred from this device&apos;s public IP. They are used for display only and are not stored.
-              </p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">ISP details are inferred from this device&apos;s public IP. They are used for display only and are not stored.</p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setNetworkProfileReloadKey((current) => current + 1)}
-            disabled={isLoadingNetworkProfile}
-            data-testid="button-refresh-network-profile"
-          >
-            <RotateCcw className={cn("mr-2 h-4 w-4", isLoadingNetworkProfile && "animate-spin")} />
-            Refresh
+          <Button type="button" variant="outline" size="sm" onClick={() => setNetworkProfileReloadKey((current) => current + 1)} disabled={isLoadingNetworkProfile} data-testid="button-refresh-network-profile">
+            <RotateCcw className={cn("mr-2 h-4 w-4", isLoadingNetworkProfile && "animate-spin")} />Refresh
           </Button>
         </div>
         {isLoadingNetworkProfile ? (
-          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin text-sky-300" />
-            Detecting your ISP and public network…
-          </div>
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin text-sky-300" />Detecting your ISP and public network…</div>
         ) : networkProfileError ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-rose-300" role="alert">
-            <AlertTriangle className="h-4 w-4" />
-            <span>{networkProfileError}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-sky-300 hover:text-sky-200"
-              onClick={() => setNetworkProfileReloadKey((current) => current + 1)}
-            >
-              Try again
-            </Button>
-          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-rose-300" role="alert"><AlertTriangle className="h-4 w-4" /><span>{networkProfileError}</span><Button type="button" variant="ghost" size="sm" className="text-sky-300 hover:text-sky-200" onClick={() => setNetworkProfileReloadKey((current) => current + 1)}>Try again</Button></div>
         ) : networkProfile ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5 text-sky-300" />
-                ISP
+            {([
+              [Building2, "ISP", networkProfile.isp ?? "Not provided"],
+              [Globe2, "Public IP", networkProfile.publicIp ?? "Not provided"],
+              [MapPin, "Location", networkProfile.location ?? "Not provided"],
+              [Wifi, "Network ID", networkProfile.asn ?? "Not provided"],
+            ] as [LucideIcon, string, string][]).map(([Icon, label, value]) => (
+              <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3" key={label as string}>
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground"><Icon className="h-3.5 w-3.5 text-sky-300" />{label}</div>
+                <p className="mt-2 truncate font-mono text-sm font-bold text-white" title={value}>{value}</p>
               </div>
-              <p className="mt-2 truncate font-mono text-sm font-bold text-white" title={networkProfile.isp ?? "Not provided"}>
-                {networkProfile.isp ?? "Not provided"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <Globe2 className="h-3.5 w-3.5 text-sky-300" />
-                Public IP
-              </div>
-              <p className="mt-2 font-mono text-sm font-bold text-white">{networkProfile.publicIp ?? "Not provided"}</p>
-            </div>
-            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <MapPin className="h-3.5 w-3.5 text-sky-300" />
-                Location
-              </div>
-              <p className="mt-2 truncate font-mono text-sm font-bold text-white" title={networkProfile.location ?? "Not provided"}>
-                {networkProfile.location ?? "Not provided"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-sky-400/20 bg-background/30 p-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <Wifi className="h-3.5 w-3.5 text-sky-300" />
-                Network ID
-              </div>
-              <p className="mt-2 font-mono text-sm font-bold text-white">{networkProfile.asn ?? "Not provided"}</p>
-            </div>
+            ))}
           </div>
         ) : null}
       </CyberCard>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <CyberCard className="min-w-0 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Clock3 className={cn("h-5 w-5", getLatencyColor(results.latency))} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Response</span>
-          </div>
-          <p className={cn("font-mono text-2xl font-bold", getLatencyColor(results.latency))} data-testid="text-ping-result">
-            {formatMetric(results.latency, "ms")}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">Latency</p>
-        </CyberCard>
-        <CyberCard className="min-w-0 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Download className={cn("h-5 w-5", getSpeedColor(results.download))} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Inbound</span>
-          </div>
-          <p className={cn("font-mono text-2xl font-bold", getSpeedColor(results.download))} data-testid="text-download-result">
-            {formatMetric(results.download, "Mbps")}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">Download</p>
-        </CyberCard>
-        <CyberCard className="min-w-0 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Upload className={cn("h-5 w-5", getSpeedColor(results.upload))} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Outbound</span>
-          </div>
-          <p className={cn("font-mono text-2xl font-bold", getSpeedColor(results.upload))} data-testid="text-upload-result">
-            {formatMetric(results.upload, "Mbps")}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">Upload</p>
-        </CyberCard>
-        <CyberCard className="min-w-0 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Gauge className="h-5 w-5 text-primary" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Health</span>
-          </div>
-          <p className="font-mono text-2xl font-bold text-primary">
-            {results.packetLoss === null ? "—" : `${100 - results.packetLoss}%`}
-          </p>
-           <p className="mt-1 text-xs text-muted-foreground">Packet delivery</p>
-        </CyberCard>
+        {([
+          [Clock3, "Response", formatMetric(results.latency, "ms"), "Latency", colorForLatency(results.latency), "text-ping-result"],
+          [Download, "Inbound", formatMetric(results.download, "Mbps"), "Download", colorForSpeed(results.download), "text-download-result"],
+          [Upload, "Outbound", formatMetric(results.upload, "Mbps"), "Upload", colorForSpeed(results.upload), "text-upload-result"],
+          [Gauge, "Health", results.packetLoss === null ? "—" : `${100 - results.packetLoss}%`, "Packet delivery", "text-primary", undefined],
+        ] as [LucideIcon, string, string, string, string, string | undefined][]).map(([Icon, label, value, caption, color, testId]) => (
+          <CyberCard className="min-w-0 p-4" key={label as string}>
+            <div className="mb-3 flex items-center justify-between"><Icon className={cn("h-5 w-5", color)} /><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span></div>
+            <p className={cn("font-mono text-2xl font-bold", color)} data-testid={testId}>{value}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
+          </CyberCard>
+        ))}
       </div>
 
       <CyberCard>
-        <div className="mb-4 flex items-center gap-2">
-          <Wifi className="h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">Diagnostic summary</h2>
-            <p className="text-xs text-muted-foreground">Standard network performance indicators</p>
-          </div>
-        </div>
+        <div className="mb-4 flex items-center gap-2"><Wifi className="h-5 w-5 text-primary" /><div><h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">Diagnostic summary</h2><p className="text-xs text-muted-foreground">Standard network performance indicators</p></div></div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Test stage</p>
-            <p className="mt-1 font-mono text-sm font-bold capitalize text-primary">{phase}</p>
-          </div>
-          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
-             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Edge packet loss</p>
-            <p className="mt-1 font-mono text-sm font-bold text-primary">
-              {results.packetLoss === null ? "Pending" : `${results.packetLoss}%`}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/50 bg-background/30 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</p>
-            <p className="mt-1 font-mono text-sm font-bold text-emerald-400">
-              {phase === "complete" ? "Complete" : isPaused ? "Paused" : isRunning ? "Running" : "Ready"}
-            </p>
-          </div>
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Test stage</p><p className="mt-1 font-mono text-sm font-bold capitalize text-primary">{phase}</p></div>
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ping packet loss</p><p className="mt-1 font-mono text-sm font-bold text-primary">{results.packetLoss === null ? "Pending" : `${results.packetLoss}%`}</p></div>
+          <div className="rounded-lg border border-border/50 bg-background/30 p-3"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</p><p className="mt-1 font-mono text-sm font-bold text-emerald-400">{phase === "complete" ? "Complete" : isPaused ? "Paused" : isRunning ? "Running" : "Ready"}</p></div>
         </div>
       </CyberCard>
     </div>

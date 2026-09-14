@@ -3,15 +3,20 @@ package com.safenet.dns;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
+import android.util.Base64;
 import android.view.KeyEvent;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -45,7 +50,9 @@ import java.util.regex.Pattern;
 @RunWith(AndroidJUnit4.class)
 public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
-    private static final String VPN_SWITCH_LABEL = "Enable DNS Protection VPN";
+    private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
+    private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
+    private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
@@ -67,8 +74,7 @@ public class SafeNetVpnUiInstrumentationTest {
         Intent launchIntent = new Intent(context, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
-        if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName()) &&
-            !"startupLoaderWaitsForDelayedSecureConfiguration".equals(testName.getMethodName())) {
+        if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName())) {
             waitForCapacitorBridge();
         }
     }
@@ -76,6 +82,14 @@ public class SafeNetVpnUiInstrumentationTest {
     @After
     public void tearDown() throws Exception {
         if (activity != null && !activity.isFinishing()) {
+            if (!"startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff".equals(testName.getMethodName())) {
+                try {
+                    callWebView("window.Capacitor.Plugins.SafeNetVpn.stopAiShield()");
+                } catch (Exception ignored) {
+                    // Keep teardown useful when a permission activity or failed
+                    // WebView call left the bridge unavailable.
+                }
+            }
             InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
         }
     }
@@ -473,6 +487,456 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void packagedSpeedTestAndSoundtrackSurviveAndroidPolicies() throws Exception {
+        waitForWebView(
+            "document.getElementById('startup-loader') === null && " +
+                "document.readyState === 'complete'"
+        );
+
+        JSONObject navigation = callWebView(
+            "(() => {" +
+                "const link = Array.from(document.querySelectorAll('a')).find((item) => " +
+                    "item.textContent.includes('Speed Test'));" +
+                "if (!link) return false;" +
+                "link.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The packaged app must expose the Speed Test navigation item",
+            navigation.optBoolean("value", false));
+
+        waitForWebView(
+            "Boolean(document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]')) && " +
+                "document.body.innerText.includes('Live connection test')"
+        );
+        waitForWebView(
+            "(() => {" +
+                "const frame = document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]');" +
+                "return Boolean(frame) && frame.offsetHeight >= 560 && " +
+                    "document.body.innerText.includes('Ready');" +
+            "})()"
+        );
+
+        JSONObject testPanel = callWebView(
+            "(() => {" +
+                "const frame = document.querySelector('iframe[data-testid=\"openspeedtest-frame\"]');" +
+                "const fallback = Array.from(document.querySelectorAll('a')).find((item) => " +
+                    "item.textContent.includes('Open full test'));" +
+                "return {" +
+                    "framePresent: Boolean(frame)," +
+                    "frameLoaded: document.body.innerText.includes('Ready')," +
+                    "frameVisible: Boolean(frame && frame.offsetHeight >= 560 && " +
+                        "frame.offsetWidth > 0)," +
+                    "frameSrc: frame?.getAttribute('src') || ''," +
+                    "fallbackPresent: Boolean(fallback)," +
+                    "fallbackHref: fallback?.getAttribute('href') || ''," +
+                    "fallbackTarget: fallback?.getAttribute('target') || ''" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The OpenSpeedTest iframe must be present", testPanel.getBoolean("framePresent"));
+        assertTrue("The OpenSpeedTest iframe must report a completed load",
+            testPanel.getBoolean("frameLoaded"));
+        assertTrue("The OpenSpeedTest iframe must have a visible Android viewport",
+            testPanel.getBoolean("frameVisible"));
+        assertEquals(
+            "https://openspeedtest.com/speedtest?darkmode=1",
+            testPanel.getString("frameSrc")
+        );
+        assertTrue("The Speed Test screen must expose its full-page fallback",
+            testPanel.getBoolean("fallbackPresent"));
+        assertEquals(
+            "https://openspeedtest.com/speedtest?darkmode=1",
+            testPanel.getString("fallbackHref")
+        );
+        assertEquals("_blank", testPanel.getString("fallbackTarget"));
+
+        JSONObject preparedAudio = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "if (!(audio instanceof HTMLAudioElement)) return false;" +
+                "audio.muted = false;" +
+                "audio.pause();" +
+                "audio.currentTime = 0;" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The packaged app must keep its startup soundtrack element",
+            preparedAudio.optBoolean("value", false));
+
+        // This tap exercises the same Android user-interaction path that
+        // releases WebView media playback when autoplay is restricted.
+        device.click(device.getDisplayWidth() / 2, Math.max(80, device.getDisplayHeight() / 5));
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "return audio instanceof HTMLAudioElement && !audio.paused && !audio.muted && " +
+                    "audio.currentTime > 0;" +
+            "})()"
+        );
+
+        JSONObject soundtrack = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "return {" +
+                    "present: audio instanceof HTMLAudioElement," +
+                    "playing: Boolean(audio && !audio.paused && !audio.muted)," +
+                    "loop: Boolean(audio?.loop)," +
+                    "startupLoaderPresent: Boolean(document.getElementById('startup-loader'))," +
+                    "currentTime: audio?.currentTime || 0" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The startup soundtrack must be playing after the Android tap",
+            soundtrack.getBoolean("playing"));
+        assertTrue("The startup soundtrack must remain looped",
+            soundtrack.getBoolean("loop"));
+        assertFalse("The startup soundtrack must not leave the startup shell visible",
+            soundtrack.getBoolean("startupLoaderPresent"));
+        assertTrue("The startup soundtrack must advance past its initial position",
+            soundtrack.getDouble("currentTime") > 0);
+        Log.i(
+            "SafeNetMediaSmoke",
+            "MEDIA_SMOKE result=PASS speedtest_frame=PASS full_page_fallback=PASS " +
+                "soundtrack=PLAYING after_android_tap=PASS"
+        );
+    }
+
+    @Test
+    public void soundtrackToggleSurvivesAndroidPauseAndResume() throws Exception {
+        openDashboardWithoutActiveResolver();
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-soundtrack\"]') !== null && " +
+                "document.querySelector('[aria-label=\"Soundtrack On\"]') !== null"
+        );
+
+        JSONObject capture = installSoundtrackErrorCapture();
+        assertTrue("Could not install soundtrack error capture",
+            capture.optBoolean("value", false));
+
+        UiObject2 soundtrackOn = device.wait(
+            Until.findObject(By.desc("Soundtrack On")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must be accessible when enabled",
+            soundtrackOn);
+        soundtrackOn.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        pauseAndResumeActivity();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        stopAndRelaunchAppProcess();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted && audio.currentTime <= 0.05);" +
+            "})()"
+        );
+
+        JSONObject restartedCapture = installSoundtrackErrorCapture();
+        assertTrue("Could not install soundtrack error capture after process restart",
+            restartedCapture.optBoolean("value", false));
+
+        UiObject2 soundtrackOff = device.wait(
+            Until.findObject(By.desc("Soundtrack Off")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must remain off after process restart",
+            soundtrackOff);
+        soundtrackOff.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "toggle.getAttribute('aria-checked') === 'true' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.paused && !audio.muted && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        pauseAndResumeActivity();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.paused && !audio.muted && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject errors = callWebView(
+            "window.__safeNetSoundtrackErrors || []"
+        );
+        assertEquals("Soundtrack toggle and lifecycle handling must not emit browser errors",
+            0, errors.getJSONArray("value").length());
+        Log.i(
+            "SafeNetMediaSmoke",
+            "SOUNDTRACK_LIFECYCLE result=PASS off_pause_resume=PASS " +
+                "off_process_restart=PASS on_pause_resume=PASS browser_errors=0"
+        );
+    }
+
+    @Test
+    public void soundtrackResumesAfterEndedBoundaryWithToggleEnabled() throws Exception {
+        openDashboardWithoutActiveResolver();
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') !== 'true');" +
+            "})()"
+        );
+
+        JSONObject capture = installSoundtrackErrorCapture();
+        assertTrue("Could not install soundtrack boundary error capture",
+            capture.optBoolean("value", false));
+
+        UiObject2 soundtrackOn = device.wait(
+            Until.findObject(By.desc("Soundtrack On")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must be accessible when enabled",
+            soundtrackOn);
+        soundtrackOn.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack Off' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'true' && " +
+                    "audio.paused && audio.muted);" +
+            "})()"
+        );
+
+        UiObject2 soundtrackOff = device.wait(
+            Until.findObject(By.desc("Soundtrack Off")),
+            UI_TIMEOUT_MILLIS
+        );
+        assertNotNull("The Dashboard Soundtrack toggle must remain accessible when disabled",
+            soundtrackOff);
+        soundtrackOff.click();
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.muted && !audio.paused && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject boundary = callWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "if (!(audio instanceof HTMLAudioElement) || !toggle) return false;" +
+                "audio.pause();" +
+                "audio.currentTime = 0;" +
+                "audio.dispatchEvent(new Event('ended'));" +
+                "return {" +
+                    "dispatched: true," +
+                    "loop: audio.loop," +
+                    "toggle: toggle.getAttribute('aria-label')," +
+                    "persisted: window.localStorage.getItem('safenet-soundtrack-muted')" +
+                "};" +
+            "})()"
+        );
+        assertTrue("Could not simulate the soundtrack ended boundary",
+            boundary.optBoolean("ok", false));
+        JSONObject boundaryState = boundary.getJSONObject("value");
+        assertTrue("The soundtrack boundary event must be dispatched",
+            boundaryState.getBoolean("dispatched"));
+        assertTrue("The soundtrack must remain configured to loop at its boundary",
+            boundaryState.getBoolean("loop"));
+        assertEquals("Soundtrack On", boundaryState.getString("toggle"));
+        assertEquals("false", boundaryState.getString("persisted"));
+
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-soundtrack\"]');" +
+                "return Boolean(audio && toggle && " +
+                    "toggle.getAttribute('aria-label') === 'Soundtrack On' && " +
+                    "toggle.getAttribute('aria-checked') === 'true' && " +
+                    "window.localStorage.getItem('safenet-soundtrack-muted') === 'false' && " +
+                    "!audio.muted && !audio.paused && audio.currentTime > 0);" +
+            "})()"
+        );
+
+        JSONObject errors = callWebView(
+            "window.__safeNetSoundtrackErrors || []"
+        );
+        assertEquals("Soundtrack ended-boundary recovery must not emit browser errors",
+            0, errors.getJSONArray("value").length());
+        Log.i(
+            "SafeNetMediaSmoke",
+            "SOUNDTRACK_BOUNDARY result=PASS ended_dispatched=PASS resumed=PASS " +
+                "toggle_persisted_on=PASS browser_errors=0"
+        );
+    }
+
+    private JSONObject installSoundtrackErrorCapture() throws Exception {
+        return callWebView(
+            "(() => {" +
+                "if (window.__safeNetSoundtrackErrors) return true;" +
+                "const errors = [];" +
+                "window.__safeNetSoundtrackErrors = errors;" +
+                "window.addEventListener('error', (event) => " +
+                    "errors.push('error:' + String(event.message || event.error || 'unknown')));" +
+                "window.addEventListener('unhandledrejection', (event) => " +
+                    "errors.push('unhandledrejection:' + String(event.reason || 'unknown')));" +
+                "const originalConsoleError = console.error.bind(console);" +
+                "console.error = (...args) => {" +
+                    "errors.push('console.error:' + args.map(String).join(' '));" +
+                    "originalConsoleError(...args);" +
+                "};" +
+                "return true;" +
+            "})()"
+        );
+    }
+
+    @Test
+    public void clerkSignInStartsFreshAndRetainsClerkSession() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            waitForWebView("document.body.innerText.includes('Command Center')");
+            JSONObject retainedState = callWebView(
+                "(() => {" +
+                    "const body = document.body.innerText;" +
+                    "return {" +
+                        "dashboard: body.includes('Command Center')," +
+                        "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
+                    "};" +
+                "})()"
+            );
+            assertTrue("The preserved Clerk session must reopen the dashboard",
+                retainedState.getBoolean("dashboard"));
+            assertFalse("The preserved Clerk session must not expose legacy access-code UI",
+                retainedState.getBoolean("legacyAccessCode"));
+            return;
+        }
+
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "/sign in to access safenet dns/i.test(document.body.innerText)"
+        );
+        JSONObject initialState = callWebView(
+            "(() => {" +
+                "const body = document.body.innerText;" +
+                "return {" +
+                    "signIn: /sign in to access safenet dns/i.test(body)," +
+                    "googleSignIn: /sign in with google/i.test(body)," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
+                    "path: window.location.pathname" +
+                "};" +
+            "})()"
+        );
+        assertTrue("A fresh Android WebView must start on Clerk sign-in",
+            initialState.getBoolean("signIn"));
+        assertFalse("Fresh Clerk sign-in must not expose legacy access-code UI",
+            initialState.getBoolean("legacyAccessCode"));
+
+        String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+        String clerkCookiePayload = instrumentationArguments().getString("clerk-cookie-base64");
+        assertNotNull("Android Clerk smoke requires a public Clerk session origin", clerkOrigin);
+        assertNotNull("Android Clerk smoke requires a Clerk storage-state session",
+            clerkCookiePayload);
+        assertTrue("Android Clerk smoke received an empty Clerk session",
+            clerkCookiePayload.length() > 0);
+        String clerkCookie = new String(
+            Base64.decode(clerkCookiePayload, Base64.DEFAULT),
+            java.nio.charset.StandardCharsets.UTF_8
+        );
+
+        setClerkSessionCookies(clerkOrigin, clerkCookie);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+
+        JSONObject authenticatedState = callWebView(
+            "(async () => {" +
+                "const body = document.body.innerText;" +
+                "const response = await fetch(" +
+                    JSONObject.quote(clerkOrigin + "/api/auth/status") +
+                    ", {cache: 'no-store', credentials: 'include'});" +
+                "const auth = await response.json();" +
+                "return {" +
+                    "dashboard: body.includes('Command Center')," +
+                    "authenticated: response.ok && auth.authenticated === true," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
+                    "cookiePresent: Boolean(document.cookie)" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The Clerk session must open the protected dashboard",
+            authenticatedState.getBoolean("dashboard"));
+        assertTrue("The backend must recognize the injected Clerk session",
+            authenticatedState.getBoolean("authenticated"));
+        assertFalse("The protected dashboard must not expose legacy access-code UI",
+            authenticatedState.getBoolean("legacyAccessCode"));
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+        JSONObject retainedState = callWebView(
+            "(() => {" +
+                "const body = document.body.innerText;" +
+                "return {" +
+                    "dashboard: body.includes('Command Center')," +
+                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
+                "};" +
+            "})()"
+        );
+        assertTrue("The packaged WebView must retain the Clerk session after reload",
+            retainedState.getBoolean("dashboard"));
+        assertFalse("The retained Clerk session must not fall back to local access-code UI",
+            retainedState.getBoolean("legacyAccessCode"));
+        Log.i(
+            CLERK_AUTH_TAG,
+            "CLERK_AUTH_SMOKE result=PASS initial=SIGN_IN session=CLERK " +
+                "dashboard=PASS retained_after_reload=PASS legacy_access_code=ABSENT"
+        );
+    }
+
+    @Test
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
@@ -676,7 +1140,598 @@ public class SafeNetVpnUiInstrumentationTest {
             accessibleSwitch.isEnabled());
     }
 
+    @Test
+    public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject started = callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        );
+        JSONObject startedStatus = requireWebViewValue(started);
+        assertEquals("camera", startedStatus.getString("source"));
+        assertTrue("Camera consent must start AI Shield monitoring",
+            startedStatus.getBoolean("monitoring"));
+
+        JSONObject inference = waitForAiShieldInference("camera");
+        assertAiShieldInference(inference, "camera");
+
+        rotateDevice();
+        JSONObject rotated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "camera".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Camera monitoring must remain active through rotation",
+            rotated.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
+        recreateActivity();
+        JSONObject recreated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && !status.optBoolean("monitoring", true)
+        );
+        assertEquals("none", recreated.getString("source"));
+        assertFalse("Activity recreation must not retain a stale safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(recreated.getString("state")));
+        assertFalse("An idle recreated manager must not retain frame confidence",
+            recreated.has("confidence") && !recreated.isNull("confidence"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            null
+        ));
+        assertEquals("camera", restarted.getString("source"));
+        assertTrue("Camera capture must be restartable after activity recreation",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+
+        JSONObject paused = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> !status.optBoolean("monitoring", true)
+        );
+        assertFalse("Pausing the Android app must stop camera monitoring",
+            paused.getBoolean("monitoring"));
+        assertNotEquals("A paused capture must not report a safe verdict",
+            AiShieldClassifier.STATE_SAFE, paused.getString("state"));
+
+        JSONObject stopped = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.stopAiShield()"
+        ));
+        assertFalse("Stopping AI Shield must release camera monitoring",
+            stopped.getBoolean("monitoring"));
+        assertNotEquals("A stopped capture must not retain a safe verdict",
+            AiShieldClassifier.STATE_SAFE, stopped.getString("state"));
+    }
+
+    @Test
+    public void aiShieldScreenConsentInfersAndProjectionRevocationFailsClosed() throws Exception {
+        JSONObject started = callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        );
+        JSONObject startedStatus = requireWebViewValue(started);
+        assertEquals("screen", startedStatus.getString("source"));
+        assertTrue("MediaProjection consent must start AI Shield monitoring",
+            startedStatus.getBoolean("monitoring"));
+
+        JSONObject inference = waitForAiShieldInference("screen");
+        assertAiShieldInference(inference, "screen");
+
+        rotateDevice();
+        JSONObject rotated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Screen monitoring must remain active through rotation",
+            rotated.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+
+        String revokeOutput = executeShellCommand("cmd media_projection stop " + PACKAGE_NAME);
+        String normalizedRevokeOutput = revokeOutput.toLowerCase();
+        assertFalse(
+            "The Android target must support revoking the active MediaProjection: " + revokeOutput,
+            normalizedRevokeOutput.contains("unknown") ||
+                normalizedRevokeOutput.contains("error")
+        );
+
+        JSONObject revoked = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(status.optString("state"))
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals("screen", revoked.getString("source"));
+        assertEquals(AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE, revoked.getString("state"));
+        assertFalse("A revoked projection must never report a safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(revoked.getString("state")));
+        assertFalse("A revoked projection must not retain frame confidence",
+            revoked.has("confidence") && !revoked.isNull("confidence"));
+
+        recreateActivity();
+        JSONObject recreated = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && !status.optBoolean("monitoring", true)
+        );
+        assertFalse("Activity recreation after projection revocation must not restore a safe verdict",
+            AiShieldClassifier.STATE_SAFE.equals(recreated.getString("state")));
+        assertFalse("A recreated revoked projection must not expose frame confidence",
+            recreated.has("confidence") && !recreated.isNull("confidence"));
+    }
+
+    @Test
+    public void aiShieldScreenConsentCancellationSurvivesActivityRecreation() throws Exception {
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+
+        recreateActivity();
+        cancelMediaProjectionDialog();
+
+        JSONObject canceled = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                )
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals(
+            "Screen-capture consent was canceled; no screen pixels were analyzed.",
+            canceled.getString("message")
+        );
+        assertFalse("Canceled consent must not leave screen monitoring active",
+            canceled.getBoolean("monitoring"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertTrue("A canceled consent callback must not block a later request",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+    }
+
+    @Test
+    public void aiShieldDuplicateScreenConsentIsRejectedAndOriginalApprovalResolvesOnce()
+        throws Exception {
+        startScreenConsentAndTrackResult();
+        waitForMediaProjectionDialog();
+
+        JSONObject duplicate = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                ".then(() => ({accepted:true}))" +
+                ".catch(error => ({accepted:false,code:error.code||'',message:error.message||''}))"
+        ));
+        assertFalse("A second screen consent request must be rejected", duplicate.getBoolean("accepted"));
+        assertEquals("SCREEN_CONSENT_PENDING", duplicate.getString("code"));
+
+        grantMediaProjectionDialog();
+        waitForWebView(
+            "Array.isArray(window.__safeNetScreenConsentResults) && " +
+                "window.__safeNetScreenConsentResults.length === 1"
+        );
+        JSONObject original = requireWebViewValue(callWebView(
+            "window.__safeNetScreenConsentResults[0]"
+        ));
+        assertTrue("The original consent request must resolve after approval",
+            original.getBoolean("resolved"));
+        assertTrue("Approved consent must start screen monitoring",
+            original.getBoolean("monitoring"));
+
+        Thread.sleep(500);
+        JSONObject resultCount = requireWebViewValue(callWebView(
+            "({count:window.__safeNetScreenConsentResults.length})"
+        ));
+        assertEquals("The original consent request must resolve exactly once",
+            1, resultCount.getInt("count"));
+    }
+
+    @Test
+    public void aiShieldDuplicateScreenConsentIsRejectedAndOriginalCancellationResolvesOnce()
+        throws Exception {
+        startScreenConsentAndTrackResult();
+        waitForMediaProjectionDialog();
+
+        JSONObject duplicate = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                ".then(() => ({accepted:true}))" +
+                ".catch(error => ({accepted:false,code:error.code||'',message:error.message||''}))"
+        ));
+        assertFalse("A second screen consent request must be rejected", duplicate.getBoolean("accepted"));
+        assertEquals("SCREEN_CONSENT_PENDING", duplicate.getString("code"));
+
+        cancelMediaProjectionDialog();
+        waitForWebView(
+            "Array.isArray(window.__safeNetScreenConsentResults) && " +
+                "window.__safeNetScreenConsentResults.length === 1"
+        );
+        JSONObject original = requireWebViewValue(callWebView(
+            "window.__safeNetScreenConsentResults[0]"
+        ));
+        assertTrue("The original consent request must resolve after cancellation",
+            original.getBoolean("resolved"));
+        assertFalse("Canceled consent must not start screen monitoring",
+            original.getBoolean("monitoring"));
+
+        Thread.sleep(500);
+        JSONObject resultCount = requireWebViewValue(callWebView(
+            "({count:window.__safeNetScreenConsentResults.length})"
+        ));
+        assertEquals("The original consent request must resolve exactly once",
+            1, resultCount.getInt("count"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertTrue("A canceled request must release the consent boundary for later use",
+            restarted.getBoolean("monitoring"));
+    }
+
+    @Test
+    public void aiShieldCanceledScreenReplacementFailsClosedAndCanRestart() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue("The initial camera source must be active", cameraStarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+        cancelMediaProjectionDialog();
+
+        JSONObject canceled = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                )
+                && !status.optBoolean("monitoring", true)
+        );
+        assertEquals(
+            "Screen-capture consent was canceled; no screen pixels were analyzed.",
+            canceled.getString("message")
+        );
+        assertFalse("Canceled replacement must not leave monitoring active",
+            canceled.getBoolean("monitoring"));
+        assertFalse("Canceled replacement must not retain the camera verdict",
+            canceled.has("confidence") && !canceled.isNull("confidence"));
+        assertNotEquals("Canceled replacement must not report a safe verdict",
+            AiShieldClassifier.STATE_SAFE, canceled.getString("state"));
+
+        JSONObject restarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", restarted.getString("source"));
+        assertTrue("A later screen selection must restart monitoring",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+    }
+
+    @Test
+    public void aiShieldScreenConsentApprovalSurvivesActivityRecreation() throws Exception {
+        startScreenConsentWithoutWaiting();
+        waitForMediaProjectionDialog();
+
+        recreateActivity();
+        grantMediaProjectionDialog();
+
+        JSONObject started = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("Approved consent must resolve into active screen monitoring",
+            started.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+
+        JSONObject stable = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> "screen".equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+        );
+        assertTrue("A recreated approval must not leave stale monitoring transitions",
+            stable.getBoolean("monitoring"));
+    }
+
+    @Test
+    public void aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive() throws Exception {
+        logAiShieldDeviceEvent("test_begin", "camera_to_screen");
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue(cameraStarted.getBoolean("monitoring"));
+
+        JSONObject screenStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", screenStarted.getString("source"));
+        assertTrue("Starting screen monitoring must replace the camera capture",
+            screenStarted.getBoolean("monitoring"));
+
+        assertAiShieldSourceRemainsActive("screen");
+        assertAiShieldInference(waitForAiShieldInference("screen"), "screen");
+        logAiShieldDeviceEvent("test_pass", "camera_to_screen");
+    }
+
+    @Test
+    public void aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive() throws Exception {
+        logAiShieldDeviceEvent("test_begin", "screen_to_camera");
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        JSONObject screenStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()",
+            this::grantMediaProjectionDialog
+        ));
+        assertEquals("screen", screenStarted.getString("source"));
+        assertTrue(screenStarted.getBoolean("monitoring"));
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+        JSONObject cameraStarted = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()",
+            cameraConsent
+        ));
+        assertEquals("camera", cameraStarted.getString("source"));
+        assertTrue("Starting camera monitoring must replace the projection",
+            cameraStarted.getBoolean("monitoring"));
+
+        assertAiShieldSourceRemainsActive("camera");
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+        logAiShieldDeviceEvent("test_pass", "screen_to_camera");
+    }
+
+    @Test
+    public void aiShieldRepeatedSourceSwitchesKeepLatestCaptureActive() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+
+        JSONObject stopped = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.stopAiShield()"
+        ));
+        assertFalse("Stopping repeated AI Shield captures must release the active source",
+            stopped.getBoolean("monitoring"));
+        assertEquals("none", stopped.getString("source"));
+        assertEquals(
+            "A stopped AI Shield capture must return to the idle capture state",
+            AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE,
+            stopped.getString("state")
+        );
+    }
+
+    @Test
+    public void aiShieldRepeatedSourceSwitchesPauseCleanlyAndRestartInference() throws Exception {
+        assertTrue(
+            "The attached Android target must expose a camera for AI Shield device evidence",
+            context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+        );
+
+        ConsentAction cameraConsent = context.checkSelfPermission(
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+            ? null
+            : this::grantCameraPermissionDialog;
+
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+        startAndVerifyAiShieldSource("camera", cameraConsent);
+        startAndVerifyAiShieldSource("screen", this::grantMediaProjectionDialog);
+
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+
+        JSONObject paused = waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> AiShieldClassifier.STATE_CAPTURE_UNAVAILABLE.equals(
+                    status.optString("state")
+                ) && "none".equals(status.optString("source"))
+                && !status.optBoolean("monitoring", true)
+                && (!status.has("confidence") || status.isNull("confidence"))
+        );
+        assertFalse("Pausing after repeated source switches must stop AI Shield monitoring",
+            paused.getBoolean("monitoring"));
+        assertEquals("none", paused.getString("source"));
+        assertFalse("A paused AI Shield capture must not retain frame confidence",
+            paused.has("confidence") && !paused.isNull("confidence"));
+
+        JSONObject restarted = startAndVerifyAiShieldSource("camera", null);
+        assertEquals("camera", restarted.getString("source"));
+        assertTrue("A fresh consented source must restart AI Shield monitoring",
+            restarted.getBoolean("monitoring"));
+        assertAiShieldInference(waitForAiShieldInference("camera"), "camera");
+    }
+
+    @Test
+    public void aiShieldSettingsShowsUnavailableForMissingOrInvalidModelMetadata() throws Exception {
+        String missingMetadataStatus = modelUnavailableStatusPayload((String) null);
+        String invalidMetadataStatus = modelUnavailableStatusPayload("{\"modelVersion\":\"wrong\"}");
+
+        JSONObject installed = callWebView(
+            "(() => {" +
+                "const plugin = window.Capacitor.Plugins.SafeNetVpn;" +
+                "const missing = JSON.parse(\"" + jsQuote(missingMetadataStatus) + "\");" +
+                "const invalid = JSON.parse(\"" + jsQuote(invalidMetadataStatus) + "\");" +
+                "plugin.getAiShieldStatus = () => Promise.resolve(missing);" +
+                "plugin.startAiShieldCamera = () => Promise.resolve(missing);" +
+                "plugin.startAiShieldScreen = () => Promise.resolve(missing);" +
+                "plugin.stopAiShield = () => Promise.resolve(missing);" +
+                "plugin.addListener = (_name, listener) => {" +
+                    "window.__safeNetAiShieldTestListener = listener;" +
+                    "return Promise.resolve({remove: () => Promise.resolve()});" +
+                "};" +
+                "history.pushState({}, '', '/settings');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "window.__safeNetAiShieldInvalidStatus = invalid;" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to Settings in the WebView", installed.getBoolean("ok"));
+
+        waitForWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "return Boolean(window.__safeNetAiShieldTestListener && result && " +
+                    "result.getAttribute('data-state') === 'model_unavailable' && " +
+                    "result.textContent.includes('Engine unavailable'));" +
+            "})()"
+        );
+
+        JSONObject initialState = aiShieldSettingsDomState();
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, initialState.getString("state"));
+        assertTrue("Settings must visibly report an unavailable AI Shield engine",
+            initialState.getBoolean("engineUnavailable"));
+        assertFalse("Missing model metadata must not render a safe verdict",
+            initialState.getBoolean("safeVerdict"));
+        assertFalse("Missing model metadata must not expose confidence",
+            initialState.getBoolean("hasConfidence"));
+
+        JSONObject clicked = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-ai-camera\"]');" +
+                "if (!toggle) { return {ok: false}; }" +
+                "toggle.click();" +
+                "return {ok: true};" +
+            "})()"
+        );
+        assertTrue("The unavailable AI Shield card must expose its camera control",
+            clicked.getBoolean("ok"));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"ai-shield-result\"]')?.getAttribute('data-state') === " +
+                "'model_unavailable'"
+        );
+        JSONObject afterStartAttempt = aiShieldSettingsDomState();
+        assertFalse("Starting an unavailable model must not render a safe verdict",
+            afterStartAttempt.getBoolean("safeVerdict"));
+
+        JSONObject attemptedStart = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()"
+        ));
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE,
+            attemptedStart.getString("state"));
+        assertFalse("An unavailable model must not produce a safe start result",
+            AiShieldClassifier.STATE_SAFE.equals(attemptedStart.getString("state")));
+
+        JSONObject updated = callWebView(
+            "(() => {" +
+                "const invalid = window.__safeNetAiShieldInvalidStatus;" +
+                "window.__safeNetAiShieldTestListener(invalid);" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("The invalid metadata status fixture must be emitted",
+            updated.getBoolean("ok"));
+
+        waitForWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "return Boolean(result && result.getAttribute('data-state') === 'model_unavailable' && " +
+                    "result.textContent.includes('failed validation'));" +
+            "})()"
+        );
+        JSONObject invalidDomState = aiShieldSettingsDomState();
+        assertEquals("model_unavailable", invalidDomState.getString("state"));
+        assertTrue("Invalid model metadata must keep the Engine unavailable label visible",
+            invalidDomState.getBoolean("engineUnavailable"));
+        assertFalse("Invalid model metadata must not render a safe verdict",
+            invalidDomState.getBoolean("safeVerdict"));
+        assertTrue("Invalid model metadata must retain its unavailable diagnostic",
+            invalidDomState.getBoolean("validationFailure"));
+    }
+
+    private String modelUnavailableStatusPayload(String metadata) throws Exception {
+        AiShieldClassifier classifier = new AiShieldClassifier(metadata);
+        AiShieldClassifier.Analysis result = classifier.analyze(null, "none");
+        assertEquals(AiShieldClassifier.STATE_MODEL_UNAVAILABLE, result.state);
+        assertFalse(AiShieldClassifier.STATE_SAFE.equals(result.state));
+        return result.toJson().toString();
+    }
+
+    private JSONObject aiShieldSettingsDomState() throws Exception {
+        return requireWebViewValue(callWebView(
+            "(() => {" +
+                "const result = document.querySelector('[data-testid=\"ai-shield-result\"]');" +
+                "const text = result ? result.textContent || '' : '';" +
+                "return {" +
+                    "state: result?.getAttribute('data-state')," +
+                    "engineUnavailable: text.includes('Engine unavailable')," +
+                    "safeVerdict: text.includes('Safe signal')," +
+                    "hasConfidence: !text.includes('Confidence —')," +
+                    "validationFailure: text.includes('failed validation')" +
+                "};" +
+            "})()"
+        ));
+    }
+
     private void clearTargetAppData() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            return;
+        }
         ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation()
             .executeShellCommand("pm clear " + PACKAGE_NAME);
@@ -903,11 +1958,155 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Android VPN permission dialog did not appear");
     }
 
+    private void grantCameraPermissionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(while using the app|only this time|allow)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                logAiShieldDeviceEvent("camera_permission_dialog_shown", "camera");
+                allow.click();
+                logAiShieldDeviceEvent("camera_permission_granted", "camera");
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android camera permission dialog did not appear");
+    }
+
+    private void grantMediaProjectionDialog() throws Exception {
+        UiObject2 start = waitForMediaProjectionDialog();
+        logAiShieldDeviceEvent("media_projection_consent_dialog_shown", "screen");
+        start.click();
+        logAiShieldDeviceEvent("media_projection_consent_granted", "screen");
+    }
+
+    private UiObject2 waitForMediaProjectionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 start = device.findObject(
+                By.text(Pattern.compile("(?i)(start now|start recording)"))
+            );
+            if (start != null && start.isEnabled()) {
+                return start;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android MediaProjection consent dialog did not appear");
+    }
+
+    private void cancelMediaProjectionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 cancel = device.findObject(
+                By.text(Pattern.compile("(?i)(cancel|deny|don't allow|not now)"))
+            );
+            if (cancel != null && cancel.isEnabled()) {
+                cancel.click();
+                return;
+            }
+            if (device.findObject(
+                    By.text(Pattern.compile("(?i)(start now|start recording)"))
+                ) == null) {
+                device.pressBack();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android MediaProjection consent dialog did not cancel");
+    }
+
+    private void startScreenConsentWithoutWaiting() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen().catch(() => {});" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not start the pending MediaProjection consent request",
+            result.getBoolean("value"));
+    }
+
+    private void startScreenConsentAndTrackResult() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "window.__safeNetScreenConsentResults = [];" +
+                "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()" +
+                    ".then(value => window.__safeNetScreenConsentResults.push({" +
+                        "resolved:true,monitoring:Boolean(value && value.monitoring)" +
+                    "}))" +
+                    ".catch(error => window.__safeNetScreenConsentResults.push({" +
+                        "resolved:false,monitoring:false" +
+                    "}));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not start the tracked MediaProjection consent request",
+            result.getBoolean("value"));
+    }
+
+    private void relaunchActivity() throws Exception {
+        Intent launchIntent = new Intent(context, MainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(launchIntent);
+        waitForCapacitorBridge();
+    }
+
+    private void pauseAndResumeActivity() throws Exception {
+        device.pressHome();
+        Thread.sleep(1000);
+        relaunchActivity();
+    }
+
+    private void stopAndRelaunchAppProcess() throws Exception {
+        executeShellCommand("am force-stop " + PACKAGE_NAME);
+        Thread.sleep(1000);
+        relaunchActivity();
+    }
+
+    private void recreateActivity() throws Exception {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.recreate());
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        relaunchActivity();
+    }
+
+    private void rotateDevice() throws Exception {
+        device.setOrientationLeft();
+        Thread.sleep(1000);
+        device.setOrientationNatural();
+        Thread.sleep(1000);
+    }
+
     private void waitForCapacitorBridge() throws Exception {
         waitForWebView(
             "Boolean(window.Capacitor && window.Capacitor.Plugins && " +
                 "window.Capacitor.Plugins.SafeNetVpn)"
         );
+    }
+
+    private Bundle instrumentationArguments() {
+        return InstrumentationRegistry.getArguments();
+    }
+
+    private boolean hasInstrumentationArgument(String name) {
+        return instrumentationArguments().containsKey(name);
+    }
+
+    private void setClerkSessionCookies(String origin, String cookieLines) throws Exception {
+        String[] cookies = cookieLines.split("\\n");
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+            for (String cookie : cookies) {
+                String trimmedCookie = cookie.trim();
+                if (!trimmedCookie.isEmpty()) {
+                    cookieManager.setCookie(origin, trimmedCookie);
+                }
+            }
+            cookieManager.flush();
+        });
+        Thread.sleep(500);
     }
 
     private void waitForWebView(String expression) throws Exception {
@@ -986,6 +2185,13 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     private JSONObject callWebView(String expression) throws Exception {
+        return callWebViewWithConsent(expression, null);
+    }
+
+    private JSONObject callWebViewWithConsent(
+        String expression,
+        ConsentAction consentAction
+    ) throws Exception {
         CountDownLatch completed = new CountDownLatch(1);
         String[] rawResult = new String[1];
         TestResultBridge resultBridge = new TestResultBridge(rawResult, completed);
@@ -1005,6 +2211,9 @@ public class SafeNetVpnUiInstrumentationTest {
         });
 
         try {
+            if (consentAction != null) {
+                consentAction.grant();
+            }
             if (!completed.await(JS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 throw new AssertionError("Timed out evaluating WebView expression: " + expression);
             }
@@ -1018,6 +2227,130 @@ public class SafeNetVpnUiInstrumentationTest {
             );
         }
         return new JSONObject(rawResult[0]);
+    }
+
+    private JSONObject requireWebViewValue(JSONObject result) throws Exception {
+        assertTrue("SafeNetVpn bridge call failed: " + result.optString("message"),
+            result.optBoolean("ok", false));
+        return result.getJSONObject("value");
+    }
+
+    private JSONObject waitForAiShieldInference(String expectedSource) throws Exception {
+        return waitForAiShieldStatus(
+            "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()",
+            status -> expectedSource.equals(status.optString("source"))
+                && status.optBoolean("monitoring", false)
+                && (
+                    AiShieldClassifier.STATE_SAFE.equals(status.optString("state")) ||
+                    AiShieldClassifier.STATE_NUDITY_DETECTED.equals(status.optString("state")) ||
+                    AiShieldClassifier.STATE_UNCERTAIN.equals(status.optString("state"))
+                )
+        );
+    }
+
+    private void assertAiShieldInference(JSONObject result, String expectedSource) throws Exception {
+        assertEquals(expectedSource, result.getString("source"));
+        assertTrue(
+            "AI Shield must expose a local inference state, not a capture failure: " + result,
+            AiShieldClassifier.STATE_SAFE.equals(result.getString("state")) ||
+                AiShieldClassifier.STATE_NUDITY_DETECTED.equals(result.getString("state")) ||
+                AiShieldClassifier.STATE_UNCERTAIN.equals(result.getString("state"))
+        );
+        assertTrue("A local inference result must include confidence",
+            result.has("confidence") && !result.isNull("confidence"));
+    }
+
+    private void assertAiShieldSourceRemainsActive(String expectedSource) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            JSONObject status = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getAiShieldStatus()"
+            ));
+            assertEquals(
+                "A callback from the previous AI Shield source changed the active source",
+                expectedSource,
+                status.getString("source")
+            );
+            assertTrue(
+                "A callback from the previous AI Shield source stopped the new capture",
+                status.getBoolean("monitoring")
+            );
+            Thread.sleep(250);
+        }
+        logAiShieldDeviceEvent("source_stable", expectedSource);
+    }
+
+    private JSONObject startAndVerifyAiShieldSource(
+        String expectedSource,
+        ConsentAction consentAction
+    ) throws Exception {
+        String startExpression = "camera".equals(expectedSource)
+            ? "window.Capacitor.Plugins.SafeNetVpn.startAiShieldCamera()"
+            : "window.Capacitor.Plugins.SafeNetVpn.startAiShieldScreen()";
+        JSONObject started = requireWebViewValue(callWebViewWithConsent(
+            startExpression,
+            consentAction
+        ));
+        assertEquals(expectedSource, started.getString("source"));
+        assertTrue(
+            "Selecting " + expectedSource + " must leave AI Shield monitoring active",
+            started.getBoolean("monitoring")
+        );
+
+        assertAiShieldInference(waitForAiShieldInference(expectedSource), expectedSource);
+        assertAiShieldSourceRemainsActive(expectedSource);
+        return started;
+    }
+
+    private void logAiShieldDeviceEvent(String event, String source) {
+        Log.i(
+            AI_SHIELD_DEVICE_SMOKE_TAG,
+            "AI_SHIELD_DEVICE_EVENT event=" + event
+                + " source=" + source
+                + " test=" + testName.getMethodName()
+        );
+    }
+
+    private JSONObject waitForAiShieldStatus(
+        String expression,
+        AiShieldStatusPredicate predicate
+    ) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        JSONObject latest = null;
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(expression);
+            if (result.optBoolean("ok", false)) {
+                latest = result.optJSONObject("value");
+                if (latest != null && predicate.matches(latest)) {
+                    return latest;
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("AI Shield status did not reach the expected state: " + latest);
+    }
+
+    private String executeShellCommand(String command) throws Exception {
+        ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .executeShellCommand(command);
+        StringBuilder result = new StringBuilder();
+        try (ParcelFileDescriptor.AutoCloseInputStream input =
+                 new ParcelFileDescriptor.AutoCloseInputStream(output)) {
+            int value;
+            while ((value = input.read()) != -1) {
+                result.append((char) value);
+            }
+        }
+        return result.toString();
+    }
+
+    private interface ConsentAction {
+        void grant() throws Exception;
+    }
+
+    private interface AiShieldStatusPredicate {
+        boolean matches(JSONObject status) throws Exception;
     }
 
     private static final class TestResultBridge {

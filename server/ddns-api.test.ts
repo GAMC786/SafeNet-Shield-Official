@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
-import session from "express-session";
 import type { AppSettings, DdnsUpdater, InsertDdnsUpdater } from "@shared/schema";
 import type { IStorage } from "./storage";
 
@@ -11,8 +10,6 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??= "ddns-smoke-test";
 
 const testSettings: AppSettings = {
   id: 1,
-  pinCode: null,
-  isPinEnabled: false,
   aiShieldEnabled: false,
   alwaysOnEnabled: false,
   deviceAdminEnabled: false,
@@ -72,13 +69,6 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
   const httpServer = createServer(app);
   const storage = createTestStorage();
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
   await registerRoutes(httpServer, app, storage, { seed: false });
@@ -131,10 +121,34 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     const httpsPayload = await httpsResponse.json();
     assert.equal(httpsPayload.provider, "iplink");
     assert.equal(httpsPayload.updateInterval, 123456);
-    const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 999);
+    const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 0);
     assert.equal(invalidIntervalResponse.status, 400);
-    assert.match((await invalidIntervalResponse.json()).message, /milliseconds/);
+    assert.match((await invalidIntervalResponse.json()).message, /minute/);
     assert.equal(providerRequests, 0);
+
+    const storedUpdaters = await storage.getDdnsUpdaters();
+    storedUpdaters[0].isEnabled = false;
+    storedUpdaters[0].lastUpdateTime = new Date();
+    globalThis.fetch = async (input, init) => {
+      assert.match(String(input), /https:\/\/updates\.example\.test\/198\.51\.100\.20$/);
+      assert.equal(init?.method, undefined);
+      return new Response(null, { status: 204 });
+    };
+    const manualUpdateResponse = await request(`${baseUrl}/api/ddns/1/test`, {
+      method: "POST",
+      headers: {
+        Origin: "https://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ clientIp: "198.51.100.20" }),
+    });
+    assert.equal(manualUpdateResponse.status, 200);
+    const manualUpdatePayload = await manualUpdateResponse.json();
+    assert.equal(manualUpdatePayload.success, true);
+    assert.match(manualUpdatePayload.message, /Manual update succeeded/);
+    assert.equal(manualUpdatePayload.ipAddress, "198.51.100.20");
+    assert.equal("apiKey" in manualUpdatePayload, false);
+    assert.equal(storedUpdaters[0].lastIpAddress, "198.51.100.20");
   } finally {
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve, reject) => {
@@ -143,9 +157,28 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
   }
 });
 
-test("DDNS status refresh cadence is 500 milliseconds", async () => {
+test("DDNS status refresh cadence is five seconds", async () => {
   const { DDNS_STATUS_REFRESH_INTERVAL_MS } = await import("../client/src/hooks/ddns-constants");
-  assert.equal(DDNS_STATUS_REFRESH_INTERVAL_MS, 500);
+  assert.equal(DDNS_STATUS_REFRESH_INTERVAL_MS, 5000);
+});
+
+test("DDNS connectivity rejects provider HTTP errors", async () => {
+  const { testDdnsConnection } = await import("./ddns-service");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "HEAD");
+    return new Response("provider unavailable", { status: 503 });
+  };
+
+  try {
+    const result = await testDdnsConnection("duckdns");
+    assert.equal(result.success, false);
+    if (!result.success) {
+      assert.match(result.error, /HTTP 503/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("DDNS scheduler does not write to a provider inside the configured interval", async () => {
@@ -294,10 +327,69 @@ test("DDNS updates skip an updater while its provider request is in flight", asy
   }
 });
 
-test("DDNS provider rejection returns an explicit failure result", async () => {
+test("DDNS scheduler honors a shared database claim before writing", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
   const updater: DdnsUpdater = {
     id: 10,
+    hostname: "home.example.test",
+    provider: "duckdns",
+    apiKey: "test-token",
+    customUrl: null,
+    lastIpAddress: "198.51.100.20",
+    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
+    lastFailureMessage: null,
+    lastFailureTime: null,
+    isEnabled: true,
+    updateInterval: 3600000,
+  };
+  let providerRequests = 0;
+  let failureWrites = 0;
+  let failureMessage = "";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerRequests += 1;
+    return new Response("KO", { status: 200 });
+  };
+
+  try {
+    const sharedStorage = {
+      getDdnsUpdaters: async () => [updater],
+      updateDdnsIpInfo: async () => updater,
+      claimDdnsUpdate: async () => false,
+    };
+    assert.deepEqual(await checkAndUpdateDdns("198.51.100.21", sharedStorage), []);
+    assert.equal(providerRequests, 0);
+
+    const winningStorage = {
+      ...sharedStorage,
+      claimDdnsUpdate: async () => true,
+      updateDdnsFailureInfo: async (id: number, message: string) => {
+        failureWrites += 1;
+        failureMessage = message;
+        return { ...updater, id, lastFailureMessage: message, lastFailureTime: new Date() };
+      },
+    };
+    const results = await checkAndUpdateDdns("198.51.100.21", winningStorage);
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0].success, false);
+    if (!results[0].success) {
+      assert.match(results[0].error, /DuckDNS rejected the update/);
+      assert.match(results[0].error, /KO/);
+    }
+    assert.equal(providerRequests, 1);
+    assert.equal(failureWrites, 1);
+    assert.match(failureMessage, /DuckDNS rejected the update/);
+    assert.equal(updater.lastIpAddress, "198.51.100.20");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DDNS provider rejection returns an explicit failure result", async () => {
+  const { checkAndUpdateDdns } = await import("./ddns-service");
+  const updater: DdnsUpdater = {
+    id: 11,
     hostname: "home.example.test",
     provider: "duckdns",
     apiKey: "test-token",
@@ -347,7 +439,7 @@ test("DDNS provider rejection returns an explicit failure result", async () => {
 test("DDNS network errors return an explicit failure result", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
   const updater: DdnsUpdater = {
-    id: 11,
+    id: 12,
     hostname: "home.example.test",
     provider: "duckdns",
     apiKey: "test-token",
@@ -407,13 +499,6 @@ test("DDNS status exposes the latest failure without provider credentials", asyn
   });
   await storage.updateDdnsFailureInfo(updater.id, "DuckDNS rejected the update (HTTP 401): token expired");
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
   await registerRoutes(httpServer, app, storage, { seed: false });
@@ -454,13 +539,6 @@ test("manual DDNS updates return a non-success response with provider failure de
     updateInterval: 1000,
   });
 
-  app.use(
-    session({
-      secret: "ddns-api-smoke-test",
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
   app.use(express.json());
   registerRequestOriginMiddleware(app);
   await registerRoutes(httpServer, app, storage, { seed: false });

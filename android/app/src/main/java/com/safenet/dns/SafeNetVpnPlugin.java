@@ -8,11 +8,12 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
-import android.provider.Settings;
 import android.webkit.CookieManager;
+import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -35,16 +36,31 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(
     name = "SafeNetVpn",
     permissions = {
-        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA })
+        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA }),
+        @Permission(alias = "nearbyWifi", strings = { Manifest.permission.NEARBY_WIFI_DEVICES }),
+        @Permission(alias = "wifiLocation", strings = { Manifest.permission.ACCESS_FINE_LOCATION })
     }
 )
 public class SafeNetVpnPlugin extends Plugin {
     public static final String EULA_VERSION = "1.0";
     private static final String PREFS_NAME = "safenet_vpn";
     private static final String PREF_EULA_VERSION = "accepted_eula_version";
+    static final String PREF_RESOLVER_TYPE = "resolver_type";
+    static final String PREF_RESOLVER_IP_VERSION = "resolver_ip_version";
+    static final String PREF_RESOLVER_PRIMARY = "resolver_primary";
+    static final String PREF_RESOLVER_SECONDARY = "resolver_secondary";
+    static final String PREF_WIREGUARD_DNS_SERVERS = "wireguard_dns_servers";
+    static final String PREF_ACTIVE_TUNNEL = "active_tunnel";
+    static final String TUNNEL_DNS = "dns";
+    static final String TUNNEL_WIREGUARD = "wireguard";
     private ExecutorService apkScannerExecutor;
     private ApkScanner apkScanner;
     private AiShieldManager aiShieldManager;
+    private static final String STATE_PROJECTION_PENDING = "safenet_projection_pending";
+    private static final String STATE_PROJECTION_RESULT_DELIVERED =
+        "safenet_projection_result_delivered";
+    private boolean projectionRequestPending;
+    private boolean projectionResultDelivered;
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
@@ -62,6 +78,38 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("permissionGranted", VpnService.prepare(getContext()) == null);
         result.put("eulaVersion", EULA_VERSION);
         result.put("eulaAccepted", hasAcceptedEula());
+        boolean wireGuardConfigured = SafeNetWireGuardConfig.isCoreConfigured();
+        boolean wireGuardRunning = false;
+        if (wireGuardConfigured) {
+            wireGuardRunning = SafeNetWireGuardManager.get(getContext()).isRunning();
+        }
+        result.put("wireguardConfigured", wireGuardConfigured);
+        result.put("wireguardRunning", wireGuardRunning);
+        result.put("activeTunnel", wireGuardRunning
+            ? TUNNEL_WIREGUARD
+            : SafeNetVpnService.isRunning() ? TUNNEL_DNS : "none");
+        result.put("vpnPermissionOwner", wireGuardRunning
+            ? "SafeNet WireGuard"
+            : SafeNetVpnService.isRunning() ? "SafeNet DNS" : "none");
+        if (wireGuardConfigured) {
+            result.put("wireguardGateway", SafeNetWireGuardConfig.gatewayEndpoint());
+            result.put("wireguardGatewayOwner", SafeNetWireGuardConfig.gatewayOwner());
+            result.put("wireguardPeerPublicKey", SafeNetWireGuardConfig.peerPublicKey());
+            result.put("wireguardAllowedIps", SafeNetWireGuardConfig.allowedIps());
+            result.put(
+                "wireguardDnsServers",
+                preferences().getString(
+                    PREF_WIREGUARD_DNS_SERVERS,
+                    SafeNetWireGuardConfig.defaultDnsServers()
+                )
+            );
+            String wireGuardError = SafeNetWireGuardManager.get(getContext()).getLastError();
+            if (wireGuardError != null && !wireGuardError.trim().isEmpty()) {
+                result.put("wireguardError", wireGuardError);
+            }
+        } else {
+            result.put("wireguardError", SafeNetWireGuardConfig.validationError());
+        }
         String error = SafeNetVpnService.getLastError();
         if (error != null) {
             result.put("error", error);
@@ -77,38 +125,95 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void getProtectionStatus(PluginCall call) {
-        call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
+    public void getTetherStatus(PluginCall call) {
+        call.resolve(tetherStatus());
     }
 
     @PluginMethod
-    public void openSystemSettings(PluginCall call) {
-        String target = call.getString("target", "");
-        String action;
-        if ("vpn".equals(target)) {
-            action = Settings.ACTION_VPN_SETTINGS;
-        } else if ("device-admin".equals(target)) {
-            action = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-                ? Settings.ACTION_SECURITY_SETTINGS
-                : Settings.ACTION_SETTINGS;
-        } else {
-            call.reject("Unknown Android settings destination.", "SETTINGS_TARGET_INVALID");
+    public void startTetherShare(PluginCall call) {
+        if (!tetherPermissionGranted()) {
+            if (Build.VERSION.SDK_INT >= 33 && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
+                requestPermissionForAlias("nearbyWifi", call, "tetherPermissionResult");
+            } else {
+                requestPermissionForAlias("wifiLocation", call, "tetherPermissionResult");
+            }
             return;
         }
+        startTetherService();
+        call.resolve(tetherStatus());
+    }
 
-        Intent intent = new Intent(action);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-            intent = new Intent(Settings.ACTION_SETTINGS);
+    @PermissionCallback
+    private void tetherPermissionResult(PluginCall call) {
+        if (call == null) return;
+        if (!tetherPermissionGranted()) {
+            call.reject("Nearby Wi-Fi permission was denied.", "TETHER_PERMISSION_DENIED");
+            return;
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            getContext().startActivity(intent);
-            JSObject result = new JSObject();
-            result.put("opened", true);
-            call.resolve(result);
-        } catch (RuntimeException error) {
-            call.reject("Android could not open system settings.", "SETTINGS_OPEN_FAILED");
+        startTetherService();
+        call.resolve(tetherStatus());
+    }
+
+    @PluginMethod
+    public void stopTetherShare(PluginCall call) {
+        TetherShareManager.get(getContext()).stop();
+        getContext().stopService(new Intent(getContext(), TetherShareService.class).setAction(TetherShareService.ACTION_STOP));
+        call.resolve(tetherStatus());
+    }
+
+    @PluginMethod
+    public void openTetherWifiSettings(PluginCall call) {
+        Intent settingsIntent = new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS);
+        getActivity().startActivity(settingsIntent);
+        call.resolve();
+    }
+
+    private boolean tetherPermissionGranted() {
+        if (Build.VERSION.SDK_INT >= 33
+                && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
+            return false;
         }
+        return Build.VERSION.SDK_INT >= 33
+            || getPermissionState("wifiLocation") == PermissionState.GRANTED;
+    }
+
+    private void startTetherService() {
+        Intent serviceIntent = new Intent(getContext(), TetherShareService.class)
+            .setAction(TetherShareService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= 26) {
+            getContext().startForegroundService(serviceIntent);
+        } else {
+            getContext().startService(serviceIntent);
+        }
+    }
+
+    private JSObject tetherStatus() {
+        TetherShareManager.Snapshot snapshot = TetherShareManager.get(getContext()).snapshot();
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        result.put("running", snapshot.running);
+        result.put("starting", snapshot.starting);
+        result.put("networkName", snapshot.networkName);
+        result.put("passphrase", snapshot.passphrase);
+        result.put("proxyHost", snapshot.proxyHost);
+        result.put("proxyPort", snapshot.proxyPort);
+        result.put("groupOwner", snapshot.groupOwner);
+        result.put("lastError", snapshot.lastError);
+        result.put("requiresManualProxy", true);
+        JSArray connectedDevices = new JSArray();
+        for (TetherShareManager.DeviceSnapshot device : snapshot.devices) {
+            JSObject connectedDevice = new JSObject();
+            connectedDevice.put("name", device.name);
+            connectedDevice.put("address", device.address);
+            connectedDevices.put(connectedDevice);
+        }
+        result.put("connectedDevices", connectedDevices);
+        return result;
+    }
+
+    @PluginMethod
+    public void getProtectionStatus(PluginCall call) {
+        call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
     }
 
     @PluginMethod
@@ -153,14 +258,24 @@ public class SafeNetVpnPlugin extends Plugin {
         }
 
         String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
         if (primaryAddress == null || primaryAddress.trim().isEmpty()) {
             call.reject("Select an active DNS server before starting protection.", "DNS_REQUIRED");
             return;
         }
+        if (SafeNetWireGuardConfig.isCoreConfigured()
+                && SafeNetWireGuardManager.get(getContext()).isRunning()) {
+            call.reject(
+                "SafeNet WireGuard already owns Android's VPN permission. Stop it before starting DNS protection.",
+                "VPN_CONFLICT"
+            );
+            return;
+        }
 
-        Intent serviceIntent = createServiceIntent(type, primaryAddress, secondaryAddress);
+        rememberResolver(type, ipVersion, primaryAddress, secondaryAddress);
+        Intent serviceIntent = createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress);
         Intent permissionIntent = VpnService.prepare(getContext());
         if (permissionIntent != null) {
             startActivityForResult(call, permissionIntent, "vpnPermissionResult");
@@ -182,14 +297,121 @@ public class SafeNetVpnPlugin extends Plugin {
         }
 
         String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
         String primaryAddress = call.getString("primaryAddress", "");
         String secondaryAddress = call.getString("secondaryAddress", "");
-        startVpnService(createServiceIntent(type, primaryAddress, secondaryAddress));
+        rememberResolver(type, ipVersion, primaryAddress, secondaryAddress);
+        startVpnService(createServiceIntent(type, ipVersion, primaryAddress, secondaryAddress));
         resolveWhenStarted(call);
     }
 
     @PluginMethod
+    public void startWireGuard(PluginCall call) {
+        if (!SafeNetWireGuardConfig.isCoreConfigured()) {
+            call.reject(
+                SafeNetWireGuardConfig.validationError(),
+                "WIREGUARD_NOT_CONFIGURED"
+            );
+            return;
+        }
+        String selectedDnsServers = call.getString("dnsServers", "");
+        if (selectedDnsServers == null || selectedDnsServers.trim().isEmpty()) {
+            selectedDnsServers = preferences().getString(
+                PREF_WIREGUARD_DNS_SERVERS,
+                SafeNetWireGuardConfig.defaultDnsServers()
+            );
+        }
+        try {
+            selectedDnsServers = SafeNetWireGuardConfig.normalizeDnsServers(selectedDnsServers);
+        } catch (IllegalArgumentException error) {
+            call.reject(error.getMessage(), "WIREGUARD_DNS_REQUIRED");
+            return;
+        }
+        if (SafeNetVpnService.isRunning()) {
+            call.reject(
+                "SafeNet DNS protection already owns Android's VPN permission. Stop it before starting WireGuard.",
+                "VPN_CONFLICT"
+            );
+            return;
+        }
+
+        Intent permissionIntent = VpnService.prepare(getContext());
+        if (permissionIntent != null) {
+            startActivityForResult(call, permissionIntent, "wireGuardPermissionResult");
+            return;
+        }
+        startWireGuardAsync(call);
+    }
+
+    @ActivityCallback
+    private void wireGuardPermissionResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        if (result == null || result.getResultCode() != Activity.RESULT_OK) {
+            call.reject("Android VPN permission was not granted to SafeNet.", "PERMISSION_DENIED");
+            return;
+        }
+        startWireGuardAsync(call);
+    }
+
+    private void startWireGuardAsync(PluginCall call) {
+        String selectedDnsServers;
+        try {
+            selectedDnsServers = resolveWireGuardDnsServers(call);
+        } catch (IllegalArgumentException error) {
+            call.reject(error.getMessage(), "WIREGUARD_DNS_REQUIRED");
+            return;
+        }
+        SafeNetWireGuardManager.get(getContext()).startAsync(
+            selectedDnsServers,
+            () -> {
+                preferences().edit()
+                    .putString(PREF_ACTIVE_TUNNEL, TUNNEL_WIREGUARD)
+                    .putString(PREF_WIREGUARD_DNS_SERVERS, selectedDnsServers)
+                    .apply();
+                call.resolve(status());
+            },
+            error -> call.reject(
+                safeError(error, "SafeNet WireGuard could not start."),
+                "WIREGUARD_START_FAILED"
+            )
+        );
+    }
+
+    private String resolveWireGuardDnsServers(PluginCall call) {
+        String selectedDnsServers = call.getString("dnsServers", "");
+        if (selectedDnsServers == null || selectedDnsServers.trim().isEmpty()) {
+            selectedDnsServers = preferences().getString(
+                PREF_WIREGUARD_DNS_SERVERS,
+                SafeNetWireGuardConfig.defaultDnsServers()
+            );
+        }
+        return SafeNetWireGuardConfig.normalizeDnsServers(selectedDnsServers);
+    }
+
+    @PluginMethod
+    public void stopWireGuard(PluginCall call) {
+        if (!SafeNetWireGuardConfig.isCoreConfigured()) {
+            call.resolve(status());
+            return;
+        }
+        SafeNetWireGuardManager.get(getContext()).stopAsync(
+            () -> call.resolve(status()),
+            error -> call.reject(
+                safeError(error, "SafeNet WireGuard could not stop."),
+                "WIREGUARD_STOP_FAILED"
+            )
+        );
+    }
+
+    @PluginMethod
     public void stop(PluginCall call) {
+        if (SafeNetWireGuardConfig.isCoreConfigured()
+                && SafeNetWireGuardManager.get(getContext()).isRunning()) {
+            stopWireGuard(call);
+            return;
+        }
         SafeNetVpnService.requestStop();
         getContext().stopService(new Intent(getContext(), SafeNetVpnService.class));
         call.resolve(status());
@@ -201,6 +423,26 @@ public class SafeNetVpnPlugin extends Plugin {
         } else {
             getContext().startService(intent);
         }
+    }
+
+    private void rememberResolver(
+        String type,
+        String ipVersion,
+        String primaryAddress,
+        String secondaryAddress
+    ) {
+        preferences().edit()
+            .putString(PREF_RESOLVER_TYPE, type)
+            .putString(PREF_RESOLVER_IP_VERSION, ipVersion)
+            .putString(PREF_RESOLVER_PRIMARY, primaryAddress)
+            .putString(PREF_RESOLVER_SECONDARY, secondaryAddress == null ? "" : secondaryAddress)
+            .putString(PREF_ACTIVE_TUNNEL, TUNNEL_DNS)
+            .apply();
+    }
+
+    private String safeError(Exception error, String fallback) {
+        String message = error == null ? null : error.getMessage();
+        return message == null || message.trim().isEmpty() ? fallback : message;
     }
 
     private void resolveWhenStarted(PluginCall call) {
@@ -345,43 +587,71 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void startAiShieldScreen(PluginCall call) {
-        if (!aiShield().isModelAvailable()) {
-            call.resolve(toJsObject(aiShield().getStatus()));
-            return;
-        }
-        android.media.projection.MediaProjectionManager projectionManager =
-            (android.media.projection.MediaProjectionManager) getContext()
-                .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
-        if (projectionManager == null) {
-            AiShieldClassifier.Analysis unavailable = AiShieldClassifier.captureUnavailable(
-                "screen",
-                "Android MediaProjection is not available on this device."
+        synchronized (this) {
+            if (projectionRequestPending) {
+                call.reject(
+                    "A screen-capture consent request is already pending.",
+                    "SCREEN_CONSENT_PENDING"
+                );
+                return;
+            }
+            android.media.projection.MediaProjectionManager projectionManager =
+                (android.media.projection.MediaProjectionManager) getContext()
+                    .getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
+            if (projectionManager == null) {
+                AiShieldClassifier.Analysis unavailable = AiShieldClassifier.captureUnavailable(
+                    "screen",
+                    "Android MediaProjection is not available on this device."
+                );
+                call.resolve(toJsObject(unavailable.toJson()));
+                return;
+            }
+            if (!aiShield().isModelAvailable()) {
+                call.resolve(toJsObject(aiShield().getStatus()));
+                return;
+            }
+            // Keep the cleanup and state transition together so concurrent
+            // bridge calls cannot both replace the active capture.
+            aiShield().prepareForScreenConsent();
+            projectionRequestPending = true;
+            projectionResultDelivered = false;
+            startActivityForResult(
+                call,
+                projectionManager.createScreenCaptureIntent(),
+                "aiShieldProjectionResult"
             );
-            call.resolve(toJsObject(unavailable.toJson()));
-            return;
         }
-        startActivityForResult(
-            call,
-            projectionManager.createScreenCaptureIntent(),
-            "aiShieldProjectionResult"
-        );
     }
 
     @ActivityCallback
     private void aiShieldProjectionResult(PluginCall call, ActivityResult result) {
-        if (call == null) {
-            return;
+        synchronized (this) {
+            if (call == null || !projectionRequestPending || projectionResultDelivered) {
+                return;
+            }
+            projectionResultDelivered = true;
+            projectionRequestPending = false;
         }
-        int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
-        Intent data = result == null ? null : result.getData();
-        aiShield().startScreen(resultCode, data);
-        call.resolve(toJsObject(aiShield().getStatus()));
+        try {
+            int resultCode = result == null ? Activity.RESULT_CANCELED : result.getResultCode();
+            Intent data = result == null ? null : result.getData();
+            aiShield().startScreen(resultCode, data);
+            call.resolve(toJsObject(aiShield().getStatus()));
+        } finally {
+            getBridge().releaseCall(call);
+        }
     }
 
     @PluginMethod
     public void stopAiShield(PluginCall call) {
         aiShield().stop();
         call.resolve(toJsObject(aiShield().getStatus()));
+    }
+
+    @PluginMethod
+    public void setAiShieldCloudUploadEnabled(PluginCall call) {
+        aiShield().setCloudUploadEnabled(call.getBoolean("enabled", false));
+        call.resolve();
     }
 
     @PluginMethod
@@ -450,7 +720,13 @@ public class SafeNetVpnPlugin extends Plugin {
         if (aiShieldManager == null) {
             aiShieldManager = new AiShieldManager(
                 getContext(),
-                analysis -> notifyListeners("aiShieldResult", toJsObject(analysis.toJson()))
+                analysis -> notifyListeners("aiShieldResult", toJsObject(analysis.toJson())),
+                (source, jpegBytes) -> {
+                    JSObject frame = new JSObject();
+                    frame.put("source", source);
+                    frame.put("imageBase64", Base64.encodeToString(jpegBytes, Base64.NO_WRAP));
+                    notifyListeners("aiShieldFrame", frame);
+                }
             );
         }
         return aiShieldManager;
@@ -461,6 +737,34 @@ public class SafeNetVpnPlugin extends Plugin {
             apkScannerExecutor = Executors.newSingleThreadExecutor();
         }
         return apkScannerExecutor;
+    }
+
+    @Override
+    protected Bundle saveInstanceState() {
+        Bundle state = super.saveInstanceState();
+        synchronized (this) {
+            if (state == null && !projectionRequestPending) {
+                return null;
+            }
+            if (state == null) {
+                state = new Bundle();
+            }
+            state.putBoolean(STATE_PROJECTION_PENDING, projectionRequestPending);
+            state.putBoolean(STATE_PROJECTION_RESULT_DELIVERED, projectionResultDelivered);
+        }
+        return state;
+    }
+
+    @Override
+    protected void restoreState(Bundle state) {
+        super.restoreState(state);
+        if (state == null) {
+            return;
+        }
+        synchronized (this) {
+            projectionRequestPending = state.getBoolean(STATE_PROJECTION_PENDING, false);
+            projectionResultDelivered = state.getBoolean(STATE_PROJECTION_RESULT_DELIVERED, false);
+        }
     }
 
     private String displayName(Uri uri) {
@@ -505,10 +809,11 @@ public class SafeNetVpnPlugin extends Plugin {
         return result;
     }
 
-    private Intent createServiceIntent(String type, String primaryAddress, String secondaryAddress) {
+    private Intent createServiceIntent(String type, String ipVersion, String primaryAddress, String secondaryAddress) {
         String apiOrigin = getConfigApiOrigin();
         return new Intent(getContext(), SafeNetVpnService.class)
             .putExtra(SafeNetVpnService.EXTRA_TYPE, type)
+            .putExtra(SafeNetVpnService.EXTRA_IP_VERSION, ipVersion)
             .putExtra(SafeNetVpnService.EXTRA_PRIMARY, primaryAddress)
             .putExtra(SafeNetVpnService.EXTRA_SECONDARY, secondaryAddress == null ? "" : secondaryAddress)
             .putExtra(SafeNetVpnService.EXTRA_API_ORIGIN, apiOrigin)
@@ -552,6 +857,7 @@ public class SafeNetVpnPlugin extends Plugin {
     protected void handleOnDestroy() {
         if (aiShieldManager != null) {
             aiShieldManager.handleDestroy();
+            aiShieldManager = null;
         }
         if (apkScannerExecutor != null) {
             apkScannerExecutor.shutdownNow();

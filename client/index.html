@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="preload" as="image" href="/safenet-astronaut-loader-transparent.png" />
+    <link rel="preload" as="image" href="/SafeNet_Astronaut_White_Background.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Rajdhani:wght@300..700&display=swap" rel="stylesheet">
@@ -27,8 +27,8 @@
         box-sizing: border-box;
         padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
         overflow: hidden;
-        background: #090b14;
-        color: #f8fafc;
+         background: #ffffff;
+          color: #000000;
         font-family: Arial, sans-serif;
         transition: opacity 220ms ease;
       }
@@ -37,15 +37,16 @@
         pointer-events: none;
       }
       .startup-loader-content {
-        display: flex;
-        width: min(100%, 420px);
-        height: 100%;
-        max-height: 100%;
+         position: relative;
+         display: flex;
+         width: 100%;
+         height: 100%;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: clamp(8px, 1.5vh, 14px);
-        text-align: center;
+        gap: clamp(10px, 1.8vh, 18px);
+         text-align: center;
+         isolation: isolate;
       }
       .startup-loader-kicker {
         margin: 0;
@@ -55,53 +56,38 @@
         letter-spacing: .28em;
         text-transform: uppercase;
       }
-      .startup-loader-stage {
+       .startup-loader-stage {
+         position: absolute;
+         inset: 0;
+         z-index: -1;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+       }
+      .startup-loader-art-frame {
         position: relative;
-        display: grid;
-        width: min(88vw, 430px);
-        height: min(76dvh, 720px);
-        min-height: 0;
-        place-items: center;
+        display: block;
+          width: 100%;
+          height: 100%;
       }
       .startup-loader-art {
         display: block;
         width: 100%;
         height: 100%;
-        object-fit: contain;
-        object-position: center;
+          object-fit: contain;
+         object-position: center center;
       }
       .startup-loader-overlay {
-        position: absolute;
-        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: clamp(7px, 1.4vh, 13px);
         flex-direction: column;
-        padding: 10px 12px;
-        box-sizing: border-box;
-      }
-      .startup-loader-overlay::before {
-        position: absolute;
-        inset: 50% auto auto 50%;
-        width: min(84%, 340px);
-        height: min(42%, 260px);
-        border: 1px solid rgba(248,250,252,.18);
-        border-radius: 18px;
-        background: rgba(9,11,20,.72);
-        box-shadow: 0 10px 36px rgba(0,0,0,.28);
-        content: "";
-        transform: translate(-50%, -50%);
-        backdrop-filter: blur(2px);
-      }
-      .startup-loader-overlay > * {
-        position: relative;
-        z-index: 1;
       }
       .startup-loader-title {
         margin: 0;
         max-width: min(78vw, 330px);
-        color: #f8fafc;
+         color: #000000;
         font-size: clamp(14px, 3.8vw, 21px);
         font-weight: 700;
         letter-spacing: .06em;
@@ -112,23 +98,23 @@
         width: min(78vw, 280px);
         height: 5px;
         overflow: hidden;
-        border: 1px solid rgba(148,163,184,.25);
+          border: 1px solid rgba(0,0,0,.35);
         border-radius: 999px;
-        background: rgba(30,41,59,.8);
+          background: rgba(0,0,0,.15);
       }
       #startup-loader-progress-bar {
         width: 100%;
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(90deg, #dc2626, #f87171);
-        box-shadow: 0 0 14px rgba(248,113,113,.75);
+         background: #dc2626;
+         box-shadow: 0 0 14px rgba(220,38,38,.55);
         transform: scaleX(0);
         transform-origin: left center;
         will-change: transform;
       }
       #startup-loader-percentage {
         min-width: 4ch;
-        color: #f87171;
+          color: #dc2626;
         font-family: monospace;
         font-size: 14px;
         font-weight: 700;
@@ -148,8 +134,8 @@
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: #ef4444;
-        box-shadow: 0 0 12px rgba(239,68,68,.9);
+          background: #ef4444;
+          box-shadow: 0 0 12px rgba(239,68,68,.9);
         animation: startup-loader-dot-pulse 900ms ease-in-out infinite;
       }
       .startup-loader-dot:nth-child(1) { top: 0; left: 17px; animation-delay: 0ms; }
@@ -164,9 +150,8 @@
         to { opacity: 1; transform: translateY(0); }
       }
       @media (max-height: 600px) {
+        #startup-loader { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
         .startup-loader-content { gap: 7px; }
-        .startup-loader-stage { height: min(62dvh, 360px); }
-        .startup-loader-overlay { gap: 5px; }
         .startup-loader-title { font-size: clamp(12px, 3.4vw, 17px); }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -176,11 +161,12 @@
       }
     </style>
   </head>
-  <body style="margin: 0; background: #090b14;">
+   <body style="margin: 0; background: #ffffff;">
     <audio
       id="safenet-soundtrack-audio"
       loop
-      preload="none"
+      autoplay
+      preload="auto"
       playsinline
       aria-hidden="true"
       src="https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav"
@@ -189,31 +175,32 @@
       id="startup-loader"
       role="status"
       aria-live="polite"
-      aria-label="Connecting to SafeNet Shield DNS Server+"
+       aria-label="Connecting to SafeNet Shield DNS Server+"
       aria-valuemin="0"
       aria-valuemax="100"
       aria-valuenow="0"
       aria-busy="true"
     >
-      <div class="startup-loader-content">
-        <p class="startup-loader-kicker">SafeNet Shield</p>
+       <div class="startup-loader-content">
         <div class="startup-loader-stage">
-          <img
-            class="startup-loader-art"
-            src="/safenet-astronaut-loader-transparent.png"
-            alt="SafeNet astronaut standing on the moon"
-          />
-          <div class="startup-loader-overlay">
-            <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
-            <div class="startup-loader-progress" aria-hidden="true">
-              <div id="startup-loader-progress-bar"></div>
-            </div>
-            <span id="startup-loader-percentage">0%</span>
-            <div class="startup-loader-dots" aria-label="Connecting">
-              <span class="startup-loader-dot"></span>
-              <span class="startup-loader-dot"></span>
-              <span class="startup-loader-dot"></span>
-            </div>
+          <div class="startup-loader-art-frame">
+            <img
+              class="startup-loader-art"
+                src="/SafeNet_Astronaut_White_Background.png"
+               alt="SafeNet Shield artwork"
+            />
+          </div>
+        </div>
+        <div class="startup-loader-overlay">
+           <h1 class="startup-loader-title">Connecting to SafeNet Shield DNS Server+</h1>
+          <div class="startup-loader-progress" aria-hidden="true">
+            <div id="startup-loader-progress-bar"></div>
+          </div>
+          <span id="startup-loader-percentage">0%</span>
+          <div class="startup-loader-dots" aria-label="Connecting">
+            <span class="startup-loader-dot"></span>
+            <span class="startup-loader-dot"></span>
+            <span class="startup-loader-dot"></span>
           </div>
         </div>
       </div>
@@ -237,10 +224,6 @@
             <div style="color:#60a5fa;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Network</div>
             <strong style="display:block;margin-top:8px;font-size:20px">Protected</strong>
           </div>
-          <div style="border:1px solid rgba(52,211,153,.25);border-radius:14px;padding:18px;background:rgba(30,41,59,.55)">
-            <div style="color:#6ee7b7;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Soundtrack</div>
-            <strong style="display:block;margin-top:8px;font-size:20px">Ready</strong>
-          </div>
         </div>
       </div>
     </div>
@@ -254,19 +237,48 @@
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.muted = savedMuted;
-        audio.addEventListener("ended", () => {
-          if (document.getElementById("startup-loader")) return;
-          audio.currentTime = 0;
-          void audio.play().catch(() => undefined);
-        });
+         const stopAudio = () => {
+           audio.pause();
+           audio.currentTime = 0;
+         };
+         const startAudio = () => {
+            if (window.localStorage.getItem(mutedKey) === "true") {
+              audio.muted = true;
+              return;
+            }
+            audio.muted = false;
+           const playback = audio.play();
+           if (playback && typeof playback.catch === "function") {
+             void playback.catch(() => undefined);
+           }
+         };
+         const syncAudioPreference = () => {
+           const isMuted = window.localStorage.getItem(mutedKey) === "true";
+           audio.muted = isMuted;
+           if (isMuted) {
+             stopAudio();
+           } else {
+             startAudio();
+           }
+         };
+         if (savedMuted) {
+           stopAudio();
+         } else {
+           startAudio();
+         }
+         window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
+         window.addEventListener("keydown", startAudio, { once: true });
+         window.addEventListener("safenet-soundtrack-change", syncAudioPreference);
+         window.addEventListener("pagehide", stopAudio);
+         document.addEventListener("visibilitychange", () => {
+           if (document.hidden) {
+             stopAudio();
+           } else {
+             startAudio();
+           }
+         });
+         audio.addEventListener("ended", startAudio);
 
-        const stopAudioForPageClose = () => {
-          audio.pause();
-          audio.currentTime = 0;
-        };
-
-        window.addEventListener("pagehide", stopAudioForPageClose);
-        window.addEventListener("beforeunload", stopAudioForPageClose);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

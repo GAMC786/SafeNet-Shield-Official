@@ -6,3 +6,5 @@ vite.config.ts.*
 *.tar.gz
 .tools/
 .auth/
+tmp.*/preflight-ca.crt
+tmp.*/preflight-ca.key

@@ -1,6 +1,6 @@
 # SafeNet DNS - Native Build Instructions
 
-This document provides instructions for building native installers for Android (APK) and Windows (MSI).
+This document provides instructions for building the SafeNet Android APK.
 
 ## Prerequisites
 
@@ -9,13 +9,6 @@ This document provides instructions for building native installers for Android (
 - Android SDK Command-line Tools
 - Java JDK 17+
 - Gradle
-
-### For Windows MSI:
-- Node.js 22+
-- Windows OS (or Wine on Linux/macOS)
-- Visual Studio Build Tools (for native modules)
-
----
 
 ## Building Android APK
 
@@ -83,6 +76,43 @@ project. The URL must be a public HTTPS origin without a path or query. Do not
 use `localhost` or a private network address: on the phone, `localhost` refers
 to the phone itself.
 
+### Optional Step 1a: Configure the SafeNet WireGuard gateway
+
+WireGuard controls are included only when the APK build receives a complete
+SafeNet-operated gateway and peer configuration. The values are validated by
+the official WireGuard parser; an incomplete build keeps the controls hidden
+instead of starting an arbitrary or competing VPN. Supply these values through
+the environment or equivalent Gradle properties before running the Android
+build:
+
+```bash
+export SAFENET_WIREGUARD_GATEWAY_OWNER=SafeNet
+export SAFENET_WIREGUARD_GATEWAY_ENDPOINT=wireguard.example.com:51820
+export SAFENET_WIREGUARD_PEER_PUBLIC_KEY='<gateway-public-key>'
+export SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY='<client-private-key>'
+export SAFENET_WIREGUARD_CLIENT_ADDRESS=10.66.0.2/32
+export SAFENET_WIREGUARD_ALLOWED_IPS='0.0.0.0/0, ::/0'
+export SAFENET_WIREGUARD_DNS_SERVERS=10.66.0.1
+export SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE=25
+```
+
+Do not commit the client private key or put it in frontend assets. The WireGuard
+backend owns Android's single VPN permission while the tunnel is active, so
+SafeNet DNS and WireGuard start requests reject conflicting ownership. The
+Quick Settings tile follows whichever SafeNet tunnel is active.
+
+The release workflows read these same eight names from protected GitHub
+repository secrets: `SAFENET_WIREGUARD_GATEWAY_OWNER`,
+`SAFENET_WIREGUARD_GATEWAY_ENDPOINT`, `SAFENET_WIREGUARD_PEER_PUBLIC_KEY`,
+`SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY`, `SAFENET_WIREGUARD_CLIENT_ADDRESS`,
+`SAFENET_WIREGUARD_ALLOWED_IPS`, `SAFENET_WIREGUARD_DNS_SERVERS`, and
+`SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE`. The release job fails before
+packaging if any value is missing, and the private key is passed only to
+Gradle's native build configuration, never to the web build or frontend
+assets. A configured app status reports the SafeNet gateway owner, endpoint,
+peer public key, allowed IPs, and DNS servers; it never reports the client
+private key.
+
 ### Step 2: Open in Android Studio
 ```bash
 npx cap open android
@@ -102,6 +132,19 @@ The debug APK will be at: `android/app/build/outputs/apk/debug/app-debug.apk`
 
 Gradle verifies that the validated mobile build marker exists. If it asks you to
 run `scripts/build-android.sh`, repeat Step 1 before building the APK.
+
+For the deterministic native validation used before release packaging, run this
+from the project root after Step 1:
+
+```bash
+npm run android:check
+```
+
+This runs `assembleDebug` with the pinned Android SDK and forces Java
+compilation. It includes `SafeNetVpnPlugin.java` and `SafeNetVpnService.java`,
+so resolver address-family forwarding must compile before a release APK is
+built. The command reads the SDK path from `ANDROID_SDK_ROOT`, `ANDROID_HOME`,
+or `android/local.properties`; do not commit `android/local.properties`.
 
 ### For Release APK (signed):
 1. Generate a keystore:
@@ -171,41 +214,6 @@ VPN or startup checks.
 
 ---
 
-## Building Windows MSI
-
-The MSI packages the web frontend and loads it from a local `file://` URL. It
-must be built with a separately running SafeNet DNS backend over HTTPS.
-
-### Step 1: Build the web application
-```bash
-DESKTOP_API_URL=https://your-server.example.com ./scripts/build-windows.sh
-```
-
-This validates the backend URL, builds the web application with that API origin,
-and creates the Windows installer. The URL must be a public HTTPS origin
-without a path or query.
-
-### Alternative: Run Electron Builder manually
-```bash
-VITE_API_URL=https://your-server.example.com npm run build
-npx electron-builder --win --x64 --publish never
-```
-
-### Output Files:
-- MSI installer: `dist-electron/SafeNet DNS Setup X.X.X.msi`
-- NSIS installer: `dist-electron/SafeNet DNS Setup X.X.X.exe`
-
-### For specific targets only:
-```bash
-# MSI only
-npx electron-builder --win msi
-
-# NSIS only
-npx electron-builder --win nsis
-```
-
----
-
 ## Project Structure for Native Builds
 
 ```
@@ -217,18 +225,11 @@ project/
 │   │   │       └── apk/    # APK files here
 │   │   └── src/
 │   └── gradle/
-├── electron/
-│   ├── main.cjs            # Electron main process (CommonJS)
-│   └── preload.cjs         # Electron preload script (CommonJS)
 ├── build/
-│   ├── icon.ico            # Windows icon
-│   ├── icon.icns           # macOS icon
-│   └── icon.png            # Linux icon
+│   └── icon.png             # Android/web icon source
 ├── dist/
 │   └── public/             # Built web assets
-├── dist-electron/          # Electron build output
 ├── capacitor.config.ts     # Capacitor configuration
-└── electron-builder.yml    # Electron Builder configuration
 ```
 
 ---
@@ -243,12 +244,6 @@ Place icons in `android/app/src/main/res/` directories:
 - `mipmap-xxhdpi/ic_launcher.png` (144x144)
 - `mipmap-xxxhdpi/ic_launcher.png` (192x192)
 
-### For Windows/macOS/Linux:
-Place icons in `build/` directory:
-- `icon.ico` - Windows (256x256 recommended)
-- `icon.icns` - macOS
-- `icon.png` - Linux (512x512 recommended)
-
 ---
 
 ## Troubleshooting
@@ -262,16 +257,9 @@ Place icons in `build/` directory:
 - Re-run the Android build script before creating every APK so stale web assets
   are not left in `android/app/src/main/assets/public`
 
-### Windows Build Issues:
-- Install Windows Build Tools: `npm install --global windows-build-tools`
-- Ensure you have sufficient disk space
-- Run as Administrator if permission issues occur
-
----
-
 ## Automated Builds with GitHub Actions
 
-This project includes a GitHub Actions workflow that automatically builds APK and MSI files.
+This project includes a GitHub Actions workflow that automatically builds the Android APK.
 
 ### Setup:
 1. Push this project to a GitHub repository
@@ -282,7 +270,7 @@ This project includes a GitHub Actions workflow that automatically builds APK an
 2. Click the **Actions** tab
 3. Click the latest workflow run
 4. Scroll down to **Artifacts**
-5. Download **SafeNet-DNS-Android** (APK) or **SafeNet-DNS-Windows** (MSI)
+5. Download **SafeNet-DNS-Android** (APK)
 
 ### Create a Release with downloads:
 1. Create a git tag: `git tag v1.0.0`
@@ -354,8 +342,8 @@ and is not modified by the workflow.
 
 The build workflow is present in both repositories after a synchronization
 pull request is merged. It builds validation artifacts for branches and pull
-requests. A `v*` tag runs the release job in the repository where that tag was
-created and attaches the APK and MSI artifacts to a GitHub Release.
+requests. A `v*` tag runs the Android release job in the repository where that
+tag was created and attaches the APK artifacts to a GitHub Release.
 
 To publish an official release:
 
@@ -367,7 +355,7 @@ To publish an official release:
    git tag -a v1.0.0 -m "SafeNet DNS v1.0.0"
    git push origin v1.0.0
    ```
-4. Download the APK and MSI from the resulting official GitHub Release.
+4. Download the APK artifacts from the resulting official GitHub Release.
 
 Tags created only in the source repository are not copied automatically and do
 not publish an official release. This keeps official releases tied to reviewed

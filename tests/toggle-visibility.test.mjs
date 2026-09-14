@@ -49,7 +49,15 @@ async function startVite() {
     [viteBin, "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: rootDirectory,
-      env: { ...process.env, NODE_ENV: "test" },
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        VITE_SPEEDTEST_DOWNLOAD_SECONDS: process.env.VITE_SPEEDTEST_DOWNLOAD_SECONDS || "0.2",
+        VITE_SPEEDTEST_UPLOAD_SECONDS: process.env.VITE_SPEEDTEST_UPLOAD_SECONDS || "0.2",
+        VITE_SPEEDTEST_PING_COUNT: process.env.VITE_SPEEDTEST_PING_COUNT || "2",
+        VITE_SPEEDTEST_UPLOAD_BYTES: process.env.VITE_SPEEDTEST_UPLOAD_BYTES || "32000",
+        VITE_SPEEDTEST_REQUEST_TIMEOUT_MS: process.env.VITE_SPEEDTEST_REQUEST_TIMEOUT_MS || "500",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -77,22 +85,20 @@ async function startVite() {
 function mockApi(
   page,
   {
-    authenticated = true,
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
+    cloudflareProbeDelayMs = 0,
     settingsDelayMs = 0,
     dnsDelayMs = 0,
   } = {},
 ) {
   let settings = {
     id: 1,
-    pinRecoveryEmail: null,
-    pinConfigured: true,
-    isPinEnabled: true,
     aiShieldEnabled: true,
     alwaysOnEnabled: false,
     deviceAdminEnabled: false,
     firewallEnabled: false,
+    preventDnsOverrides: true,
     theme: "red-gray-blue",
   };
   let dnsServers = [
@@ -163,7 +169,7 @@ function mockApi(
       lastIpAddress: null,
       lastUpdateTime: null,
       isEnabled: true,
-      updateInterval: 3600000,
+      updateInterval: 3600,
     },
     {
       id: 2,
@@ -172,7 +178,7 @@ function mockApi(
       lastIpAddress: null,
       lastUpdateTime: null,
       isEnabled: false,
-      updateInterval: 3600000,
+      updateInterval: 3600,
     },
   ];
 
@@ -182,8 +188,37 @@ function mockApi(
         status: 200,
         contentType: "application/json",
         headers: { "access-control-allow-origin": "*" },
-        body: JSON.stringify({ iceServers: [] }),
+        body: JSON.stringify({
+          username: "test-user",
+          credential: "test-password",
+          server: "turn.speed.cloudflare.com:50000",
+        }),
       });
+    }),
+    page.route("https://speed.cloudflare.com/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname === "/turn-creds") {
+        await route.fallback();
+        return;
+      }
+      if (cloudflareProbeDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, cloudflareProbeDelayMs));
+      }
+      if (url.pathname === "/__down") {
+        const requestedBytes = Number(url.searchParams.get("bytes") || 0);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/octet-stream",
+          body: Buffer.alloc(Math.min(Math.max(requestedBytes, 1), 1_000_000)),
+        });
+        return;
+      }
+      if (url.pathname === "/__up") {
+        await route.fulfill({ status: 200, contentType: "text/plain", body: "" });
+        return;
+      }
+      await route.fulfill({ status: 204, body: "" });
     }),
     page.route("**/api/**", async (route) => {
       const request = route.request();
@@ -191,17 +226,7 @@ function mockApi(
       const method = request.method();
       let response;
 
-      if (url.pathname === "/api/auth/status") {
-        response = { authenticated, pinRequired: true };
-      } else if (url.pathname === "/api/settings" && method === "GET") {
-        if (!authenticated) {
-          await route.fulfill({
-            status: 401,
-            contentType: "application/json",
-            body: JSON.stringify({ message: "Authentication required" }),
-          });
-          return;
-        }
+      if (url.pathname === "/api/settings" && method === "GET") {
         if (settingsDelayMs) {
           await new Promise((resolve) => setTimeout(resolve, settingsDelayMs));
         }
@@ -256,19 +281,6 @@ function mockApi(
         }
         antivirusSettings = { ...antivirusSettings, ...update };
         response = antivirusSettings;
-      } else if (url.pathname === "/api/speedtest/ping" && method === "GET") {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        response = { timestamp: Date.now() };
-      } else if (url.pathname === "/api/speedtest/download" && method === "GET") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/octet-stream",
-          headers: { "cache-control": "no-store" },
-          body: Buffer.alloc(Number(url.searchParams.get("size")) || 100000),
-        });
-        return;
-      } else if (url.pathname === "/api/speedtest/upload" && method === "POST") {
-        response = { bytesReceived: 4000000 };
       } else if (url.pathname === "/api/antivirus/feeds" && method === "GET") {
         response = threatFeeds;
       } else if (url.pathname.startsWith("/api/antivirus/feeds/") && method === "PATCH") {
@@ -302,6 +314,17 @@ function mockApi(
         response = antivirusStats;
       } else if (url.pathname === "/api/ddns" && method === "GET") {
         response = updaters;
+      } else if (url.pathname.startsWith("/api/ddns/") && url.pathname.endsWith("/test") && method === "POST") {
+        response = {
+          success: true,
+          message: "Manual update succeeded for home.example.com. Credentials and provider URL configuration are valid.",
+        };
+      } else if (url.pathname === "/api/speedtest/turn-creds" && method === "GET") {
+        response = {
+          username: "test-user",
+          credential: "test-password",
+          server: "turn.speed.cloudflare.com:50000",
+        };
       } else if (url.pathname === "/api/ddns/update-all" && method === "POST") {
         const configuredResponse = ddnsUpdateResponses[ddnsUpdateAttempt] || { status: 200, body: {} };
         ddnsUpdateAttempt += 1;
@@ -331,75 +354,68 @@ function mockApi(
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ ip: "198.51.100.24" }),
+      }),
+    ),
+    page.route("https://ipapi.co/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", org: "SafeNet Test ISP", city: "Test City", country_name: "Testland" }),
+      }),
+    ),
+    page.route("https://ipinfo.io/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", org: "SafeNet Test ISP", city: "Test City", country: "Testland" }),
+      }),
+    ),
+    page.route("https://ipwho.is/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ip: "198.51.100.24", connection: { org: "SafeNet Test ISP" }, city: "Test City", country: "Testland" }),
       }),
     ),
   ]);
 }
 
-test("PIN does not block startup and still protects Settings recovery", async () => {
-  const page = await browser.newPage({ viewport: viewports[0] });
-  await mockApi(page, { authenticated: false });
-
-  await page.goto(baseUrl);
-  await page.getByRole("heading", { name: "Command Center" }).waitFor();
-   await page.getByRole("heading", { name: "DNS Protection VPN" }).waitFor();
-   await page.getByText("Available in the SafeNet Android APK", { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText("Secure Access Required", { exact: true }).count(),
-    0,
-    "startup should not show the PIN gate",
-  );
-
-  await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByText("Secure Access Required", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Forgot PIN? Recover by email" }).waitFor();
-  await page.close();
-});
-
-test("Settings keep controls safe while loading and show the current version", async () => {
+test("Settings show the current version without firewall controls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
-
-  for (const name of ["AI Shield", "App Firewall", "Always-On VPN", "Device Admin", "PIN Protection"]) {
-    assert.equal(
-      await page.getByRole("switch", { name }).isDisabled(),
-      true,
-      `${name} must be disabled until saved settings load`,
-    );
+  await page.getByRole("heading", { name: "DeepCleer Ai Detector" }).waitFor();
+  assert.equal(await page.getByTestId("switch-ai-camera").count(), 1);
+  assert.equal(await page.getByTestId("switch-ai-screen").count(), 1);
+  for (const mediaType of ["images", "videos", "livestreams", "texts", "audios"]) {
+    const mediaSwitch = page.getByTestId(`switch-ai-${mediaType}`);
+    assert.equal(await mediaSwitch.count(), 1);
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
+    await mediaSwitch.click();
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "unchecked");
+    await mediaSwitch.click();
+    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
   }
-  assert.equal(await page.getByRole("button", { name: "Set PIN" }).isDisabled(), true);
-  assert.equal(await page.getByLabel("PIN Recovery Email").isDisabled(), true);
+  assert.equal(await page.getByTestId("button-ai-start-camera").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-start-screen").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-stop").count(), 1);
+  assert.equal(await page.getByText("Choose the media types DeepCleer Ai should detect while monitoring.", { exact: true }).count(), 1);
+  await page.getByRole("heading", { name: "Marathon of Hope" }).waitFor();
+  assert.equal(
+    await page.getByText("In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)", { exact: true }).count(),
+    1,
+  );
+  assert.equal(await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).count(), 1);
+  assert.equal(await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).evaluate((image) => image.naturalWidth > 0), true);
 
+  assert.equal(await page.getByRole("switch", { name: "Prevent DNS Overrides" }).count(), 0);
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
     `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
-  await page.close();
-});
-
-test("Settings PIN and recovery email actions validate and save safely", async () => {
-  const page = await browser.newPage({ viewport: viewports[0] });
-  await mockApi(page);
-  await page.goto(`${baseUrl}/settings`);
-  await page.getByRole("heading", { name: "System Settings" }).waitFor();
-
-  const recoveryEmail = page.getByLabel("PIN Recovery Email");
-  await recoveryEmail.fill("not-an-email");
-  await page.getByRole("button", { name: "Save recovery email" }).click();
-  await page.getByText("Recovery email required", { exact: true }).waitFor();
-
-  await recoveryEmail.fill("owner@example.com");
-  await page.getByRole("button", { name: "Save recovery email" }).click();
-  await page.getByText("Recovery email saved", { exact: true }).waitFor();
-
-  await page.getByPlaceholder("****").fill("4826");
-  await page.getByRole("button", { name: "Set PIN" }).click();
-  await page.getByText("PIN updated", { exact: true }).waitFor();
-  assert.equal(await page.getByPlaceholder("****").inputValue(), "");
   await page.close();
 });
 
@@ -445,20 +461,14 @@ after(async () => {
 });
 
 for (const viewport of viewports) {
-  test(`Settings toggle visibility and states at ${viewport.name} width`, async () => {
+  test(`Firewall access-rule toggle visibility and states at ${viewport.name} width`, async () => {
     const page = await browser.newPage({ viewport });
     await mockApi(page);
-    await page.goto(`${baseUrl}/settings`);
-    await page.getByRole("heading", { name: "System Settings" }).waitFor();
+    await page.goto(`${baseUrl}/firewall`);
+    await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const expectedStates = new Map([
-      ["AI Shield", "true"],
-      ["App Firewall", "false"],
-      ["Always-On VPN", "false"],
-      ["Device Admin", "false"],
-      ["PIN Protection", "true"],
-    ]);
+    const expectedStates = new Map([["Prevent DNS Overrides", "true"]]);
     const backgroundColors = new Set();
 
     for (const [name, expectedState] of expectedStates) {
@@ -478,37 +488,42 @@ for (const viewport of viewports) {
       backgroundColors.add(colors.background);
     }
 
-    assert.ok(backgroundColors.size >= 2, "checked and unchecked switches must have distinguishable colors");
+    assert.ok(backgroundColors.size >= 1, "the firewall access-rule switch must have a visible color");
+    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
 
-    const firewall = page.getByRole("switch", { name: "App Firewall" });
-    await focusWithKeyboard(page, firewall);
-    assert.equal(await firewall.evaluate((element) => element === document.activeElement), true);
+    const firewallMaster = page.getByTestId("switch-firewall-master");
+    await firewallMaster.click();
+    await waitForAttribute(firewallMaster, "aria-checked", "true");
+    assert.match(await page.getByText("Enforced while DNS Firewall is On.").textContent(), /Enforced/);
+    await page.getByText("Protected", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
+
+    const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
+    await focusWithKeyboard(page, dnsOverrides);
+    assert.equal(await dnsOverrides.evaluate((element) => element === document.activeElement), true);
     assert.notEqual(
-      await firewall.evaluate((element) => getComputedStyle(element).boxShadow),
+      await dnsOverrides.evaluate((element) => getComputedStyle(element).boxShadow),
       "none",
       "keyboard-focused switches need a visible focus ring",
     );
 
-    await firewall.click();
-    await firewall.waitFor({ state: "attached" });
-    for (let attempt = 0; attempt < 20 && (await firewall.getAttribute("aria-checked")) !== "true"; attempt += 1) {
+    await dnsOverrides.click();
+    await dnsOverrides.waitFor({ state: "attached" });
+    for (let attempt = 0; attempt < 20 && (await dnsOverrides.getAttribute("aria-checked")) !== "false"; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    assert.equal(await firewall.getAttribute("aria-checked"), "true", "unchecked switch should become checked");
+    assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
+    await page.getByText("Unprotected", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
 
-    for (const [name, expectedState] of [
-      ["AI Shield", "false"],
-      ["Always-On VPN", "true"],
-      ["Device Admin", "true"],
-      ["PIN Protection", "false"],
-    ]) {
+    for (const [name, expectedState] of [["Prevent DNS Overrides", "true"]]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
+    await page.getByText("Protected", { exact: true }).waitFor();
 
-    const browserVpn = page.getByRole("switch", { name: "DNS Protection VPN unavailable in web browser" });
-    assert.equal(await browserVpn.isDisabled(), true);
     await page.close();
   });
 
@@ -519,21 +534,25 @@ for (const viewport of viewports) {
     await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const activeToggle = page.getByRole("button", { name: "Disable home.example.com" });
-    const inactiveToggle = page.getByRole("button", { name: "Enable backup.example.com" });
+    const activeToggle = page.getByRole("button", { name: "Turn Off home.example.com" });
+    const inactiveToggle = page.getByRole("button", { name: "Turn On backup.example.com" });
+    const homeTestButton = page.getByTestId("button-test-ddns-1");
     assert.equal(await activeToggle.getAttribute("aria-pressed"), "true");
     assert.equal(await inactiveToggle.getAttribute("aria-pressed"), "false");
 
     await activeToggle.click();
-    const enableHome = page.getByRole("button", { name: "Enable home.example.com" });
+    const enableHome = page.getByRole("button", { name: "Turn On home.example.com" });
     await enableHome.waitFor();
     assert.equal(await enableHome.getAttribute("aria-pressed"), "false");
+    assert.equal(await homeTestButton.isDisabled(), false, "manual DDNS verification remains available when auto updates are off");
+    assert.match(await homeTestButton.getAttribute("class"), /text-muted-foreground/);
     await enableHome.click();
-    await page.getByRole("button", { name: "Disable home.example.com" }).waitFor();
+    await page.getByRole("button", { name: "Turn Off home.example.com" }).waitFor();
+    assert.match(await homeTestButton.getAttribute("class"), /text-sky-300/);
 
     for (const [name, toggle] of [
-      ["active DDNS toggle", activeToggle],
-      ["inactive DDNS toggle", inactiveToggle],
+      ["active DDNS toggle", page.getByRole("button", { name: "Turn Off home.example.com" })],
+      ["inactive DDNS toggle", page.getByRole("button", { name: "Turn On backup.example.com" })],
     ]) {
       const box = await toggle.boundingBox();
       assert.ok(box && box.width >= 44 && box.height >= 40, `${name} is too small to be visible`);
@@ -550,7 +569,7 @@ for (const viewport of viewports) {
     await autoMode.click();
     await page.getByRole("button", { name: "Auto Mode On" }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Auto Mode On" }).getAttribute("aria-pressed"), "true");
-    const enabledBackupToggle = page.getByRole("button", { name: "Disable backup.example.com" });
+    const enabledBackupToggle = page.getByRole("button", { name: "Turn Off backup.example.com" });
     await enabledBackupToggle.waitFor();
     await focusWithKeyboard(page, enabledBackupToggle);
     assert.equal(await enabledBackupToggle.evaluate((element) => element === document.activeElement), true);
@@ -563,11 +582,31 @@ for (const viewport of viewports) {
     await page.getByRole("button", { name: "Add DDNS" }).click();
     await page.getByRole("heading", { name: "New DDNS Updater" }).waitFor();
     const intervalInput = page.locator('input[type="number"]');
-    assert.equal(await intervalInput.inputValue(), "3600000");
+    assert.equal(await intervalInput.inputValue(), "60");
     await page.keyboard.press("Escape");
     await page.close();
   });
 }
+
+test("DDNS Test forces the selected provider update with the current public IP", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/ddns`);
+  await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
+
+  const testButton = page.getByRole("button", { name: "Test DDNS update for home.example.com" });
+  const updateRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && request.url().endsWith("/api/ddns/1/test"),
+  );
+  await testButton.click();
+  const request = await updateRequest;
+  assert.deepEqual(request.postDataJSON(), { clientIp: "198.51.100.24" });
+
+  const result = page.getByTestId("ddns-test-result-1");
+  await result.waitFor();
+  assert.match(await result.textContent(), /Manual update verification successful/);
+  await page.close();
+});
 
 test("DNS resolver management supports activation and CRUD controls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
@@ -606,16 +645,100 @@ test("DNS resolver management supports activation and CRUD controls", async () =
   await page.close();
 });
 
-test("Antivirus switches show success and recover after an update error", async () => {
+test("editable Dashboard and security form values survive returning to the page", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/`);
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  await page.evaluate(() => window.localStorage.clear());
+
+  const soundtrack = page.getByRole("switch", { name: /Soundtrack/ });
+  assert.equal(await soundtrack.getAttribute("aria-checked"), "true");
+  await page.getByTestId("dashboard-wireguard-card").waitFor();
+  const wireGuardToggle = page.getByRole("switch", { name: "SafeNet WireGuard On/Off" });
+  assert.equal(await wireGuardToggle.getAttribute("aria-checked"), "false");
+  assert.equal(await wireGuardToggle.isDisabled(), true);
+  await soundtrack.click();
+  await waitForAttribute(soundtrack, "aria-checked", "false");
+  await page.reload();
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  assert.equal(
+    await page.getByRole("switch", { name: /Soundtrack/ }).getAttribute("aria-checked"),
+    "false",
+    "Dashboard checkmark entries should survive a return",
+  );
+
+  await page.goto(`${baseUrl}/dns`);
+  await page.getByRole("heading", { name: "DNS Servers" }).waitFor();
+  await page.getByRole("button", { name: "Add a Resolver" }).click();
+  await page.getByTestId("input-resolver-name").fill("Persistent resolver");
+  await page.getByTestId("input-resolver-primary").fill("9.9.9.9");
+  await page.reload();
+  await page.getByRole("heading", { name: "Add a Resolver" }).waitFor();
+  assert.equal(await page.getByTestId("input-resolver-name").inputValue(), "Persistent resolver");
+  assert.equal(await page.getByTestId("input-resolver-primary").inputValue(), "9.9.9.9");
+
+  await page.goto(`${baseUrl}/ddns`);
+  await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
+  await page.getByRole("button", { name: "Add DDNS" }).click();
+  await page.getByTestId("input-ddns-hostname").fill("persistent.example.com");
+  await page.getByTestId("input-ddns-interval").fill("120");
+  await page.reload();
+  await page.getByRole("heading", { name: "New DDNS Updater" }).waitFor();
+  assert.equal(await page.getByTestId("input-ddns-interval").inputValue(), "120");
+  assert.equal(await page.getByTestId("input-ddns-hostname").inputValue(), "persistent.example.com");
+
+  await page.goto(`${baseUrl}/firewall`);
+  await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
+  await page.getByRole("button", { name: "New Rule" }).click();
+  await page.getByRole("heading", { name: "Create Firewall Rule" }).waitFor();
+  await page.getByTestId("input-firewall-rule-name").fill("Persistent firewall rule");
+  await page.getByTestId("input-firewall-source-address").fill("192.0.2.10");
+  await page.reload();
+  await page.getByRole("heading", { name: "Create Firewall Rule" }).waitFor();
+  assert.equal(await page.getByTestId("input-firewall-rule-name").inputValue(), "Persistent firewall rule");
+  assert.equal(await page.getByTestId("input-firewall-source-address").inputValue(), "192.0.2.10");
+
+  await page.goto(`${baseUrl}/antivirus`);
+  await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
+  await page.getByRole("tab", { name: /Threat Feeds/ }).click();
+  await page.getByTestId("button-add-feed").click();
+  await page.getByTestId("input-feed-name").fill("Persistent threat feed");
+  await page.getByTestId("input-feed-url").fill("https://example.com/feed.txt");
+  await page.reload();
+  await page.getByRole("tab", { name: /Threat Feeds/ }).click();
+  await page.getByRole("heading", { name: "Add Threat Feed" }).waitFor();
+  assert.equal(await page.getByTestId("input-feed-name").inputValue(), "Persistent threat feed");
+  assert.equal(await page.getByTestId("input-feed-url").inputValue(), "https://example.com/feed.txt");
+
+  await page.close();
+});
+
+test("Antivirus dashboard toggles protection status and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);
   await page.goto(`${baseUrl}/antivirus`);
   await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
 
-  const protectionSwitch = page.getByTestId("switch-antivirus-enabled");
-  await waitForAttribute(protectionSwitch, "aria-checked", "true");
-  await protectionSwitch.click();
-  await waitForAttribute(protectionSwitch, "aria-checked", "false");
+  const antivirusSwitch = page.getByTestId("switch-antivirus-enabled");
+  await waitForAttribute(antivirusSwitch, "aria-checked", "true");
+  const antivirusUpdate = page.waitForRequest((request) =>
+    request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
+  );
+  await antivirusSwitch.click();
+  await antivirusUpdate;
+  await waitForAttribute(antivirusSwitch, "aria-checked", "false");
+  await page.getByText("Unprotected", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
+
+  const antivirusEnableUpdate = page.waitForRequest((request) =>
+    request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
+  );
+  await antivirusSwitch.click();
+  await antivirusEnableUpdate;
+  await waitForAttribute(antivirusSwitch, "aria-checked", "true");
+  await page.getByText("Protected", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const malwareSwitch = page.getByTestId("switch-malware-settings");
@@ -839,7 +962,7 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("SafeNet wave speed test completes with populated results without browser errors", async () => {
+test("the built-in Cloudflare Measure Your Network UI has no external test button", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   const consoleErrors = [];
   const pageErrors = [];
@@ -853,37 +976,10 @@ test("SafeNet wave speed test completes with populated results without browser e
   await page.getByRole("heading", { name: "Speed Test" }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop");
 
-  await page.getByTestId("button-start-speedtest").click();
+  await page.getByText("Measure your network", { exact: true }).waitFor();
   await page.getByTestId("speedtest-wave-chart").waitFor();
-  await page.getByText("Measuring latency", { exact: true }).first().waitFor();
-
-  const pauseButton = page.getByTestId("button-pause-speedtest");
-  await pauseButton.waitFor({ state: "visible" });
-  await pauseButton.click();
-
-  const resumeButton = page.getByRole("button", { name: "Resume Test" });
-  await resumeButton.waitFor({ state: "visible" });
-  assert.equal(await pauseButton.isVisible(), false, "pausing should hide the pause control");
-
-  await resumeButton.click();
-  await pauseButton.waitFor({ state: "visible" });
-  await page.getByText("Measuring latency", { exact: true }).first().waitFor();
-
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 30000 });
-  await page.getByRole("button", { name: "Run Again" }).waitFor({ state: "visible" });
-  assert.equal(await page.getByRole("alert").count(), 0, "completed speed test should not show an error alert");
-  assert.equal(await page.getByTestId("speedtest-wave-chart").getAttribute("aria-label"), "Network performance wave chart, 100% complete");
-  for (const [testId, unit] of [
-    ["text-ping-result", "ms"],
-    ["text-download-result", "Mbps"],
-    ["text-upload-result", "Mbps"],
-  ]) {
-    assert.match(
-      (await page.getByTestId(testId).textContent()).trim(),
-      new RegExp(`^\\d+(?:\\.\\d+)? ${unit}$`),
-      `${testId} should show a completed numeric result`,
-    );
-  }
+  assert.equal(await page.getByTestId("button-official-cloudflare-speedtest").count(), 0);
+  assert.equal(await page.getByText("Open Official Test", { exact: true }).count(), 0);
 
   assert.deepEqual(
     pageErrors,
@@ -895,5 +991,80 @@ test("SafeNet wave speed test completes with populated results without browser e
     [],
     `speed test should not log console errors: ${consoleErrors.join("; ")}`,
   );
+  await page.close();
+});
+
+test("Measure Your Network completes Cloudflare phases and supports pause and resume", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  let probeCalls = 0;
+  let uploadProbeCalls = 0;
+  await mockApi(page, { cloudflareProbeDelayMs: 100 });
+  page.on("request", (request) => {
+    if (request.url().includes("speed.cloudflare.com/__")) {
+      probeCalls += 1;
+      if (request.url().includes("speed.cloudflare.com/__up")) uploadProbeCalls += 1;
+    }
+  });
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByRole("heading", { name: "Speed Test" }).waitFor();
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByTestId("button-pause-speedtest").waitFor();
+  await page.getByTestId("button-pause-speedtest").click();
+  await page.getByTestId("button-start-speedtest").waitFor();
+  assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Resume Test/);
+  assert.ok((await page.getByText("Paused", { exact: true }).count()) >= 1, "paused state should be visible");
+
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 60_000 });
+  assert.notEqual(await page.getByTestId("text-ping-result").textContent(), "—", "latency result should be populated");
+  assert.notEqual(await page.getByTestId("text-download-result").textContent(), "—", "download result should be populated");
+  assert.notEqual(await page.getByTestId("text-upload-result").textContent(), "—", "upload result should be populated");
+  assert.ok(await page.getByTestId("text-download-result").evaluate((element) => Number.parseFloat(element.textContent) > 0), "download result should be positive");
+  assert.ok(probeCalls > 1, "the browser engine should issue Cloudflare edge probes");
+  assert.ok(uploadProbeCalls > 0, "the browser engine should issue Cloudflare upload probes");
+  await page.close();
+});
+
+test("Measure Your Network reports a Cloudflare probe failure and retries successfully", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  let failProbes = true;
+  await page.route("https://speed.cloudflare.com/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/__down" && failProbes) {
+      await route.fulfill({ status: 503, contentType: "text/plain", body: "Cloudflare probe unavailable" });
+      failProbes = false;
+      return;
+    }
+    await route.fallback();
+  });
+  await mockApi(page);
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByRole("alert").waitFor();
+  assert.match(await page.getByTestId("button-start-speedtest").textContent(), /Run Again/);
+
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 10_000 });
+  await page.close();
+});
+
+test("Measure Your Network exposes a bounded failure when the Cloudflare probe stalls", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, { cloudflareProbeDelayMs: 100 });
+  await page.route("https://speed.cloudflare.com/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/__down") {
+      await route.abort("timedout");
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(`${baseUrl}/speedtest`);
+  await page.getByTestId("button-start-speedtest").click();
+  await page.getByRole("alert").waitFor({ timeout: 5_000 });
+  assert.match(await page.getByText("Test interrupted", { exact: true }).textContent(), /Test interrupted/);
   await page.close();
 });

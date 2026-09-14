@@ -18,7 +18,6 @@
 - [Playwright failure simulation](playwright-failure-simulation.md) — simulate client request failures with invalid JSON when strict no-console assertions would treat mocked HTTP errors as browser errors.
 - [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
-- [Cloudflare speed test integration](cloudflare-speedtest-integration.md) — Cloudflare’s public test denies iframe embedding; use the official browser engine package for an in-app ad-free test.
 - [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
@@ -29,6 +28,7 @@
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
  - [Android Clerk startup configuration](android-clerk-startup-config.md) — packaged builds must load public Clerk config before mounting React or a missing CI key produces a blank WebView.
 - [Android startup loader first paint](android-startup-loader-first-paint.md) — render the loader before async Clerk configuration so fast WebView startup cannot skip it.
+- [Capacitor activity-result recovery](capacitor-activity-result-recovery.md) — restore plugin-local pending/result state because Capacitor rebuilds pending activity calls as dangling callbacks.
  - [Clerk WebView proxy origin](clerk-webview-proxy-origin.md) — native WebViews must present the public proxy origin to Clerk upstream or Clerk rejects the localhost origin.
 - [Android instrumentation metadata](android-instrumentation-metadata.md) — test APK manifests may omit version metadata; validate package/signature and let hosted smoke exercise the runner.
 - [Auth-gated query errors](auth-gated-query-errors.md) — disabled query observers can still expose cached errors; gate global loading/error state by current auth eligibility.
@@ -36,10 +36,22 @@
 - [Stripe startup coordination](stripe-startup-coordination.md) — autoscaled startup mutations share one database lock and backfill uses an explicit object selection.
 - [Published Stripe connector auth](published-stripe-connector-auth.md) — production must prefer the deployment token when both repl and deployment connector tokens are present.
 - [Reference soundtrack and Rive loading](reference-soundtrack-rive-loading.md) — the reference audio can stream after a user gesture, but its mainstage Rive file lacks cross-origin headers.
+- [Startup artwork scaling](startup-artwork-scaling.md) — preserve the 1008×2244 PNG aspect ratio; phone viewport proportions make contain fill Android screens without cropping the shield or astronaut.
 - [ISP profile provider fallback](isp-profile-provider-fallback.md) — public-IP ISP metadata services can rate-limit; use a browser-safe fallback chain and label results as inferred.
 - [Replit analytics cold-load delivery](replit-analytics-cold-load.md) — async tracker injection can drop return events fired during the first Settings mount; queue them before relying on published analytics.
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
 - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
+- [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.
 - [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
+- [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.
+- [DDNS interval units](ddns-interval-units.md) — DDNS accepts whole minutes at the API/UI boundary while persistence remains milliseconds and scheduler comparisons use seconds.
+- [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
+- [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
+- [Local ClamAV sidecar](local-clamav-sidecar.md) — when no external service is available, run token-protected clamd locally but re-verify on every fresh autoscale instance.
+- [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
+- [WireGuard release secret boundary](wireguard-release-secret-boundary.md) — tagged Android builds fail closed until all protected WireGuard values exist as GitHub Actions secrets.
+- [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
+- [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
+- [DeepCleer integration boundary](deepcleer-integration-boundary.md) — vendor onboarding requires accessKey/appId/eventId/tokenId and explicit frame-sharing consent before cloud moderation.

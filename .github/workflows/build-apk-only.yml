@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MOBILE_API_URL: https://safe-net-shield-official.replit.app
-      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -32,17 +31,15 @@ jobs:
         run: |
           set -euo pipefail
           package_version="$(node --input-type=module -e "import fs from 'node:fs'; process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
-          android_version="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' android/app/build.gradle | head -n 1)"
-          if [[ -z "$package_version" || -z "$android_version" ]]; then
-            echo 'Could not resolve the app version from package.json and android/app/build.gradle.' >&2
+          if [[ -z "$package_version" ]]; then
+            echo 'Could not resolve the app version metadata from package.json.' >&2
             exit 1
           fi
-          if [[ "$package_version" != "$android_version" ]]; then
-            echo "App version mismatch: package.json=$package_version, android/app/build.gradle=$android_version" >&2
-            exit 1
-          fi
-          echo "version=$package_version" >> "$GITHUB_OUTPUT"
-          echo "Verified Android release version: $package_version"
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$package_version" \
+            --expected-label package.json \
+            --mismatch-prefix "App version mismatch" \
+            --output "$GITHUB_OUTPUT"
 
       - name: Install dependencies with bounded retry
         id: npm_ci
@@ -58,17 +55,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Verify production auth bootstrap
+      - name: Verify production API availability
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "$MOBILE_API_URL/api/auth/status")"
+          response="$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "$MOBILE_API_URL/api/settings")"
           RESPONSE="$response" node --input-type=module <<'NODE'
           const status = JSON.parse(process.env.RESPONSE);
-          if (typeof status.authenticated !== 'boolean' || status.pinRequired !== false) {
-            throw new Error(`Production startup PIN prompt is not disabled: ${JSON.stringify(status)}`);
+          if (!status || typeof status.id !== 'number') {
+            throw new Error(`Production API response is invalid: ${JSON.stringify(status)}`);
           }
-          console.log('Production startup PIN prompt is disabled; Settings PIN UI is validated in the APK bundle.');
+          console.log('Production public API is available.');
           NODE
 
       - name: Build web assets and sync Android
@@ -91,11 +88,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install pinned Android SDK packages
+      - name: Install and verify Android toolchain from Gradle pins
         shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Compile Android native sources before APK packaging
+        shell: bash
+        run: ./scripts/check-android-native-build.sh
 
       - name: Decode release keystore
         shell: bash
@@ -109,6 +108,60 @@ jobs:
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/safenet-release.keystore"
 
+      - name: Validate SafeNet WireGuard release configuration
+        shell: bash
+        env:
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for variable in \
+            SAFENET_WIREGUARD_GATEWAY_ENDPOINT \
+            SAFENET_WIREGUARD_GATEWAY_OWNER \
+            SAFENET_WIREGUARD_PEER_PUBLIC_KEY \
+            SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY \
+            SAFENET_WIREGUARD_CLIENT_ADDRESS \
+            SAFENET_WIREGUARD_ALLOWED_IPS \
+            SAFENET_WIREGUARD_DNS_SERVERS \
+            SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "::error::$variable repository secret is required for configured Android release builds."
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+          if [[ -d "$GITHUB_WORKSPACE/dist/public" ]] &&
+            grep -R --binary-files=without-match --fixed-strings --quiet \
+              "$SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY" \
+              "$GITHUB_WORKSPACE/dist/public"; then
+            echo "::error::The WireGuard client private key must not be copied into frontend assets."
+            exit 1
+          fi
+          echo "Validated complete SafeNet WireGuard release configuration presence without printing secret values."
+
+      - name: Validate SafeNet WireGuard parser before APK packaging
+        working-directory: android
+        shell: bash
+        env:
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
+        run: ./gradlew :app:testDebugUnitTest --tests com.safenet.dns.SafeNetWireGuardConfigTest -Dsafenet.validateReleaseConfig=true
+
       - name: Build signed release APK
         working-directory: android
         env:
@@ -116,12 +169,22 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
         run: ./gradlew assembleRelease
 
-      - name: Verify APK and manual PIN bundle
+      - name: Verify APK bundle
+        id: verify-apk
         shell: bash
         env:
           APP_VERSION: ${{ steps.app_version.outputs.version }}
+          APP_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
         run: |
           set -euo pipefail
           apk=android/app/build/outputs/apk/release/app-release.apk
@@ -129,11 +192,7 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$apksigner" verify --verbose "$apk"
-           "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='52' versionName='$APP_VERSION'"
-          if ! grep -R -q "Secure Access Required" android/app/src/main/assets/public; then
-            echo 'Manual PIN entry UI was not included in the APK web bundle.' >&2
-            exit 1
-          fi
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.safenet.dns' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION'"
           stat -c '%n %s bytes' "$apk"
 
       - name: Generate APK SHA-256 checksum
@@ -156,6 +215,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK only
+        id: upload-apk-only
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}
@@ -163,8 +223,36 @@ jobs:
           if-no-files-found: error
 
       - name: Upload APK SHA-256 checksum
+        id: upload-apk-sha256
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-Android-APK-v${{ steps.app_version.outputs.version }}-SHA256
           path: ${{ runner.temp }}/app-release.apk.sha256
           if-no-files-found: error
+
+      - name: Publish Android APK summary
+        if: always()
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
+          APK_VERIFICATION_OUTCOME: ${{ steps.verify-apk.outcome }}
+          APK_ARTIFACT_URL: ${{ steps.upload-apk-only.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          CHECKSUM_ARTIFACT_URL: ${{ steps.upload-apk-sha256.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+          version_name="${ANDROID_VERSION_NAME:-unresolved}"
+          version_code="${ANDROID_VERSION_CODE:-unresolved}"
+          apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
+          apk_url="${APK_ARTIFACT_URL:-unavailable}"
+          checksum_url="${CHECKSUM_ARTIFACT_URL:-unavailable}"
+          {
+            echo "## Android APK verification"
+            echo
+            echo "- **Resolved versionName:** \`$version_name\`"
+            echo "- **Resolved versionCode:** \`$version_code\`"
+            echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
+            echo "- **APK checksum:** [preserved SHA-256 artifact]($checksum_url)"
+            echo "- **Instrumentation APK verification:** \`not run in APK-only workflow\`"
+          } >> "$GITHUB_STEP_SUMMARY"

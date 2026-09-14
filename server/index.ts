@@ -1,59 +1,16 @@
+import "./instrumentation";
 import express, { type Request, Response, NextFunction } from "express";
-import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startDdnsScheduler } from "./ddns-service";
-import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
 import { registerRequestOriginMiddleware } from "./request-origin";
-import {
-  CLERK_PROXY_PATH,
-  clerkProxyMiddleware,
-  getClerkProxyHost,
-} from "./middlewares/clerkProxyMiddleware";
+import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 
 const app = express();
 const httpServer = createServer(app);
 
 app.set("trust proxy", 1);
-
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
-
-const sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret) {
-  throw new Error("SESSION_SECRET must be set.");
-}
-
-const PostgresSessionStore = connectPgSimple(session);
-
-app.use(
-  session({
-    secret: sessionSecret,
-    store: new PostgresSessionStore({
-      pool,
-      createTableIfMissing: true,
-    }),
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 1000 * 60 * 60 * 12,
-    },
-  }),
-);
 
 declare module "http" {
   interface IncomingMessage {
@@ -90,7 +47,22 @@ app.use((req, res, next) => {
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
+    if (
+      (path === "/api/telemetry/glitchtip" || path === "/api/speedtest/turn-creds") &&
+      bodyJson &&
+      typeof bodyJson === "object"
+    ) {
+      capturedJsonResponse =
+        path === "/api/telemetry/glitchtip"
+          ? { ...bodyJson, dsn: bodyJson.dsn ? "[configured]" : null }
+          : {
+              ...bodyJson,
+              username: bodyJson.username ? "[configured]" : null,
+              credential: bodyJson.credential ? "[configured]" : null,
+            };
+    } else {
+      capturedJsonResponse = bodyJson;
+    }
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
@@ -98,7 +70,13 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+    if (capturedJsonResponse) {
+      if (path === "/api/integrations/deepcleer/image") {
+        capturedJsonResponse = {
+          provider: "deepcleer",
+          result: res.statusCode < 400 ? "received" : "failed",
+        };
+      }
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
@@ -111,6 +89,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+  installGlitchTipExpressErrorHandler(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -146,6 +125,14 @@ app.use((req, res, next) => {
       // Start DDNS scheduler for automatic updates
       startDdnsScheduler();
       log("DDNS scheduler started");
+      void import("./clamav-local")
+        .then(({ startLocalClamAv }) => startLocalClamAv())
+        .catch((error) => {
+          log(
+            `Local ClamAV startup deferred: ${error instanceof Error ? error.message : "engine unavailable"}`,
+            "clamav",
+          );
+        });
     },
   );
 })();

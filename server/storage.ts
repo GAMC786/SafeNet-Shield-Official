@@ -1,13 +1,13 @@
 import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
-  antivirusSettings, threatFeeds, antivirusEvents,
+  antivirusSettings, clamavVerifications, threatFeeds, antivirusEvents,
   type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
+import type { ClamAvVerificationRecord } from "./clamav-service";
 import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
-import { eq, desc, asc, count } from "drizzle-orm";
-import { hashPin, verifyPin } from "./pin-security";
+import { and, eq, desc, asc, count, isNull, lt, or } from "drizzle-orm";
 
 export interface IStorage {
   // DNS Servers
@@ -31,7 +31,6 @@ export interface IStorage {
   // Settings
   getSettings(): Promise<AppSettings>;
   updateSettings(updates: Partial<InsertAppSettings>): Promise<AppSettings>;
-  resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean>;
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
   createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
@@ -39,6 +38,7 @@ export interface IStorage {
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
   updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater>;
+  claimDdnsUpdate(id: number, notBefore: Date): Promise<boolean>;
 
   // Firewall Rules
   getFirewallRules(): Promise<FirewallRule[]>;
@@ -49,6 +49,8 @@ export interface IStorage {
   // Antivirus
   getAntivirusSettings(): Promise<AntivirusSettings>;
   updateAntivirusSettings(updates: Partial<InsertAntivirusSettings>): Promise<AntivirusSettings>;
+  getClamAvVerification(): Promise<ClamAvVerificationRecord | null>;
+  saveClamAvVerification(record: ClamAvVerificationRecord): Promise<void>;
   getThreatFeeds(): Promise<ThreatFeed[]>;
   createThreatFeed(feed: InsertThreatFeed): Promise<ThreatFeed>;
   updateThreatFeed(id: number, updates: Partial<InsertThreatFeed>): Promise<ThreatFeed>;
@@ -170,33 +172,6 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async resetPinWithRecoveryCode(email: string, code: string, pin: string): Promise<boolean> {
-    return await db.transaction(async (tx) => {
-      const [settings] = await tx.select().from(appSettings).for("update");
-      const valid =
-        settings?.isPinEnabled === true &&
-        settings.pinRecoveryEmail?.toLowerCase() === email.toLowerCase() &&
-        settings.pinRecoveryCodeExpiresAt !== null &&
-        settings.pinRecoveryCodeExpiresAt !== undefined &&
-        settings.pinRecoveryCodeExpiresAt.getTime() > Date.now() &&
-        verifyPin(settings.pinRecoveryCodeHash, code);
-
-      if (!valid || !settings) {
-        return false;
-      }
-
-      await tx.update(appSettings)
-        .set({
-          pinCode: hashPin(pin),
-          isPinEnabled: true,
-          pinRecoveryCodeHash: null,
-          pinRecoveryCodeExpiresAt: null,
-        })
-        .where(eq(appSettings.id, settings.id));
-      return true;
-    });
-  }
-
   async getDdnsUpdaters(): Promise<DdnsUpdater[]> {
     const updaters = await db.select().from(ddnsUpdaters);
     return await Promise.all(updaters.map(async (updater) => {
@@ -260,6 +235,22 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async claimDdnsUpdate(id: number, notBefore: Date): Promise<boolean> {
+    // Claim the write slot atomically so multiple autoscaled processes cannot
+    // all update the same provider during one scheduler interval.
+    const [claimed] = await db.update(ddnsUpdaters)
+      .set({ lastUpdateTime: new Date() })
+      .where(and(
+        eq(ddnsUpdaters.id, id),
+        or(
+          isNull(ddnsUpdaters.lastUpdateTime),
+          lt(ddnsUpdaters.lastUpdateTime, notBefore),
+        ),
+      ))
+      .returning({ id: ddnsUpdaters.id });
+    return Boolean(claimed);
+  }
+
   async getFirewallRules(): Promise<FirewallRule[]> {
     return await db.select().from(firewallRules).orderBy(desc(firewallRules.priority));
   }
@@ -298,6 +289,46 @@ export class DatabaseStorage implements IStorage {
       .where(eq(antivirusSettings.id, current.id))
       .returning();
     return updated;
+  }
+
+  async getClamAvVerification(): Promise<ClamAvVerificationRecord | null> {
+    const [record] = await db.select().from(clamavVerifications)
+      .where(eq(clamavVerifications.id, 1));
+    if (!record) return null;
+
+    return {
+      verified: true,
+      endpointUrl: record.endpointUrl,
+      engineVersion: record.engineVersion,
+      verifiedAt: record.verifiedAt.toISOString(),
+      message: record.message,
+      cleanScan: record.cleanScan as ClamAvVerificationRecord["cleanScan"],
+      threatScan: record.threatScan as ClamAvVerificationRecord["threatScan"],
+    };
+  }
+
+  async saveClamAvVerification(record: ClamAvVerificationRecord): Promise<void> {
+    await db.insert(clamavVerifications)
+      .values({
+        id: 1,
+        endpointUrl: record.endpointUrl,
+        engineVersion: record.engineVersion,
+        verifiedAt: new Date(record.verifiedAt),
+        message: record.message,
+        cleanScan: record.cleanScan,
+        threatScan: record.threatScan,
+      })
+      .onConflictDoUpdate({
+        target: clamavVerifications.id,
+        set: {
+          endpointUrl: record.endpointUrl,
+          engineVersion: record.engineVersion,
+          verifiedAt: new Date(record.verifiedAt),
+          message: record.message,
+          cleanScan: record.cleanScan,
+          threatScan: record.threatScan,
+        },
+      });
   }
 
   async getThreatFeeds(): Promise<ThreatFeed[]> {

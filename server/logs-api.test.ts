@@ -1,29 +1,19 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import express from "express";
-import session from "express-session";
 import test from "node:test";
 import type { IStorage } from "./storage";
 
 process.env.DATABASE_URL ??= "postgres://logs-api-test";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??= "logs-api-test";
 
-function getSetCookieValue(response: Response) {
-  return response.headers.get("set-cookie")?.split(";")[0] ?? "";
-}
-
-test("Android activity ingest requires an existing authenticated session", async () => {
+test("Android activity ingest is available without sign-in", async () => {
   const { registerRoutes } = await import("./routes");
   const { registerRequestOriginMiddleware } = await import("./request-origin");
   const records: Array<Record<string, unknown>> = [];
   const storage = {
     getSettings: async () => ({
       id: 1,
-      pinCode: null,
-      pinRecoveryEmail: null,
-      pinRecoveryCodeHash: null,
-      pinRecoveryCodeExpiresAt: null,
-      isPinEnabled: false,
       aiShieldEnabled: false,
       alwaysOnEnabled: false,
       deviceAdminEnabled: false,
@@ -38,14 +28,12 @@ test("Android activity ingest requires an existing authenticated session", async
   } as unknown as IStorage;
   const app = express();
   const httpServer = createServer(app);
-  app.use(session({
-    secret: "logs-api-test",
-    resave: false,
-    saveUninitialized: false,
-  }));
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, {
+    seed: false,
+    getUserId: (req) => req.headers["x-test-user"] === "true" ? "logs-test-user" : null,
+  });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -62,29 +50,10 @@ test("Android activity ingest requires an existing authenticated session", async
     reason: "domain_blocklist",
   };
   try {
-    const unauthenticated = await fetch(url, {
-      method: "POST",
-      headers: {
-        Origin: "https://localhost",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    assert.equal(unauthenticated.status, 401);
-    assert.equal(records.length, 0);
-
-    const authStatus = await fetch(
-      url.replace("/api/logs/ingest", "/api/auth/status"),
-    );
-    const cookie = getSetCookieValue(authStatus);
-    assert.equal(authStatus.status, 200);
-    assert.ok(cookie);
-
     const accepted = await fetch(url, {
       method: "POST",
       headers: {
         Origin: "https://localhost",
-        Cookie: cookie,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),

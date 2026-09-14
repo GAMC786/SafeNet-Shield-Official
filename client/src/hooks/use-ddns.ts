@@ -40,6 +40,30 @@ export function useDdnsUpdaters() {
   });
 }
 
+export type CloudflareStatus = {
+  connected: boolean;
+  authenticated: boolean;
+  ready: boolean;
+  activeZoneCount: number;
+  message: string;
+};
+
+export function useCloudflareStatus() {
+  return useQuery({
+    queryKey: ["/api/integrations/cloudflare/status"],
+    queryFn: async () => {
+      const response = await apiFetch("/api/integrations/cloudflare/status");
+      const status = await response.json() as CloudflareStatus;
+      if (!response.ok) {
+        throw new Error(status.message || "Cloudflare connection is unavailable.");
+      }
+      return status;
+    },
+    retry: false,
+    staleTime: 30000,
+  });
+}
+
 export function useCreateDdnsUpdater() {
   return useMutation({
     mutationFn: async (data: InsertDdnsUpdater) => {
@@ -149,6 +173,22 @@ export function useUpdateDdnsWithIp() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
+    },
+  });
+}
+
+export function useTestDdnsUpdater() {
+  const reactQueryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, clientIp }: { id: number; clientIp?: string }) => {
+      try {
+        return await apiRequest("POST", `/api/ddns/${id}/test`, clientIp ? { clientIp } : {});
+      } catch (error) {
+        throw getDdnsUpdateError(error);
+      }
+    },
+    onSettled: () => {
+      void reactQueryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
     },
   });
 }

@@ -38,6 +38,22 @@ const androidAppGradle = readFileSync(
   path.resolve(process.cwd(), "android/app/build.gradle"),
   "utf8",
 );
+const androidReleaseMetadata = {
+  versionCode: androidAppGradle.match(
+    /^\s*versionCode\s+([0-9]+)\s*$/m,
+  )?.[1],
+  versionName: androidAppGradle.match(
+    /^\s*versionName\s+"([^"]+)"\s*$/m,
+  )?.[1],
+};
+assert.ok(
+  androidReleaseMetadata.versionCode,
+  "android/app/build.gradle must define versionCode",
+);
+assert.ok(
+  androidReleaseMetadata.versionName,
+  "android/app/build.gradle must define versionName",
+);
 
 function getStepBlock(stepName: string) {
   const stepStart = workflow.indexOf(`      - name: ${stepName}`);
@@ -124,14 +140,14 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
     apkOnlyWorkflow,
     /MOBILE_API_URL: https:\/\/safe-net-shield-official\.replit\.app/,
   );
-  assert.match(apkOnlyWorkflow, /Verify production auth bootstrap/);
+  assert.match(apkOnlyWorkflow, /Verify production API availability/);
   assert.match(
     apkOnlyWorkflow,
-    /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/auth\/status"/,
+    /curl --fail --silent --show-error --location --connect-timeout 10 --max-time 20 "\$MOBILE_API_URL\/api\/settings"/,
   );
   assert.match(
     apkOnlyWorkflow,
-    /typeof status\.authenticated !== 'boolean' \|\| status\.pinRequired !== false/,
+    /typeof status\.id !== 'number'/,
   );
   assert.match(
     apkOnlyWorkflow,
@@ -141,9 +157,9 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   assert.match(apkOnlyWorkflow, /apksigner.*verify --verbose "\$apk"/);
   assert.match(
     apkOnlyWorkflow,
-     /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='52' versionName='\$APP_VERSION'"/,
+    /aapt.*dump badging "\$apk" \| grep -F "package: name='com\.safenet\.dns' versionCode='\$APP_VERSION_CODE' versionName='\$APP_VERSION'"/,
   );
-  assert.match(apkOnlyWorkflow, /Manual PIN entry UI was not included/);
+  assert.match(apkOnlyWorkflow, /name: Verify APK bundle/);
   assert.match(apkOnlyWorkflow, /name: Upload APK only/);
   assert.match(
     apkOnlyWorkflow,
@@ -187,13 +203,8 @@ test("main-branch APK-only workflow builds and uploads a signed APK and checksum
   );
 });
 
-test("Android WebView accepts the production PIN session cookie", () => {
-  assert.match(mainActivity, /CookieManager\.getInstance\(\)/);
-  assert.match(mainActivity, /setAcceptCookie\(true\)/);
-  assert.match(
-    mainActivity,
-    /setAcceptThirdPartyCookies\((?:getBridge\(\)\.getWebView\(\)|webView), true\)/,
-  );
+test("Android WebView starts without a sign-in cookie", () => {
+  assert.doesNotMatch(mainActivity, /setAcceptThirdPartyCookies/);
 });
 
 type PreflightFailureMode = "root" | "remount" | "cleanup-remains";
@@ -411,10 +422,10 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(releaseSmokeStep, /continue-on-error: true/);
   assert.match(
     workflow,
-    /needs: \[build-android, android-release-smoke, android-release-startup\]/,
+    /needs: \[build-android, android-release-smoke\]/,
   );
   const startupStart = workflow.indexOf("\n  android-release-startup:");
-  const startupJobEnd = workflow.indexOf("\n  build-windows:", startupStart);
+  const startupJobEnd = workflow.indexOf("\n  release:", startupStart);
   assert.ok(startupStart >= 0);
   assert.ok(startupJobEnd > startupStart);
   const startupJob = workflow.slice(startupStart, startupJobEnd);
@@ -431,15 +442,19 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   const releaseJob = workflow.slice(releaseStart);
   assert.match(releaseJob, /if: >-\n\s+always\(\)/);
   assert.match(releaseJob, /needs\.build-android\.result == 'success'/);
-  assert.match(releaseJob, /needs\.android-release-startup\.result == 'success'/);
+  assert.doesNotMatch(
+    releaseJob,
+    /needs\.android-release-startup\.result == 'success'/,
+  );
+  assert.match(
+    releaseJob,
+    /Dedicated writable-system startup validation:[\s\S]*not run for this hosted-only release path/,
+  );
   assert.match(
     releaseJob,
     /needs\.android-release-smoke\.result == 'success'[\s\S]*needs\.android-release-smoke\.result == 'failure'/,
   );
-  assert.match(
-    workflow,
-    /build-windows:\n\s+# Tagged releases.*\n\s+# Windows packaging lane.*\n\s+if: github\.event_name != 'schedule' && !startsWith\(github\.ref, 'refs\/tags\/v'\)/s,
-  );
+  assert.doesNotMatch(workflow, /build-windows|Windows packaging lane|Windows MSI/);
   assert.doesNotMatch(workflow, /name: Download Windows artifact/);
   assert.doesNotMatch(workflow, /artifacts\/windows\/\*\.msi/);
   const releaseVerifyStep = getStepBlock("Verify Android release APK");
@@ -447,7 +462,11 @@ test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(releaseVerifyStep, /apksigner.*verify --verbose "\$test_apk"/);
   assert.match(
     releaseVerifyStep,
-     /versionCode='52' versionName='\$expected_version'/,
+    /versionCode='\$ANDROID_VERSION_CODE' versionName='\$ANDROID_VERSION_NAME'/,
+  );
+  assert.match(
+    releaseVerifyStep,
+    /env:\n\s+ANDROID_VERSION_NAME: \$\{\{ steps\.android_release_metadata\.outputs\.version_name \}\}\n\s+ANDROID_VERSION_CODE: \$\{\{ steps\.android_release_metadata\.outputs\.version_code \}\}/,
   );
   assert.match(
     releaseVerifyStep,
@@ -556,7 +575,8 @@ function runReleaseApkVerificationFixture({
         ...process.env,
         ANDROID_HOME: fixture.sdkRoot,
         ANDROID_SDK_ROOT: "",
-         GITHUB_REF_NAME: "v1.0.60",
+        ANDROID_VERSION_CODE: androidReleaseMetadata.versionCode,
+        ANDROID_VERSION_NAME: androidReleaseMetadata.versionName,
         MOCK_APP_BADGING: fixture.appBadging,
         MOCK_TEST_BADGING: fixture.testBadging,
         PATH: `${fixture.binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -581,8 +601,7 @@ test("release APK verification validates app and instrumentation badging indepen
   );
 
   const result = runReleaseApkVerificationFixture({
-    appBadging:
-       "package: name='com.safenet.dns' versionCode='52' versionName='1.0.60'",
+    appBadging: `package: name='com.safenet.dns' versionCode='${androidReleaseMetadata.versionCode}' versionName='${androidReleaseMetadata.versionName}'`,
     testBadging: [
       "package: name='com.safenet.dns.test' versionCode='1' versionName='1.0.0'",
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns' label='' targetProcesses=''",
@@ -595,8 +614,7 @@ test("release APK verification validates app and instrumentation badging indepen
 
 test("release APK verification clearly rejects instrumentation metadata drift", () => {
   const wrongPackage = runReleaseApkVerificationFixture({
-    appBadging:
-       "package: name='com.safenet.dns' versionCode='52' versionName='1.0.60'",
+    appBadging: `package: name='com.safenet.dns' versionCode='${androidReleaseMetadata.versionCode}' versionName='${androidReleaseMetadata.versionName}'`,
     testBadging:
       "package: name='com.safenet.other.test' versionCode='1' versionName='1.0.0'\n" +
       "instrumentation: name='androidx.test.runner.AndroidJUnitRunner' targetPackage='com.safenet.dns'",

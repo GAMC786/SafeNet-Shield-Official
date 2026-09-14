@@ -1,4 +1,4 @@
-name: Build Android APK and Windows MSI
+name: Build Android APK
 
 on:
   push:
@@ -9,8 +9,7 @@ on:
     branches: [main]
   schedule:
     - cron: '17 4 * * 1-5'
-    # Keep hosted Windows and macOS workflow-lint installers exercised without
-    # adding the matrix to every weekday release smoke run.
+    # Keep the scheduled Android release checks independent from manual runs.
     - cron: '47 4 1 * *'
   workflow_dispatch:
     inputs:
@@ -35,13 +34,13 @@ on:
         required: true
         default: false
         type: boolean
-      clerk_auth_health_check:
-        description: "Run the non-blocking Clerk fixture health check"
+      android_startup_validation:
+        description: "Run the signed APK startup handoff check on the dedicated Android runner"
         required: true
         default: false
         type: boolean
-      pin_recovery_email_delivery:
-        description: "Run the non-blocking non-production PIN recovery mailbox check"
+      android_ai_shield_physical_validation:
+        description: "Run the representative AI Shield physical-device matrix"
         required: true
         default: false
         type: boolean
@@ -623,6 +622,9 @@ jobs:
 
   build-android:
     needs: validate-release-workflow
+    outputs:
+      android_apk_artifact_url: ${{ steps.upload-signed-release-apk.outputs.artifact-url }}
+      android_instrumentation_artifact_url: ${{ steps.upload-release-instrumentation-apk.outputs.artifact-url }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -634,6 +636,7 @@ jobs:
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -653,170 +656,11 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Check controlled PIN recovery email delivery
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pin_recovery_email_delivery == true)
-        continue-on-error: true
-        shell: bash
-        env:
-          PIN_RECOVERY_EMAIL_SMOKE: "true"
-          PIN_RECOVERY_SMOKE_EMAIL: ${{ secrets.PIN_RECOVERY_SMOKE_EMAIL }}
-        run: |
-          set -u
-          report_header="## PIN recovery email delivery"
-          if [[ -z "${PIN_RECOVERY_SMOKE_EMAIL}" ]]; then
-            echo "::warning title=PIN recovery mailbox configuration missing::The controlled check was not run because PIN_RECOVERY_SMOKE_EMAIL is not configured."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** The non-production mailbox secret is missing."
-              echo
-              echo "Configure PIN_RECOVERY_SMOKE_EMAIL with a non-production mailbox. The address and message contents are never printed."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
+      - name: Install Chromium for browser checks
+        run: npx playwright install --with-deps chromium
 
-          smoke_log="$RUNNER_TEMP/pin-recovery-email-smoke.log"
-          if node --import tsx --test server/pin-api.test.ts >"$smoke_log" 2>&1; then
-            echo "PIN recovery email delivery check passed."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** healthy"
-              echo "- **Finding:** The recovery message was found in the configured non-production mailbox, and the delivered code was rejected after expiry."
-              echo
-              echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          stage="unknown"
-          if grep -q "Gmail configuration stage" "$smoke_log"; then
-            stage="configuration"
-          elif grep -q "Gmail delivery stage" "$smoke_log"; then
-            stage="delivery"
-          fi
-          echo "::warning title=PIN recovery email delivery needs attention::The controlled check failed at the ${stage} stage. Inspect the Gmail connection or non-production delivery path without publishing mailbox contents."
-          {
-            echo "$report_header"
-            echo
-            echo "- **Status:** needs attention"
-            echo "- **Finding:** The controlled check failed at the **${stage}** stage. The failure log was kept in the runner workspace and was not published."
-            echo
-            echo "The mailbox address, recovery code, and message contents were kept out of workflow output."
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-
-      - name: Check Clerk authentication fixture health
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
-        shell: bash
-        env:
-          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
-          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
-          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
-          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
-          AUTH_SMOKE_HEALTH_CHECK: "true"
-        run: |
-          set -u
-          report_header="## Clerk authentication health"
-          renewal_guidance="Renew the non-production fixture locally with AUTH_SMOKE_BASE_URL=<test deployment URL> npm run test:auth:record, then replace the AUTH_SMOKE_STORAGE_STATE workspace/GitHub secret through the secret manager. Never commit, print, or paste the fixture JSON into logs or issues."
-
-          if [[ -z "${AUTH_SMOKE_BASE_URL}" ]]; then
-            echo "::warning title=Clerk auth configuration missing::Clerk auth health could not run because AUTH_SMOKE_BASE_URL is not configured."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** AUTH_SMOKE_BASE_URL is missing."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          has_fixture=false
-          has_google_credentials=false
-          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
-          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
-
-          if [[ "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ]]; then
-            echo "::warning title=Clerk auth configuration missing::Clerk auth health found neither a storage-state fixture nor Google test credentials."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** not configured"
-              echo "- **Finding:** No supported non-production authentication configuration is available."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if ! npx playwright install --with-deps chromium >"$RUNNER_TEMP/auth-fixture-browser-install.log" 2>&1; then
-            echo "::warning title=Clerk auth health unavailable::The browser health check could not install its browser dependency."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** unavailable"
-              echo "- **Finding:** The scheduled browser dependency could not be installed; authentication state was not inspected."
-              echo
-              echo "$renewal_guidance"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if AUTH_SMOKE_HEALTH_CHECK=true npm run test:auth >"$RUNNER_TEMP/auth-fixture-health.log" 2>&1; then
-            echo "Clerk authentication configuration is healthy."
-            {
-              echo "$report_header"
-              echo
-              echo "- **Status:** healthy"
-              echo "- **Finding:** The configured non-production authentication session reached the SafeNet dashboard."
-              echo
-              echo "The health check used an isolated browser context and did not write session state to the repository."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          echo "::warning title=Clerk auth fixture needs renewal::The authentication health check could not authenticate; the fixture may be expired, revoked, malformed, or the non-production deployment may be unavailable."
-          {
-            echo "$report_header"
-            echo
-            echo "- **Status:** needs attention"
-            echo "- **Finding:** The configured authentication session did not reach the SafeNet dashboard. It may be expired, revoked, malformed, or the non-production deployment may be unavailable."
-            echo
-            echo "$renewal_guidance"
-            echo
-            echo "The session value was kept in the protected secret and the diagnostic output was not published."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run Clerk authentication browser smoke test
-        if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && inputs.clerk_auth_health_check == true)
-        shell: bash
-        env:
-          AUTH_SMOKE_BASE_URL: ${{ secrets.AUTH_SMOKE_BASE_URL }}
-          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
-          AUTH_SMOKE_GOOGLE_EMAIL: ${{ secrets.AUTH_SMOKE_GOOGLE_EMAIL }}
-          AUTH_SMOKE_GOOGLE_PASSWORD: ${{ secrets.AUTH_SMOKE_GOOGLE_PASSWORD }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          has_fixture=false
-          has_google_credentials=false
-          [[ -n "${AUTH_SMOKE_STORAGE_STATE}" ]] && has_fixture=true
-          [[ -n "${AUTH_SMOKE_GOOGLE_EMAIL}" && -n "${AUTH_SMOKE_GOOGLE_PASSWORD}" ]] && has_google_credentials=true
-
-          if [[ -z "${AUTH_SMOKE_BASE_URL}" || ( "${has_fixture}" == "false" && "${has_google_credentials}" == "false" ) ]]; then
-            if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-              echo "::notice::Clerk auth smoke skipped because secure test configuration is unavailable to this pull request."
-              exit 0
-            fi
-            echo "::error::Clerk auth smoke requires AUTH_SMOKE_BASE_URL plus AUTH_SMOKE_STORAGE_STATE or both Google test credentials."
-            exit 1
-          fi
-
-          npx playwright install --with-deps chromium
-          npm run test:auth
+      - name: Run browser UI tests
+        run: npm run test:ui
 
       - name: Build web app
         run: npm run build
@@ -857,7 +701,11 @@ jobs:
       - name: Build and sync mobile web assets
         run: ./scripts/build-android.sh
         env:
-          MOBILE_API_URL: https://safe-net-shield-official.replit.app
+          MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+
+      - name: Compile Android native sources before APK packaging
+        shell: bash
+        run: ./scripts/check-android-native-build.sh
 
       - name: Build debug APK
         if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
@@ -885,6 +733,65 @@ jobs:
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/safenet-release.keystore"
           chmod 600 "${RUNNER_TEMP}/safenet-release.keystore"
 
+      - name: Validate SafeNet WireGuard release configuration
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        shell: bash
+        env:
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for variable in \
+            SAFENET_WIREGUARD_GATEWAY_ENDPOINT \
+            SAFENET_WIREGUARD_GATEWAY_OWNER \
+            SAFENET_WIREGUARD_PEER_PUBLIC_KEY \
+            SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY \
+            SAFENET_WIREGUARD_CLIENT_ADDRESS \
+            SAFENET_WIREGUARD_ALLOWED_IPS \
+            SAFENET_WIREGUARD_DNS_SERVERS \
+            SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "::error::$variable repository secret is required for configured Android release builds."
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+          # The private key is intentionally available only to this validation
+          # step and the Gradle packaging steps below, never to the web build.
+          if [[ -d "$GITHUB_WORKSPACE/dist/public" ]] &&
+            grep -R --binary-files=without-match --fixed-strings --quiet \
+              "$SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY" \
+              "$GITHUB_WORKSPACE/dist/public"; then
+            echo "::error::The WireGuard client private key must not be copied into frontend assets."
+            exit 1
+          fi
+          echo "Validated complete SafeNet WireGuard release configuration presence without printing secret values."
+
+      - name: Validate SafeNet WireGuard parser before APK packaging
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        working-directory: android
+        shell: bash
+        env:
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
+        run: ./gradlew :app:testDebugUnitTest --tests com.safenet.dns.SafeNetWireGuardConfigTest -Dsafenet.validateReleaseConfig=true
+
       - name: Build signed release APK
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         working-directory: android
@@ -894,8 +801,17 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
 
       - name: Upload signed release APK
+        id: upload-signed-release-apk
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
@@ -914,8 +830,17 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SAFENET_WIREGUARD_GATEWAY_ENDPOINT: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_ENDPOINT }}
+          SAFENET_WIREGUARD_GATEWAY_OWNER: ${{ secrets.SAFENET_WIREGUARD_GATEWAY_OWNER }}
+          SAFENET_WIREGUARD_PEER_PUBLIC_KEY: ${{ secrets.SAFENET_WIREGUARD_PEER_PUBLIC_KEY }}
+          SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY: ${{ secrets.SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY }}
+          SAFENET_WIREGUARD_CLIENT_ADDRESS: ${{ secrets.SAFENET_WIREGUARD_CLIENT_ADDRESS }}
+          SAFENET_WIREGUARD_ALLOWED_IPS: ${{ secrets.SAFENET_WIREGUARD_ALLOWED_IPS }}
+          SAFENET_WIREGUARD_DNS_SERVERS: ${{ secrets.SAFENET_WIREGUARD_DNS_SERVERS }}
+          SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE: ${{ secrets.SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE }}
 
       - name: Verify release instrumentation APK
+        id: verify-release-instrumentation-apk
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         shell: bash
         run: |
@@ -928,6 +853,7 @@ jobs:
           echo "Verified release instrumentation APK: $test_apk"
 
       - name: Upload release instrumentation APK
+        id: upload-release-instrumentation-apk
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
@@ -953,6 +879,7 @@ jobs:
           # checks intentionally use public resolvers and are non-blocking.
           script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
         env:
+          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
           ANDROID_EMULATOR_API_LEVEL: 34
           ANDROID_EMULATOR_TARGET: google_apis
           ANDROID_EMULATOR_ARCH: x86_64
@@ -1576,7 +1503,7 @@ jobs:
     needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
     # Hosted fallback for public repositories: this validates APK installation,
-    # PIN-gated WebView relaunch/recovery, instrumentation, and public-network
+    # WebView relaunch, instrumentation, and public-network
     # DNS behavior, but cannot validate
     # writable-system trust changes or adb-root-only behavior.
     runs-on: ubuntu-latest
@@ -1640,22 +1567,13 @@ jobs:
           ANDROID_EMULATOR_ARCH: x86_64
           ANDROID_EMULATOR_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
 
-      - name: Upload release Android smoke evidence
-        id: upload-release-android-smoke-evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SafeNet-DNS-Android-smoke-evidence-release
-          path: android/app/build/reports/android-smoke/latest
-          if-no-files-found: warn
-
       - name: Publish release Android smoke summary
         if: always()
         shell: bash
         env:
           SMOKE_STEP_OUTCOME: ${{ steps.android-release-dns-smoke.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          EVIDENCE_URL: ${{ steps.upload-release-android-smoke-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          EVIDENCE_URL: ${{ format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           RELEASE_EVIDENCE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-evidence.tar.gz
           RELEASE_RESULT_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/SafeNet-DNS-Android-smoke-result.txt
         run: |
@@ -1723,9 +1641,20 @@ jobs:
             echo "- **Release-linked result:** [Download smoke result]($release_result_url)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload release Android smoke evidence
+        id: upload-release-android-smoke-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-smoke-evidence-release
+          path: android/app/build/reports/android-smoke/latest
+          if-no-files-found: warn
+
   android-release-startup:
     needs: build-android
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_startup_validation == true
     # A hosted emulator can miss the physical-device-only blank WebView
     # regression. Run the signed APK on the dedicated Android runner and keep
     # this gate separate from the network-heavy DNS smoke lane.
@@ -1747,6 +1676,12 @@ jobs:
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
+
+      - name: Download release instrumentation APK for startup sampling
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
 
       - name: Verify signed release APK
         shell: bash
@@ -1796,14 +1731,16 @@ jobs:
           done
           test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = "1"
 
-      - name: Run signed APK startup check
+      - name: Run signed APK startup checks
         id: android-release-startup-check
         shell: bash
         run: |
           set -euo pipefail
           ./scripts/android-smoke-test.sh \
             --startup-only \
+            --compact-startup \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
             --output "$GITHUB_WORKSPACE/android/app/build/reports/android-startup/latest" \
             --serial emulator-5554
 
@@ -1825,165 +1762,75 @@ jobs:
         with:
           name: SafeNet-DNS-Android-startup-evidence-release
           path: android/app/build/reports/android-startup/latest
-          if-no-files-found: warn
+          if-no-files-found: error
 
-  build-windows:
-    # Tagged releases in this lane publish the Android APK only. Keep the
-    # Windows packaging lane for non-tag builds without making it a release
-    # prerequisite.
-    if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+  android-ai-shield-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_ai_shield_physical_validation == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each label must identify a dedicated runner with the named phone
+          # attached. Keeping labels distinct prevents matrix jobs from racing
+          # over one USB target and makes OEM failures independently visible.
+          - profile: pixel-android-14
+            runner_label: android-physical-device-pixel
+          - profile: samsung-android-13
+            runner_label: android-physical-device-samsung
+          - profile: motorola-android-12
+            runner_label: android-physical-device-motorola
+    # Hosted emulators are intentionally rejected by the focused test script.
+    runs-on: [self-hosted, linux, x64, "${{ matrix.runner_label }}"]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_AI_SHIELD_DEVICE_PROFILE: ${{ matrix.profile }}
+      ANDROID_AI_SHIELD_OUTPUT_DIR: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          name: SafeNet-DNS-Android
+          path: artifacts/android
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Validate Windows Android SDK setup
-        shell: pwsh
-        run: ./scripts/test-setup-android-sdk.ps1
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'gradle'
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install and verify Android toolchain from Gradle pins
-        shell: pwsh
-        run: ./scripts/setup-android-sdk.ps1
-
-      - name: Verify Windows application metadata
-        shell: pwsh
-        run: |
-          $expectedDescription = "SafeNet DNS is a secure DNS management application with AI Shield protection, firewall rules, dynamic DNS updating, and access logging."
-          $package = Get-Content package.json -Raw | ConvertFrom-Json
-          $description = $package.description
-
-          if ([string]::IsNullOrWhiteSpace($description)) {
-            Write-Error "package.json is missing a non-empty description. Expected: $expectedDescription"
-            exit 1
-          }
-
-          if ($description -cne $expectedDescription) {
-            Write-Error "package.json description changed unexpectedly. Expected: $expectedDescription"
-            exit 1
-          }
-
-          Write-Host "Verified package.json contains the intended SafeNet DNS description."
-
-      - name: Check TypeScript
-        run: npm run check
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build web app for Windows
-        shell: pwsh
-        env:
-          DESKTOP_API_URL: https://safe-net-shield-official.replit.app
-        run: |
-          $apiOrigin = node scripts/validate-mobile-api.mjs $env:DESKTOP_API_URL
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-          $env:VITE_API_URL = $apiOrigin
-          npm run build
-
-      - name: Sync Android web assets for Windows
+      - name: Run physical-device AI Shield switching checks
         shell: bash
-        env:
-          MOBILE_API_URL: https://safe-net-shield-official.replit.app
-        run: ./scripts/build-android.sh
-
-      - name: Build debug APK on Windows
-        id: build-windows-android
-        working-directory: android
-        shell: pwsh
-        run: .\gradlew.bat assembleDebug
-
-      - name: Upload Windows Android build evidence
-        if: ${{ failure() && steps.build-windows-android.outcome == 'failure' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: SafeNet-DNS-Windows-Android-build-evidence
-          path: |
-            android/app/build/reports
-            android/app/build/outputs/apk
-          if-no-files-found: warn
-
-      - name: Verify Windows debug APK
-        shell: pwsh
         run: |
-          $apkPath = Join-Path $env:GITHUB_WORKSPACE "android\app\build\outputs\apk\debug\app-debug.apk"
-          if (-not (Test-Path -LiteralPath $apkPath -PathType Leaf)) {
-            Write-Error "Expected Windows Android debug APK was not produced: $apkPath"
-            exit 1
-          }
+          set -euo pipefail
+          ./scripts/android-ai-shield-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --profile "$ANDROID_AI_SHIELD_DEVICE_PROFILE" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_AI_SHIELD_OUTPUT_DIR"
 
-          $apk = Get-Item -LiteralPath $apkPath
-          if ($apk.Length -le 0) {
-            Write-Error "Windows Android debug APK is empty: $apkPath"
-            exit 1
-          }
-
-          Write-Host "Verified Windows Android debug APK: $apkPath ($($apk.Length) bytes)"
-
-      - name: Build Windows installer
-        id: build-windows-installer
-        shell: pwsh
-        run: |
-          $logPath = Join-Path $env:RUNNER_TEMP "electron-builder.log"
-
-          & npx electron-builder --win --x64 --publish never 2>&1 |
-            Tee-Object -FilePath $logPath
-          $exitCode = $LASTEXITCODE
-
-          if ($exitCode -ne 0) {
-            Write-Error "Electron builder failed with exit code $exitCode. See $logPath for captured output."
-            exit $exitCode
-          }
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows installer build evidence
-        if: ${{ failure() && steps.build-windows-installer.outcome == 'failure' }}
-        continue-on-error: true
+      - name: Upload physical-device AI Shield evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SafeNet-DNS-Windows-installer-build-evidence
-          path: |
-            ${{ runner.temp }}/electron-builder.log
-            dist-electron/**/*.log
-            dist-electron/*.msi
+          name: SafeNet-DNS-Android-ai-shield-physical-evidence-${{ matrix.profile }}
+          path: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
           if-no-files-found: warn
-
-      - name: Upload MSI
-        uses: actions/upload-artifact@v4
-        with:
-          name: SafeNet-DNS-Windows
-          path: dist-electron/*.msi
 
   release:
-    needs: [build-android, android-release-smoke, android-release-startup]
+    needs: [build-android, android-release-smoke]
     runs-on: ubuntu-latest
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.build-android.result == 'success' &&
-      needs.android-release-startup.result == 'success' &&
       (needs.android-release-smoke.result == 'success' ||
       needs.android-release-smoke.result == 'failure')
     permissions:
@@ -2017,8 +1864,28 @@ jobs:
           name: SafeNet-DNS-Android-smoke-evidence-release
           path: artifacts/android-smoke-evidence
 
-      - name: Verify Android release APKs
+      - name: Resolve expected Android release metadata
+        id: android_release_metadata
         shell: bash
+        run: |
+          set -euo pipefail
+          expected_version="${GITHUB_REF_NAME#v}"
+          if [[ -z "$expected_version" ]]; then
+            echo 'Could not resolve the release version from GITHUB_REF_NAME.' >&2
+            exit 1
+          fi
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$expected_version" \
+            --expected-label tag \
+            --mismatch-prefix "Release version mismatch" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Verify Android release APKs
+        id: verify-android-release-apks
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.android_release_metadata.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.android_release_metadata.outputs.version_code }}
         run: |
           set -euo pipefail
 
@@ -2052,7 +1919,6 @@ jobs:
           "$apksigner" verify --verbose "$apk"
           "$apksigner" verify --verbose "$test_apk"
 
-          expected_version="${GITHUB_REF_NAME#v}"
           require_badging() {
             local artifact="$1"
             local expected="$2"
@@ -2069,7 +1935,7 @@ jobs:
 
           require_badging \
             "$apk" \
-             "package: name='com.safenet.dns' versionCode='52' versionName='$expected_version'" \
+            "package: name='com.safenet.dns' versionCode='$ANDROID_VERSION_CODE' versionName='$ANDROID_VERSION_NAME'" \
             "Android application APK"
           require_badging \
             "$test_apk" \
@@ -2089,8 +1955,48 @@ jobs:
             sha256sum --check app-release-androidTest.apk.sha256
           )
           unzip -l "$apk" | grep -F "assets/public/"
-           echo "Verified $apk_count signed Android APK installer with versionCode 52, versionName $expected_version, and SHA-256 $checksum."
+          echo "Verified $apk_count signed Android APK installer with versionCode $ANDROID_VERSION_CODE, versionName $ANDROID_VERSION_NAME, and SHA-256 $checksum."
           echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
+
+      - name: Publish Android release summary
+        if: always()
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.android_release_metadata.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.android_release_metadata.outputs.version_code }}
+          APK_VERIFICATION_OUTCOME: ${{ steps.verify-android-release-apks.outcome }}
+          APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          INSTRUMENTATION_VERIFICATION_OUTCOME: ${{ steps.verify-android-release-apks.outcome }}
+          INSTRUMENTATION_ARTIFACT_URL: ${{ needs.build-android.outputs.android_instrumentation_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+          version_name="${ANDROID_VERSION_NAME:-unresolved}"
+          version_code="${ANDROID_VERSION_CODE:-unresolved}"
+          apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
+          instrumentation_outcome="${INSTRUMENTATION_VERIFICATION_OUTCOME:-unavailable}"
+          apk_url="${APK_ARTIFACT_URL:-unavailable}"
+          instrumentation_url="${INSTRUMENTATION_ARTIFACT_URL:-unavailable}"
+          {
+            echo "## Android release verification"
+            echo
+            echo "- **Resolved versionName:** \`$version_name\`"
+            echo "- **Resolved versionCode:** \`$version_code\`"
+            echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
+            echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish hosted-only release assurance scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release assurance scope"
+            echo
+            echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
+            echo "- **Signed APK and instrumentation APK:** independently verified before publication."
+            echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare release-linked Android smoke evidence
         shell: bash
@@ -2137,3 +2043,92 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-published-android-release:
+    needs: release
+    if: needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout tagged release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install and verify Android toolchain from Gradle pins
+        shell: bash
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Resolve expected Android release metadata
+        id: android_release_metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_version="${GITHUB_REF_NAME#v}"
+          test -n "$expected_version" || {
+            echo "::error::Could not resolve the release version from GITHUB_REF_NAME."
+            exit 1
+          }
+          bash scripts/resolve-android-release-metadata.sh \
+            --expected-version "$expected_version" \
+            --expected-label tag \
+            --mismatch-prefix "Published release version mismatch" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download formal GitHub Release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_dir="$GITHUB_WORKSPACE/published-release-assets"
+          mkdir -p "$release_dir"
+          assets=(
+            app-release.apk
+            app-release.apk.sha256
+            app-release-androidTest.apk
+            app-release-androidTest.apk.sha256
+            SafeNet-DNS-Android-smoke-evidence.tar.gz
+            SafeNet-DNS-Android-smoke-result.txt
+            SafeNet-DNS-Android-smoke-evidence.sha256
+          )
+          for asset in "${assets[@]}"; do
+            if ! gh release download "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" \
+              --dir "$release_dir" \
+              --clobber; then
+              echo "::error title=Missing GitHub Release asset::$asset was not downloadable from release $GITHUB_REF_NAME."
+              exit 1
+            fi
+            test -s "$release_dir/$asset" || {
+              echo "::error title=Empty GitHub Release asset::$asset was downloaded empty."
+              exit 1
+            }
+          done
+
+      - name: Verify published Android Release assets
+        id: verify_published_android_release
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.android_release_metadata.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.android_release_metadata.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-android-release-assets.sh \
+            --assets-dir "$GITHUB_WORKSPACE/published-release-assets" \
+            --expected-version "$ANDROID_VERSION_NAME" \
+            --expected-version-code "$ANDROID_VERSION_CODE" \
+            --sdk-root "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
