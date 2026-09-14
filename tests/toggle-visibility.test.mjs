@@ -391,6 +391,12 @@ test("Settings show the current version without firewall controls", async () => 
     await page.getByText("Detects Images, Videos, Livestreams, Texts, and Audios.", { exact: true }).count(),
     1,
   );
+  await page.getByRole("heading", { name: "Marathon of Hope" }).waitFor();
+  assert.equal(
+    await page.getByText("In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)", { exact: true }).count(),
+    1,
+  );
+  assert.equal(await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).count(), 1);
 
   assert.equal(await page.getByRole("switch", { name: "Prevent DNS Overrides" }).count(), 0);
   await page.getByTestId("settings-version").waitFor();
