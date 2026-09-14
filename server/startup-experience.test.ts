@@ -82,6 +82,10 @@ const settingsSource = readFileSync(
   path.join(clientRoot, "src/pages/Settings.tsx"),
   "utf8",
 );
+const firewallSource = readFileSync(
+  path.join(clientRoot, "src/pages/Firewall.tsx"),
+  "utf8",
+);
 const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
@@ -283,9 +287,9 @@ test("updated web assets refresh without clearing app storage", () => {
 test("Settings use the current package version and expose only current controls", () => {
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
-  assert.match(settingsSource, /settingsReady/);
-  assert.match(settingsSource, /Prevent DNS Overrides/);
-  assert.match(settingsSource, /switch-prevent-dns-overrides/);
+  assert.match(firewallSource, /Prevent DNS Overrides/);
+  assert.match(firewallSource, /switch-prevent-dns-overrides/);
+  assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
   assert.doesNotMatch(settingsSource, /button-set-pin|Update PIN Code|New four-digit PIN|PIN Protection|PIN Recovery Email|isPinEnabled/);

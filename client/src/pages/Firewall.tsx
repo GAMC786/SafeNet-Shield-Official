@@ -7,7 +7,7 @@ import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X } from "lucide-react";
+import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +32,7 @@ export default function Firewall() {
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const firewallEnabled = settings?.firewallEnabled ?? false;
+  const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
 
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
@@ -352,6 +353,33 @@ export default function Firewall() {
           <div className="flex-1">
 
         <TabsContent value="rules" className="mt-0 space-y-4">
+          <CyberCard className="border-primary/20 bg-primary/5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div>
+                  <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Keep DNS requests on SafeNet&apos;s protected resolver path so apps cannot silently switch
+                    to another resolver.
+                  </p>
+                  <p className="mt-2 text-xs text-primary/80">
+                    {firewallEnabled
+                      ? "Enforced while DNS Firewall is On."
+                      : "Turn on DNS Firewall above to enforce this access rule."}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={preventDnsOverrides}
+                disabled={!settings || updateSettings.isPending}
+                onCheckedChange={(checked) => updateSettings.mutate({ preventDnsOverrides: checked })}
+                aria-label="Prevent DNS Overrides"
+                data-testid="switch-prevent-dns-overrides"
+              />
+            </div>
+          </CyberCard>
+
           <div className="flex justify-end mb-4">
             <Dialog open={isRuleDialogOpen} onOpenChange={(open) => {
               setIsRuleDialogOpen(open);

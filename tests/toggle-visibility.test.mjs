@@ -381,19 +381,13 @@ function mockApi(
   ]);
 }
 
-test("Settings keep controls safe while loading and show the current version", async () => {
+test("Settings show the current version without firewall controls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
 
-  for (const name of ["Prevent DNS Overrides"]) {
-    assert.equal(
-      await page.getByRole("switch", { name }).isDisabled(),
-      true,
-      `${name} must be disabled until saved settings load`,
-    );
-  }
+  assert.equal(await page.getByRole("switch", { name: "Prevent DNS Overrides" }).count(), 0);
   await page.getByTestId("settings-version").waitFor();
   assert.equal(
     await page.getByTestId("settings-version").textContent(),
@@ -444,11 +438,11 @@ after(async () => {
 });
 
 for (const viewport of viewports) {
-  test(`Settings toggle visibility and states at ${viewport.name} width`, async () => {
+  test(`Firewall access-rule toggle visibility and states at ${viewport.name} width`, async () => {
     const page = await browser.newPage({ viewport });
     await mockApi(page);
-    await page.goto(`${baseUrl}/settings`);
-    await page.getByRole("heading", { name: "System Settings" }).waitFor();
+    await page.goto(`${baseUrl}/firewall`);
+    await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
     const expectedStates = new Map([["Prevent DNS Overrides", "true"]]);
@@ -471,7 +465,12 @@ for (const viewport of viewports) {
       backgroundColors.add(colors.background);
     }
 
-    assert.ok(backgroundColors.size >= 1, "the remaining settings switch must have a visible color");
+    assert.ok(backgroundColors.size >= 1, "the firewall access-rule switch must have a visible color");
+
+    const firewallMaster = page.getByTestId("switch-firewall-master");
+    await firewallMaster.click();
+    await waitForAttribute(firewallMaster, "aria-checked", "true");
+    assert.match(await page.getByText("Enforced while DNS Firewall is On.").textContent(), /Enforced/);
 
     const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
     await focusWithKeyboard(page, dnsOverrides);
