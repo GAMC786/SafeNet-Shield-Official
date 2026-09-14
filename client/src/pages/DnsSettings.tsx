@@ -36,6 +36,33 @@ const emptyResolver: ResolverForm = {
   secondaryAddress: "",
 };
 
+const resolverPresets = [
+  {
+    name: "AdGuard DNS (Family)",
+    type: "doh" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "https://family.adguard-dns.com/dns-query",
+    secondaryAddress: null,
+    description: "Blocks ads, trackers, malware, and adult content.",
+  },
+  {
+    name: "NextDNS",
+    type: "plain" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "45.90.28.0",
+    secondaryAddress: "45.90.30.0",
+    description: "Public NextDNS anycast resolvers without a profile ID.",
+  },
+  {
+    name: "Control D",
+    type: "doh" as const,
+    ipVersion: "ipv4" as const,
+    primaryAddress: "https://freedns.controld.com/p2",
+    secondaryAddress: null,
+    description: "Encrypted Ads & Tracking filtered resolver.",
+  },
+] as const;
+
 function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
 }
@@ -220,6 +247,37 @@ export default function DnsSettings() {
     }
   };
 
+  const handleAddPreset = async (preset: (typeof resolverPresets)[number]) => {
+    if (servers?.some((server) => server.name === preset.name)) {
+      toast({
+        title: "Resolver already added",
+        description: `${preset.name} is already in your resolver list.`,
+      });
+      return;
+    }
+    try {
+      await createServer.mutateAsync({
+        name: preset.name,
+        type: preset.type,
+        ipVersion: preset.ipVersion,
+        primaryAddress: preset.primaryAddress,
+        secondaryAddress: preset.secondaryAddress,
+        isActive: !servers?.length,
+        isCustom: false,
+      });
+      toast({
+        title: "Resolver added",
+        description: `${preset.name} is ready to use.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Resolver could not be added",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleRemove = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from SafeNet DNS resolvers?`)) return;
     try {
@@ -261,6 +319,39 @@ export default function DnsSettings() {
           >
             <Plus className="mr-2 h-4 w-4" /> Add a Resolver
           </Button>
+        </div>
+        <div className="mt-5 border-t border-white/10 pt-5">
+          <div className="mb-3">
+            <h3 className="font-display text-sm font-bold uppercase tracking-wider text-white">Popular resolvers</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Add a trusted provider without entering its addresses manually.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {resolverPresets.map((preset) => {
+              const isAdded = servers?.some((server) => server.name === preset.name) ?? false;
+              return (
+                <div key={preset.name} className="flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold text-white">{preset.name}</h4>
+                      <Badge variant="outline" className="shrink-0 text-[10px] uppercase">{preset.type}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{preset.description}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isAdded ? "outline" : "default"}
+                    className="w-full"
+                    disabled={isAdded || isMutating}
+                    onClick={() => void handleAddPreset(preset)}
+                    data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                  >
+                    {isAdded ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</> : <><Plus className="mr-1 h-4 w-4" /> Add</>}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </CyberCard>
 
