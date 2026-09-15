@@ -1113,7 +1113,7 @@ capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
 # Keep only bounded, protocol-specific failure records. These records contain
 # controlled phase/category/timing fields and never include exception text,
 # resolver URLs, or other credential-bearing instrumentation output.
-grep -Eo 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=[^ ]+ result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+' \
+grep -Eo 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=[A-Za-z0-9_-]+ result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+$' \
     "$output_dir/resolver-recovery-logcat.txt" | head -n 20 > \
     "$output_dir/resolver-recovery-failures.txt" || true
 

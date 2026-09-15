@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import test from "node:test";
+import { tmpdir } from "node:os";
 
 const smokeScript = readFileSync(
   new URL("./android-smoke-test.sh", import.meta.url),
@@ -21,6 +29,30 @@ const physicalConnectivityScript = readFileSync(
   new URL("./android-physical-connectivity-test.sh", import.meta.url),
   "utf8",
 ).replace(/\r\n/g, "\n");
+
+const resolverAggregationStart = smokeScript.indexOf(
+  "# Keep only bounded, protocol-specific failure records.",
+);
+const resolverAggregationEnd = smokeScript.indexOf(
+  "\ncapture connectivity-recovery-logcat",
+  resolverAggregationStart,
+);
+const resolverAggregation = smokeScript.slice(
+  resolverAggregationStart,
+  resolverAggregationEnd,
+);
+const finalResultStart = smokeScript.indexOf(
+  "fixture_process_failed=0",
+  resolverAggregationEnd,
+);
+const finalResultEnd = smokeScript.indexOf(
+  '\n\nif [[ "$test_failed"',
+  finalResultStart,
+);
+const finalResultAggregation = smokeScript.slice(
+  finalResultStart,
+  finalResultEnd,
+);
 
 test("Android smoke requires packaged connectivity recovery evidence", () => {
   assert.match(
@@ -194,6 +226,95 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
     /dot_recovery_cycles=%s/,
     "the release result must expose DoT cycle evidence",
   );
+});
+
+test("resolver failure markers survive smoke aggregation without leaking credentials", () => {
+  assert.notEqual(resolverAggregationStart, -1, "resolver aggregation is missing");
+  assert.notEqual(resolverAggregationEnd, -1, "resolver aggregation boundary is missing");
+  assert.notEqual(finalResultStart, -1, "final result aggregation is missing");
+  assert.notEqual(finalResultEnd, -1, "final result aggregation boundary is missing");
+
+  const evidenceDirectory = mkdtempSync(join(tmpdir(), "android-resolver-aggregation-"));
+  try {
+    writeFileSync(
+      join(evidenceDirectory, "resolver-recovery-logcat.txt"),
+      [
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
+        "DOH_DOT_RECOVERY protocol=doh phase=cycle-1-tls result=FAIL failure_category=TLS_FAILURE elapsed_ms=37",
+        "DOH_DOT_RECOVERY protocol=dot phase=cycle-1-route result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=512",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
+        "DOH_DOT_RECOVERY protocol=doh phase=cycle-2-timeout result=FAIL failure_category=TIMEOUT elapsed_ms=60000",
+        "DOH_DOT_RECOVERY protocol=dot phase=cycle-2-fixture result=FAIL failure_category=FIXTURE_FAILURE elapsed_ms=19",
+        "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-malformed result=FAIL failure_category=TIMEOUT elapsed_ms=not-a-number",
+        "DOH_DOT_RECOVERY protocol=dot phase=https://user:secret@example.invalid/dns-query result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23",
+        "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-credential result=FAIL failure_category=TLS_FAILURE elapsed_ms=41 resolver=https://user:secret@example.invalid/dns-query",
+      ].join("\n") + "\n",
+    );
+
+    const shell = [
+      "set -euo pipefail",
+      `output_dir=${JSON.stringify(evidenceDirectory)}`,
+      "REQUIRED_RESOLVER_RECOVERY_CYCLES=2",
+      "adb_args=()",
+      "capture() { :; }",
+      "test_failed=0",
+      "instrumentation_status=0",
+      "serial=synthetic-device",
+      "apk_path=/tmp/synthetic-release.apk",
+      "validation_mode=fixture",
+      "device_kind=emulator",
+      "resolver_mode=fixture",
+      "coverage_label=resolver-recovery",
+      "connectivity_recovery_status=PASS",
+      "ai_shield_status=PASS",
+      "fixture_pid=$$",
+      resolverAggregation,
+      finalResultAggregation,
+    ].join("\n");
+    const result = spawnSync("bash", ["-e", "-u", "-o", "pipefail", "-c", shell], {
+      encoding: "utf8",
+    });
+    assert.equal(
+      result.status,
+      0,
+      `smoke aggregation harness failed:\n${result.stdout}\n${result.stderr}`,
+    );
+
+    const failures = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-failures.txt"),
+      "utf8",
+    );
+    const resolverResult = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-result.txt"),
+      "utf8",
+    );
+    const resultFile = readFileSync(join(evidenceDirectory, "result.txt"), "utf8");
+
+    assert.equal((failures.match(/^DOH_DOT_RECOVERY /gm) ?? []).length, 4);
+    assert.match(failures, /failure_category=TLS_FAILURE elapsed_ms=37/);
+    assert.match(failures, /failure_category=ROUTE_FAILURE elapsed_ms=512/);
+    assert.match(failures, /failure_category=TIMEOUT elapsed_ms=60000/);
+    assert.match(failures, /failure_category=FIXTURE_FAILURE elapsed_ms=19/);
+    assert.doesNotMatch(failures, /not-a-number|secret|example\.invalid/);
+
+    for (const output of [resolverResult, resultFile]) {
+      assert.match(output, /doh_recovery=PASS/);
+      assert.match(output, /dot_recovery=PASS/);
+      assert.match(output, /doh_recovery_cycles=2/);
+      assert.match(output, /dot_recovery_cycles=2/);
+      assert.match(output, /doh_recovery_failure_category=TLS_FAILURE/);
+      assert.match(output, /doh_recovery_failure_phase=cycle-1-tls/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=37/);
+      assert.match(output, /dot_recovery_failure_category=ROUTE_FAILURE/);
+      assert.match(output, /dot_recovery_failure_phase=cycle-1-route/);
+      assert.match(output, /dot_recovery_failure_elapsed_ms=512/);
+      assert.doesNotMatch(output, /TIMEOUT|FIXTURE_FAILURE|secret|example\.invalid/);
+    }
+  } finally {
+    rmSync(evidenceDirectory, { recursive: true, force: true });
+  }
 });
 
 test("release summary publishes connectivity recovery status", () => {
