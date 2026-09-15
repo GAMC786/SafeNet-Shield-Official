@@ -80,6 +80,26 @@ test("packaged recovery test covers outage, offline DNS filtering, and API recov
 
 test("packaged resolver recovery covers bounded DoH and DoT outage phases", () => {
   assert.match(
+    workflow,
+    /android_resolver_failure_validation:/,
+    "manual workflow must expose the controlled resolver failure validation",
+  );
+  assert.match(
+    workflow,
+    /ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION/,
+    "the hosted smoke lane must receive the resolver failure validation switch",
+  );
+  assert.match(
+    smokeScript,
+    /ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION requires fixture resolver mode/,
+    "controlled resolver failure validation must stay on the credential-free fixture",
+  );
+  assert.match(
+    smokeScript,
+    /doh_secondary="https:\/\/203\.0\.113\.7\/dns-query"/,
+    "controlled resolver failure validation must use the documentation-only address",
+  );
+  assert.match(
     uiInstrumentation,
     /dohAndDotRecoverAfterNetworkLoss/,
     "the protocol recovery instrumentation test is missing",
