@@ -14,6 +14,7 @@ readonly FIXTURE_HTTP_PORT=18080
 readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 readonly COMPACT_STARTUP_WM_SIZE="480x640"
+readonly REQUIRED_RESOLVER_RECOVERY_CYCLES=2
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -1108,14 +1109,26 @@ fi
 resolver_recovery_status="PASS"
 doh_recovery_status="PASS"
 dot_recovery_status="PASS"
-if ! grep -Fq 'DOH_DOT_RECOVERY protocol=doh result=PASS' \
-    "$output_dir/resolver-recovery-logcat.txt"; then
+doh_recovery_cycles=0
+dot_recovery_cycles=0
+for cycle in $(seq 1 "$REQUIRED_RESOLVER_RECOVERY_CYCLES"); do
+    if grep -Fq \
+        "DOH_DOT_RECOVERY protocol=doh result=PASS cycle=$cycle" \
+        "$output_dir/resolver-recovery-logcat.txt"; then
+        doh_recovery_cycles=$((doh_recovery_cycles + 1))
+    fi
+    if grep -Fq \
+        "DOH_DOT_RECOVERY protocol=dot result=PASS cycle=$cycle" \
+        "$output_dir/resolver-recovery-logcat.txt"; then
+        dot_recovery_cycles=$((dot_recovery_cycles + 1))
+    fi
+done
+if [[ "$doh_recovery_cycles" -ne "$REQUIRED_RESOLVER_RECOVERY_CYCLES" ]]; then
     doh_recovery_status="NOT_RECORDED"
     resolver_recovery_status="FAIL"
     test_failed=1
 fi
-if ! grep -Fq 'DOH_DOT_RECOVERY protocol=dot result=PASS' \
-    "$output_dir/resolver-recovery-logcat.txt"; then
+if [[ "$dot_recovery_cycles" -ne "$REQUIRED_RESOLVER_RECOVERY_CYCLES" ]]; then
     dot_recovery_status="NOT_RECORDED"
     resolver_recovery_status="FAIL"
     test_failed=1
@@ -1124,6 +1137,8 @@ fi
     printf 'resolver_recovery=%s\n' "$resolver_recovery_status"
     printf 'doh_recovery=%s\n' "$doh_recovery_status"
     printf 'dot_recovery=%s\n' "$dot_recovery_status"
+    printf 'doh_recovery_cycles=%s\n' "$doh_recovery_cycles"
+    printf 'dot_recovery_cycles=%s\n' "$dot_recovery_cycles"
 } | tee "$output_dir/resolver-recovery-result.txt"
 
 capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
@@ -1184,8 +1199,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

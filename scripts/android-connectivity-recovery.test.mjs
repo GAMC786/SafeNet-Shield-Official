@@ -86,8 +86,23 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
   );
   assert.match(
     uiInstrumentation,
+    /RESOLVER_RECOVERY_CYCLES\s*=\s*2/,
+    "the protocol recovery test must run at least two cycles",
+  );
+  assert.match(
+    uiInstrumentation,
+    /for\s*\(int cycle = 1; cycle <= RESOLVER_RECOVERY_CYCLES; cycle\+\+\)/,
+    "the protocol recovery test must number every outage cycle",
+  );
+  assert.match(
+    uiInstrumentation,
     /DOH_DOT_RECOVERY protocol=" \+ protocol/,
     "the test must emit protocol-specific resolver recovery evidence",
+  );
+  assert.match(
+    uiInstrumentation,
+    /" result=PASS cycle=" \+ cycle/,
+    "resolver evidence must identify the cycle number",
   );
   assert.match(
     uiInstrumentation,
@@ -108,6 +123,21 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
     smokeScript,
     /dot_recovery=%s/,
     "the release result must expose DoT recovery status",
+  );
+  assert.match(
+    smokeScript,
+    /REQUIRED_RESOLVER_RECOVERY_CYCLES=2/,
+    "the smoke must require two resolver recovery cycles",
+  );
+  assert.match(
+    smokeScript,
+    /doh_recovery_cycles=%s/,
+    "the release result must expose DoH cycle evidence",
+  );
+  assert.match(
+    smokeScript,
+    /dot_recovery_cycles=%s/,
+    "the release result must expose DoT cycle evidence",
   );
 });
 

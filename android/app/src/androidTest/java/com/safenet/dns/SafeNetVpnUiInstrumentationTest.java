@@ -60,6 +60,7 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
+    private static final int RESOLVER_RECOVERY_CYCLES = 2;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -1167,45 +1168,49 @@ public class SafeNetVpnUiInstrumentationTest {
         startVpnWithPermission(protocol, primary, secondary);
         waitForVpnState(true);
 
-        assertValidDnsResponse(
-            queryVirtualDns("safenet.com"),
-            protocol + " response before outage"
-        );
-        assertNativeResolverHealthy(protocol + " before outage");
-
-        setAirplaneMode(true);
-        try {
-            byte[] blockedResponse = queryVirtualDns("offline.test");
-            assertEquals(
-                protocol + " offline filtering must refuse the blocked domain",
-                5,
-                blockedResponse[3] & 0x0f
+        for (int cycle = 1; cycle <= RESOLVER_RECOVERY_CYCLES; cycle++) {
+            String cycleLabel = protocol + " cycle " + cycle;
+            assertValidDnsResponse(
+                queryVirtualDns("safenet.com"),
+                cycleLabel + " response before outage"
             );
-            assertNativeResolverHealthy(protocol + " during outage");
-        } finally {
-            setAirplaneMode(false);
+            assertNativeResolverHealthy(cycleLabel + " before outage");
+
+            setAirplaneMode(true);
+            try {
+                byte[] blockedResponse = queryVirtualDns("offline.test");
+                assertEquals(
+                    cycleLabel + " offline filtering must refuse the blocked domain",
+                    5,
+                    blockedResponse[3] & 0x0f
+                );
+                assertNativeResolverHealthy(cycleLabel + " during outage");
+            } finally {
+                setAirplaneMode(false);
+            }
+
+            assertValidDnsResponse(
+                queryVirtualDns("safenet.com"),
+                cycleLabel + " response after outage"
+            );
+            assertNativeResolverHealthy(cycleLabel + " after outage");
+
+            JSONObject browserErrors = requireWebViewValue(callWebView(
+                "({errors:window.__safeNetDohDotRecoveryErrors || []})"
+            ));
+            assertEquals(
+                cycleLabel + " recovery must not emit browser or console errors",
+                0,
+                browserErrors.getJSONArray("errors").length()
+            );
+            Log.i(
+                "SafeNetResolverRecovery",
+                "DOH_DOT_RECOVERY protocol=" + protocol +
+                    " result=PASS cycle=" + cycle +
+                    " before_outage=PASS offline_filter=PASS " +
+                    "after_outage=PASS native_error=0 browser_errors=0"
+            );
         }
-
-        assertValidDnsResponse(
-            queryVirtualDns("safenet.com"),
-            protocol + " response after outage"
-        );
-        assertNativeResolverHealthy(protocol + " after outage");
-
-        JSONObject browserErrors = requireWebViewValue(callWebView(
-            "({errors:window.__safeNetDohDotRecoveryErrors || []})"
-        ));
-        assertEquals(
-            protocol + " recovery must not emit browser or console errors",
-            0,
-            browserErrors.getJSONArray("errors").length()
-        );
-        Log.i(
-            "SafeNetResolverRecovery",
-            "DOH_DOT_RECOVERY protocol=" + protocol +
-                " result=PASS before_outage=PASS offline_filter=PASS " +
-                "after_outage=PASS native_error=0 browser_errors=0"
-        );
 
         JSONObject stopped = requireWebViewValue(callWebView(
             "window.Capacitor.Plugins.SafeNetVpn.stop()"
