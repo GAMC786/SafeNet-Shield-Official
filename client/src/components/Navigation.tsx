@@ -25,7 +25,7 @@ export function SystemNavigation() {
   return (
     <nav
       aria-label="System services"
-      className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/85 px-3 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
+      className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/85 px-3 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
     >
       <div className="mx-auto flex max-w-7xl items-center gap-3">
         <div className="hidden shrink-0 items-center gap-2 border-r border-white/10 pr-4 sm:flex">
@@ -44,7 +44,7 @@ export function SystemNavigation() {
               <Link key={item.path} href={item.path}>
                 <span
                   className={cn(
-                    "relative flex shrink-0 flex-col items-center justify-center rounded-xl p-3 text-[10px] font-medium transition-all duration-300",
+                    "relative flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-medium transition-all duration-300",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-white",
@@ -53,12 +53,12 @@ export function SystemNavigation() {
                   {isActive && (
                     <motion.div
                       layoutId="activeSystemTab"
-                      className="absolute -bottom-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                      className="absolute -bottom-0.5 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon className={cn("relative z-10 h-6 w-6", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                  <span className="relative z-10 mt-1">{item.label}</span>
+                  <Icon className={cn("relative z-10 h-5 w-5", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                  <span className="relative z-10">{item.label}</span>
                 </span>
               </Link>
             );
