@@ -635,6 +635,7 @@ jobs:
     outputs:
       android_apk_artifact_url: ${{ steps.upload-signed-release-apk.outputs.artifact-url }}
       android_instrumentation_artifact_url: ${{ steps.upload-release-instrumentation-apk.outputs.artifact-url }}
+      android_sdk_setup_category: ${{ steps.android-sdk-setup-report.outputs.category }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -645,6 +646,7 @@ jobs:
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
+      ANDROID_SDK_SETUP_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-sdk-setup
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
@@ -684,11 +686,81 @@ jobs:
           java-version: '21'
 
       - name: Setup Android SDK
+        id: setup-android-sdk-action
         uses: android-actions/setup-android@v3
 
       - name: Install and verify Android toolchain from Gradle pins
+        id: install-android-sdk
         shell: bash
-        run: ./scripts/setup-android-sdk.sh
+        run: |
+          set -o pipefail
+          ./scripts/setup-android-sdk.sh 2>&1 | tee "$RUNNER_TEMP/android-sdk-setup.log"
+
+      - name: Publish Android SDK setup status
+        id: android-sdk-setup-report
+        if: always()
+        shell: bash
+        env:
+          SETUP_ACTION_OUTCOME: ${{ steps.setup-android-sdk-action.outcome }}
+          INSTALL_STEP_OUTCOME: ${{ steps.install-android-sdk.outcome }}
+        run: |
+          set -u
+          output_dir="${ANDROID_SDK_SETUP_OUTPUT_DIR}"
+          mkdir -p "$output_dir"
+          category="PASS"
+          stage="completed"
+          if [[ "$SETUP_ACTION_OUTCOME" != "success" ]]; then
+            category="ANDROID_SDK_SETUP_FAILURE"
+            stage="android-actions/setup-android"
+          elif [[ "$INSTALL_STEP_OUTCOME" != "success" ]]; then
+            category="ANDROID_SDK_SETUP_FAILURE"
+            stage="pinned-sdk-install"
+          fi
+
+          if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+            if [[ -f "$RUNNER_TEMP/android-sdk-setup.log" ]]; then
+              tail -c 16000 "$RUNNER_TEMP/android-sdk-setup.log" > "$output_dir/diagnostics.log"
+            else
+              printf '%s\n' \
+                "The Android SDK action failed before the pinned installer produced a log." \
+                "Inspect the failed Setup Android SDK step and retry the hosted runner." \
+                > "$output_dir/diagnostics.log"
+            fi
+            printf '%s\n' "$category" > "$output_dir/failure-category.txt"
+          else
+            printf '%s\n' "$category" > "$output_dir/failure-category.txt"
+          fi
+
+          {
+            printf 'failure_class=%s\n' "$([[ "$category" == "PASS" ]] && echo "NONE" || echo "INFRASTRUCTURE")"
+            printf 'failure_category=%s\n' "$category"
+            printf 'failure_stage=%s\n' "$stage"
+            printf 'setup_action_outcome=%s\n' "$SETUP_ACTION_OUTCOME"
+            printf 'install_step_outcome=%s\n' "$INSTALL_STEP_OUTCOME"
+          } > "$output_dir/result.txt"
+          printf 'category=%s\n' "$category" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Android SDK setup"
+            echo
+            echo "- **Infrastructure category:** \`$category\`"
+            echo "- **Failed stage:** \`$stage\`"
+            echo "- **Setup action:** \`$SETUP_ACTION_OUTCOME\`"
+            echo "- **Pinned SDK install:** \`$INSTALL_STEP_OUTCOME\`"
+            if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+              echo "- **Resolver smoke proof:** \`NOT_RUN\` — blocked by Android SDK setup infrastructure."
+              echo "- **Bounded diagnostics:** preserved in the Android SDK setup evidence artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android SDK setup evidence
+        id: upload-android-sdk-setup-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-sdk-setup-evidence
+          path: android/app/build/reports/android-sdk-setup
+          if-no-files-found: warn
 
       - name: Preflight Android emulator system trust
         id: android-system-trust-preflight
@@ -1513,7 +1585,7 @@ jobs:
 
   android-release-smoke:
     needs: build-android
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.build-android.result != 'cancelled'
     # Hosted fallback for public repositories: this validates APK installation,
     # WebView relaunch, instrumentation, and public-network
     # DNS behavior, but cannot validate
@@ -1531,23 +1603,28 @@ jobs:
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-reduced
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       ANDROID_AVD_NAME: safenet-hosted
+      BUILD_ANDROID_RESULT: ${{ needs.build-android.result }}
+      ANDROID_SDK_SETUP_CATEGORY: ${{ needs.build-android.outputs.android_sdk_setup_category || 'NOT_RECORDED' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Download signed release APK
+        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
       - name: Download release instrumentation APK
+        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
 
       - name: Verify release APK inputs
+        if: needs.build-android.result == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -1559,6 +1636,7 @@ jobs:
 
       - name: Run hosted-emulator smoke test (reduced validation)
         id: android-release-dns-smoke
+        if: needs.build-android.result == 'success'
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -1596,11 +1674,25 @@ jobs:
           release_result_url="${RELEASE_RESULT_URL:-unavailable}"
           category_file="$evidence_dir/failure-category.txt"
           category="EMULATOR_RUNNER_FAILURE"
+          resolver_proof_status="NOT_RECORDED"
+          resolver_proof_block_reason="none"
+
+          if [[ "$BUILD_ANDROID_RESULT" != "success" ]]; then
+            if [[ "$ANDROID_SDK_SETUP_CATEGORY" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+              category="ANDROID_SDK_SETUP_FAILURE"
+              resolver_proof_status="NOT_RUN"
+              resolver_proof_block_reason="ANDROID_SDK_SETUP_FAILURE"
+            else
+              category="ANDROID_BUILD_FAILURE"
+              resolver_proof_status="NOT_RUN"
+              resolver_proof_block_reason="ANDROID_BUILD_FAILURE"
+            fi
+          fi
 
           # The emulator action can fail before its script starts. Keep the
           # summary useful in that case, and only publish categories emitted
           # by the smoke script rather than arbitrary evidence-file content.
-          if [[ -f "$category_file" ]]; then
+          if [[ "$BUILD_ANDROID_RESULT" == "success" && -f "$category_file" ]]; then
             candidate="$(head -n 1 "$category_file" | tr -d '\r')"
             case "$candidate" in
               PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
@@ -1610,6 +1702,7 @@ jobs:
                 category="UNKNOWN_FAILURE"
                 ;;
             esac
+            resolver_proof_status="RECORDED"
           fi
 
           # Keep a small, stable result record even when the emulator action
@@ -1660,11 +1753,19 @@ jobs:
           dot_failure_elapsed_ms="${dot_failure_elapsed_ms:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
           {
+            echo "android_sdk_setup_category=$ANDROID_SDK_SETUP_CATEGORY"
+            echo "resolver_proof_status=$resolver_proof_status"
+            echo "resolver_proof_block_reason=$resolver_proof_block_reason"
+          } >> "$evidence_dir/android-smoke-result.txt"
+          {
             echo "validation_mode=hosted-emulator-reduced"
             echo "device_kind=hosted-emulator"
             echo "coverage=hosted-emulator"
             echo "resolver_mode=public"
+            echo "android_sdk_setup_category=$ANDROID_SDK_SETUP_CATEGORY"
             echo "failure_category=$category"
+            echo "resolver_proof_status=$resolver_proof_status"
+            echo "resolver_proof_block_reason=$resolver_proof_block_reason"
             echo "resolver_recovery=$resolver_recovery_status"
             echo "doh_recovery=$doh_recovery_status"
             echo "dot_recovery=$dot_recovery_status"
@@ -1685,6 +1786,12 @@ jobs:
             echo
             echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
+            echo "- **Android SDK setup:** \`$ANDROID_SDK_SETUP_CATEGORY\`"
+            if [[ "$resolver_proof_status" == "NOT_RUN" ]]; then
+              echo "- **Resolver smoke proof:** \`NOT_RUN\` — blocked by \`$resolver_proof_block_reason\`"
+            else
+              echo "- **Resolver smoke proof:** \`$resolver_proof_status\`"
+            fi
             echo "- **Internet loss and recovery:** \`$recovery_status\` (offline banner, offline DNS filtering, and post-reconnect API status are recorded in the evidence archive)"
             echo "- **DoH outage recovery:** \`$doh_recovery_status\`"
             echo "- **DoT outage recovery:** \`$dot_recovery_status\`"

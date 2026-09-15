@@ -8,9 +8,20 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/.." && pwd)"
 variables_file="$project_root/android/variables.gradle"
+setup_output_dir="${ANDROID_SDK_SETUP_OUTPUT_DIR:-$project_root/android/app/build/reports/android-sdk-setup}"
 
 fail() {
-    echo "ERROR: $*" >&2
+    local message="$*"
+    echo "ERROR: $message" >&2
+    if mkdir -p "$setup_output_dir" 2>/dev/null; then
+        printf 'ANDROID_SDK_SETUP_FAILURE\n' > "$setup_output_dir/failure-category.txt"
+        {
+            printf 'failure_class=INFRASTRUCTURE\n'
+            printf 'failure_category=ANDROID_SDK_SETUP_FAILURE\n'
+            printf 'failure_stage=pinned-sdk-install\n'
+            printf 'message=%s\n' "$message"
+        } > "$setup_output_dir/result.txt"
+    fi
     exit 1
 }
 

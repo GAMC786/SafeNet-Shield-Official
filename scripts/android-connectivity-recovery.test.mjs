@@ -336,6 +336,42 @@ test("release summary publishes connectivity recovery status", () => {
   assert.match(summary, /DoT failure detail/);
 });
 
+test("release summary separates Android SDK blockers from resolver proof", () => {
+  const summaryStart = workflow.indexOf(
+    "      - name: Publish release Android smoke summary",
+  );
+  const summaryEnd = workflow.indexOf(
+    "\n      - name: Upload release Android smoke evidence",
+    summaryStart,
+  );
+  const summary = workflow.slice(summaryStart, summaryEnd);
+  assert.match(
+    workflow,
+    /android_sdk_setup_category: \$\{\{ steps\.android-sdk-setup-report\.outputs\.category \}\}/,
+    "the Android build must export the SDK infrastructure category",
+  );
+  assert.match(
+    summary,
+    /ANDROID_SDK_SETUP_FAILURE/,
+    "the release smoke summary must preserve the SDK setup category",
+  );
+  assert.match(
+    summary,
+    /resolver_proof_status="NOT_RUN"/,
+    "the result record must distinguish a blocked resolver proof",
+  );
+  assert.match(
+    summary,
+    /Resolver smoke proof.*NOT_RUN.*blocked/,
+    "the human summary must explain why resolver proof was skipped",
+  );
+  assert.match(
+    workflow,
+    /if: always\(\) && startsWith\(github\.ref, 'refs\/tags\/v'\) && needs\.build-android\.result != 'cancelled'/,
+    "the release smoke summary must run when the build job fails",
+  );
+});
+
 test("physical-device recovery rejects unavailable or emulated targets", () => {
   assert.match(
     physicalConnectivityScript,

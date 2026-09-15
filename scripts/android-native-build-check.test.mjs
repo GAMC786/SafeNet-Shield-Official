@@ -6,6 +6,10 @@ const nativeBuildScript = await readFile(
   new URL("./check-android-native-build.sh", import.meta.url),
   "utf8",
 );
+const sdkSetupScript = await readFile(
+  new URL("./setup-android-sdk.sh", import.meta.url),
+  "utf8",
+);
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -62,6 +66,29 @@ test("release-capable workflows compile native sources before packaging", () => 
       `${name} must set up the SDK, compile native sources, then package`,
     );
   }
+});
+
+test("hosted Android SDK setup publishes a bounded infrastructure record", () => {
+  assert.match(
+    sdkSetupScript,
+    /ANDROID_SDK_SETUP_OUTPUT_DIR/,
+    "SDK setup failures need a workflow-controlled evidence directory",
+  );
+  assert.match(
+    sdkSetupScript,
+    /ANDROID_SDK_SETUP_FAILURE/,
+    "SDK setup failures need a stable machine-readable category",
+  );
+  assert.match(
+    mainWorkflow,
+    /tail -c 16000 "\$RUNNER_TEMP\/android-sdk-setup\.log"/,
+    "hosted SDK diagnostics must be bounded before artifact upload",
+  );
+  assert.match(
+    mainWorkflow,
+    /name: Upload Android SDK setup evidence/,
+    "hosted SDK diagnostics must survive the failed setup step",
+  );
 });
 
 test("resolver address family is forwarded into the native service", () => {
