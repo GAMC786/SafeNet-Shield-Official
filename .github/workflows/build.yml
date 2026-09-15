@@ -1614,11 +1614,20 @@ jobs:
           coverage=hosted-emulator
           instrumentation_status=not-started
           connectivity_recovery=not-started
+          resolver_recovery=not-started
+          doh_recovery=not-started
+          dot_recovery=not-started
           failure_category=$category
           EOF
           fi
           recovery_status="$(awk -F= '$1 == "connectivity_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
           recovery_status="${recovery_status:-NOT_RECORDED}"
+          resolver_recovery_status="$(awk -F= '$1 == "resolver_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          resolver_recovery_status="${resolver_recovery_status:-NOT_RECORDED}"
+          doh_recovery_status="$(awk -F= '$1 == "doh_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_recovery_status="${doh_recovery_status:-NOT_RECORDED}"
+          dot_recovery_status="$(awk -F= '$1 == "dot_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_recovery_status="${dot_recovery_status:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
           {
             echo "validation_mode=hosted-emulator-reduced"
@@ -1626,6 +1635,9 @@ jobs:
             echo "coverage=hosted-emulator"
             echo "resolver_mode=public"
             echo "failure_category=$category"
+            echo "resolver_recovery=$resolver_recovery_status"
+            echo "doh_recovery=$doh_recovery_status"
+            echo "dot_recovery=$dot_recovery_status"
             echo "smoke_step_outcome=$SMOKE_STEP_OUTCOME"
             echo "workflow_run=$RUN_URL"
             echo "release_evidence_url=$release_evidence_url"
@@ -1638,6 +1650,8 @@ jobs:
             echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
             echo "- **Internet loss and recovery:** \`$recovery_status\` (offline banner, offline DNS filtering, and post-reconnect API status are recorded in the evidence archive)"
+            echo "- **DoH outage recovery:** \`$doh_recovery_status\`"
+            echo "- **DoT outage recovery:** \`$dot_recovery_status\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"

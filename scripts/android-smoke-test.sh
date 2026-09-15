@@ -119,7 +119,8 @@ emulator host (10.0.2.2 by default). Public mode uses external resolvers and
 is intended only as an explicit external-network check. Resolver endpoints can
 be overridden with ANDROID_SMOKE_PLAIN_PRIMARY,
 ANDROID_SMOKE_PLAIN_SECONDARY, ANDROID_SMOKE_DOH_SECONDARY, and
-ANDROID_SMOKE_DOT_SECONDARY in public mode.
+ANDROID_SMOKE_DOT_SECONDARY in public mode. The full smoke also runs bounded
+DoH and DoT outage/recovery phases and archives protocol-specific results.
 EOF
 }
 
@@ -252,6 +253,7 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
     printf 'connectivity_recovery=required\n'
+    printf 'resolver_recovery=required\ndoh_recovery=required\ndot_recovery=required\n'
 } > "$output_dir/coverage.txt"
 
 if [[ -n "$serial" ]]; then
@@ -1094,6 +1096,7 @@ set -e
 capture post-test-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture post-test-vpn adb "${adb_args[@]}" shell dumpsys vpn
 capture post-test-logcat adb "${adb_args[@]}" shell logcat -d -t 400
+capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
 
 test_failed=0
 if [[ "$instrumentation_status" -ne 0 ]] ||
@@ -1101,6 +1104,27 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
         "$output_dir/instrumentation.log"; then
     test_failed=1
 fi
+
+resolver_recovery_status="PASS"
+doh_recovery_status="PASS"
+dot_recovery_status="PASS"
+if ! grep -Fq 'DOH_DOT_RECOVERY protocol=doh result=PASS' \
+    "$output_dir/resolver-recovery-logcat.txt"; then
+    doh_recovery_status="NOT_RECORDED"
+    resolver_recovery_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'DOH_DOT_RECOVERY protocol=dot result=PASS' \
+    "$output_dir/resolver-recovery-logcat.txt"; then
+    dot_recovery_status="NOT_RECORDED"
+    resolver_recovery_status="FAIL"
+    test_failed=1
+fi
+{
+    printf 'resolver_recovery=%s\n' "$resolver_recovery_status"
+    printf 'doh_recovery=%s\n' "$doh_recovery_status"
+    printf 'dot_recovery=%s\n' "$dot_recovery_status"
+} | tee "$output_dir/resolver-recovery-result.txt"
 
 capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
 if grep -Fq 'CONNECTIVITY_RECOVERY result=PASS' \
@@ -1148,7 +1172,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     evidence="$output_dir/instrumentation.log $output_dir/post-test-connectivity $output_dir/post-test-vpn $output_dir/post-test-logcat"
     if [[ "$resolver_mode" == "fixture" ]] &&
         { [[ "$fixture_process_failed" -ne 0 ]] ||
-          grep -Eiq 'FIXTURE_FAILURE|Android DNS fixture failure' "$output_dir/instrumentation.log" "$fixture_log"; }; then
+          grep -Eiq 'FIXTURE_FAILURE|Android DNS fixture failure' \
+              "$output_dir/instrumentation.log" "$output_dir/resolver-recovery-logcat.txt" "$fixture_log"; }; then
         failure_category="FIXTURE_FAILURE"
     elif grep -Eiq 'ENETUNREACH|Network is unreachable' $evidence; then
         failure_category="ENETUNREACH"
@@ -1159,8 +1184,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

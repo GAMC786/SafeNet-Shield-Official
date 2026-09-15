@@ -74,6 +74,39 @@ test("packaged recovery test covers outage, offline DNS filtering, and API recov
   );
 });
 
+test("packaged resolver recovery covers bounded DoH and DoT outage phases", () => {
+  assert.match(
+    uiInstrumentation,
+    /dohAndDotRecoverAfterNetworkLoss/,
+    "the protocol recovery instrumentation test is missing",
+  );
+  assert.match(
+    uiInstrumentation,
+    /DOH_DOT_RECOVERY protocol=" \+ protocol/,
+    "the test must emit protocol-specific resolver recovery evidence",
+  );
+  assert.match(
+    uiInstrumentation,
+    /offline filtering must refuse the blocked domain/,
+    "the test must keep offline resolver filtering fail-closed",
+  );
+  assert.match(
+    smokeScript,
+    /resolver-recovery-result\.txt/,
+    "the smoke must archive protocol-specific resolver results",
+  );
+  assert.match(
+    smokeScript,
+    /doh_recovery=%s/,
+    "the release result must expose DoH recovery status",
+  );
+  assert.match(
+    smokeScript,
+    /dot_recovery=%s/,
+    "the release result must expose DoT recovery status",
+  );
+});
+
 test("release summary publishes connectivity recovery status", () => {
   const summaryStart = workflow.indexOf(
     "      - name: Publish release Android smoke summary",
@@ -87,4 +120,6 @@ test("release summary publishes connectivity recovery status", () => {
   const summary = workflow.slice(summaryStart, summaryEnd);
   assert.match(summary, /connectivity_recovery/);
   assert.match(summary, /Internet loss and recovery/);
+  assert.match(summary, /DoH outage recovery/);
+  assert.match(summary, /DoT outage recovery/);
 });

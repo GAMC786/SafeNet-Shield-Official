@@ -1096,6 +1096,182 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void dohAndDotRecoverAfterNetworkLoss() throws Exception {
+        try {
+            openDashboardWithoutActiveResolver();
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.acceptEula({version:'1.0'})"
+            ));
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.syncFirewallConfig({" +
+                    "config:{" +
+                        "settings:{firewallEnabled:true,preventDnsOverrides:true}," +
+                        "rules:[]," +
+                        "blocklists:[{" +
+                            "type:'domain'," +
+                            "content:'offline.test'," +
+                            "action:'block'," +
+                            "isActive:true" +
+                        "}]" +
+                    "}" +
+                "})"
+            ));
+            requireWebViewValue(callWebView(
+                "(() => {" +
+                    "window.__safeNetDohDotRecoveryErrors = [];" +
+                    "window.addEventListener('error', event => " +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "String(event.message || event.error || 'unknown')));" +
+                    "window.addEventListener('unhandledrejection', event => " +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "String(event.reason || 'unknown')));" +
+                    "const originalConsoleError = console.error.bind(console);" +
+                    "console.error = (...args) => {" +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "'console.error:' + args.map(String).join(' '));" +
+                        "originalConsoleError(...args);" +
+                    "};" +
+                    "return true;" +
+                "})()"
+            ));
+
+            runResolverRecoveryPhase(
+                "doh",
+                "192.0.2.1",
+                resolverArgument("doh-secondary", "https://cloudflare-dns.com/dns-query")
+            );
+            runResolverRecoveryPhase(
+                "dot",
+                "192.0.2.1",
+                resolverArgument("dot-secondary", "cloudflare-dns.com")
+            );
+        } finally {
+            try {
+                setAirplaneMode(false);
+            } catch (Exception ignored) {
+                // The test result should retain the original failure.
+            }
+            try {
+                requireWebViewValue(callWebView("window.Capacitor.Plugins.SafeNetVpn.stop()"));
+            } catch (Exception ignored) {
+                // The shared teardown stops the service when recovery fails.
+            }
+        }
+    }
+
+    private void runResolverRecoveryPhase(
+        String protocol,
+        String primary,
+        String secondary
+    ) throws Exception {
+        startVpnWithPermission(protocol, primary, secondary);
+        waitForVpnState(true);
+
+        assertValidDnsResponse(
+            queryVirtualDns("safenet.com"),
+            protocol + " response before outage"
+        );
+        assertNativeResolverHealthy(protocol + " before outage");
+
+        setAirplaneMode(true);
+        try {
+            byte[] blockedResponse = queryVirtualDns("offline.test");
+            assertEquals(
+                protocol + " offline filtering must refuse the blocked domain",
+                5,
+                blockedResponse[3] & 0x0f
+            );
+            assertNativeResolverHealthy(protocol + " during outage");
+        } finally {
+            setAirplaneMode(false);
+        }
+
+        assertValidDnsResponse(
+            queryVirtualDns("safenet.com"),
+            protocol + " response after outage"
+        );
+        assertNativeResolverHealthy(protocol + " after outage");
+
+        JSONObject browserErrors = requireWebViewValue(callWebView(
+            "({errors:window.__safeNetDohDotRecoveryErrors || []})"
+        ));
+        assertEquals(
+            protocol + " recovery must not emit browser or console errors",
+            0,
+            browserErrors.getJSONArray("errors").length()
+        );
+        Log.i(
+            "SafeNetResolverRecovery",
+            "DOH_DOT_RECOVERY protocol=" + protocol +
+                " result=PASS before_outage=PASS offline_filter=PASS " +
+                "after_outage=PASS native_error=0 browser_errors=0"
+        );
+
+        JSONObject stopped = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.stop()"
+        ));
+        assertFalse(protocol + " protection stop must leave the service stopped",
+            stopped.getBoolean("running"));
+        waitForVpnState(false);
+    }
+
+    private void assertNativeResolverHealthy(String phase) throws Exception {
+        JSONObject status = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+        ));
+        assertTrue(phase + " must keep DNS protection running",
+            status.getBoolean("running"));
+        assertFalse(phase + " must not expose a native service error",
+            status.has("error") && !status.optString("error", "").trim().isEmpty());
+    }
+
+    private void assertValidDnsResponse(byte[] response, String phase) {
+        assertTrue(phase + " must return a complete DNS response", response.length >= 12);
+        assertEquals(phase + " response must preserve the query ID",
+            0x534e,
+            ((response[0] & 0xff) << 8) | (response[1] & 0xff));
+        assertTrue(phase + " response must set the DNS response flag",
+            (response[2] & 0x80) != 0);
+        assertEquals(phase + " response must have a successful DNS status",
+            0,
+            response[3] & 0x0f);
+        assertEquals(phase + " response must preserve one question",
+            1,
+            ((response[4] & 0xff) << 8) | (response[5] & 0xff));
+        if (isFixtureMode()) {
+            assertTrue(
+                phase + " fixture response must contain the deterministic answer",
+                containsBytes(response, new byte[] {(byte) 203, 0, 113, 7})
+            );
+        }
+    }
+
+    private boolean isFixtureMode() {
+        return "fixture".equals(resolverArgument("resolver-mode", "public"));
+    }
+
+    private String resolverArgument(String name, String fallback) {
+        String value = instrumentationArguments().getString(name);
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
+    private boolean containsBytes(byte[] value, byte[] expected) {
+        for (int start = 0; start <= value.length - expected.length; start++) {
+            boolean matches = true;
+            for (int offset = 0; offset < expected.length; offset++) {
+                if (value[start + offset] != expected[offset]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
