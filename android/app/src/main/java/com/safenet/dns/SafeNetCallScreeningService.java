@@ -48,15 +48,13 @@ public class SafeNetCallScreeningService extends CallScreeningService {
             respond(details, "block");
             return;
         }
-
         String apiOrigin = preferences.getString(PREF_API_ORIGIN, "");
         if (apiOrigin == null || apiOrigin.trim().isEmpty()) {
             respondAllow(details);
             return;
         }
-
         LOOKUP_EXECUTOR.execute(() -> {
-            String action = lookup(apiOrigin, preferences.getString(PREF_AUTH_COOKIE, ""), normalized);
+            String action = decideAction(preferences, normalized);
             respond(details, action);
         });
     }
@@ -79,7 +77,24 @@ public class SafeNetCallScreeningService extends CallScreeningService {
         respondToCall(details, response.build());
     }
 
-    private static String lookup(String apiOrigin, String authCookie, String number) {
+    static String decideAction(SharedPreferences preferences, String number) {
+        if (number == null) {
+            return "allow";
+        }
+        if (readBlockedNumbers(preferences).contains(number)) {
+            // An explicit user block is a local SafeNet blocklist decision and
+            // does not depend on a network lookup.
+            return "block";
+        }
+
+        String apiOrigin = preferences.getString(PREF_API_ORIGIN, "");
+        if (apiOrigin == null || apiOrigin.trim().isEmpty()) {
+            return "allow";
+        }
+        return lookup(apiOrigin, preferences.getString(PREF_AUTH_COOKIE, ""), number);
+    }
+
+    static String lookup(String apiOrigin, String authCookie, String number) {
         HttpURLConnection connection = null;
         try {
             URI origin = URI.create(apiOrigin.trim());

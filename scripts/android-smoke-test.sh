@@ -50,6 +50,7 @@ compact_wm_override=""
 compact_wm_size_applied=false
 openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
+call_screening_status="NOT_RECORDED"
 adb_args=()
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
@@ -252,11 +253,14 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/media-smoke-result.txt \
     "$output_dir"/connectivity-recovery-logcat.txt "$output_dir"/connectivity-recovery-result.txt \
     "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt \
+    "$output_dir"/call-screening-instrumentation.log "$output_dir"/call-screening-logcat.txt \
+    "$output_dir"/call-screening-result.txt \
     "$output_dir"/resolver-recovery-contract-error.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
+    printf 'call_screening=required\n'
     printf 'connectivity_recovery=required\n'
     printf 'resolver_recovery=required\ndoh_recovery=required\ndot_recovery=required\n'
 } > "$output_dir/coverage.txt"
@@ -915,6 +919,60 @@ fi
 
 run_media_smoke
 
+run_call_screening_smoke() {
+    local screening_status
+    local screening_origin_args=()
+    local screening_decisions="NOT_RECORDED"
+
+    if [[ "$resolver_mode" == "fixture" ]]; then
+        screening_origin_args=(-e call-screening-origin "https://$fixture_host:$FIXTURE_HTTP_PORT")
+    fi
+
+    echo "Running SafeNet Android call-screening role and fail-open checks..."
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class "com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callScreeningRoleCanBeGrantedOnSupportedEmulator,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#reputationDecisionsAndFallbacksAreFailOpen" \
+        "${screening_origin_args[@]}" \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/call-screening-instrumentation.log"
+    screening_status="${PIPESTATUS[0]}"
+    set -e
+    capture call-screening-logcat adb "${adb_args[@]}" shell logcat -d -t 500 -s SafeNetCallScreeningSmoke:I
+
+    if [[ "$screening_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/call-screening-instrumentation.log" ||
+        ! grep -Fq 'CALL_SCREENING_ROLE result=PASS' "$output_dir/call-screening-logcat.txt"; then
+        {
+            printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+                "$serial" "$validation_mode" "$device_kind"
+            printf 'role=FAIL\ndecisions=%s\nresult=FAIL\n' "$screening_decisions"
+        } | tee "$output_dir/call-screening-result.txt" >&2
+        echo "Android call-screening smoke failed. Evidence: $output_dir" >&2
+        return 1
+    fi
+    if [[ "$resolver_mode" == "fixture" ]]; then
+        if ! grep -Fq 'CALL_SCREENING_DECISIONS result=PASS' \
+            "$output_dir/call-screening-logcat.txt"; then
+            {
+                printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+                    "$serial" "$validation_mode" "$device_kind"
+                printf 'role=PASS\ndecisions=FAIL\nresult=FAIL\n'
+            } | tee "$output_dir/call-screening-result.txt" >&2
+            echo "Android call-screening reputation checks failed. Evidence: $output_dir" >&2
+            return 1
+        fi
+        screening_decisions="PASS"
+    fi
+    {
+        printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$validation_mode" "$device_kind"
+        printf 'role=PASS\ndecisions=%s\nresult=PASS\n' "$screening_decisions"
+    } | tee "$output_dir/call-screening-result.txt"
+    echo "Android call-screening smoke passed. Evidence: $output_dir"
+    return 0
+}
+
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(make_temp_dir)"
     fixture_ready="$fixture_tmp/ready.json"
@@ -1074,6 +1132,11 @@ EOF
     ordinary_url="https://$fixture_host:$FIXTURE_HTTP_PORT/"
 fi
 
+call_screening_status="PASS"
+if ! run_call_screening_smoke; then
+    call_screening_status="FAIL"
+fi
+
 if [[ "$resolver_failure_validation" == "true" ]]; then
     if [[ "$resolver_mode" != "fixture" ]]; then
         echo "ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION requires fixture resolver mode." >&2
@@ -1161,6 +1224,9 @@ awk -v max_elapsed_ms="$MAX_RESOLVER_FAILURE_ELAPSED_MS" '
 head -n 20 > "$output_dir/resolver-recovery-failures.txt" || true
 
 test_failed=0
+if [[ "${call_screening_status:-NOT_RECORDED}" == "FAIL" ]]; then
+    test_failed=1
+fi
 if [[ "$instrumentation_status" -ne 0 ]] ||
     grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
         "$output_dir/instrumentation.log"; then
@@ -1301,8 +1367,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2
