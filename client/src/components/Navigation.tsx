@@ -45,7 +45,7 @@ export function SystemNavigation() {
               <Link key={item.path} href={item.path} className="flex min-w-0 flex-1 justify-center">
                 <span
                   className={cn(
-                    "relative flex w-full items-center justify-center gap-1.5 rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition-all duration-300",
+                    "relative flex w-full flex-col items-center justify-center rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition-all duration-300",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-white",
@@ -58,8 +58,8 @@ export function SystemNavigation() {
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon className={cn("relative z-10 h-5 w-5", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                  <span className="relative z-10">{item.label}</span>
+                  <Icon className={cn("relative z-10 h-6 w-6", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                  <span className="relative z-10 mt-1 text-center leading-tight">{item.label}</span>
                 </span>
               </Link>
             );
