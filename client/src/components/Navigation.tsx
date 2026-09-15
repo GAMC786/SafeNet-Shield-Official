@@ -25,9 +25,9 @@ export function SystemNavigation() {
   return (
     <nav
       aria-label="System services"
-      className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/85 px-3 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
+      className="fixed inset-x-0 top-0 z-40 h-20 border-b border-white/10 bg-black/85 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
     >
-      <div className="mx-auto flex max-w-7xl items-center gap-3">
+      <div className="mx-auto flex h-full max-w-7xl items-center gap-3">
         <div className="hidden shrink-0 items-center gap-2 border-r border-white/10 pr-4 sm:flex">
           <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.9)]" />
           <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary/90">
@@ -35,16 +35,16 @@ export function SystemNavigation() {
           </span>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {systemServiceItems.map((item) => {
             const isActive = location === item.path;
             const Icon = item.icon;
 
             return (
-              <Link key={item.path} href={item.path}>
+              <Link key={item.path} href={item.path} className="flex min-w-0 flex-1 justify-center">
                 <span
                   className={cn(
-                    "relative flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-medium transition-all duration-300",
+                    "relative flex w-full items-center justify-center gap-1.5 rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition-all duration-300",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-white",
@@ -73,7 +73,7 @@ export function Navigation() {
   const [location] = useLocation();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 h-20 glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
       <div className="hidden md:flex flex-col items-center mb-12">
         <a href="https://safenetinc.ca" target="_blank" rel="noopener noreferrer">
           <img 
@@ -84,16 +84,16 @@ export function Navigation() {
         </a>
       </div>
 
-      <div className="flex md:flex-col justify-around md:justify-start w-full md:space-y-4 md:px-2">
+      <div className="grid h-full w-full grid-cols-5 md:flex md:h-auto md:flex-col md:space-y-4 md:px-2">
         {navItems.map((item) => {
           const isActive = location === item.path;
           const Icon = item.icon;
 
           return (
-            <Link key={item.path} href={item.path}>
+            <Link key={item.path} href={item.path} className="flex min-w-0 justify-center">
               <div 
                 className={cn(
-                  "relative flex flex-col items-center justify-center p-3 md:p-4 rounded-xl transition-all duration-300 cursor-pointer group",
+                  "relative flex w-full flex-col items-center justify-center rounded-xl p-3 transition-all duration-300 cursor-pointer group md:p-4",
                   isActive 
                     ? "text-primary md:bg-primary/10" 
                     : "text-muted-foreground hover:text-white hover:bg-white/5"
