@@ -273,7 +273,7 @@ test("Call Control Identify maps its documented response into SafeNet actions", 
     });
     assert.equal(
       requests[0]?.url,
-      "https://api.callcontrol.example/api/2015-11-01/Reputation/%2B15551234567?api_key=call-control-test-key",
+      "https://api.callcontrol.example/api/2015-11-01/Reputation/15551234567?api_key=call-control-test-key",
     );
     assert.equal(requests[0]?.method, "GET");
     assert.equal(requests[0]?.headers.get("Authorization"), null);
@@ -364,6 +364,11 @@ test("Call Control Identify reports fail open on malformed and rate-limited resp
     const limited = await lookupCallReputation("+1 (555) 123-4567");
     assert.equal(limited.available, false);
     assert.match(limited.reason, /rate limit/i);
+
+    globalThis.fetch = async () => new Response(null, { status: 400 });
+    const rejected = await lookupCallReputation("+1 (555) 123-4567");
+    assert.equal(rejected.available, false);
+    assert.match(rejected.reason, /API key or phone number/i);
   } finally {
     restoreEnvironment(previous, previousFetch);
   }
@@ -438,7 +443,7 @@ test("Call Control Protect maps its documented actions and optional customer num
     });
     assert.equal(
       request?.url,
-      "https://api.callcontrol.example/api/2015-11-01/Enterprise/ShouldBlock/%2B15551234567/%2B14165551212?api_key=call-control-test-key",
+      "https://api.callcontrol.example/api/2015-11-01/Enterprise/ShouldBlock/15551234567/14165551212?api_key=call-control-test-key",
     );
     assert.equal(request?.method, "GET");
   } finally {

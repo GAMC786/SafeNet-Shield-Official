@@ -172,7 +172,7 @@ function callControlUnavailable(
 
 function callControlIdentifyUrl(base: URL, number: string, apiKey: string) {
   const url = new URL(base.toString());
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/${encodeURIComponent(number)}`;
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/${encodeURIComponent(callControlNumber(number))}`;
   url.search = "";
   url.searchParams.set("api_key", apiKey);
   return url;
@@ -186,14 +186,18 @@ function callControlProtectUrl(
 ) {
   const path = [
     base.pathname.replace(/\/+$/, ""),
-    encodeURIComponent(callerNumber),
-    ...(customerNumber ? [encodeURIComponent(customerNumber)] : []),
+    encodeURIComponent(callControlNumber(callerNumber)),
+    ...(customerNumber ? [encodeURIComponent(callControlNumber(customerNumber))] : []),
   ].join("/");
   const url = new URL(base.toString());
   url.pathname = path;
   url.search = "";
   url.searchParams.set("api_key", apiKey);
   return url;
+}
+
+function callControlNumber(value: string) {
+  return value.replace(/^\+/, "");
 }
 
 function callControlCustomerNumber() {
@@ -219,6 +223,19 @@ function callControlProtectAction(payload: unknown) {
     default:
       return null;
   }
+}
+
+function callControlHttpFailure(provider: string, status: number) {
+  if (status === 400) {
+    return `${provider} rejected the API key or phone number (HTTP 400).`;
+  }
+  if (status === 401) {
+    return `${provider} rejected the API key (HTTP 401).`;
+  }
+  if (status === 429) {
+    return `${provider} rate limit exceeded.`;
+  }
+  return `${provider} returned HTTP ${status}.`;
 }
 
 function callControlDecision(
@@ -320,9 +337,7 @@ async function lookupCallControlIdentify(
     });
     if (!response.ok) {
       return unavailable(
-        response.status === 429
-          ? "Call Control Identify rate limit exceeded."
-          : `Call Control Identify returned HTTP ${response.status}.`,
+        callControlHttpFailure(CALL_CONTROL_SOURCE, response.status),
         CALL_CONTROL_SOURCE,
       );
     }
@@ -371,9 +386,7 @@ async function lookupCallControlProtect(
     );
     if (!response.ok) {
       return unavailable(
-        response.status === 429
-          ? "Call Control Protect rate limit exceeded."
-          : `Call Control Protect returned HTTP ${response.status}.`,
+        callControlHttpFailure(CALL_CONTROL_PROTECT_SOURCE, response.status),
         CALL_CONTROL_PROTECT_SOURCE,
       );
     }
