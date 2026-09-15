@@ -63,6 +63,10 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
     private static final int RESOLVER_RECOVERY_CYCLES = 2;
     private static final long MAX_RESOLVER_FAILURE_ELAPSED_MILLIS = 300_000;
+    private static final String RESOLVER_PHASE_LABEL_REGEX = "[A-Za-z0-9_-]+";
+    private static final Pattern RESOLVER_PHASE_LABEL_PATTERN = Pattern.compile(
+        "^" + RESOLVER_PHASE_LABEL_REGEX + "$"
+    );
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -1287,6 +1291,14 @@ public class SafeNetVpnUiInstrumentationTest {
         Throwable failure,
         long phaseStartedAt
     ) {
+        if (!RESOLVER_PHASE_LABEL_PATTERN.matcher(phase).matches()) {
+            Log.e(
+                "SafeNetResolverRecovery",
+                "DOH_DOT_RECOVERY_CONTRACT_FAILURE field=phase rule=" +
+                    RESOLVER_PHASE_LABEL_REGEX
+            );
+            return;
+        }
         long elapsedMillis = Math.max(
             0,
             Math.min(

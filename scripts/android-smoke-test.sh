@@ -15,6 +15,8 @@ readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-prefli
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 readonly COMPACT_STARTUP_WM_SIZE="480x640"
 readonly REQUIRED_RESOLVER_RECOVERY_CYCLES=2
+readonly RESOLVER_PHASE_LABEL_REGEX='[A-Za-z0-9_-]+'
+readonly RESOLVER_FAILURE_RECORD_PATTERN='DOH_DOT_RECOVERY protocol=(doh|dot) phase=([^[:space:]]+) result=FAIL failure_category=([A-Z_]+) elapsed_ms=([0-9]+)$'
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -249,7 +251,8 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
     "$output_dir"/media-smoke-result.txt \
     "$output_dir"/connectivity-recovery-logcat.txt "$output_dir"/connectivity-recovery-result.txt \
-    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt
+    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt \
+    "$output_dir"/resolver-recovery-contract-error.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
@@ -1115,7 +1118,36 @@ capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
 # resolver URLs, or other credential-bearing instrumentation output.
 # The Android instrumentation clamps this same inclusive maximum.
 MAX_RESOLVER_FAILURE_ELAPSED_MS=300000
-grep -Eo 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=[A-Za-z0-9_-]+ result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+$' \
+resolver_recovery_contract_status="PASS"
+record_resolver_contract_failure() {
+    if [[ "$resolver_recovery_contract_status" == "FAIL" ]]; then
+        return
+    fi
+    resolver_recovery_contract_status="FAIL"
+    {
+        printf 'resolver_recovery_contract=FAIL\n'
+        printf 'field=phase\n'
+        printf 'reason=instrumentation emitted a phase label outside the shared validation rule\n'
+        printf 'rule=%s\n' "$RESOLVER_PHASE_LABEL_REGEX"
+    } > "$output_dir/resolver-recovery-contract-error.txt"
+    echo "ERROR: resolver recovery evidence contains a phase label outside the shared rule ($RESOLVER_PHASE_LABEL_REGEX)." >&2
+}
+while IFS= read -r resolver_failure_record; do
+    if [[ "$resolver_failure_record" =~ $RESOLVER_FAILURE_RECORD_PATTERN ]]; then
+        resolver_phase="${BASH_REMATCH[2]}"
+        if [[ ! "$resolver_phase" =~ ^${RESOLVER_PHASE_LABEL_REGEX}$ ]]; then
+            record_resolver_contract_failure
+        fi
+    fi
+done < <(
+    grep -E 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=' \
+        "$output_dir/resolver-recovery-logcat.txt" || true
+)
+if grep -Fq 'DOH_DOT_RECOVERY_CONTRACT_FAILURE field=phase' \
+    "$output_dir/resolver-recovery-logcat.txt"; then
+    record_resolver_contract_failure
+fi
+grep -Eo "DOH_DOT_RECOVERY protocol=(doh|dot) phase=${RESOLVER_PHASE_LABEL_REGEX} result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+$" \
     "$output_dir/resolver-recovery-logcat.txt" |
 awk -v max_elapsed_ms="$MAX_RESOLVER_FAILURE_ELAPSED_MS" '
     {
@@ -1146,6 +1178,10 @@ doh_recovery_failure_elapsed_ms="NOT_RECORDED"
 dot_recovery_failure_category="NOT_RECORDED"
 dot_recovery_failure_phase="NOT_RECORDED"
 dot_recovery_failure_elapsed_ms="NOT_RECORDED"
+if [[ "$resolver_recovery_contract_status" == "FAIL" ]]; then
+    test_failed=1
+    resolver_recovery_status="FAIL"
+fi
 if [[ -s "$output_dir/resolver-recovery-failures.txt" ]]; then
     doh_failure_record="$(grep -m 1 'protocol=doh ' \
         "$output_dir/resolver-recovery-failures.txt" || true)"
@@ -1193,6 +1229,7 @@ if [[ "$dot_recovery_cycles" -ne "$REQUIRED_RESOLVER_RECOVERY_CYCLES" ]]; then
     test_failed=1
 fi
 {
+    printf 'resolver_recovery_contract=%s\n' "$resolver_recovery_contract_status"
     printf 'resolver_recovery=%s\n' "$resolver_recovery_status"
     printf 'doh_recovery=%s\n' "$doh_recovery_status"
     printf 'dot_recovery=%s\n' "$dot_recovery_status"
@@ -1264,8 +1301,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

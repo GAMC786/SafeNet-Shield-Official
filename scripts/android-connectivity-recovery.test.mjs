@@ -54,6 +54,12 @@ const finalResultAggregation = smokeScript.slice(
   finalResultStart,
   finalResultEnd,
 );
+const javaPhaseRule = uiInstrumentation.match(
+  /RESOLVER_PHASE_LABEL_REGEX\s*=\s*"([^"]+)"/,
+);
+const shellPhaseRule = smokeScript.match(
+  /RESOLVER_PHASE_LABEL_REGEX='([^']+)'/,
+);
 const releaseSummaryStart = workflow.indexOf(
   "      - name: Publish release Android smoke summary",
 );
@@ -245,6 +251,37 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
   );
 });
 
+test("instrumentation and smoke share an explicit resolver phase-label contract", () => {
+  assert.ok(
+    javaPhaseRule,
+    "instrumentation must declare RESOLVER_PHASE_LABEL_REGEX explicitly",
+  );
+  assert.ok(
+    shellPhaseRule,
+    "smoke script must declare RESOLVER_PHASE_LABEL_REGEX explicitly",
+  );
+  assert.equal(
+    javaPhaseRule[1],
+    shellPhaseRule[1],
+    "instrumentation and smoke must use the same resolver phase-label rule",
+  );
+  assert.match(
+    uiInstrumentation,
+    /RESOLVER_PHASE_LABEL_PATTERN\s*=\s*Pattern\.compile/,
+    "instrumentation must validate phase labels before logging evidence",
+  );
+  assert.match(
+    smokeScript,
+    /resolver recovery evidence contains a phase label outside the shared rule/,
+    "smoke must fail clearly when a phase label falls outside the contract",
+  );
+  assert.match(
+    smokeScript,
+    /phase=\$\{RESOLVER_PHASE_LABEL_REGEX\}/,
+    "smoke aggregation must use the declared phase-label rule",
+  );
+});
+
 function runResolverAggregation(evidenceDirectory, resolverLogcat) {
   writeFileSync(
     join(evidenceDirectory, "resolver-recovery-logcat.txt"),
@@ -255,6 +292,8 @@ function runResolverAggregation(evidenceDirectory, resolverLogcat) {
     "set -euo pipefail",
     `output_dir=${JSON.stringify(evidenceDirectory)}`,
     "REQUIRED_RESOLVER_RECOVERY_CYCLES=2",
+    "RESOLVER_PHASE_LABEL_REGEX='[A-Za-z0-9_-]+'",
+    "RESOLVER_FAILURE_RECORD_PATTERN='DOH_DOT_RECOVERY protocol=(doh|dot) phase=([^[:space:]]+) result=FAIL failure_category=([A-Z_]+) elapsed_ms=([0-9]+)$'",
     "adb_args=()",
     "capture() { :; }",
     "test_failed=0",
@@ -265,6 +304,7 @@ function runResolverAggregation(evidenceDirectory, resolverLogcat) {
     "device_kind=emulator",
     "resolver_mode=fixture",
     "coverage_label=resolver-recovery",
+    "fixture_log=/tmp/synthetic-fixture.log",
     "connectivity_recovery_status=PASS",
     "ai_shield_status=PASS",
     "fixture_pid=$$",
@@ -347,7 +387,7 @@ test("resolver aggregation rejects over-bound timings and preserves the inclusiv
       "DOH_DOT_RECOVERY protocol=dot phase=cycle-2-fixture result=FAIL failure_category=FIXTURE_FAILURE elapsed_ms=19",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-malformed result=FAIL failure_category=TIMEOUT elapsed_ms=not-a-number",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-impossible result=FAIL failure_category=TIMEOUT elapsed_ms=300001",
-      "DOH_DOT_RECOVERY protocol=dot phase=https://user:secret@example.invalid/dns-query result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23",
+      "DOH_DOT_RECOVERY protocol=dot phase=cycle-3-url result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23 resolver=https://user:secret@example.invalid/dns-query",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-credential result=FAIL failure_category=TLS_FAILURE elapsed_ms=41 resolver=https://user:secret@example.invalid/dns-query",
     ]);
 
@@ -445,6 +485,49 @@ test("passing resolver fixture preserves PASS and NOT_RECORDED defaults", () => 
       assert.match(output, /dot_recovery_failure_phase=NOT_RECORDED/);
       assert.match(output, /dot_recovery_failure_elapsed_ms=NOT_RECORDED/);
       assert.doesNotMatch(output, /secret|example\.invalid/);
+    }
+  } finally {
+    rmSync(evidenceDirectory, { recursive: true, force: true });
+  }
+});
+
+test("unsupported resolver phase labels fail clearly instead of becoming NOT_RECORDED", () => {
+  const evidenceDirectory = mkdtempSync(
+    join(tmpdir(), "android-resolver-phase-contract-"),
+  );
+  try {
+    runResolverAggregation(
+      evidenceDirectory,
+      [
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
+        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
+        "DOH_DOT_RECOVERY protocol=doh phase=cycle.1-tls result=FAIL failure_category=TLS_FAILURE elapsed_ms=37",
+      ],
+    );
+
+    const contractError = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-contract-error.txt"),
+      "utf8",
+    );
+    const resolverResult = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-result.txt"),
+      "utf8",
+    );
+    const resultFile = readFileSync(join(evidenceDirectory, "result.txt"), "utf8");
+
+    assert.match(
+      contractError,
+      /reason=instrumentation emitted a phase label outside the shared validation rule/,
+    );
+    assert.match(contractError, /rule=\[A-Za-z0-9_-\]\+/);
+    for (const output of [resolverResult, resultFile]) {
+      assert.match(output, /resolver_recovery_contract=FAIL/);
+      assert.match(output, /resolver_recovery=FAIL/);
+      assert.match(output, /doh_recovery_failure_category=NOT_RECORDED/);
+      assert.match(output, /doh_recovery_failure_phase=NOT_RECORDED/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=NOT_RECORDED/);
     }
   } finally {
     rmSync(evidenceDirectory, { recursive: true, force: true });
