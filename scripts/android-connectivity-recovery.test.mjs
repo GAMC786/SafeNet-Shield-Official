@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -53,6 +54,22 @@ const finalResultAggregation = smokeScript.slice(
   finalResultStart,
   finalResultEnd,
 );
+const releaseSummaryStart = workflow.indexOf(
+  "      - name: Publish release Android smoke summary",
+);
+const releaseSummaryEnd = workflow.indexOf(
+  "\n      - name: Upload release Android smoke evidence",
+  releaseSummaryStart,
+);
+const releaseSummary = workflow.slice(releaseSummaryStart, releaseSummaryEnd);
+const releaseSummaryScriptStart = releaseSummary.indexOf(
+  "          set -euo pipefail",
+);
+const releaseSummaryScript = releaseSummary
+  .slice(releaseSummaryScriptStart)
+  .split("\n")
+  .map((line) => line.replace(/^ {10}/, ""))
+  .join("\n");
 
 test("Android smoke requires packaged connectivity recovery evidence", () => {
   assert.match(
@@ -228,59 +245,110 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
   );
 });
 
-test("resolver failure markers survive smoke aggregation without leaking credentials", () => {
+function runResolverAggregation(evidenceDirectory, resolverLogcat) {
+  writeFileSync(
+    join(evidenceDirectory, "resolver-recovery-logcat.txt"),
+    `${resolverLogcat.join("\n")}\n`,
+  );
+
+  const shell = [
+    "set -euo pipefail",
+    `output_dir=${JSON.stringify(evidenceDirectory)}`,
+    "REQUIRED_RESOLVER_RECOVERY_CYCLES=2",
+    "adb_args=()",
+    "capture() { :; }",
+    "test_failed=0",
+    "instrumentation_status=0",
+    "serial=synthetic-device",
+    "apk_path=/tmp/synthetic-release.apk",
+    "validation_mode=fixture",
+    "device_kind=emulator",
+    "resolver_mode=fixture",
+    "coverage_label=resolver-recovery",
+    "connectivity_recovery_status=PASS",
+    "ai_shield_status=PASS",
+    "fixture_pid=$$",
+    resolverAggregation,
+    finalResultAggregation,
+  ].join("\n");
+  const result = spawnSync("bash", ["-e", "-u", "-o", "pipefail", "-c", shell], {
+    encoding: "utf8",
+  });
+  assert.equal(
+    result.status,
+    0,
+    `smoke aggregation harness failed:\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+function runReleaseSummary(evidenceDirectory) {
+  const summaryEvidenceDirectory = join(
+    evidenceDirectory,
+    "android/app/build/reports/android-smoke/latest",
+  );
+  mkdirSync(summaryEvidenceDirectory, { recursive: true });
+  writeFileSync(
+    join(summaryEvidenceDirectory, "result.txt"),
+    readFileSync(join(evidenceDirectory, "result.txt")),
+  );
+  writeFileSync(
+    join(summaryEvidenceDirectory, "failure-category.txt"),
+    "PASS\n",
+  );
+  const summaryPath = join(evidenceDirectory, "summary.md");
+  const result = spawnSync(
+    "bash",
+    ["-e", "-u", "-o", "pipefail", "-c", releaseSummaryScript],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        BUILD_ANDROID_RESULT: "success",
+        ANDROID_SDK_SETUP_CATEGORY: "PASS",
+        SMOKE_STEP_OUTCOME: "success",
+        RUN_URL: "https://github.com/example/safenet/actions/runs/123",
+        EVIDENCE_URL: "https://github.com/example/safenet/actions/runs/123#artifacts",
+        RELEASE_EVIDENCE_URL:
+          "https://github.com/example/safenet/releases/download/v1/SafeNet-DNS-Android-smoke-evidence.tar.gz",
+        RELEASE_RESULT_URL:
+          "https://github.com/example/safenet/releases/download/v1/SafeNet-DNS-Android-smoke-result.txt",
+        GITHUB_WORKSPACE: evidenceDirectory,
+        GITHUB_STEP_SUMMARY: summaryPath,
+      },
+    },
+  );
+  assert.equal(
+    result.status,
+    0,
+    `release summary harness failed:\n${result.stdout}\n${result.stderr}`,
+  );
+  return summaryEvidenceDirectory;
+}
+
+test("resolver failure markers preserve summary parity without leaking credentials", () => {
   assert.notEqual(resolverAggregationStart, -1, "resolver aggregation is missing");
   assert.notEqual(resolverAggregationEnd, -1, "resolver aggregation boundary is missing");
   assert.notEqual(finalResultStart, -1, "final result aggregation is missing");
   assert.notEqual(finalResultEnd, -1, "final result aggregation boundary is missing");
+  assert.notEqual(releaseSummaryStart, -1, "release summary is missing");
+  assert.notEqual(releaseSummaryEnd, -1, "release summary boundary is missing");
+  assert.notEqual(releaseSummaryScriptStart, -1, "release summary script is missing");
 
   const evidenceDirectory = mkdtempSync(join(tmpdir(), "android-resolver-aggregation-"));
   try {
-    writeFileSync(
-      join(evidenceDirectory, "resolver-recovery-logcat.txt"),
-      [
-        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
-        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
-        "DOH_DOT_RECOVERY protocol=doh phase=cycle-1-tls result=FAIL failure_category=TLS_FAILURE elapsed_ms=37",
-        "DOH_DOT_RECOVERY protocol=dot phase=cycle-1-route result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=512",
-        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
-        "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
-        "DOH_DOT_RECOVERY protocol=doh phase=cycle-2-timeout result=FAIL failure_category=TIMEOUT elapsed_ms=60000",
-        "DOH_DOT_RECOVERY protocol=dot phase=cycle-2-fixture result=FAIL failure_category=FIXTURE_FAILURE elapsed_ms=19",
-        "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-malformed result=FAIL failure_category=TIMEOUT elapsed_ms=not-a-number",
-        "DOH_DOT_RECOVERY protocol=dot phase=https://user:secret@example.invalid/dns-query result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23",
-        "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-credential result=FAIL failure_category=TLS_FAILURE elapsed_ms=41 resolver=https://user:secret@example.invalid/dns-query",
-      ].join("\n") + "\n",
-    );
-
-    const shell = [
-      "set -euo pipefail",
-      `output_dir=${JSON.stringify(evidenceDirectory)}`,
-      "REQUIRED_RESOLVER_RECOVERY_CYCLES=2",
-      "adb_args=()",
-      "capture() { :; }",
-      "test_failed=0",
-      "instrumentation_status=0",
-      "serial=synthetic-device",
-      "apk_path=/tmp/synthetic-release.apk",
-      "validation_mode=fixture",
-      "device_kind=emulator",
-      "resolver_mode=fixture",
-      "coverage_label=resolver-recovery",
-      "connectivity_recovery_status=PASS",
-      "ai_shield_status=PASS",
-      "fixture_pid=$$",
-      resolverAggregation,
-      finalResultAggregation,
-    ].join("\n");
-    const result = spawnSync("bash", ["-e", "-u", "-o", "pipefail", "-c", shell], {
-      encoding: "utf8",
-    });
-    assert.equal(
-      result.status,
-      0,
-      `smoke aggregation harness failed:\n${result.stdout}\n${result.stderr}`,
-    );
+    runResolverAggregation(evidenceDirectory, [
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-1-tls result=FAIL failure_category=TLS_FAILURE elapsed_ms=37",
+      "DOH_DOT_RECOVERY protocol=dot phase=cycle-1-route result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=512",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-2-timeout result=FAIL failure_category=TIMEOUT elapsed_ms=60000",
+      "DOH_DOT_RECOVERY protocol=dot phase=cycle-2-fixture result=FAIL failure_category=FIXTURE_FAILURE elapsed_ms=19",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-malformed result=FAIL failure_category=TIMEOUT elapsed_ms=not-a-number",
+      "DOH_DOT_RECOVERY protocol=dot phase=https://user:secret@example.invalid/dns-query result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-credential result=FAIL failure_category=TLS_FAILURE elapsed_ms=41 resolver=https://user:secret@example.invalid/dns-query",
+    ]);
 
     const failures = readFileSync(
       join(evidenceDirectory, "resolver-recovery-failures.txt"),
@@ -291,6 +359,12 @@ test("resolver failure markers survive smoke aggregation without leaking credent
       "utf8",
     );
     const resultFile = readFileSync(join(evidenceDirectory, "result.txt"), "utf8");
+    const summaryEvidenceDirectory = runReleaseSummary(evidenceDirectory);
+    const releaseRecord = readFileSync(
+      join(summaryEvidenceDirectory, "release-record.txt"),
+      "utf8",
+    );
+    const summary = readFileSync(join(evidenceDirectory, "summary.md"), "utf8");
 
     assert.equal((failures.match(/^DOH_DOT_RECOVERY /gm) ?? []).length, 4);
     assert.match(failures, /failure_category=TLS_FAILURE elapsed_ms=37/);
@@ -311,6 +385,65 @@ test("resolver failure markers survive smoke aggregation without leaking credent
       assert.match(output, /dot_recovery_failure_phase=cycle-1-route/);
       assert.match(output, /dot_recovery_failure_elapsed_ms=512/);
       assert.doesNotMatch(output, /TIMEOUT|FIXTURE_FAILURE|secret|example\.invalid/);
+    }
+    for (const output of [releaseRecord]) {
+      assert.match(output, /doh_recovery_failure_category=TLS_FAILURE/);
+      assert.match(output, /doh_recovery_failure_phase=cycle-1-tls/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=37/);
+      assert.match(output, /dot_recovery_failure_category=ROUTE_FAILURE/);
+      assert.match(output, /dot_recovery_failure_phase=cycle-1-route/);
+      assert.match(output, /dot_recovery_failure_elapsed_ms=512/);
+      assert.doesNotMatch(output, /TIMEOUT|FIXTURE_FAILURE|secret|example\.invalid/);
+    }
+    assert.match(
+      summary,
+      /DoH failure detail:\*\* `TLS_FAILURE` in `cycle-1-tls` after `37ms`/,
+    );
+    assert.match(
+      summary,
+      /DoT failure detail:\*\* `ROUTE_FAILURE` in `cycle-1-route` after `512ms`/,
+    );
+    assert.doesNotMatch(summary, /TIMEOUT|FIXTURE_FAILURE|secret|example\.invalid/);
+  } finally {
+    rmSync(evidenceDirectory, { recursive: true, force: true });
+  }
+});
+
+test("passing resolver fixture preserves PASS and NOT_RECORDED defaults", () => {
+  const evidenceDirectory = mkdtempSync(join(tmpdir(), "android-resolver-pass-"));
+  try {
+    runResolverAggregation(evidenceDirectory, [
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
+      "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
+      "I/SafeNetResolverRecovery(123): resolver=https://user:secret@example.invalid/dns-query result=PASS",
+    ]);
+
+    const failures = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-failures.txt"),
+      "utf8",
+    );
+    const resolverResult = readFileSync(
+      join(evidenceDirectory, "resolver-recovery-result.txt"),
+      "utf8",
+    );
+    const resultFile = readFileSync(join(evidenceDirectory, "result.txt"), "utf8");
+
+    assert.equal(failures, "");
+    for (const output of [resolverResult, resultFile]) {
+      assert.match(output, /resolver_recovery=PASS/);
+      assert.match(output, /doh_recovery=PASS/);
+      assert.match(output, /dot_recovery=PASS/);
+      assert.match(output, /doh_recovery_cycles=2/);
+      assert.match(output, /dot_recovery_cycles=2/);
+      assert.match(output, /doh_recovery_failure_category=NOT_RECORDED/);
+      assert.match(output, /doh_recovery_failure_phase=NOT_RECORDED/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=NOT_RECORDED/);
+      assert.match(output, /dot_recovery_failure_category=NOT_RECORDED/);
+      assert.match(output, /dot_recovery_failure_phase=NOT_RECORDED/);
+      assert.match(output, /dot_recovery_failure_elapsed_ms=NOT_RECORDED/);
+      assert.doesNotMatch(output, /secret|example\.invalid/);
     }
   } finally {
     rmSync(evidenceDirectory, { recursive: true, force: true });
