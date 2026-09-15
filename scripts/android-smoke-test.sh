@@ -1113,9 +1113,20 @@ capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
 # Keep only bounded, protocol-specific failure records. These records contain
 # controlled phase/category/timing fields and never include exception text,
 # resolver URLs, or other credential-bearing instrumentation output.
+# The Android instrumentation clamps this same inclusive maximum.
+MAX_RESOLVER_FAILURE_ELAPSED_MS=300000
 grep -Eo 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=[A-Za-z0-9_-]+ result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+$' \
-    "$output_dir/resolver-recovery-logcat.txt" | head -n 20 > \
-    "$output_dir/resolver-recovery-failures.txt" || true
+    "$output_dir/resolver-recovery-logcat.txt" |
+awk -v max_elapsed_ms="$MAX_RESOLVER_FAILURE_ELAPSED_MS" '
+    {
+        elapsed_ms = $NF
+        sub(/^elapsed_ms=/, "", elapsed_ms)
+        if ((elapsed_ms + 0) <= max_elapsed_ms) {
+            print
+        }
+    }
+' |
+head -n 20 > "$output_dir/resolver-recovery-failures.txt" || true
 
 test_failed=0
 if [[ "$instrumentation_status" -ne 0 ]] ||

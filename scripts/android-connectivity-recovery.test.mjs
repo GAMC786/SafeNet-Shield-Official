@@ -325,7 +325,7 @@ function runReleaseSummary(evidenceDirectory) {
   return summaryEvidenceDirectory;
 }
 
-test("resolver failure markers preserve summary parity without leaking credentials", () => {
+test("resolver aggregation rejects over-bound timings and preserves the inclusive boundary", () => {
   assert.notEqual(resolverAggregationStart, -1, "resolver aggregation is missing");
   assert.notEqual(resolverAggregationEnd, -1, "resolver aggregation boundary is missing");
   assert.notEqual(finalResultStart, -1, "final result aggregation is missing");
@@ -339,13 +339,14 @@ test("resolver failure markers preserve summary parity without leaking credentia
     runResolverAggregation(evidenceDirectory, [
       "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=1",
       "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=1",
-      "DOH_DOT_RECOVERY protocol=doh phase=cycle-1-tls result=FAIL failure_category=TLS_FAILURE elapsed_ms=37",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-1-boundary result=FAIL failure_category=TLS_FAILURE elapsed_ms=300000",
       "DOH_DOT_RECOVERY protocol=dot phase=cycle-1-route result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=512",
       "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=doh result=PASS cycle=2",
       "I/SafeNetResolverRecovery(123): DOH_DOT_RECOVERY protocol=dot result=PASS cycle=2",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-2-timeout result=FAIL failure_category=TIMEOUT elapsed_ms=60000",
       "DOH_DOT_RECOVERY protocol=dot phase=cycle-2-fixture result=FAIL failure_category=FIXTURE_FAILURE elapsed_ms=19",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-malformed result=FAIL failure_category=TIMEOUT elapsed_ms=not-a-number",
+      "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-impossible result=FAIL failure_category=TIMEOUT elapsed_ms=300001",
       "DOH_DOT_RECOVERY protocol=dot phase=https://user:secret@example.invalid/dns-query result=FAIL failure_category=ROUTE_FAILURE elapsed_ms=23",
       "DOH_DOT_RECOVERY protocol=doh phase=cycle-3-credential result=FAIL failure_category=TLS_FAILURE elapsed_ms=41 resolver=https://user:secret@example.invalid/dns-query",
     ]);
@@ -367,11 +368,11 @@ test("resolver failure markers preserve summary parity without leaking credentia
     const summary = readFileSync(join(evidenceDirectory, "summary.md"), "utf8");
 
     assert.equal((failures.match(/^DOH_DOT_RECOVERY /gm) ?? []).length, 4);
-    assert.match(failures, /failure_category=TLS_FAILURE elapsed_ms=37/);
+    assert.match(failures, /failure_category=TLS_FAILURE elapsed_ms=300000/);
     assert.match(failures, /failure_category=ROUTE_FAILURE elapsed_ms=512/);
     assert.match(failures, /failure_category=TIMEOUT elapsed_ms=60000/);
     assert.match(failures, /failure_category=FIXTURE_FAILURE elapsed_ms=19/);
-    assert.doesNotMatch(failures, /not-a-number|secret|example\.invalid/);
+    assert.doesNotMatch(failures, /not-a-number|300001|secret|example\.invalid/);
 
     for (const output of [resolverResult, resultFile]) {
       assert.match(output, /doh_recovery=PASS/);
@@ -379,17 +380,17 @@ test("resolver failure markers preserve summary parity without leaking credentia
       assert.match(output, /doh_recovery_cycles=2/);
       assert.match(output, /dot_recovery_cycles=2/);
       assert.match(output, /doh_recovery_failure_category=TLS_FAILURE/);
-      assert.match(output, /doh_recovery_failure_phase=cycle-1-tls/);
-      assert.match(output, /doh_recovery_failure_elapsed_ms=37/);
+      assert.match(output, /doh_recovery_failure_phase=cycle-1-boundary/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=300000/);
       assert.match(output, /dot_recovery_failure_category=ROUTE_FAILURE/);
       assert.match(output, /dot_recovery_failure_phase=cycle-1-route/);
       assert.match(output, /dot_recovery_failure_elapsed_ms=512/);
-      assert.doesNotMatch(output, /TIMEOUT|FIXTURE_FAILURE|secret|example\.invalid/);
+      assert.doesNotMatch(output, /TIMEOUT|FIXTURE_FAILURE|300001|secret|example\.invalid/);
     }
     for (const output of [releaseRecord]) {
       assert.match(output, /doh_recovery_failure_category=TLS_FAILURE/);
-      assert.match(output, /doh_recovery_failure_phase=cycle-1-tls/);
-      assert.match(output, /doh_recovery_failure_elapsed_ms=37/);
+      assert.match(output, /doh_recovery_failure_phase=cycle-1-boundary/);
+      assert.match(output, /doh_recovery_failure_elapsed_ms=300000/);
       assert.match(output, /dot_recovery_failure_category=ROUTE_FAILURE/);
       assert.match(output, /dot_recovery_failure_phase=cycle-1-route/);
       assert.match(output, /dot_recovery_failure_elapsed_ms=512/);
@@ -397,7 +398,7 @@ test("resolver failure markers preserve summary parity without leaking credentia
     }
     assert.match(
       summary,
-      /DoH failure detail:\*\* `TLS_FAILURE` in `cycle-1-tls` after `37ms`/,
+      /DoH failure detail:\*\* `TLS_FAILURE` in `cycle-1-boundary` after `300000ms`/,
     );
     assert.match(
       summary,
