@@ -21,6 +21,13 @@ export type CallReputationResult =
       reason: string;
     };
 
+export type CallReputationAvailability = {
+  status: "configured" | "unavailable";
+  failOpen: true;
+  source: "SafeNet approved source";
+  reason: string;
+};
+
 function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -54,6 +61,18 @@ function unavailable(reason: string): CallReputationResult {
   return { available: false, source: "SafeNet approved source", reason };
 }
 
+function availability(
+  status: CallReputationAvailability["status"],
+  reason: string,
+): CallReputationAvailability {
+  return {
+    status,
+    failOpen: true,
+    source: "SafeNet approved source",
+    reason,
+  };
+}
+
 function endpointForNumber(base: URL, number: string) {
   const url = new URL(base.toString());
   url.searchParams.set("number", number);
@@ -74,6 +93,49 @@ function reputationHeaders() {
     Accept: "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+export async function getCallReputationAvailability(): Promise<CallReputationAvailability> {
+  const endpoint = configuredEndpoint("SAFE_NET_CALL_REPUTATION_URL");
+  if (!endpoint) {
+    return availability(
+      "unavailable",
+      "The approved caller-reputation source is not configured.",
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(endpoint, {
+      method: "HEAD",
+      headers: reputationHeaders(),
+      signal: controller.signal,
+    });
+
+    // A provider may reject HEAD or require a phone number, but those
+    // responses still prove that the configured endpoint is reachable.
+    if (response.ok || [400, 405, 422].includes(response.status)) {
+      return availability(
+        "configured",
+        "The approved caller-reputation source is configured and reachable.",
+      );
+    }
+
+    return availability(
+      "unavailable",
+      `The approved reputation source returned HTTP ${response.status}.`,
+    );
+  } catch (error) {
+    return availability(
+      "unavailable",
+      error instanceof Error && error.name === "AbortError"
+        ? "The approved reputation source timed out."
+        : "The approved reputation source could not be reached.",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function lookupCallReputation(number: string): Promise<CallReputationResult> {

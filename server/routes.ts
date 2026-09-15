@@ -27,7 +27,11 @@ import {
   getDeepCleerStatus,
   moderateDeepCleerImage,
 } from "./deepcleer-service";
-import { lookupCallReputation, reportCall } from "./call-reputation";
+import {
+  getCallReputationAvailability,
+  lookupCallReputation,
+  reportCall,
+} from "./call-reputation";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -177,6 +181,11 @@ export async function registerRoutes(
       }
     },
   );
+
+  app.get("/api/spam-call-blocker/reputation/status", async (_req, res) => {
+    const result = await getCallReputationAvailability();
+    return res.json(result);
+  });
 
   app.get("/api/spam-call-blocker/reputation", async (req, res) => {
     const number = typeof req.query.number === "string" ? req.query.number : "";

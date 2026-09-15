@@ -11,6 +11,13 @@ import { apiFetch } from "@/lib/api";
 import { Capacitor } from "@capacitor/core";
 import { useToast } from "@/hooks/use-toast";
 
+type ReputationAvailability = {
+  status: "configured" | "unavailable";
+  failOpen: true;
+  source: "SafeNet approved source";
+  reason: string;
+};
+
 function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -29,11 +36,52 @@ export default function SpamCallBlocker() {
   const [number, setNumber] = useState("");
   const [reportNumber, setReportNumber] = useState("");
   const [isReporting, setIsReporting] = useState(false);
+  const [reputationAvailability, setReputationAvailability] = useState<ReputationAvailability | null>(null);
 
   const syncConfig = native.syncConfig;
   useEffect(() => {
     void syncConfig(blockedNumbers).catch(() => undefined);
   }, [blockedNumbers, syncConfig]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch("/api/spam-call-blocker/reputation/status", {
+      cache: "no-store",
+      timeoutMs: 5000,
+    })
+      .then(async (response) => {
+        const result = await response.json() as Partial<ReputationAvailability>;
+        if (!response.ok || (result.status !== "configured" && result.status !== "unavailable")) {
+          throw new Error("The reputation source availability could not be checked.");
+        }
+        if (!cancelled) {
+          setReputationAvailability({
+            status: result.status,
+            failOpen: true,
+            source: "SafeNet approved source",
+            reason: typeof result.reason === "string"
+              ? result.reason
+              : "The reputation source availability could not be confirmed.",
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setReputationAvailability({
+            status: "unavailable",
+            failOpen: true,
+            source: "SafeNet approved source",
+            reason: error instanceof Error
+              ? error.message
+              : "The reputation source availability could not be checked.",
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const addBlockedNumber = useCallback(() => {
     const normalized = normalizePhoneNumber(number);
@@ -163,7 +211,28 @@ export default function SpamCallBlocker() {
               Current status
             </h2>
           </div>
+          <div className="mt-4 flex flex-wrap gap-2" role="status" aria-live="polite">
+            <Badge
+              variant="outline"
+              className={reputationAvailability?.status === "configured"
+                ? "border-green-400/40 text-green-300"
+                : reputationAvailability?.status === "unavailable"
+                  ? "border-yellow-300/40 text-yellow-200"
+                  : "text-muted-foreground"}
+            >
+              {reputationAvailability
+                ? reputationAvailability.status === "configured"
+                  ? "Reputation configured"
+                  : "Reputation unavailable"
+                : "Checking reputation source"}
+            </Badge>
+            <Badge variant="outline" className="border-primary/40 text-primary">
+              Fail-open protection
+            </Badge>
+          </div>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            {reputationAvailability?.reason ?? "Checking whether the approved reputation source is reachable."}
+            {" "}
             SafeNet only acts on an explicit local block or an approved reputation response. If Android
             or the reputation source is unavailable, incoming calls are allowed.
           </p>

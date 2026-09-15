@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { lookupCallReputation, reportCall } from "./call-reputation";
+import {
+  getCallReputationAvailability,
+  lookupCallReputation,
+  reportCall,
+} from "./call-reputation";
 
 function restoreEnvironment(
   previous: Record<string, string | undefined>,
@@ -22,6 +26,56 @@ test("call reputation fails open when no approved source is configured", async (
     assert.equal(result.available, false);
     assert.match(result.reason, /not configured/i);
   } finally {
+    if (previousUrl === undefined) delete process.env.SAFE_NET_CALL_REPUTATION_URL;
+    else process.env.SAFE_NET_CALL_REPUTATION_URL = previousUrl;
+  }
+});
+
+test("availability is redacted when the approved source is configured and reachable", async () => {
+  const previous = {
+    SAFE_NET_CALL_REPUTATION_URL: process.env.SAFE_NET_CALL_REPUTATION_URL,
+    SAFE_NET_CALL_REPUTATION_TOKEN: process.env.SAFE_NET_CALL_REPUTATION_TOKEN,
+  };
+  const previousFetch = globalThis.fetch;
+  process.env.SAFE_NET_CALL_REPUTATION_URL = "https://reputation.example.test/health";
+  process.env.SAFE_NET_CALL_REPUTATION_TOKEN = "availability-token";
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return new Response(null, { status: 204 });
+  };
+  try {
+    const result = await getCallReputationAvailability();
+    assert.deepEqual(result, {
+      status: "configured",
+      failOpen: true,
+      source: "SafeNet approved source",
+      reason: "The approved caller-reputation source is configured and reachable.",
+    });
+    assert.equal(request?.method, "HEAD");
+    assert.equal(request?.url, "https://reputation.example.test/health");
+    assert.equal(request?.headers.get("Authorization"), "Bearer availability-token");
+    assert.equal(JSON.stringify(result).includes("availability-token"), false);
+    assert.equal(JSON.stringify(result).includes("reputation.example.test"), false);
+  } finally {
+    restoreEnvironment(previous, previousFetch);
+  }
+});
+
+test("availability remains fail-open when the approved source cannot be reached", async () => {
+  const previousUrl = process.env.SAFE_NET_CALL_REPUTATION_URL;
+  const previousFetch = globalThis.fetch;
+  process.env.SAFE_NET_CALL_REPUTATION_URL = "https://reputation.example.test/health";
+  globalThis.fetch = async () => {
+    throw new Error("provider offline");
+  };
+  try {
+    const result = await getCallReputationAvailability();
+    assert.equal(result.status, "unavailable");
+    assert.equal(result.failOpen, true);
+    assert.match(result.reason, /could not be reached/i);
+  } finally {
+    globalThis.fetch = previousFetch;
     if (previousUrl === undefined) delete process.env.SAFE_NET_CALL_REPUTATION_URL;
     else process.env.SAFE_NET_CALL_REPUTATION_URL = previousUrl;
   }
