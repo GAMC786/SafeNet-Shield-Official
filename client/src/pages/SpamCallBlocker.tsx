@@ -14,7 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 type ReputationAvailability = {
   status: "configured" | "unavailable";
   failOpen: true;
-  source: "SafeNet approved source";
+  source: string;
+  provider: "approved-source" | "call-control-identify" | "call-control";
+  reportingAvailable: boolean;
   reason: string;
 };
 
@@ -58,7 +60,11 @@ export default function SpamCallBlocker() {
           setReputationAvailability({
             status: result.status,
             failOpen: true,
-            source: "SafeNet approved source",
+            source: typeof result.source === "string" ? result.source : "SafeNet approved source",
+            provider: result.provider === "call-control-identify" || result.provider === "call-control"
+              ? result.provider
+              : "approved-source",
+            reportingAvailable: result.reportingAvailable !== false,
             reason: typeof result.reason === "string"
               ? result.reason
               : "The reputation source availability could not be confirmed.",
@@ -71,6 +77,8 @@ export default function SpamCallBlocker() {
             status: "unavailable",
             failOpen: true,
             source: "SafeNet approved source",
+            provider: "approved-source",
+            reportingAvailable: false,
             reason: error instanceof Error
               ? error.message
               : "The reputation source availability could not be checked.",
@@ -222,7 +230,7 @@ export default function SpamCallBlocker() {
             >
               {reputationAvailability
                 ? reputationAvailability.status === "configured"
-                  ? "Reputation configured"
+                  ? `${reputationAvailability.source} configured`
                   : "Reputation unavailable"
                 : "Checking reputation source"}
             </Badge>
@@ -284,24 +292,35 @@ export default function SpamCallBlocker() {
               <p className="text-xs text-muted-foreground">Send a caller number to the approved reputation source.</p>
             </div>
           </div>
-          <div className="mt-4 flex gap-2">
-            <Input
-              value={reportNumber}
-              onChange={(event) => setReportNumber(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") void reportSpam(); }}
-              placeholder="+1 555 123 4567"
-              inputMode="tel"
-              aria-label="Phone number to report"
-            />
-            <Button onClick={() => void reportSpam()} disabled={isReporting}>
-              <Check className="h-4 w-4" />
-              {isReporting ? "Sending..." : "Report"}
-            </Button>
-          </div>
-          <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            A report does not automatically block a number. Add it to Blocked numbers when you want
-            an immediate device-local block.
-          </p>
+          {(reputationAvailability?.provider === "call-control-identify" ||
+            reputationAvailability?.provider === "call-control") &&
+          reputationAvailability.reportingAvailable === false ? (
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              Call Control Identify does not publish a public report endpoint. Add the number to
+              Blocked numbers for immediate device-local protection.
+            </p>
+          ) : (
+            <>
+              <div className="mt-4 flex gap-2">
+                <Input
+                  value={reportNumber}
+                  onChange={(event) => setReportNumber(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") void reportSpam(); }}
+                  placeholder="+1 555 123 4567"
+                  inputMode="tel"
+                  aria-label="Phone number to report"
+                />
+                <Button onClick={() => void reportSpam()} disabled={isReporting}>
+                  <Check className="h-4 w-4" />
+                  {isReporting ? "Sending..." : "Report"}
+                </Button>
+              </div>
+              <p className="mt-4 text-xs leading-5 text-muted-foreground">
+                A report does not automatically block a number. Add it to Blocked numbers when you want
+                an immediate device-local block.
+              </p>
+            </>
+          )}
         </CyberCard>
       </div>
     </div>

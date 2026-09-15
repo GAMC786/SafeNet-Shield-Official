@@ -82,3 +82,5 @@ timeoutMs = 180000
 [userenv.shared]
 STRIPE_PRICE_ID = "price_1UG2Vd14SLpM0XdcqrjjuT1D"
 STRIPE_TRIAL_DAYS = "7"
+SAFE_NET_CALL_CONTROL_BASE_URL = "https://api.callcontrol.com/api/2015-11-01/Reputation"
+SAFE_NET_CALL_REPUTATION_PROVIDER = "call-control-identify"
