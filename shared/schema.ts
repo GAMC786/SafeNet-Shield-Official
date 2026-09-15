@@ -154,6 +154,7 @@ export const antivirusEvents = pgTable("antivirus_events", {
 // entitlement state, and webhook idempotency records.
 export const stripeCustomers = pgTable("stripe_customers", {
   stripeCustomerId: text("stripe_customer_id").primaryKey(),
+  clerkUserId: text("clerk_user_id").unique(),
   email: text("email"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -163,6 +164,9 @@ export const stripeSubscriptions = pgTable("stripe_subscriptions", {
   stripeSubscriptionId: text("stripe_subscription_id").primaryKey(),
   stripeCustomerId: text("stripe_customer_id").notNull(),
   priceId: text("price_id"),
+  priceAmount: integer("price_amount"),
+  priceCurrency: text("price_currency"),
+  priceInterval: text("price_interval"),
   status: text("status").notNull(),
   trialEnd: timestamp("trial_end"),
   currentPeriodEnd: timestamp("current_period_end"),

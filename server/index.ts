@@ -7,6 +7,13 @@ import { startDdnsScheduler } from "./ddns-service";
 import { registerRequestOriginMiddleware } from "./request-origin";
 import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 import { registerStripeRoutes, registerStripeWebhookRoute } from "./stripe";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,6 +28,15 @@ declare module "http" {
 
 // Stripe requires the raw request body for signature verification. This must
 // be registered before express.json() parses the rest of the API.
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+app.use(
+  clerkMiddleware((req) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env.CLERK_PUBLISHABLE_KEY,
+    ),
+  })),
+);
 registerStripeWebhookRoute(app);
 
 app.use(

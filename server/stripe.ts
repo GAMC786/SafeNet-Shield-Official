@@ -1,18 +1,21 @@
 import type { Express, Request, Response } from "express";
 import express from "express";
 import Stripe from "stripe";
-import { and, desc, eq } from "drizzle-orm";
-import { z } from "zod";
+import { desc, eq } from "drizzle-orm";
 import { db } from "./db";
 import {
   stripeCustomers,
   stripeSubscriptions,
   stripeWebhookEvents,
 } from "@shared/schema";
+import { getRequestUserId, requireAuth } from "./auth";
 
-const billingEmailSchema = z.object({
-  email: z.string().trim().email().max(320),
-});
+const STRIPE_USER_METADATA_KEY = "safenet_clerk_user_id";
+const APPROVED_PLAN = {
+  amount: 500,
+  currency: "cad",
+  interval: "month",
+} as const;
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -43,16 +46,37 @@ function getPriceId() {
 }
 
 async function upsertCustomer(customerId: string, email?: string | null) {
+  return upsertCustomerForUser(customerId, email);
+}
+
+async function upsertCustomerForUser(
+  customerId: string,
+  email?: string | null,
+  clerkUserId?: string | null,
+) {
+  if (clerkUserId) {
+    const [linkedCustomer] = await db
+      .select({ stripeCustomerId: stripeCustomers.stripeCustomerId })
+      .from(stripeCustomers)
+      .where(eq(stripeCustomers.clerkUserId, clerkUserId))
+      .limit(1);
+    if (linkedCustomer && linkedCustomer.stripeCustomerId !== customerId) {
+      throw new Error("This SafeNet account is already linked to a different Stripe customer.");
+    }
+  }
+
   await db
     .insert(stripeCustomers)
     .values({
       stripeCustomerId: customerId,
+      clerkUserId: clerkUserId ?? null,
       email: email ?? null,
     })
     .onConflictDoUpdate({
       target: stripeCustomers.stripeCustomerId,
       set: {
-        email: email ?? null,
+        ...(clerkUserId ? { clerkUserId } : {}),
+        ...(email !== undefined ? { email } : {}),
         updatedAt: new Date(),
       },
     });
@@ -76,6 +100,9 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
       stripeSubscriptionId: subscription.id,
       stripeCustomerId: customerId,
       priceId: item?.price.id ?? null,
+      priceAmount: item?.price.unit_amount ?? null,
+      priceCurrency: item?.price.currency ?? null,
+      priceInterval: item?.price.recurring?.interval ?? null,
       status: subscription.status,
       trialEnd: subscription.trial_end
         ? new Date(subscription.trial_end * 1000)
@@ -89,6 +116,9 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
       set: {
         stripeCustomerId: customerId,
         priceId: item?.price.id ?? null,
+        priceAmount: item?.price.unit_amount ?? null,
+        priceCurrency: item?.price.currency ?? null,
+        priceInterval: item?.price.recurring?.interval ?? null,
         status: subscription.status,
         trialEnd: subscription.trial_end
           ? new Date(subscription.trial_end * 1000)
@@ -109,14 +139,30 @@ async function processStripeEvent(event: Stripe.Event) {
           ? session.customer
           : session.customer?.id;
       if (customerId) {
-        await upsertCustomer(customerId, session.customer_details?.email);
+        await upsertCustomerForUser(
+          customerId,
+          session.customer_details?.email,
+          session.metadata?.[STRIPE_USER_METADATA_KEY],
+        );
       }
       return;
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      await upsertSubscription(event.data.object as Stripe.Subscription);
+      {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId =
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : subscription.customer.id;
+        await upsertCustomerForUser(
+          customerId,
+          undefined,
+          subscription.metadata?.[STRIPE_USER_METADATA_KEY],
+        );
+        await upsertSubscription(subscription);
+      }
       return;
     case "invoice.paid":
     case "invoice.payment_failed":
@@ -190,23 +236,34 @@ export function registerStripeRoutes(app: Express) {
     });
   });
 
-  app.post("/api/billing/checkout", async (req, res) => {
-    const parsed = billingEmailSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: "A valid email address is required." });
-    }
-
+  app.post("/api/billing/checkout", requireAuth, async (req, res) => {
     try {
+      const clerkUserId = getRequestUserId(req);
+      if (!clerkUserId) {
+        return res.status(401).json({ message: "Sign in is required before starting checkout." });
+      }
+
       const stripe = getStripeClient();
       const trialDays = getTrialDays();
+      const [linkedCustomer] = await db
+        .select()
+        .from(stripeCustomers)
+        .where(eq(stripeCustomers.clerkUserId, clerkUserId))
+        .limit(1);
+      const customer = linkedCustomer
+        ? linkedCustomer
+        : await createCustomerForUser(stripe, clerkUserId);
+
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        customer_email: parsed.data.email,
+        customer: customer.stripeCustomerId,
         line_items: [{ price: getPriceId(), quantity: 1 }],
         allow_promotion_codes: true,
-        subscription_data: trialDays > 0
-          ? { trial_period_days: trialDays }
-          : undefined,
+        metadata: { [STRIPE_USER_METADATA_KEY]: clerkUserId },
+        subscription_data: {
+          ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
+          metadata: { [STRIPE_USER_METADATA_KEY]: clerkUserId },
+        },
         success_url: `${getPublicUrl(req)}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${getPublicUrl(req)}/billing?checkout=cancelled`,
       });
@@ -219,4 +276,91 @@ export function registerStripeRoutes(app: Express) {
     }
   });
 
+  app.get("/api/billing/status", requireAuth, async (req, res) => {
+    try {
+      const clerkUserId = getRequestUserId(req);
+      if (!clerkUserId) {
+        return res.status(401).json({ message: "Sign in is required to view billing status." });
+      }
+
+      const [customer] = await db
+        .select()
+        .from(stripeCustomers)
+        .where(eq(stripeCustomers.clerkUserId, clerkUserId))
+        .limit(1);
+      const subscriptions = customer
+        ? await db
+            .select()
+            .from(stripeSubscriptions)
+            .where(eq(stripeSubscriptions.stripeCustomerId, customer.stripeCustomerId))
+            .orderBy(desc(stripeSubscriptions.updatedAt))
+        : [];
+      const subscription = subscriptions[0] ?? null;
+      const hasEntitlement = subscriptions.some(isApprovedSubscription);
+
+      return res.json({
+        linked: Boolean(customer),
+        hasEntitlement,
+        status: subscription?.status ?? null,
+        currentPeriodEnd: subscription?.currentPeriodEnd?.toISOString() ?? null,
+        cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
+      });
+    } catch (error) {
+      console.error("Stripe billing status lookup failed:", error);
+      return res.status(502).json({ message: "Unable to load billing status." });
+    }
+  });
+
+  app.post("/api/billing/portal", requireAuth, async (req, res) => {
+    try {
+      const clerkUserId = getRequestUserId(req);
+      if (!clerkUserId) {
+        return res.status(401).json({ message: "Sign in is required to manage billing." });
+      }
+      const [customer] = await db
+        .select()
+        .from(stripeCustomers)
+        .where(eq(stripeCustomers.clerkUserId, clerkUserId))
+        .limit(1);
+      if (!customer) {
+        return res.status(404).json({
+          message: "No SafeNet subscription is linked to this account yet.",
+        });
+      }
+
+      const portalSession = await getStripeClient().billingPortal.sessions.create({
+        customer: customer.stripeCustomerId,
+        return_url: `${getPublicUrl(req)}/billing`,
+      });
+      return res.json({ url: portalSession.url });
+    } catch (error) {
+      console.error("Stripe Customer Portal session creation failed:", error);
+      return res.status(502).json({
+        message: error instanceof Error ? error.message : "Unable to open Stripe Customer Portal.",
+      });
+    }
+  });
+}
+
+async function createCustomerForUser(stripe: Stripe, clerkUserId: string) {
+  const customer = await stripe.customers.create(
+    { metadata: { [STRIPE_USER_METADATA_KEY]: clerkUserId } },
+    { idempotencyKey: `safenet-customer-${clerkUserId}` },
+  );
+  await upsertCustomerForUser(customer.id, customer.email, clerkUserId);
+  return {
+    stripeCustomerId: customer.id,
+    email: customer.email,
+    clerkUserId,
+  };
+}
+
+function isApprovedSubscription(subscription: typeof stripeSubscriptions.$inferSelect) {
+  return (
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    subscription.priceId === process.env.STRIPE_PRICE_ID &&
+    subscription.priceAmount === APPROVED_PLAN.amount &&
+    subscription.priceCurrency === APPROVED_PLAN.currency &&
+    subscription.priceInterval === APPROVED_PLAN.interval
+  );
 }

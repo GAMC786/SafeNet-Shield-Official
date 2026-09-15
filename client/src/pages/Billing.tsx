@@ -1,24 +1,76 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CreditCard, ShieldCheck } from "lucide-react";
+import { useUser } from "@clerk/react";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
-export default function Billing() {
-  const [email, setEmail] = useState("");
-  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
-  const { toast } = useToast();
+type BillingStatus = {
+  linked: boolean;
+  hasEntitlement: boolean;
+  status: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+};
 
-  const postBillingAction = async (path: string, setLoading: (value: boolean) => void) => {
+export default function Billing() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const { toast } = useToast();
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      setBillingStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingStatus(true);
+    void fetch("/api/billing/status", { credentials: "include" })
+      .then(async (response) => {
+        const payload = await response.json() as BillingStatus | { message?: string };
+        if (!response.ok) {
+          throw new Error("message" in payload ? payload.message : undefined);
+        }
+        if (!cancelled) {
+          setBillingStatus(payload as BillingStatus);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast({
+            title: "Billing status unavailable",
+            description: error instanceof Error ? error.message : "Unable to load your subscription.",
+            variant: "destructive",
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingStatus(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, toast]);
+
+  const postBillingAction = async (
+    path: string,
+    setLoading: (value: boolean) => void,
+  ) => {
     setLoading(true);
     try {
       const response = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        credentials: "include",
       });
       const payload = await response.json() as { url?: string; message?: string };
       if (!response.ok || !payload.url) {
@@ -34,6 +86,10 @@ export default function Billing() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openSignIn = () => {
+    window.location.assign(`${basePath}/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
   };
 
   return (
@@ -65,33 +121,60 @@ export default function Billing() {
           <div>
             <h2 className="text-lg font-semibold text-white">Start or manage billing</h2>
             <p className="text-sm text-muted-foreground">
-              Use the email associated with your Stripe subscription.
+              Billing access is tied to your signed-in SafeNet account.
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="billing-email">Email address</Label>
-            <Input
-              id="billing-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-            />
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              disabled={isStartingCheckout || !email.trim()}
-              onClick={() => void postBillingAction("/api/billing/checkout", setIsStartingCheckout)}
-            >
-              <CreditCard className="mr-2 h-4 w-4" />
-              {isStartingCheckout ? "Opening Stripe..." : "Start free trial"}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Subscription management will be available after account sign-in is enabled.
-          </p>
+          {!isLoaded ? (
+            <p className="text-sm text-muted-foreground">Loading your account…</p>
+          ) : !isSignedIn ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Sign in before starting a trial or managing an existing subscription.
+              </p>
+              <Button type="button" onClick={openSignIn}>
+                Sign in to continue
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
+                <p className="text-muted-foreground">Signed in as</p>
+                <p className="font-medium text-white">
+                  {user.primaryEmailAddress?.emailAddress ?? user.username ?? user.id}
+                </p>
+              </div>
+              {isLoadingStatus ? (
+                <p className="text-sm text-muted-foreground">Checking subscription status…</p>
+              ) : billingStatus?.hasEntitlement ? (
+                <p className="text-sm text-emerald-400">
+                  SafeNet Shield DNS Server+ is active
+                  {billingStatus.cancelAtPeriodEnd ? " and will end at the current period." : "."}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No active SafeNet subscription is linked to this account.
+                </p>
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  type="button"
+                  disabled={isStartingCheckout}
+                  onClick={() => void postBillingAction("/api/billing/checkout", setIsStartingCheckout)}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  {isStartingCheckout ? "Opening Stripe…" : "Start free trial"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isOpeningPortal || !billingStatus?.linked}
+                  onClick={() => void postBillingAction("/api/billing/portal", setIsOpeningPortal)}
+                >
+                  {isOpeningPortal ? "Opening portal…" : "Manage subscription"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </CyberCard>
     </div>

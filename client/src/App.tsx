@@ -1,6 +1,10 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useEffect, useRef } from "react";
+import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
+import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
@@ -22,6 +26,21 @@ import Billing from "@/pages/Billing";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY.");
+}
+
+function stripBase(path: string) {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
 
 function MainLayout() {
   return (
@@ -65,6 +84,138 @@ function AppContent() {
   return <MainLayout />;
 }
 
+function SignInPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+      />
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+      />
+    </div>
+  );
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+        queryClient.clear();
+      }
+      previousUserId.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, queryClient]);
+
+  return null;
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: "#ef4444",
+    colorForeground: "#f8fafc",
+    colorMutedForeground: "#94a3b8",
+    colorDanger: "#f87171",
+    colorBackground: "#111827",
+    colorInput: "#1f2937",
+    colorInputForeground: "#f8fafc",
+    colorNeutral: "#475569",
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+    borderRadius: "0.75rem",
+  },
+  elements: {
+    rootBox: "w-full flex justify-center",
+    cardBox: "bg-slate-900 rounded-2xl w-[440px] max-w-full overflow-hidden",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-white",
+    headerSubtitle: "text-slate-300",
+    socialButtonsBlockButtonText: "text-white",
+    formFieldLabel: "text-slate-200",
+    footerActionLink: "text-red-400 hover:text-red-300",
+    footerActionText: "text-slate-300",
+    dividerText: "text-slate-400",
+    identityPreviewEditButton: "text-red-400",
+    formFieldSuccessText: "text-emerald-400",
+    alertText: "text-red-200",
+    logoBox: "rounded-lg",
+    logoImage: "rounded-lg",
+    socialButtonsBlockButton: "border-slate-700 bg-slate-800 hover:bg-slate-700",
+    formButtonPrimary: "bg-red-600 hover:bg-red-500 text-white",
+    formFieldInput: "border-slate-700 bg-slate-800 text-white",
+    footerAction: "border-slate-700",
+    dividerLine: "bg-slate-700",
+    alert: "border-red-500/40 bg-red-950/50",
+    otpCodeFieldInput: "border-slate-700 bg-slate-800 text-white",
+    formFieldRow: "text-slate-200",
+    main: "bg-transparent",
+  },
+};
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: {
+          start: {
+            title: "Welcome back",
+            subtitle: "Sign in to manage your SafeNet account",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your SafeNet account",
+            subtitle: "Protect your subscription with account sign-in",
+          },
+        },
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <Switch>
+          <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/sign-up/*?" component={SignUpPage} />
+          <Route component={AppContent} />
+        </Switch>
+        <Toaster />
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
 function App() {
   return (
     <Sentry.ErrorBoundary
@@ -90,10 +241,7 @@ function App() {
       }
     >
       <WouterRouter base={basePath}>
-        <QueryClientProvider client={queryClient}>
-          <AppContent />
-          <Toaster />
-        </QueryClientProvider>
+        <ClerkProviderWithRoutes />
       </WouterRouter>
     </Sentry.ErrorBoundary>
   );
