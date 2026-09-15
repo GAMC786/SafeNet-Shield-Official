@@ -922,6 +922,7 @@ run_media_smoke
 run_call_screening_smoke() {
     local screening_status
     local screening_origin_args=()
+    local screening_responses="NOT_RECORDED"
     local screening_decisions="NOT_RECORDED"
 
     if [[ "$resolver_mode" == "fixture" ]]; then
@@ -931,7 +932,7 @@ run_call_screening_smoke() {
     echo "Running SafeNet Android call-screening role and fail-open checks..."
     set +e
     adb_run shell am instrument -w -r \
-        -e class "com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callScreeningRoleCanBeGrantedOnSupportedEmulator,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#reputationDecisionsAndFallbacksAreFailOpen" \
+        -e class "com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callScreeningRoleCanBeGrantedOnSupportedEmulator,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callResponseFlagsMatchEverySupportedAction,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#localBlockDoesNotDependOnProviderAvailability,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#reputationDecisionsAndFallbacksAreFailOpen" \
         "${screening_origin_args[@]}" \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/call-screening-instrumentation.log"
@@ -942,22 +943,27 @@ run_call_screening_smoke() {
     if [[ "$screening_status" -ne 0 ]] ||
         grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
             "$output_dir/call-screening-instrumentation.log" ||
-        ! grep -Fq 'CALL_SCREENING_ROLE result=PASS' "$output_dir/call-screening-logcat.txt"; then
+        ! grep -Fq 'CALL_SCREENING_ROLE result=PASS' "$output_dir/call-screening-logcat.txt" ||
+        ! grep -Fq 'CALL_SCREENING_RESPONSES result=PASS' "$output_dir/call-screening-logcat.txt" ||
+        ! grep -Fq 'CALL_SCREENING_LOCAL_BLOCK result=PASS' "$output_dir/call-screening-logcat.txt"; then
         {
             printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
                 "$serial" "$validation_mode" "$device_kind"
-            printf 'role=FAIL\ndecisions=%s\nresult=FAIL\n' "$screening_decisions"
+            printf 'role=FAIL\nresponses=%s\ndecisions=%s\nlocal_block=FAIL\nresult=FAIL\n' \
+                "$screening_responses" "$screening_decisions"
         } | tee "$output_dir/call-screening-result.txt" >&2
         echo "Android call-screening smoke failed. Evidence: $output_dir" >&2
         return 1
     fi
+    screening_responses="PASS"
     if [[ "$resolver_mode" == "fixture" ]]; then
         if ! grep -Fq 'CALL_SCREENING_DECISIONS result=PASS' \
             "$output_dir/call-screening-logcat.txt"; then
             {
                 printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
                     "$serial" "$validation_mode" "$device_kind"
-                printf 'role=PASS\ndecisions=FAIL\nresult=FAIL\n'
+                printf 'role=PASS\nresponses=%s\ndecisions=FAIL\nlocal_block=PASS\nresult=FAIL\n' \
+                    "$screening_responses"
             } | tee "$output_dir/call-screening-result.txt" >&2
             echo "Android call-screening reputation checks failed. Evidence: $output_dir" >&2
             return 1
@@ -967,7 +973,8 @@ run_call_screening_smoke() {
     {
         printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$validation_mode" "$device_kind"
-        printf 'role=PASS\ndecisions=%s\nresult=PASS\n' "$screening_decisions"
+        printf 'role=PASS\nresponses=%s\ndecisions=%s\nlocal_block=PASS\nresult=PASS\n' \
+            "$screening_responses" "$screening_decisions"
     } | tee "$output_dir/call-screening-result.txt"
     echo "Android call-screening smoke passed. Evidence: $output_dir"
     return 0

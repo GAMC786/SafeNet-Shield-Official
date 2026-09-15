@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.telecom.CallScreeningService.CallResponse;
 import android.util.Log;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -25,9 +26,10 @@ import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Real-emulator checks for the Android call-screening role and the native
- * decision boundary. The smoke script supplies a trusted HTTPS fixture origin
- * for the reputation cases; direct instrumentation runs only verify the role.
+ * Real-emulator checks for the Android call-screening role, response mapping,
+ * and native decision boundary. The smoke script supplies a trusted HTTPS
+ * fixture origin for the reputation cases; response and local-block checks
+ * remain runnable without the fixture.
  */
 @RunWith(AndroidJUnit4.class)
 public class SafeNetCallScreeningInstrumentationTest {
@@ -84,6 +86,45 @@ public class SafeNetCallScreeningInstrumentationTest {
     }
 
     @Test
+    public void callResponseFlagsMatchEverySupportedAction() {
+        assertResponse(
+            SafeNetCallScreeningService.buildResponse("allow"),
+            false, false, false, false
+        );
+        assertResponse(
+            SafeNetCallScreeningService.buildResponse("silence"),
+            false, false, true, false
+        );
+        assertResponse(
+            SafeNetCallScreeningService.buildResponse("block"),
+            true, true, false, true
+        );
+        assertResponse(
+            SafeNetCallScreeningService.buildResponse("unexpected"),
+            false, false, false, false
+        );
+        Log.i(TAG,
+            "CALL_SCREENING_RESPONSES result=PASS allow=ALLOW silence=SILENCE block=BLOCK " +
+                "unknown=ALLOW");
+    }
+
+    @Test
+    public void localBlockDoesNotDependOnProviderAvailability() {
+        preferences.edit()
+            // This endpoint is intentionally unusable. A local block must
+            // return before the provider is consulted.
+            .putString(SafeNetCallScreeningService.PREF_API_ORIGIN, "https://127.0.0.1:1")
+            .putStringSet(
+                SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS,
+                Collections.singleton(BLOCKED_NUMBER)
+            )
+            .commit();
+
+        assertEquals("block", action(BLOCKED_NUMBER));
+        Log.i(TAG, "CALL_SCREENING_LOCAL_BLOCK result=PASS provider=NOT_REQUIRED");
+    }
+
+    @Test
     public void reputationDecisionsAndFallbacksAreFailOpen() throws Exception {
         String origin = argument("call-screening-origin", "");
         if (origin.isEmpty()) {
@@ -99,14 +140,14 @@ public class SafeNetCallScreeningInstrumentationTest {
             )
             .commit();
 
-        assertEquals("block", action(BLOCKED_NUMBER));
-        assertEquals("allow", action(ALLOW_NUMBER));
-        assertEquals("silence", action(SILENCE_NUMBER));
-        assertEquals("block", action(REPUTATION_BLOCK_NUMBER));
-        assertEquals("allow", action(UNAVAILABLE_NUMBER));
-        assertEquals("allow", action(MALFORMED_NUMBER));
+        assertActionResponse("block", BLOCKED_NUMBER);
+        assertActionResponse("allow", ALLOW_NUMBER);
+        assertActionResponse("silence", SILENCE_NUMBER);
+        assertActionResponse("block", REPUTATION_BLOCK_NUMBER);
+        assertActionResponse("allow", UNAVAILABLE_NUMBER);
+        assertActionResponse("allow", MALFORMED_NUMBER);
         long timeoutStarted = System.nanoTime();
-        assertEquals("allow", action(TIMEOUT_NUMBER));
+        assertActionResponse("allow", TIMEOUT_NUMBER);
         long timeoutElapsedMs = TimeUnit.NANOSECONDS.toMillis(
             System.nanoTime() - timeoutStarted
         );
@@ -124,6 +165,40 @@ public class SafeNetCallScreeningInstrumentationTest {
             preferences,
             SafeNetCallScreeningService.normalizeNumber(number)
         );
+    }
+
+    private void assertActionResponse(String expectedAction, String number) {
+        assertEquals(expectedAction, action(number));
+        if ("block".equals(expectedAction)) {
+            assertResponse(
+                SafeNetCallScreeningService.buildResponse(expectedAction),
+                true, true, false, true
+            );
+        } else if ("silence".equals(expectedAction)) {
+            assertResponse(
+                SafeNetCallScreeningService.buildResponse(expectedAction),
+                false, false, true, false
+            );
+        } else {
+            assertResponse(
+                SafeNetCallScreeningService.buildResponse(expectedAction),
+                false, false, false, false
+            );
+        }
+    }
+
+    private void assertResponse(
+        CallResponse response,
+        boolean disallow,
+        boolean reject,
+        boolean silence,
+        boolean skipNotification
+    ) {
+        assertEquals("disallowCall", disallow, response.getDisallowCall());
+        assertEquals("rejectCall", reject, response.getRejectCall());
+        assertEquals("silenceCall", silence, response.getSilenceCall());
+        assertEquals("skipNotification", skipNotification, response.getSkipNotification());
+        assertEquals("skipCallLog", false, response.getSkipCallLog());
     }
 
     private String argument(String name, String fallback) {

@@ -65,16 +65,21 @@ public class SafeNetCallScreeningService extends CallScreeningService {
 
     private void respond(Call.Details details, String action) {
         if (details == null) return;
+        respondToCall(details, buildResponse(action));
+    }
+
+    static CallResponse buildResponse(String action) {
         CallResponse.Builder response = new CallResponse.Builder();
         if ("block".equals(action)) {
             response.setDisallowCall(true)
                 .setRejectCall(true)
                 .setSkipNotification(true);
         } else if ("silence".equals(action)) {
-            response.setSilenceCall(true)
-                .setSkipNotification(true);
+            // skipNotification is only valid for a disallowed call. A
+            // silenced call remains visible to the user in the dialer.
+            response.setSilenceCall(true);
         }
-        respondToCall(details, response.build());
+        return response.build();
     }
 
     static String decideAction(SharedPreferences preferences, String number) {
