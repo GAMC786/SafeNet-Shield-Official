@@ -6,7 +6,7 @@ import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { Navigation } from "@/components/Navigation";
+import { Navigation, SystemNavigation } from "@/components/Navigation";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import * as Sentry from "@sentry/react";
 import { captureGlitchTipException } from "./lib/glitchtip";
@@ -46,6 +46,7 @@ function MainLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
       <NetworkStatusBanner />
+      <SystemNavigation />
       <Navigation />
       
       {/* Scanline Effect */}
@@ -59,7 +60,7 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
+      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28">
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/command-center" component={Dashboard} />

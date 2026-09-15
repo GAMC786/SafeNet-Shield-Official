@@ -10,11 +10,64 @@ const navItems = [
   { path: "/ddns", label: "DDNS", icon: Wifi },
   { path: "/speedtest", label: "Speed Test", icon: Gauge },
   { path: "/firewall", label: "Firewall", icon: Shield },
+];
+
+const systemServiceItems = [
   { path: "/antivirus", label: "Antivirus", icon: Bug },
   { path: "/tether", label: "Internet Share", icon: Share2 },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/billing", label: "Premium", icon: CreditCard },
 ];
+
+export function SystemNavigation() {
+  const [location] = useLocation();
+
+  return (
+    <nav
+      aria-label="System services"
+      className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/85 px-3 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
+    >
+      <div className="mx-auto flex max-w-7xl items-center gap-3">
+        <div className="hidden shrink-0 items-center gap-2 border-r border-white/10 pr-4 sm:flex">
+          <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.9)]" />
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary/90">
+            System Services
+          </span>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {systemServiceItems.map((item) => {
+            const isActive = location === item.path;
+            const Icon = item.icon;
+
+            return (
+              <Link key={item.path} href={item.path}>
+                <span
+                  className={cn(
+                    "relative flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-200",
+                    isActive
+                      ? "border-primary/50 bg-primary/15 text-primary shadow-[0_0_18px_rgba(59,130,246,0.15)]"
+                      : "border-transparent text-muted-foreground hover:border-white/10 hover:bg-white/5 hover:text-white",
+                  )}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="activeSystemTab"
+                      className="absolute inset-0 rounded-lg border border-primary/30"
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <Icon className="relative z-10 h-4 w-4" />
+                  <span className="relative z-10">{item.label}</span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </nav>
+  );
+}
 
 export function Navigation() {
   const [location] = useLocation();
