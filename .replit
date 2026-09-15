@@ -76,3 +76,9 @@ integrations = ["javascript_openai_ai_integrations:2.0.0"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[userenv]
+
+[userenv.shared]
+STRIPE_PRICE_ID = "price_1UG2Vd14SLpM0XdcqrjjuT1D"
+STRIPE_TRIAL_DAYS = "7"

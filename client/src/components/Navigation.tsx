@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Shield, Activity, Share2, Settings, Globe, Wifi, Bug, Gauge } from "lucide-react";
+import { Shield, Activity, Share2, Settings, Globe, Wifi, Bug, Gauge, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
@@ -13,6 +13,7 @@ const navItems = [
   { path: "/antivirus", label: "Antivirus", icon: Bug },
   { path: "/tether", label: "Internet Share", icon: Share2 },
   { path: "/settings", label: "Settings", icon: Settings },
+  { path: "/billing", label: "Premium", icon: CreditCard },
 ];
 
 export function Navigation() {
