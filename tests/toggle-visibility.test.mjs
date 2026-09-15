@@ -606,6 +606,7 @@ for (const viewport of viewports) {
     );
     await ruleToggle.click();
     await ruleUpdate;
+    await waitForDisabled(ruleToggle);
     assert.equal(await ruleToggle.isDisabled(), true, "firewall rule toggle should lock while saving");
     await page.getByRole("button", { name: "Enable Block external DNS" }).waitFor();
 

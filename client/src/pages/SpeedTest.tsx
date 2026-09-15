@@ -22,6 +22,8 @@ import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { resolveApiUrl } from "@/lib/api";
+import { fetchJsonWithTimeout } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
 import CloudflareSpeedTest, { type PhaseChangePayload, type Results } from "@cloudflare/speedtest";
 
@@ -188,7 +190,6 @@ export default function SpeedTest() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 7000);
     const loadNetworkProfile = async () => {
       setIsLoadingNetworkProfile(true);
       setNetworkProfileError(null);
@@ -197,9 +198,12 @@ export default function SpeedTest() {
         let lastError: Error | null = null;
         for (const provider of providers) {
           try {
-            const response = await fetch(provider, { cache: "no-store", signal: controller.signal });
-            if (!response.ok) throw new Error(`ISP profile provider returned HTTP ${response.status}.`);
-            setNetworkProfile(parseNetworkProfile((await response.json()) as Record<string, unknown>));
+            const payload = await fetchJsonWithTimeout<Record<string, unknown>>(provider, {
+              cache: "no-store",
+              signal: controller.signal,
+              timeoutMs: 3500,
+            });
+            setNetworkProfile(parseNetworkProfile(payload));
             return;
           } catch (caughtError) {
             if (isAbortError(caughtError)) throw caughtError;
@@ -213,13 +217,11 @@ export default function SpeedTest() {
           setNetworkProfile(null);
         }
       } finally {
-        window.clearTimeout(timeoutId);
         setIsLoadingNetworkProfile(false);
       }
     };
     void loadNetworkProfile();
     return () => {
-      window.clearTimeout(timeoutId);
       controller.abort();
     };
   }, [networkProfileReloadKey]);
@@ -238,7 +240,7 @@ export default function SpeedTest() {
       autoStart: false,
       logMeasurementApiUrl: null,
       logAimApiUrl: null,
-      turnServerCredsApiUrl: "/api/speedtest/turn-creds",
+      turnServerCredsApiUrl: resolveApiUrl("/api/speedtest/turn-creds"),
     });
     cloudflareSpeedTestRef.current = speedTest;
     const updateResults = (results: Results) => {

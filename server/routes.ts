@@ -115,8 +115,11 @@ export async function registerRoutes(
   });
 
   app.get("/api/speedtest/turn-creds", async (_req, res) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const response = await fetch("https://speed.cloudflare.com/turn-creds", {
+        signal: controller.signal,
         headers: {
           Accept: "application/json",
           Origin: "https://speed.cloudflare.com",
@@ -146,7 +149,12 @@ export async function registerRoutes(
       }
       return res.json({ username, credential, server });
     } catch {
+      if (controller.signal.aborted) {
+        return res.status(504).json({ message: "Cloudflare TURN credentials timed out." });
+      }
       return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
+    } finally {
+      clearTimeout(timeout);
     }
   });
 

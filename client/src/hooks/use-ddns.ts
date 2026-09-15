@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PublicDdnsUpdater, InsertDdnsUpdater } from "@shared/schema";
 import { apiFetch } from "@/lib/api";
+import { getPublicIp } from "@/lib/network";
 import { DDNS_STATUS_REFRESH_INTERVAL_MS } from "./ddns-constants";
 import { useToast } from "@/hooks/use-toast";
 
@@ -155,8 +156,7 @@ export function usePublicIp() {
     queryKey: ["public-ip-client"],
     queryFn: async () => {
       // Fetch IP directly from client to get user's actual IP, not server's
-      const response = await fetch("https://api.ipify.org?format=json");
-      return response.json() as Promise<{ ip: string }>;
+      return getPublicIp();
     },
     staleTime: 60000,
   });

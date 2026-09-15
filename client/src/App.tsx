@@ -6,6 +6,7 @@ import { Navigation } from "@/components/Navigation";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import * as Sentry from "@sentry/react";
 import { captureGlitchTipException } from "./lib/glitchtip";
+import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -24,6 +25,7 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function MainLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
+      <NetworkStatusBanner />
       <Navigation />
       
       {/* Scanline Effect */}
