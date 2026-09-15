@@ -162,7 +162,7 @@ export default function SpamCallBlocker() {
         title="Spam Call Blocker"
         subtitle="Caller protection and screening controls"
         action={(
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5">
+          <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               {protectionEnabled ? "On" : "Off"}
             </span>
