@@ -125,6 +125,25 @@ public class SafeNetCallScreeningInstrumentationTest {
     }
 
     @Test
+    public void localToggleTurnsScreeningOffWithoutReleasingTheAndroidRole() {
+        preferences.edit()
+            .putBoolean(SafeNetCallScreeningService.PREF_ENABLED, false)
+            .putStringSet(
+                SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS,
+                Collections.singleton(BLOCKED_NUMBER)
+            )
+            .commit();
+
+        assertEquals("allow", action(BLOCKED_NUMBER));
+
+        preferences.edit()
+            .putBoolean(SafeNetCallScreeningService.PREF_ENABLED, true)
+            .commit();
+        assertEquals("block", action(BLOCKED_NUMBER));
+        Log.i(TAG, "CALL_SCREENING_TOGGLE result=PASS off=ALLOW on=BLOCK");
+    }
+
+    @Test
     public void reputationDecisionsAndFallbacksAreFailOpen() throws Exception {
         String origin = argument("call-screening-origin", "");
         if (origin.isEmpty()) {

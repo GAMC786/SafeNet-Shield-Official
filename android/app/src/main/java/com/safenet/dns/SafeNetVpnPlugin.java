@@ -151,6 +151,18 @@ public class SafeNetVpnPlugin extends Plugin {
         startActivityForResult(call, roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), ROLE_CALLBACK);
     }
 
+    @PluginMethod
+    public void setCallScreeningEnabled(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", true);
+        getContext().getSharedPreferences(
+            SafeNetCallScreeningService.PREFS_NAME,
+            android.content.Context.MODE_PRIVATE
+        ).edit()
+            .putBoolean(SafeNetCallScreeningService.PREF_ENABLED, enabled)
+            .apply();
+        call.resolve(callScreeningStatus());
+    }
+
     @ActivityCallback
     private void callScreeningRoleResult(PluginCall call, ActivityResult result) {
         if (call != null) {
@@ -194,7 +206,11 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.M);
         result.put("roleAvailable", roleAvailable);
         result.put("roleHeld", roleHeld);
-        result.put("enabled", roleHeld);
+        boolean locallyEnabled = getContext().getSharedPreferences(
+            SafeNetCallScreeningService.PREFS_NAME,
+            android.content.Context.MODE_PRIVATE
+        ).getBoolean(SafeNetCallScreeningService.PREF_ENABLED, true);
+        result.put("enabled", roleHeld && locallyEnabled);
         result.put("serviceRegistered", true);
         result.put("apiConfigured", !getConfigApiOrigin().isEmpty());
         result.put(

@@ -24,6 +24,7 @@ public class SafeNetCallScreeningService extends CallScreeningService {
     static final String PREF_API_ORIGIN = "api_origin";
     static final String PREF_AUTH_COOKIE = "auth_cookie";
     static final String PREF_BLOCKED_NUMBERS = "blocked_numbers";
+    static final String PREF_ENABLED = "enabled";
     private static final ExecutorService LOOKUP_EXECUTOR = Executors.newCachedThreadPool();
 
     @Override
@@ -42,6 +43,10 @@ public class SafeNetCallScreeningService extends CallScreeningService {
         }
 
         SharedPreferences preferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        if (!preferences.getBoolean(PREF_ENABLED, true)) {
+            respondAllow(details);
+            return;
+        }
         if (readBlockedNumbers(preferences).contains(normalized)) {
             // An explicit user block is a local SafeNet blocklist decision and
             // does not depend on a network lookup.
@@ -84,6 +89,9 @@ public class SafeNetCallScreeningService extends CallScreeningService {
 
     static String decideAction(SharedPreferences preferences, String number) {
         if (number == null) {
+            return "allow";
+        }
+        if (!preferences.getBoolean(PREF_ENABLED, true)) {
             return "allow";
         }
         if (readBlockedNumbers(preferences).contains(number)) {

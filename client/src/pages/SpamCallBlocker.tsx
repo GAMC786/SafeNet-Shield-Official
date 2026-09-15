@@ -5,6 +5,7 @@ import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { useCallScreening } from "@/hooks/use-vpn";
 import { apiFetch } from "@/lib/api";
@@ -38,6 +39,10 @@ export default function SpamCallBlocker() {
   const [number, setNumber] = useState("");
   const [reportNumber, setReportNumber] = useState("");
   const [isReporting, setIsReporting] = useState(false);
+  const [browserEnabled, setBrowserEnabled] = usePersistentState(
+    "safenet-spam-call-enabled",
+    false,
+  );
   const [reputationAvailability, setReputationAvailability] = useState<ReputationAvailability | null>(null);
 
   const syncConfig = native.syncConfig;
@@ -141,7 +146,7 @@ export default function SpamCallBlocker() {
 
   const isAndroid = Capacitor.getPlatform() === "android";
   const enabled = native.status?.enabled === true;
-  const status = !isAndroid ? "inactive" : enabled ? "active" : native.status?.roleAvailable ? "not-sharing" : "inactive";
+  const protectionEnabled = isAndroid ? enabled : browserEnabled;
   const statusLabel = !isAndroid
     ? "Android only"
     : enabled
@@ -156,7 +161,61 @@ export default function SpamCallBlocker() {
       <Header
         title="Spam Call Blocker"
         subtitle="Caller protection and screening controls"
-        status={status}
+        action={(
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              {protectionEnabled ? "On" : "Off"}
+            </span>
+            <Switch
+              checked={protectionEnabled}
+              onCheckedChange={(nextEnabled) => {
+                const update = async () => {
+                  if (!isAndroid) {
+                    setBrowserEnabled(nextEnabled);
+                    toast({
+                      title: `Spam call blocker ${nextEnabled ? "on" : "off"}`,
+                      description: "This Preview toggle is saved on this browser. Android uses its native call-screening setting.",
+                    });
+                    return;
+                  }
+
+                  try {
+                    if (nextEnabled && !native.status?.roleHeld) {
+                      if (!native.status?.roleAvailable) {
+                        toast({
+                          title: "Call screening is unavailable",
+                          description: "This Android version does not expose the call-screening role.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      const roleStatus = await native.requestRole();
+                      if (!roleStatus?.roleHeld) {
+                        toast({
+                          title: "Call screening remains off",
+                          description: "Grant SafeNet call-screening access in Android settings to turn it on.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                    }
+
+                    await native.setEnabled(nextEnabled);
+                  } catch (error) {
+                    toast({
+                      title: `Could not turn ${nextEnabled ? "on" : "off"} call screening`,
+                      description: error instanceof Error ? error.message : "Try again.",
+                      variant: "destructive",
+                    });
+                  }
+                };
+                void update();
+              }}
+              disabled={native.isBusy || (isAndroid && native.status === null)}
+              aria-label={`Turn spam call blocker ${protectionEnabled ? "off" : "on"}`}
+            />
+          </div>
+        )}
       />
 
       <CyberCard className="overflow-hidden">
