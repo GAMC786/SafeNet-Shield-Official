@@ -60,3 +60,4 @@
 - [Native command serialization](native-command-serialization.md) — VPN, WireGuard, and Internet Share plugin calls must share one queue across all mounted hooks.
 - [Caller reputation provider boundary](caller-reputation-provider-boundary.md) — approved endpoint and credentials must be workspace-supplied; missing or invalid reputation data stays fail-open.
 - [Android call-screening response validity](android-call-screening-response.md) — allowed silenced calls cannot carry Android's disallowed-call notification flags.
+- [CallShield evaluation](callshield-evaluation.md) — standalone MIT Android app and local feed, not a hosted reputation API; code and data licensing must be reviewed separately.
