@@ -106,6 +106,21 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
   );
   assert.match(
     uiInstrumentation,
+    /phase=" \+ phase/,
+    "resolver failure evidence must identify the failed phase",
+  );
+  assert.match(
+    uiInstrumentation,
+    /failure_category=.*resolverFailureCategory\(failure\).*elapsed_ms=/s,
+    "resolver failure evidence must include a category and elapsed time",
+  );
+  assert.match(
+    uiInstrumentation,
+    /TLS_FAILURE|ROUTE_FAILURE|TIMEOUT|FIXTURE_FAILURE/,
+    "resolver failure classification must distinguish common failure causes",
+  );
+  assert.match(
+    uiInstrumentation,
     /offline filtering must refuse the blocked domain/,
     "the test must keep offline resolver filtering fail-closed",
   );
@@ -113,6 +128,21 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
     smokeScript,
     /resolver-recovery-result\.txt/,
     "the smoke must archive protocol-specific resolver results",
+  );
+  assert.match(
+    smokeScript,
+    /resolver-recovery-failures\.txt/,
+    "the smoke must archive bounded protocol-specific failure records",
+  );
+  assert.match(
+    smokeScript,
+    /doh_recovery_failure_category=%s/,
+    "the release result must expose the DoH failure category",
+  );
+  assert.match(
+    smokeScript,
+    /dot_recovery_failure_category=%s/,
+    "the release result must expose the DoT failure category",
   );
   assert.match(
     smokeScript,
@@ -156,6 +186,8 @@ test("release summary publishes connectivity recovery status", () => {
   assert.match(summary, /Internet loss and recovery/);
   assert.match(summary, /DoH outage recovery/);
   assert.match(summary, /DoT outage recovery/);
+  assert.match(summary, /DoH failure detail/);
+  assert.match(summary, /DoT failure detail/);
 });
 
 test("physical-device recovery rejects unavailable or emulated targets", () => {

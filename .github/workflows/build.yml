@@ -1622,6 +1622,12 @@ jobs:
           resolver_recovery=not-started
           doh_recovery=not-started
           dot_recovery=not-started
+          doh_recovery_failure_category=NOT_RECORDED
+          doh_recovery_failure_phase=NOT_RECORDED
+          doh_recovery_failure_elapsed_ms=NOT_RECORDED
+          dot_recovery_failure_category=NOT_RECORDED
+          dot_recovery_failure_phase=NOT_RECORDED
+          dot_recovery_failure_elapsed_ms=NOT_RECORDED
           failure_category=$category
           EOF
           fi
@@ -1633,6 +1639,18 @@ jobs:
           doh_recovery_status="${doh_recovery_status:-NOT_RECORDED}"
           dot_recovery_status="$(awk -F= '$1 == "dot_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
           dot_recovery_status="${dot_recovery_status:-NOT_RECORDED}"
+          doh_failure_category="$(awk -F= '$1 == "doh_recovery_failure_category" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_category="${doh_failure_category:-NOT_RECORDED}"
+          doh_failure_phase="$(awk -F= '$1 == "doh_recovery_failure_phase" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_phase="${doh_failure_phase:-NOT_RECORDED}"
+          doh_failure_elapsed_ms="$(awk -F= '$1 == "doh_recovery_failure_elapsed_ms" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_elapsed_ms="${doh_failure_elapsed_ms:-NOT_RECORDED}"
+          dot_failure_category="$(awk -F= '$1 == "dot_recovery_failure_category" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_category="${dot_failure_category:-NOT_RECORDED}"
+          dot_failure_phase="$(awk -F= '$1 == "dot_recovery_failure_phase" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_phase="${dot_failure_phase:-NOT_RECORDED}"
+          dot_failure_elapsed_ms="$(awk -F= '$1 == "dot_recovery_failure_elapsed_ms" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_elapsed_ms="${dot_failure_elapsed_ms:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
           {
             echo "validation_mode=hosted-emulator-reduced"
@@ -1643,6 +1661,12 @@ jobs:
             echo "resolver_recovery=$resolver_recovery_status"
             echo "doh_recovery=$doh_recovery_status"
             echo "dot_recovery=$dot_recovery_status"
+            echo "doh_recovery_failure_category=$doh_failure_category"
+            echo "doh_recovery_failure_phase=$doh_failure_phase"
+            echo "doh_recovery_failure_elapsed_ms=$doh_failure_elapsed_ms"
+            echo "dot_recovery_failure_category=$dot_failure_category"
+            echo "dot_recovery_failure_phase=$dot_failure_phase"
+            echo "dot_recovery_failure_elapsed_ms=$dot_failure_elapsed_ms"
             echo "smoke_step_outcome=$SMOKE_STEP_OUTCOME"
             echo "workflow_run=$RUN_URL"
             echo "release_evidence_url=$release_evidence_url"
@@ -1657,6 +1681,8 @@ jobs:
             echo "- **Internet loss and recovery:** \`$recovery_status\` (offline banner, offline DNS filtering, and post-reconnect API status are recorded in the evidence archive)"
             echo "- **DoH outage recovery:** \`$doh_recovery_status\`"
             echo "- **DoT outage recovery:** \`$dot_recovery_status\`"
+            echo "- **DoH failure detail:** \`$doh_failure_category\` in \`$doh_failure_phase\` after \`${doh_failure_elapsed_ms}ms\`"
+            echo "- **DoT failure detail:** \`$dot_failure_category\` in \`$dot_failure_phase\` after \`${dot_failure_elapsed_ms}ms\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"

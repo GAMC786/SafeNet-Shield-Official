@@ -1098,6 +1098,12 @@ capture post-test-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture post-test-vpn adb "${adb_args[@]}" shell dumpsys vpn
 capture post-test-logcat adb "${adb_args[@]}" shell logcat -d -t 400
 capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+# Keep only bounded, protocol-specific failure records. These records contain
+# controlled phase/category/timing fields and never include exception text,
+# resolver URLs, or other credential-bearing instrumentation output.
+grep -Eo 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=[^ ]+ result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+' \
+    "$output_dir/resolver-recovery-logcat.txt" | head -n 20 > \
+    "$output_dir/resolver-recovery-failures.txt" || true
 
 test_failed=0
 if [[ "$instrumentation_status" -ne 0 ]] ||
@@ -1111,6 +1117,36 @@ doh_recovery_status="PASS"
 dot_recovery_status="PASS"
 doh_recovery_cycles=0
 dot_recovery_cycles=0
+doh_recovery_failure_category="NOT_RECORDED"
+doh_recovery_failure_phase="NOT_RECORDED"
+doh_recovery_failure_elapsed_ms="NOT_RECORDED"
+dot_recovery_failure_category="NOT_RECORDED"
+dot_recovery_failure_phase="NOT_RECORDED"
+dot_recovery_failure_elapsed_ms="NOT_RECORDED"
+if [[ -s "$output_dir/resolver-recovery-failures.txt" ]]; then
+    doh_failure_record="$(grep -m 1 'protocol=doh ' \
+        "$output_dir/resolver-recovery-failures.txt" || true)"
+    dot_failure_record="$(grep -m 1 'protocol=dot ' \
+        "$output_dir/resolver-recovery-failures.txt" || true)"
+    doh_recovery_failure_category="$(sed -n 's/.*failure_category=\([^ ]*\).*/\1/p' \
+        <<< "$doh_failure_record")"
+    doh_recovery_failure_phase="$(sed -n 's/.* phase=\([^ ]*\).*/\1/p' \
+        <<< "$doh_failure_record")"
+    doh_recovery_failure_elapsed_ms="$(sed -n 's/.*elapsed_ms=\([0-9]*\).*/\1/p' \
+        <<< "$doh_failure_record")"
+    dot_recovery_failure_category="$(sed -n 's/.*failure_category=\([^ ]*\).*/\1/p' \
+        <<< "$dot_failure_record")"
+    dot_recovery_failure_phase="$(sed -n 's/.* phase=\([^ ]*\).*/\1/p' \
+        <<< "$dot_failure_record")"
+    dot_recovery_failure_elapsed_ms="$(sed -n 's/.*elapsed_ms=\([0-9]*\).*/\1/p' \
+        <<< "$dot_failure_record")"
+    doh_recovery_failure_category="${doh_recovery_failure_category:-NOT_RECORDED}"
+    doh_recovery_failure_phase="${doh_recovery_failure_phase:-NOT_RECORDED}"
+    doh_recovery_failure_elapsed_ms="${doh_recovery_failure_elapsed_ms:-NOT_RECORDED}"
+    dot_recovery_failure_category="${dot_recovery_failure_category:-NOT_RECORDED}"
+    dot_recovery_failure_phase="${dot_recovery_failure_phase:-NOT_RECORDED}"
+    dot_recovery_failure_elapsed_ms="${dot_recovery_failure_elapsed_ms:-NOT_RECORDED}"
+fi
 for cycle in $(seq 1 "$REQUIRED_RESOLVER_RECOVERY_CYCLES"); do
     if grep -Fq \
         "DOH_DOT_RECOVERY protocol=doh result=PASS cycle=$cycle" \
@@ -1139,6 +1175,12 @@ fi
     printf 'dot_recovery=%s\n' "$dot_recovery_status"
     printf 'doh_recovery_cycles=%s\n' "$doh_recovery_cycles"
     printf 'dot_recovery_cycles=%s\n' "$dot_recovery_cycles"
+    printf 'doh_recovery_failure_category=%s\n' "$doh_recovery_failure_category"
+    printf 'doh_recovery_failure_phase=%s\n' "$doh_recovery_failure_phase"
+    printf 'doh_recovery_failure_elapsed_ms=%s\n' "$doh_recovery_failure_elapsed_ms"
+    printf 'dot_recovery_failure_category=%s\n' "$dot_recovery_failure_category"
+    printf 'dot_recovery_failure_phase=%s\n' "$dot_recovery_failure_phase"
+    printf 'dot_recovery_failure_elapsed_ms=%s\n' "$dot_recovery_failure_elapsed_ms"
 } | tee "$output_dir/resolver-recovery-result.txt"
 
 capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
@@ -1199,8 +1241,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.Base64;
 import android.view.KeyEvent;
@@ -61,6 +62,7 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final long UI_TIMEOUT_MILLIS = 20_000;
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
     private static final int RESOLVER_RECOVERY_CYCLES = 2;
+    private static final long MAX_RESOLVER_FAILURE_ELAPSED_MILLIS = 300_000;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -1165,19 +1167,39 @@ public class SafeNetVpnUiInstrumentationTest {
         String primary,
         String secondary
     ) throws Exception {
-        startVpnWithPermission(protocol, primary, secondary);
-        waitForVpnState(true);
+        long phaseStartedAt = SystemClock.elapsedRealtime();
+        try {
+            startVpnWithPermission(protocol, primary, secondary);
+            waitForVpnState(true);
+        } catch (Exception | AssertionError failure) {
+            logResolverRecoveryFailure(protocol, "start", failure, phaseStartedAt);
+            throw failure;
+        }
 
         for (int cycle = 1; cycle <= RESOLVER_RECOVERY_CYCLES; cycle++) {
             String cycleLabel = protocol + " cycle " + cycle;
-            assertValidDnsResponse(
-                queryVirtualDns("safenet.com"),
-                cycleLabel + " response before outage"
-            );
-            assertNativeResolverHealthy(cycleLabel + " before outage");
-
-            setAirplaneMode(true);
+            phaseStartedAt = SystemClock.elapsedRealtime();
             try {
+                assertValidDnsResponse(
+                    queryVirtualDns("safenet.com"),
+                    cycleLabel + " response before outage"
+                );
+                assertNativeResolverHealthy(cycleLabel + " before outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-before-outage",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
+
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            boolean outageEnabled = false;
+            try {
+                setAirplaneMode(true);
+                outageEnabled = true;
                 byte[] blockedResponse = queryVirtualDns("offline.test");
                 assertEquals(
                     cycleLabel + " offline filtering must refuse the blocked domain",
@@ -1185,24 +1207,57 @@ public class SafeNetVpnUiInstrumentationTest {
                     blockedResponse[3] & 0x0f
                 );
                 assertNativeResolverHealthy(cycleLabel + " during outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-offline-filter",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
             } finally {
-                setAirplaneMode(false);
+                if (outageEnabled) {
+                    setAirplaneMode(false);
+                }
             }
 
-            assertValidDnsResponse(
-                queryVirtualDns("safenet.com"),
-                cycleLabel + " response after outage"
-            );
-            assertNativeResolverHealthy(cycleLabel + " after outage");
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            try {
+                assertValidDnsResponse(
+                    queryVirtualDns("safenet.com"),
+                    cycleLabel + " response after outage"
+                );
+                assertNativeResolverHealthy(cycleLabel + " after outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-after-outage",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
 
-            JSONObject browserErrors = requireWebViewValue(callWebView(
-                "({errors:window.__safeNetDohDotRecoveryErrors || []})"
-            ));
-            assertEquals(
-                cycleLabel + " recovery must not emit browser or console errors",
-                0,
-                browserErrors.getJSONArray("errors").length()
-            );
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            try {
+                JSONObject browserErrors = requireWebViewValue(callWebView(
+                    "({errors:window.__safeNetDohDotRecoveryErrors || []})"
+                ));
+                assertEquals(
+                    cycleLabel + " recovery must not emit browser or console errors",
+                    0,
+                    browserErrors.getJSONArray("errors").length()
+                );
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-browser-errors",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
+
             Log.i(
                 "SafeNetResolverRecovery",
                 "DOH_DOT_RECOVERY protocol=" + protocol +
@@ -1212,12 +1267,74 @@ public class SafeNetVpnUiInstrumentationTest {
             );
         }
 
-        JSONObject stopped = requireWebViewValue(callWebView(
-            "window.Capacitor.Plugins.SafeNetVpn.stop()"
-        ));
-        assertFalse(protocol + " protection stop must leave the service stopped",
-            stopped.getBoolean("running"));
-        waitForVpnState(false);
+        phaseStartedAt = SystemClock.elapsedRealtime();
+        try {
+            JSONObject stopped = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.stop()"
+            ));
+            assertFalse(protocol + " protection stop must leave the service stopped",
+                stopped.getBoolean("running"));
+            waitForVpnState(false);
+        } catch (Exception | AssertionError failure) {
+            logResolverRecoveryFailure(protocol, "stop", failure, phaseStartedAt);
+            throw failure;
+        }
+    }
+
+    private void logResolverRecoveryFailure(
+        String protocol,
+        String phase,
+        Throwable failure,
+        long phaseStartedAt
+    ) {
+        long elapsedMillis = Math.max(
+            0,
+            Math.min(
+                MAX_RESOLVER_FAILURE_ELAPSED_MILLIS,
+                SystemClock.elapsedRealtime() - phaseStartedAt
+            )
+        );
+        Log.i(
+            "SafeNetResolverRecovery",
+            "DOH_DOT_RECOVERY protocol=" + protocol +
+                " phase=" + phase +
+                " result=FAIL failure_category=" +
+                resolverFailureCategory(failure) +
+                " elapsed_ms=" + elapsedMillis
+        );
+    }
+
+    private String resolverFailureCategory(Throwable failure) {
+        StringBuilder text = new StringBuilder();
+        Throwable current = failure;
+        int depth = 0;
+        while (current != null && depth++ < 5) {
+            if (text.length() > 0) {
+                text.append(' ');
+            }
+            text.append(String.valueOf(current.getMessage()));
+            current = current.getCause();
+        }
+        String lower = text.toString().toLowerCase(java.util.Locale.ROOT);
+        if (isFixtureMode() &&
+            (lower.contains("fixture") || lower.contains("203.0.113.7"))) {
+            return "FIXTURE_FAILURE";
+        }
+        if (lower.contains("ssl") || lower.contains("tls") ||
+            lower.contains("handshake") || lower.contains("certificate")) {
+            return "TLS_FAILURE";
+        }
+        if (lower.contains("timeout") || lower.contains("timed out")) {
+            return "TIMEOUT";
+        }
+        if (lower.contains("route") || lower.contains("enetunreach") ||
+            lower.contains("network is unreachable") || lower.contains("no route")) {
+            return "ROUTE_FAILURE";
+        }
+        if (isFixtureMode()) {
+            return "FIXTURE_FAILURE";
+        }
+        return "UNKNOWN_FAILURE";
     }
 
     private void assertNativeResolverHealthy(String phase) throws Exception {
