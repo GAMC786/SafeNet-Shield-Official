@@ -44,21 +44,21 @@ export function SystemNavigation() {
               <Link key={item.path} href={item.path}>
                 <span
                   className={cn(
-                    "relative flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-medium transition-all duration-200",
+                    "relative flex shrink-0 flex-col items-center justify-center rounded-xl p-3 text-[10px] font-medium transition-all duration-300",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-white",
                   )}
                 >
                   {isActive && (
-                    <motion.span
+                    <motion.div
                       layoutId="activeSystemTab"
-                      className="absolute -bottom-0.5 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                      className="absolute -bottom-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon className={cn("relative z-10 h-5 w-5", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                  <span className="relative z-10">{item.label}</span>
+                  <Icon className={cn("relative z-10 h-6 w-6", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                  <span className="relative z-10 mt-1">{item.label}</span>
                 </span>
               </Link>
             );
