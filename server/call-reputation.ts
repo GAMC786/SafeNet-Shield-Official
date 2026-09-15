@@ -35,7 +35,15 @@ function configuredEndpoint(name: string) {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !url.hostname) return null;
+    if (
+      url.protocol !== "https:" ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.hash
+    ) {
+      return null;
+    }
     return url;
   } catch {
     return null;
@@ -60,6 +68,14 @@ async function readJson(response: Response) {
   }
 }
 
+function reputationHeaders() {
+  const token = process.env.SAFE_NET_CALL_REPUTATION_TOKEN?.trim();
+  return {
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export async function lookupCallReputation(number: string): Promise<CallReputationResult> {
   const normalized = normalizePhoneNumber(number);
   if (!normalized) return unavailable("The caller number is invalid.");
@@ -73,12 +89,7 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
   const timeout = setTimeout(() => controller.abort(), 2500);
   try {
     const response = await fetch(endpointForNumber(endpoint, normalized), {
-      headers: {
-        Accept: "application/json",
-        ...(process.env.SAFE_NET_CALL_REPUTATION_TOKEN
-          ? { Authorization: `Bearer ${process.env.SAFE_NET_CALL_REPUTATION_TOKEN}` }
-          : {}),
-      },
+      headers: reputationHeaders(),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -124,11 +135,8 @@ export async function reportCall(number: string, reason: string | undefined) {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Accept: "application/json",
+        ...reputationHeaders(),
         "Content-Type": "application/json",
-        ...(process.env.SAFE_NET_CALL_REPUTATION_TOKEN
-          ? { Authorization: `Bearer ${process.env.SAFE_NET_CALL_REPUTATION_TOKEN}` }
-          : {}),
       },
       body: JSON.stringify({ number: normalized, reason: reason?.trim() || "user_report" }),
       signal: controller.signal,

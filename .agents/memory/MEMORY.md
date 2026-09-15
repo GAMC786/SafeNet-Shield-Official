@@ -58,3 +58,4 @@
 - [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
 - [DeepCleer integration boundary](deepcleer-integration-boundary.md) — vendor onboarding requires accessKey/appId/eventId/tokenId and explicit frame-sharing consent before cloud moderation.
 - [Native command serialization](native-command-serialization.md) — VPN, WireGuard, and Internet Share plugin calls must share one queue across all mounted hooks.
+- [Caller reputation provider boundary](caller-reputation-provider-boundary.md) — approved endpoint and credentials must be workspace-supplied; missing or invalid reputation data stays fail-open.
