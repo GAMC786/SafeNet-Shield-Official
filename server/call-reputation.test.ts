@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 
 import {
   getCallReputationAvailability,
   lookupCallReputation,
   reportCall,
 } from "./call-reputation";
+
+beforeEach(() => {
+  delete process.env.SAFE_NET_CALL_REPUTATION_PROVIDER;
+  delete process.env.SAFE_NET_CALL_CONTROL_BASE_URL;
+  delete process.env.SAFE_NET_CALL_CONTROL_PROTECT_BASE_URL;
+  delete process.env.SAFE_NET_CALL_CONTROL_CUSTOMER_NUMBER;
+  delete process.env.SAFE_NET_CALL_CONTROL_API_KEY;
+});
 
 function restoreEnvironment(
   previous: Record<string, string | undefined>,
