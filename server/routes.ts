@@ -27,6 +27,7 @@ import {
   getDeepCleerStatus,
   moderateDeepCleerImage,
 } from "./deepcleer-service";
+import { lookupCallReputation, reportCall } from "./call-reputation";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -176,6 +177,27 @@ export async function registerRoutes(
       }
     },
   );
+
+  app.get("/api/spam-call-blocker/reputation", async (req, res) => {
+    const number = typeof req.query.number === "string" ? req.query.number : "";
+    const result = await lookupCallReputation(number);
+    if (!result.available) {
+      return res.status(503).json(result);
+    }
+    return res.json(result);
+  });
+
+  app.post("/api/spam-call-blocker/report", async (req, res) => {
+    const input = z.object({
+      number: z.string().min(1),
+      reason: z.string().max(240).optional(),
+    }).safeParse(req.body);
+    if (!input.success) {
+      return res.status(400).json({ accepted: false, reason: "A caller number is required." });
+    }
+    const result = await reportCall(input.data.number, input.data.reason);
+    return res.status(result.accepted ? 200 : 503).json(result);
+  });
 
   // Register AI Integrations
   registerChatRoutes(app);

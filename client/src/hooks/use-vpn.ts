@@ -119,6 +119,17 @@ export interface AiShieldResult {
   limitations?: string;
 }
 
+export interface CallScreeningStatus {
+  supported: boolean;
+  roleAvailable: boolean;
+  roleHeld: boolean;
+  enabled: boolean;
+  serviceRegistered: boolean;
+  apiConfigured: boolean;
+  blockedNumberCount: number;
+  message: string;
+}
+
 interface SafeNetVpnPlugin {
   getStatus(): Promise<VpnStatus>;
   syncFirewallConfig(options: { config: FirewallConfig }): Promise<{
@@ -147,6 +158,9 @@ interface SafeNetVpnPlugin {
   startAiShieldScreen(): Promise<AiShieldResult>;
   stopAiShield(): Promise<AiShieldResult>;
   setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
+  getCallScreeningStatus(): Promise<CallScreeningStatus>;
+  requestCallScreeningRole(): Promise<CallScreeningStatus>;
+  syncCallScreeningConfig(options: { blockedNumbers: string[] }): Promise<CallScreeningStatus>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
   startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
@@ -162,6 +176,63 @@ interface SafeNetVpnPlugin {
 }
 
 export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
+
+export function useCallScreening() {
+  const supported = Capacitor.getPlatform() === "android";
+  const [status, setStatus] = useState<CallScreeningStatus | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!supported) return null;
+    try {
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getCallScreeningStatus());
+      setStatus(nextStatus);
+      return nextStatus;
+    } catch {
+      const unavailable: CallScreeningStatus = {
+        supported: true,
+        roleAvailable: false,
+        roleHeld: false,
+        enabled: false,
+        serviceRegistered: false,
+        apiConfigured: false,
+        blockedNumberCount: 0,
+        message: "Android call-screening status is unavailable.",
+      };
+      setStatus(unavailable);
+      return unavailable;
+    }
+  }, [supported]);
+
+  useEffect(() => {
+    if (!supported) return;
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
+    return () => window.clearInterval(interval);
+  }, [refresh, supported]);
+
+  const requestRole = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.requestCallScreeningRole());
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  const syncConfig = useCallback(async (blockedNumbers: string[]) => {
+    if (!supported) return null;
+    const nextStatus = await enqueueNativeCommand(() =>
+      SafeNetVpn.syncCallScreeningConfig({ blockedNumbers }),
+    );
+    setStatus(nextStatus);
+    return nextStatus;
+  }, [supported]);
+
+  return { supported, status, isBusy, refresh, requestRole, syncConfig };
+}
 
 export function useSafeNetVpn() {
   const supported = Capacitor.getPlatform() === "android";

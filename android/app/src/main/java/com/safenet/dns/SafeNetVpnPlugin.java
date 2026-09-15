@@ -11,6 +11,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.app.role.RoleManager;
 import android.provider.OpenableColumns;
 import android.webkit.CookieManager;
 import android.util.Base64;
@@ -29,6 +30,8 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,6 +62,7 @@ public class SafeNetVpnPlugin extends Plugin {
     private static final String STATE_PROJECTION_PENDING = "safenet_projection_pending";
     private static final String STATE_PROJECTION_RESULT_DELIVERED =
         "safenet_projection_result_delivered";
+    private static final String ROLE_CALLBACK = "callScreeningRoleResult";
     private boolean projectionRequestPending;
     private boolean projectionResultDelivered;
 
@@ -122,6 +126,92 @@ public class SafeNetVpnPlugin extends Plugin {
         JSObject result = status();
         result.put("protection", toJsObject(SafeNetProtectionStatus.get(getContext())));
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getCallScreeningStatus(PluginCall call) {
+        call.resolve(callScreeningStatus());
+    }
+
+    @PluginMethod
+    public void requestCallScreeningRole(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.resolve(callScreeningStatus());
+            return;
+        }
+        RoleManager roleManager = getContext().getSystemService(RoleManager.class);
+        if (roleManager == null || !roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+            call.resolve(callScreeningStatus());
+            return;
+        }
+        if (roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+            call.resolve(callScreeningStatus());
+            return;
+        }
+        startActivityForResult(call, roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), ROLE_CALLBACK);
+    }
+
+    @ActivityCallback
+    private void callScreeningRoleResult(PluginCall call, ActivityResult result) {
+        if (call != null) {
+            call.resolve(callScreeningStatus());
+        }
+    }
+
+    @PluginMethod
+    public void syncCallScreeningConfig(PluginCall call) {
+        JSArray numbers = call.getArray("blockedNumbers", new JSArray());
+        Set<String> normalized = new HashSet<>();
+        for (int index = 0; index < numbers.length(); index++) {
+            String value = numbers.optString(index, "");
+            String number = SafeNetCallScreeningService.normalizeNumber(value);
+            if (number != null) normalized.add(number);
+        }
+        String apiOrigin = getConfigApiOrigin();
+        String authCookie = apiOrigin.isEmpty() ? "" : CookieManager.getInstance().getCookie(apiOrigin);
+        getContext().getSharedPreferences(
+            SafeNetCallScreeningService.PREFS_NAME,
+            android.content.Context.MODE_PRIVATE
+        ).edit()
+            .putString(SafeNetCallScreeningService.PREF_API_ORIGIN, apiOrigin)
+            .putString(SafeNetCallScreeningService.PREF_AUTH_COOKIE, authCookie == null ? "" : authCookie)
+            .putStringSet(SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS, normalized)
+            .apply();
+        call.resolve(callScreeningStatus());
+    }
+
+    private JSObject callScreeningStatus() {
+        JSObject result = new JSObject();
+        boolean roleAvailable = false;
+        boolean roleHeld = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            RoleManager roleManager = getContext().getSystemService(RoleManager.class);
+            if (roleManager != null) {
+                roleAvailable = roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING);
+                roleHeld = roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING);
+            }
+        }
+        result.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.M);
+        result.put("roleAvailable", roleAvailable);
+        result.put("roleHeld", roleHeld);
+        result.put("enabled", roleHeld);
+        result.put("serviceRegistered", true);
+        result.put("apiConfigured", !getConfigApiOrigin().isEmpty());
+        result.put(
+            "blockedNumberCount",
+            SafeNetCallScreeningService.readBlockedNumbers(
+                getContext().getSharedPreferences(
+                    SafeNetCallScreeningService.PREFS_NAME,
+                    android.content.Context.MODE_PRIVATE
+                )
+            ).size()
+        );
+        result.put("message", roleHeld
+            ? "SafeNet is the Android call-screening provider."
+            : roleAvailable
+                ? "Android can grant SafeNet call-screening access."
+                : "This Android version does not expose the call-screening role.");
+        return result;
     }
 
     @PluginMethod
