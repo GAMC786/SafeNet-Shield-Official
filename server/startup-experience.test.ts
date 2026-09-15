@@ -19,15 +19,6 @@ const nativeFallbackSource = readFileSync(
   "utf8",
 );
 const indexHtml = readFileSync(path.join(clientRoot, "index.html"), "utf8");
-const startupArtworkSource = readFileSync(
-  path.join(clientRoot, "public/SafeNet_Astronaut_White_Background.png"),
-);
-const uploadedArtworkSource = readFileSync(
-  path.resolve(
-    process.cwd(),
-    "attached_assets/SafeNet_Astronaut_White_Background_1789375663944.png",
-  ),
-);
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
 const serverIndexSource = readFileSync(
@@ -129,38 +120,12 @@ const packageVersion = JSON.parse(
   readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
 ).version as string;
 
-test("the app mounts directly with a Dashboard fallback", () => {
-  assert.match(indexHtml, /id="dashboard-fallback"/);
-  assert.match(indexHtml, /id="startup-loader"/);
-  assert.match(indexHtml, /Connecting to SafeNet Shield DNS Server\+/);
-    assert.match(indexHtml, /SafeNet_Astronaut_White_Background\.png/);
-   assert.match(indexHtml, /background: #ffffff/);
-    assert.deepEqual(startupArtworkSource, uploadedArtworkSource);
-    assert.deepEqual(
-      startupArtworkSource.subarray(0, 8),
-      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    );
-    assert.doesNotMatch(indexHtml, /startup-loader-brand|startup-loader-brand-safenet|startup-loader-brand-shield/);
-    assert.doesNotMatch(indexHtml, /SafeNet<\/span>|Shield<\/span>/);
-    assert.match(indexHtml, /width: 100%;/);
-    assert.match(indexHtml, /height: 100%;/);
-     assert.match(indexHtml, /object-fit: contain/);
-     assert.match(indexHtml, /color: #000000/);
-     assert.match(indexHtml, /background: #dc2626/);
-     assert.match(indexHtml, /background: #ef4444/);
-     assert.match(indexHtml, /color: #dc2626/);
-    assert.match(indexHtml, /object-position: center center/);
-  assert.match(indexHtml, /startup-loader-dot/);
-  assert.doesNotMatch(indexHtml, /startup-loader-shield-stroke|stroke: rgba\(255,255,255,.98\)/);
-  assert.match(indexHtml, /Command Center/);
-  assert.match(indexHtml, /Loading protected network status/);
-  assert.match(indexHtml, /Network/);
-  assert.match(indexHtml, /Protected/);
+test("the app mounts directly without a startup loader", () => {
+  assert.doesNotMatch(indexHtml, /startup-loader|dashboard-fallback|Loading protected network status/);
+  assert.doesNotMatch(indexHtml, /SafeNet_Astronaut_White_Background\.png/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-   assert.match(mainSource, /STARTUP_LOADER_DURATION_MS\s*=\s*10_000/);
-  assert.match(mainSource, /STARTUP_LOADER_FADE_MS\s*=\s*180/);
-  assert.match(mainSource, /requestAnimationFrame\(updateProgress\)/);
-  assert.match(mainSource, /safenet:startup-complete/);
+  assert.match(mainSource, /root\.render\(<App \/>/);
+  assert.doesNotMatch(mainSource, /STARTUP_LOADER|startup-loader|dashboard-fallback|hideDashboardFallback/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);
   assert.doesNotMatch(indexHtml, /boot-surface|Loading secure server/i);
 });
@@ -171,9 +136,9 @@ test("startup renders the app without an authentication configuration", () => {
   assert.doesNotMatch(mainSource, /loadClerkConfig|auth\/config|ClerkRuntimeConfig/);
 });
 
-test("startup handoff is not gated by sign-in configuration", () => {
+test("startup is not gated by sign-in configuration", () => {
   assert.doesNotMatch(mainSource, /STARTUP_CONFIG_RESPONSE_DELAY_MS|STARTUP_CONFIG_TEST_QUERY|STARTUP_CONFIG_DELAYED_TEST_VALUE/);
-  assert.match(mainSource, /hideDashboardFallback\(\);\s*root\.render\(<App \/>/);
+  assert.match(mainSource, /openDashboardOnLaunch\(\);\s*root\.render\(<App \/>/);
 });
 
 test("the navigation panel is mounted without the old header arrow control", () => {
@@ -206,7 +171,6 @@ test("the Activity tab is replaced by Android Internet Share", () => {
 });
 
 test("Android keeps a Dashboard recovery state instead of a permanent dark screen", () => {
-  assert.match(mainSource, /dashboard-fallback/);
   assert.match(androidMainActivity, /installNativeFallback/);
   assert.match(androidMainActivity, /startupFallback\.setVisibility\(View\.GONE\)/);
   assert.match(androidMainActivity, /startupHandler\.post\(startupCheck\)/);
