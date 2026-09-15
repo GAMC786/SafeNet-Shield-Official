@@ -24,6 +24,7 @@ preflight_only=false
 startup_only=false
 compact_startup=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
+resolver_failure_validation="${ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION:-false}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
 fixture_host="${ANDROID_SMOKE_FIXTURE_HOST:-10.0.2.2}"
@@ -1068,6 +1069,17 @@ EOF
     doh_secondary="https://$fixture_host/dns-query"
     dot_secondary="$fixture_host"
     ordinary_url="https://$fixture_host:$FIXTURE_HTTP_PORT/"
+fi
+
+if [[ "$resolver_failure_validation" == "true" ]]; then
+    if [[ "$resolver_mode" != "fixture" ]]; then
+        echo "ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION requires fixture resolver mode." >&2
+        exit 2
+    fi
+    # RFC 5737 documentation space: this deliberately unreachable endpoint
+    # exercises the DoH failure record without contacting a real resolver or
+    # placing any resolver credential in instrumentation output.
+    doh_secondary="https://203.0.113.7/dns-query"
 fi
 
 capture device-details adb "${adb_args[@]}" shell sh -c \

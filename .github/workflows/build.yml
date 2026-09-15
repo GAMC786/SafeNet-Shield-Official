@@ -21,6 +21,11 @@ on:
         options:
           - fixture
           - public
+      android_resolver_failure_validation:
+        description: "Intentionally exercise one bounded encrypted-resolver failure record"
+        required: true
+        default: false
+        type: boolean
       dns_alert_validation:
         description: "Maintainer-only DNS alert lifecycle validation"
         required: true
@@ -636,6 +641,7 @@ jobs:
       issues: write
     env:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
+      ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && inputs.android_resolver_failure_validation || 'false' }}
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
@@ -665,6 +671,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run browser UI tests
+        if: env.ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION != 'true'
         run: npm run test:ui
 
       - name: Build web app
