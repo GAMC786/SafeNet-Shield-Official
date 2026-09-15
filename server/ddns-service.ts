@@ -150,6 +150,18 @@ export async function getCurrentPublicIp(): Promise<string> {
   }
 }
 
+const DDNS_PROVIDER_TIMEOUT_MS = 10_000;
+
+async function fetchDdnsProvider(
+  input: string | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(DDNS_PROVIDER_TIMEOUT_MS),
+  });
+}
+
 // Update DNS record based on provider
 async function updateDnsRecord(
   hostname: string,
@@ -190,7 +202,7 @@ async function updateDnsRecord(
 }
 
 async function updateDuckDns(hostname: string, token: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch(
+  const response = await fetchDdnsProvider(
     `https://www.duckdns.org/update?domains=${hostname}&token=${token}&ip=${ip}`
   );
   const text = await response.text();
@@ -200,7 +212,7 @@ async function updateDuckDns(hostname: string, token: string, ip: string): Promi
 }
 
 async function updateNoIp(hostname: string, authToken: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://dynupdate.no-ip.com/nic/update", {
+  const response = await fetchDdnsProvider("https://dynupdate.no-ip.com/nic/update", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
@@ -214,7 +226,7 @@ async function updateNoIp(hostname: string, authToken: string, ip: string): Prom
 }
 
 async function updateDynu(hostname: string, apiKey: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://api.dynu.com/v2/dns", {
+  const response = await fetchDdnsProvider("https://api.dynu.com/v2/dns", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -227,7 +239,7 @@ async function updateDynu(hostname: string, apiKey: string, ip: string): Promise
 }
 
 async function updateDnsExit(hostname: string, credentials: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch(
+  const response = await fetchDdnsProvider(
     `https://update.dnsexit.com/dns/ud/?host=${encodeURIComponent(hostname)}&myip=${encodeURIComponent(ip)}`,
     {
       headers: {
@@ -242,7 +254,7 @@ async function updateDnsExit(hostname: string, credentials: string, ip: string):
 }
 
 async function updateDnsOMatic(hostname: string, credentials: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://updates.dnsomatic.com/nic/update", {
+  const response = await fetchDdnsProvider("https://updates.dnsomatic.com/nic/update", {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -277,7 +289,7 @@ async function updateIpLink(hostname: string, ip: string, customUrl?: string | n
     .replace(/\{IP\}/g, ip)
     .replace(/\{HOSTNAME\}/g, hostname);
   
-  const response = await fetch(url);
+  const response = await fetchDdnsProvider(url);
   // Consider any 2xx response as success
   return response.ok
     ? providerResponseSuccess()

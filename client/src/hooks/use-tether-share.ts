@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { SafeNetVpn } from "@/hooks/use-vpn";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 export interface TetherShareDevice {
   name: string;
@@ -36,20 +37,11 @@ export function useTetherShare() {
     supported ? null : unsupportedStatus,
   );
   const [isBusy, setIsBusy] = useState(false);
-  const nativeQueueRef = useRef<Promise<void>>(Promise.resolve());
-
-  const enqueueNative = useCallback(<T,>(operation: () => Promise<T>) => {
-    const queued = nativeQueueRef.current
-      .catch(() => undefined)
-      .then(operation);
-    nativeQueueRef.current = queued.then(() => undefined, () => undefined);
-    return queued;
-  }, []);
 
   const refresh = useCallback(async () => {
     if (!supported) return unsupportedStatus;
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.getTetherStatus());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getTetherStatus());
       setStatus(nextStatus);
       return nextStatus;
     } catch (error) {
@@ -60,7 +52,7 @@ export function useTetherShare() {
       }));
       return null;
     }
-  }, [enqueueNative, supported]);
+  }, [supported]);
 
   useEffect(() => {
     if (!supported) return;
@@ -73,30 +65,30 @@ export function useTetherShare() {
     if (!supported) return unsupportedStatus;
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.startTetherShare());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startTetherShare());
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh, supported]);
+  }, [refresh, supported]);
 
   const stop = useCallback(async () => {
     if (!supported) return unsupportedStatus;
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.stopTetherShare());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopTetherShare());
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh, supported]);
+  }, [refresh, supported]);
 
   const openWifiSettings = useCallback(async () => {
-    if (supported) await SafeNetVpn.openTetherWifiSettings();
+    if (supported) await enqueueNativeCommand(() => SafeNetVpn.openTetherWifiSettings());
   }, [supported]);
 
   return { supported, status, isBusy, refresh, start, stop, openWifiSettings };

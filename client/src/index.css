@@ -59,6 +59,7 @@
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-touch-callout: none;
+    background: hsl(var(--background));
   }
   body {
     @apply bg-background text-foreground antialiased font-body;
@@ -71,6 +72,10 @@
     padding-top: env(safe-area-inset-top);
     font-weight: 400;
     letter-spacing: 0.01em;
+  }
+  #root {
+    min-height: 100%;
+    background: hsl(var(--background));
   }
   
   /* Custom scrollbar for technical feel */

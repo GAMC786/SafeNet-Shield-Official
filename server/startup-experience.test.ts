@@ -72,6 +72,10 @@ const tetherShareManagerSource = readFileSync(
   ),
   "utf8",
 );
+const ddnsHookSource = readFileSync(
+  path.join(clientRoot, "src/hooks/use-ddns.ts"),
+  "utf8",
+);
 const speedTestSource = readFileSync(
   path.join(clientRoot, "src/pages/SpeedTest.tsx"),
   "utf8",
@@ -212,6 +216,12 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
   assert.match(nativeFallbackSource, /drawCard/);
   assert.match(nativeFallbackSource, /Tap anywhere to retry/);
   assert.doesNotMatch(nativeFallbackSource, /safenet-astronaut|drawCircle|drawTriangleDots|ValueAnimator/i);
+});
+
+test("the document canvas stays dark behind the app while scrolling", () => {
+  assert.match(indexHtml, /<body style="margin: 0; background: #0f172a; color: #f8fafc;">/);
+  assert.match(appSource, /min-h-screen bg-background/);
+  assert.match(readFileSync(path.join(clientRoot, "src/index.css"), "utf8"), /background: hsl\(var\(--background\)\);/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
@@ -373,9 +383,14 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsSource, /Active Cloudflare zone required/);
   assert.match(ddnsSource, /Add and activate a domain zone in Cloudflare/);
   assert.match(ddnsSource, /https:\/\/dash\.cloudflare\.com\//);
+  assert.match(ddnsHookSource, /\/api\/ddns\/update-all/);
+  assert.doesNotMatch(ddnsHookSource, /\/api\/ddns\/0\/update/);
   assert.match(ddnsSource, /Test/);
   assert.match(ddnsSource, /Manual update verification successful/);
   assert.match(ddnsSource, /Manual update verification unsuccessful/);
+  assert.match(ddnsHookSource, /\/api\/ddns\/update-all/);
+  assert.match(tetherShareManagerSource, /candidate\.startsWith\("\["\)/);
+  assert.match(tetherShareManagerSource, /parsePort/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
   assert.match(antivirusSource, /status=\{antivirusEnabled \? "active" : "unprotected"\}/);

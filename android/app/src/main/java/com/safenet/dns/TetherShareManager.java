@@ -369,13 +369,37 @@ final class TetherShareManager {
     }
 
     private HostPort parseHostPort(String value, int defaultPort) {
-        int separator = value.lastIndexOf(':');
-        if (separator > 0 && value.indexOf(']') < 0) {
+        String candidate = value == null ? "" : value.trim();
+        if (candidate.startsWith("[")) {
+            int closingBracket = candidate.indexOf(']');
+            if (closingBracket <= 1) {
+                throw new IllegalArgumentException("Invalid IPv6 proxy destination.");
+            }
+            String host = candidate.substring(1, closingBracket);
+            int port = defaultPort;
+            if (closingBracket + 1 < candidate.length()) {
+                if (candidate.charAt(closingBracket + 1) != ':') {
+                    throw new IllegalArgumentException("Invalid IPv6 proxy destination.");
+                }
+                port = parsePort(candidate.substring(closingBracket + 2));
+            }
+            return new HostPort(host, port);
+        }
+        int separator = candidate.lastIndexOf(':');
+        if (separator > 0 && candidate.indexOf(':') == separator) {
             try {
-                return new HostPort(value.substring(0, separator), Integer.parseInt(value.substring(separator + 1)));
+                return new HostPort(candidate.substring(0, separator), parsePort(candidate.substring(separator + 1)));
             } catch (NumberFormatException ignored) {}
         }
-        return new HostPort(value, defaultPort);
+        return new HostPort(candidate, defaultPort);
+    }
+
+    private int parsePort(String value) {
+        int port = Integer.parseInt(value);
+        if (port < 1 || port > 65_535) {
+            throw new NumberFormatException("Port is outside the valid range.");
+        }
+        return port;
     }
 
     private synchronized void closeProxy() {

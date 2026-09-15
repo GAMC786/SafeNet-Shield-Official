@@ -377,7 +377,9 @@ export class DatabaseStorage implements IStorage {
     
     return {
       totalThreats: events.length,
-      blockedToday: events.filter(e => e.timestamp && new Date(e.timestamp) >= today).length,
+      blockedToday: events.filter(
+        (e) => e.action === "blocked" && e.timestamp && new Date(e.timestamp) >= today,
+      ).length,
       activeFeeds: feeds.filter(f => f.isEnabled).length,
     };
   }

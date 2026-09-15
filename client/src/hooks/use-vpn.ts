@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { FirewallConfig } from "@shared/schema";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 export const SAFE_NET_VPN_EULA_VERSION = "1.0";
 
@@ -166,22 +167,13 @@ export function useSafeNetVpn() {
   const supported = Capacitor.getPlatform() === "android";
   const [status, setStatus] = useState<VpnStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const nativeQueueRef = useRef<Promise<void>>(Promise.resolve());
-
-  const enqueueNative = useCallback(<T,>(operation: () => Promise<T>) => {
-    const queued = nativeQueueRef.current
-      .catch(() => undefined)
-      .then(operation);
-    nativeQueueRef.current = queued.then(() => undefined, () => undefined);
-    return queued;
-  }, []);
 
   const refresh = useCallback(async () => {
     if (!supported) {
       return null;
     }
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.getStatus());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getStatus());
       setStatus(nextStatus);
       return nextStatus;
     } catch (error) {
@@ -200,7 +192,7 @@ export function useSafeNetVpn() {
       }));
       throw error;
     }
-  }, [enqueueNative, supported]);
+  }, [supported]);
 
   useEffect(() => {
     if (!supported) {
@@ -214,13 +206,13 @@ export function useSafeNetVpn() {
   const acceptEula = useCallback(async () => {
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.acceptEula({ version: SAFE_NET_VPN_EULA_VERSION }));
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.acceptEula({ version: SAFE_NET_VPN_EULA_VERSION }));
       setStatus(nextStatus);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative]);
+  }, []);
 
   const start = useCallback(async (options: {
     type: string;
@@ -230,50 +222,50 @@ export function useSafeNetVpn() {
   }) => {
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.start(options));
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.start(options));
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh]);
+  }, [refresh]);
 
   const stop = useCallback(async () => {
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.stop());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stop());
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh]);
+  }, [refresh]);
 
   const startWireGuard = useCallback(async (options?: { dnsServers?: string }) => {
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.startWireGuard(options ?? {}));
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startWireGuard(options ?? {}));
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh]);
+  }, [refresh]);
 
   const stopWireGuard = useCallback(async () => {
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNative(() => SafeNetVpn.stopWireGuard());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopWireGuard());
       setStatus(nextStatus);
       await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [enqueueNative, refresh]);
+  }, [refresh]);
 
   return {
     supported,

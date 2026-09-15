@@ -143,7 +143,7 @@ export function useDeleteDdnsUpdater() {
 export function useManualDdnsUpdate() {
   return useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/ddns/0/update");
+      return apiRequest("POST", "/api/ddns/update-all");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
