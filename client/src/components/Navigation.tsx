@@ -8,12 +8,12 @@ const navItems = [
   { path: "/", label: "Dashboard", icon: Activity },
   { path: "/dns", label: "DNS Servers", icon: Globe },
   { path: "/ddns", label: "DDNS", icon: Wifi },
-  { path: "/speedtest", label: "Speed Test", icon: Gauge },
+  { path: "/antivirus", label: "Antivirus", icon: Bug },
   { path: "/firewall", label: "Firewall", icon: Shield },
 ];
 
 const systemServiceItems = [
-  { path: "/antivirus", label: "Antivirus", icon: Bug },
+  { path: "/speedtest", label: "Speed Test", icon: Gauge },
   { path: "/tether", label: "Internet Share", icon: Share2 },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/billing", label: "Premium", icon: CreditCard },
