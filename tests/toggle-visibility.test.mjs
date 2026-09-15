@@ -90,6 +90,8 @@ function mockApi(
     cloudflareProbeDelayMs = 0,
     settingsDelayMs = 0,
     dnsDelayMs = 0,
+    blocklistUpdateDelayMs = 0,
+    firewallRuleUpdateDelayMs = 0,
   } = {},
 ) {
   let settings = {
@@ -159,6 +161,39 @@ function mockApi(
     blockedToday: 0,
     activeFeeds: 2,
   };
+  const blocklists = [
+    {
+      id: 1,
+      type: "domain",
+      content: "ads.example.com",
+      category: "custom",
+      action: "block",
+      isActive: true,
+    },
+    {
+      id: 2,
+      type: "keyword",
+      content: "gambling",
+      category: "custom",
+      action: "block",
+      isActive: true,
+    },
+  ];
+  const firewallRules = [
+    {
+      id: 1,
+      name: "Block external DNS",
+      sourceInterface: "lan",
+      sourceAddress: "Any",
+      destinationInterface: "wan",
+      destinationAddress: "Any",
+      service: "dns",
+      action: "deny",
+      isEnabled: true,
+      priority: 100,
+      createdAt: null,
+    },
+  ];
   let ddnsUpdateAttempt = 0;
   let threatFeedUpdateAttempt = 0;
   const updaters = [
@@ -312,6 +347,30 @@ function mockApi(
         response = antivirusEvents;
       } else if (url.pathname === "/api/antivirus/stats" && method === "GET") {
         response = antivirusStats;
+      } else if (url.pathname === "/api/blocklists" && method === "GET") {
+        response = blocklists;
+      } else if (url.pathname.startsWith("/api/blocklists/") && method === "PATCH") {
+        if (blocklistUpdateDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, blocklistUpdateDelayMs));
+        }
+        const id = Number(url.pathname.split("/").at(-1));
+        const blocklist = blocklists.find((candidate) => candidate.id === id);
+        if (blocklist) {
+          Object.assign(blocklist, JSON.parse(request.postData() || "{}"));
+        }
+        response = blocklist;
+      } else if (url.pathname === "/api/firewall/rules" && method === "GET") {
+        response = firewallRules;
+      } else if (url.pathname.startsWith("/api/firewall/rules/") && method === "PATCH") {
+        if (firewallRuleUpdateDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, firewallRuleUpdateDelayMs));
+        }
+        const id = Number(url.pathname.split("/").at(-1));
+        const rule = firewallRules.find((candidate) => candidate.id === id);
+        if (rule) {
+          Object.assign(rule, JSON.parse(request.postData() || "{}"));
+        }
+        response = rule;
       } else if (url.pathname === "/api/ddns" && method === "GET") {
         response = updaters;
       } else if (url.pathname.startsWith("/api/ddns/") && url.pathname.endsWith("/test") && method === "POST") {
@@ -427,6 +486,14 @@ async function waitForAttribute(locator, attribute, expected) {
   assert.equal(await locator.getAttribute(attribute), expected);
 }
 
+async function waitForDisabled(locator) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await locator.isDisabled()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(await locator.isDisabled(), true, "toggle should become disabled while saving");
+}
+
 async function focusWithKeyboard(page, locator) {
   await page.locator("body").focus();
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -523,6 +590,34 @@ for (const viewport of viewports) {
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
     await page.getByText("Protected", { exact: true }).waitFor();
+
+    await page.close();
+  });
+
+  test(`Firewall entry toggles lock during a delayed update at ${viewport.name} width`, async () => {
+    const page = await browser.newPage({ viewport });
+    await mockApi(page, { blocklistUpdateDelayMs: 200, firewallRuleUpdateDelayMs: 200 });
+    await page.goto(`${baseUrl}/firewall`);
+    await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
+
+    const ruleToggle = page.getByRole("button", { name: "Disable Block external DNS" });
+    const ruleUpdate = page.waitForRequest((request) =>
+      request.method() === "PATCH" && request.url().endsWith("/api/firewall/rules/1"),
+    );
+    await ruleToggle.click();
+    await ruleUpdate;
+    assert.equal(await ruleToggle.isDisabled(), true, "firewall rule toggle should lock while saving");
+    await page.getByRole("button", { name: "Enable Block external DNS" }).waitFor();
+
+    await page.getByRole("tab", { name: "Allow/Block URLs" }).click();
+    const domainToggle = page.getByRole("button", { name: "Disable ads.example.com" });
+    const blocklistUpdate = page.waitForRequest((request) =>
+      request.method() === "PATCH" && request.url().endsWith("/api/blocklists/1"),
+    );
+    await domainToggle.click();
+    await blocklistUpdate;
+    await waitForDisabled(domainToggle);
+    await page.getByRole("button", { name: "Enable ads.example.com" }).waitFor();
 
     await page.close();
   });

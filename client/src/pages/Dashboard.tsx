@@ -28,6 +28,10 @@ export default function Dashboard() {
   const soundtrack = useSoundtrack();
   const [eulaOpen, setEulaOpen] = useState(false);
   const [startAfterEula, setStartAfterEula] = useState(false);
+  const [vpnActionError, setVpnActionError] = useState<string | null>(null);
+  const reportVpnActionError = (error: unknown) => {
+    setVpnActionError(error instanceof Error ? error.message : "SafeNet VPN could not update its state.");
+  };
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected =
     vpn.status?.running === true &&
@@ -194,8 +198,9 @@ export default function Dashboard() {
               checked={vpn.status?.running ?? false}
               onCheckedChange={(checked) => {
                 if (!vpn.supported) return;
+                setVpnActionError(null);
                 if (!checked) {
-                  void vpn.stop().catch(() => undefined);
+                  void vpn.stop().catch(reportVpnActionError);
                   return;
                 }
                 if (!vpn.status?.eulaAccepted) {
@@ -210,7 +215,7 @@ export default function Dashboard() {
                   ipVersion: activeResolver.ipVersion,
                   primaryAddress: activeResolver.primaryAddress,
                   secondaryAddress: activeResolver.secondaryAddress,
-                }).catch(() => undefined);
+                }).catch(reportVpnActionError);
               }}
               disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns || vpn.status?.wireguardRunning}
               aria-label="SafeNet VPN On/Off"
@@ -247,6 +252,11 @@ export default function Dashboard() {
               </p>
             </div>
           )}
+           {vpnActionError && (
+             <p role="alert" className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive">
+               {vpnActionError}
+             </p>
+           )}
           {vpn.status?.vpnPermissionOwner && vpn.status.vpnPermissionOwner !== "none" && (
             <p className="w-full text-left text-xs text-muted-foreground">
               Android allows one VPN owner at a time. Current owner:{" "}
@@ -269,10 +279,11 @@ export default function Dashboard() {
             gateway={vpn.status?.wireguardGateway}
             dnsServers={vpn.status?.wireguardDnsServers || selectedWireGuardDns}
             onToggle={(checked) => {
+                setVpnActionError(null);
               if (checked) {
-                void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(() => undefined);
+                 void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(reportVpnActionError);
               } else {
-                void vpn.stopWireGuard().catch(() => undefined);
+                 void vpn.stopWireGuard().catch(reportVpnActionError);
               }
             }}
           />

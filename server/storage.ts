@@ -34,7 +34,7 @@ export interface IStorage {
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
   createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
-  updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater>;
+  updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater | undefined>;
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
   updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater>;
@@ -199,7 +199,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater> {
+  async updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater | undefined> {
     const [updated] = await db.update(ddnsUpdaters)
       .set(updates)
       .where(eq(ddnsUpdaters.id, id))

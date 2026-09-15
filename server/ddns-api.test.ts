@@ -41,6 +41,12 @@ function createTestStorage() {
       updaters.push(updater);
       return updater;
     },
+    updateDdnsUpdater: async (id: number, updates: Partial<InsertDdnsUpdater>) => {
+      const updater = updaters.find((entry) => entry.id === id);
+      if (!updater) return undefined;
+      Object.assign(updater, updates);
+      return updater;
+    },
     updateDdnsIpInfo: async (id: number, ipAddress: string) => {
       const updater = updaters.find((entry) => entry.id === id);
       assert.ok(updater);
@@ -121,6 +127,16 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     const httpsPayload = await httpsResponse.json();
     assert.equal(httpsPayload.provider, "iplink");
     assert.equal(httpsPayload.updateInterval, 123456);
+    const missingUpdate = await request(`${baseUrl}/api/ddns/999`, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ isEnabled: false }),
+    });
+    assert.equal(missingUpdate.status, 404);
+    assert.match((await missingUpdate.json()).message, /not found/i);
     const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 0);
     assert.equal(invalidIntervalResponse.status, 400);
     assert.match((await invalidIntervalResponse.json()).message, /minute/);

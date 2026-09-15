@@ -424,6 +424,9 @@ export async function registerRoutes(
             : {}),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
+       if (!updater) {
+         return res.status(404).json({ message: "DDNS updater not found" });
+       }
       res.json(publicDdnsUpdater(updater));
     } catch (err) {
       res.status(404).json({ message: "DDNS updater not found" });

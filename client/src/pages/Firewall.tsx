@@ -538,6 +538,7 @@ export default function Firewall() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleToggleRule(rule)}
+                        disabled={updateRule.isPending}
                         className={rule.isEnabled === false ? "text-muted-foreground hover:text-primary" : "text-primary hover:text-primary hover:bg-primary/10"}
                         aria-label={`${rule.isEnabled === false ? "Enable" : "Disable"} ${rule.name}`}
                       >
@@ -679,6 +680,7 @@ export default function Firewall() {
                     size="icon"
                     className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
                     onClick={() => handleToggleBlocklist(item)}
+                    disabled={updateBlock.isPending}
                     aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
                     data-testid={`button-toggle-rule-${item.id}`}
                   >
@@ -743,6 +745,7 @@ export default function Firewall() {
                     size="icon"
                     className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
                     onClick={() => handleToggleBlocklist(item)}
+                    disabled={updateBlock.isPending}
                     aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
                   >
                     {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}

@@ -341,7 +341,7 @@ export function AiShieldControls() {
             <Switch
               checked={shield.cloudEnabled}
               onCheckedChange={shield.setCloudEnabled}
-              disabled={!shield.deepCleer?.available || shield.isBusy}
+              disabled={!shield.deepCleer?.available || shield.isBusy || shield.isCloudBusy}
               data-testid="switch-deepcleer-cloud"
               aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
             />
