@@ -44,6 +44,11 @@ on:
         required: true
         default: false
         type: boolean
+      android_connectivity_physical_validation:
+        description: "Run signed internet-loss recovery on a connected physical Android device"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -1840,6 +1845,99 @@ jobs:
         with:
           name: SafeNet-DNS-Android-ai-shield-physical-evidence-${{ matrix.profile }}
           path: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
+          if-no-files-found: warn
+
+  android-connectivity-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_connectivity_physical_validation == true
+    # This label must identify a runner with a real phone attached. The
+    # wrapper rejects emulators and records device-access blocks separately
+    # from application failures.
+    runs-on: [self-hosted, linux, x64, android-physical-device]
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      ANDROID_SMOKE_RESOLVER_MODE: public
+      ANDROID_SMOKE_VALIDATION_MODE: real-device
+      ANDROID_SMOKE_DEVICE_KIND: physical-device
+      ANDROID_PHYSICAL_CONNECTIVITY_OUTPUT_DIR: android/app/build/reports/android-physical-connectivity/latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run signed physical-device connectivity recovery
+        id: physical-connectivity-smoke
+        continue-on-error: true
+        shell: bash
+        env:
+          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+        run: |
+          set -o pipefail
+          ./scripts/android-physical-connectivity-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$GITHUB_WORKSPACE/android/app/build/reports/android-physical-connectivity/latest"
+
+      - name: Publish physical-device connectivity summary
+        if: always()
+        shell: bash
+        env:
+          SMOKE_STEP_OUTCOME: ${{ steps.physical-connectivity-smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-physical-connectivity/latest"
+          result_file="$evidence_dir/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          failure_class="$(awk -F= '$1 == "failure_class" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_class="${failure_class:-NOT_RECORDED}"
+          failure_category="$(awk -F= '$1 == "failure_category" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_category="${failure_category:-NOT_RECORDED}"
+          connectivity_recovery="$(awk -F= '$1 == "connectivity_recovery" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          connectivity_recovery="${connectivity_recovery:-NOT_RECORDED}"
+          {
+            echo "## Physical Android connectivity recovery"
+            echo
+            echo "- **Result:** \`$result\`"
+            echo "- **Failure class:** \`$failure_class\`"
+            echo "- **Failure category:** \`$failure_category\`"
+            echo "- **Internet loss recovery:** \`$connectivity_recovery\`"
+            echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence:** download the physical-device artifact from this run"
+            echo
+            echo "The artifact includes the offline WebView banner, local VPN DNS filtering, authenticated API recovery, Android network state, and logcat."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$failure_class" == "DEVICE_ACCESS" ]]; then
+            echo "::warning::Physical-device recovery was blocked by runner/device access ($failure_category); this is not an application result."
+          elif [[ "$result" != "PASS" ]]; then
+            echo "::error::Physical-device recovery failed in the application smoke ($failure_category)."
+            exit 1
+          fi
+
+      - name: Upload physical-device connectivity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-connectivity-physical-evidence
+          path: android/app/build/reports/android-physical-connectivity/latest
           if-no-files-found: warn
 
   release:

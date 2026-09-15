@@ -17,6 +17,10 @@ const workflow = readFileSync(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
 ).replace(/\r\n/g, "\n");
+const physicalConnectivityScript = readFileSync(
+  new URL("./android-physical-connectivity-test.sh", import.meta.url),
+  "utf8",
+).replace(/\r\n/g, "\n");
 
 test("Android smoke requires packaged connectivity recovery evidence", () => {
   assert.match(
@@ -122,4 +126,45 @@ test("release summary publishes connectivity recovery status", () => {
   assert.match(summary, /Internet loss and recovery/);
   assert.match(summary, /DoH outage recovery/);
   assert.match(summary, /DoT outage recovery/);
+});
+
+test("physical-device recovery rejects unavailable or emulated targets", () => {
+  assert.match(
+    physicalConnectivityScript,
+    /failure_class=DEVICE_ACCESS/,
+    "device-access limitations must be recorded separately from app failures",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /EMULATOR_TARGET|EMULATOR_ONLY/,
+    "the physical lane must not accept an emulator as physical evidence",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /--resolver-mode public/,
+    "physical devices must use reachable public resolvers rather than 10.0.2.2",
+  );
+});
+
+test("workflow exposes and publishes the physical-device recovery lane", () => {
+  assert.match(
+    workflow,
+    /android_connectivity_physical_validation:/,
+    "manual workflow input for physical connectivity validation is missing",
+  );
+  assert.match(
+    workflow,
+    /android-connectivity-physical:/,
+    "dedicated physical connectivity job is missing",
+  );
+  assert.match(
+    workflow,
+    /android-physical-device/,
+    "physical connectivity job must target a dedicated device runner label",
+  );
+  assert.match(
+    workflow,
+    /SafeNet-DNS-Android-connectivity-physical-evidence/,
+    "physical connectivity evidence artifact is missing",
+  );
 });
