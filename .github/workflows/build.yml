@@ -1613,9 +1613,12 @@ jobs:
           resolver_mode=public
           coverage=hosted-emulator
           instrumentation_status=not-started
+          connectivity_recovery=not-started
           failure_category=$category
           EOF
           fi
+          recovery_status="$(awk -F= '$1 == "connectivity_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          recovery_status="${recovery_status:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
           {
             echo "validation_mode=hosted-emulator-reduced"
@@ -1634,6 +1637,7 @@ jobs:
             echo
             echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
+            echo "- **Internet loss and recovery:** \`$recovery_status\` (offline banner, offline DNS filtering, and post-reconnect API status are recorded in the evidence archive)"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"

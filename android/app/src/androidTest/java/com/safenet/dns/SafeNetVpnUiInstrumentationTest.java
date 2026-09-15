@@ -36,6 +36,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.rules.TestName;
 
+import java.io.ByteArrayOutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -937,6 +941,161 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void packagedAppRecoversAfterNetworkLoss() throws Exception {
+        boolean airplaneModeEnabled = false;
+        try {
+            openDashboardForConnectivitySmoke();
+            waitForWebView(
+                "document.readyState === 'complete' && " +
+                    "document.body.innerText.includes('Command Center')"
+            );
+
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.acceptEula({version:'1.0'})"
+            ));
+            JSONObject firewall = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.syncFirewallConfig({" +
+                    "config:{" +
+                        "settings:{firewallEnabled:true,preventDnsOverrides:true}," +
+                        "rules:[]," +
+                        "blocklists:[{" +
+                            "type:'domain'," +
+                            "content:'offline.test'," +
+                            "action:'block'," +
+                            "isActive:true" +
+                        "}]" +
+                    "}" +
+                "})"
+            ));
+            assertTrue("The offline firewall snapshot must be saved",
+                firewall.getBoolean("synced"));
+
+            startVpnWithPermission(
+                "plain",
+                argument("plain-primary", "1.1.1.1"),
+                argument("plain-secondary", "8.8.8.8")
+            );
+            waitForVpnState(true);
+            JSONObject initialStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must be running before the outage",
+                initialStatus.getBoolean("running"));
+            assertTrue("The firewall snapshot must be active before the outage",
+                initialStatus.getBoolean("firewallEnabled"));
+
+            requireWebViewValue(callWebView(
+                "(() => {" +
+                    "window.__safeNetConnectivityRecoveryErrors = [];" +
+                    "window.addEventListener('error', event => " +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "String(event.message || event.error || 'unknown')));" +
+                    "window.addEventListener('unhandledrejection', event => " +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "String(event.reason || 'unknown')));" +
+                    "const originalConsoleError = console.error.bind(console);" +
+                    "console.error = (...args) => {" +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "'console.error:' + args.map(String).join(' '));" +
+                        "originalConsoleError(...args);" +
+                    "};" +
+                    "return true;" +
+                "})()"
+            ));
+
+            airplaneModeEnabled = true;
+            setAirplaneMode(true);
+            waitForWebView(
+                "navigator.onLine === false && " +
+                    "Boolean(document.querySelector('[role=\"status\"]')) && " +
+                    "document.body.innerText.includes('No internet connection')"
+            );
+            JSONObject offlineStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must remain running while the Internet is unavailable",
+                offlineStatus.getBoolean("running"));
+            assertTrue("The offline firewall policy must remain active",
+                offlineStatus.getBoolean("firewallEnabled"));
+
+            byte[] blockedResponse = queryVirtualDns("offline.test");
+            assertEquals("Offline DNS filtering must refuse a blocked domain",
+                5, blockedResponse[3] & 0x0f);
+
+            setAirplaneMode(false);
+            airplaneModeEnabled = false;
+            waitForWebView(
+                "navigator.onLine === true && " +
+                    "!Boolean(document.querySelector('[role=\"status\"]'))"
+            );
+
+            String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+            boolean apiRecovered = true;
+            if (clerkOrigin != null && !clerkOrigin.trim().isEmpty()) {
+                requireWebViewValue(callWebView(
+                    "(() => {" +
+                        "window.__safeNetConnectivityRecoveryApi = {done:false,ok:false};" +
+                        "fetch(" + JSONObject.quote(clerkOrigin + "/api/auth/status") +
+                            ", {cache:'no-store',credentials:'include'})" +
+                            ".then(async response => {" +
+                                "const body = await response.json().catch(() => ({}));" +
+                                "window.__safeNetConnectivityRecoveryApi = {" +
+                                    "done:true,ok:response.ok,authenticated:body.authenticated === true" +
+                                "};" +
+                            "})" +
+                            ".catch(error => window.__safeNetConnectivityRecoveryApi = {" +
+                                "done:true,ok:false,message:String(error)" +
+                            "});" +
+                        "return true;" +
+                    "})()"
+                ));
+                waitForWebView(
+                    "Boolean(window.__safeNetConnectivityRecoveryApi && " +
+                        "window.__safeNetConnectivityRecoveryApi.done)"
+                );
+                JSONObject apiRecovery = callWebView(
+                    "window.__safeNetConnectivityRecoveryApi"
+                );
+                apiRecovered = apiRecovery.getBoolean("ok") &&
+                    apiRecovery.getBoolean("authenticated");
+                assertTrue("The authenticated API status must recover after reconnecting",
+                    apiRecovered);
+            }
+
+            byte[] recoveredResponse = queryVirtualDns("safenet.com");
+            assertTrue("DNS protection must forward queries again after reconnecting",
+                recoveredResponse.length >= 12);
+            JSONObject recoveredStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must still be running after reconnecting",
+                recoveredStatus.getBoolean("running"));
+            JSONObject browserErrors = requireWebViewValue(callWebView(
+                "({errors:window.__safeNetConnectivityRecoveryErrors || []})"
+            ));
+            assertEquals("Connectivity recovery must not emit browser errors",
+                0, browserErrors.getJSONArray("errors").length());
+
+            Log.i(
+                "SafeNetConnectivityRecovery",
+                "CONNECTIVITY_RECOVERY result=PASS network_loss=PASS " +
+                    "webview_offline=PASS dns_filter_offline=PASS " +
+                    "api_recovery=" + (apiRecovered ? "PASS" : "FAIL") +
+                    " browser_errors=0"
+            );
+        } finally {
+            if (airplaneModeEnabled) {
+                setAirplaneMode(false);
+            }
+            try {
+                callVpn("window.Capacitor.Plugins.SafeNetVpn.stop()");
+            } catch (Exception ignored) {
+                // The test teardown also stops the service when recovery fails.
+            }
+        }
+    }
+
+    @Test
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
@@ -1747,6 +1906,94 @@ public class SafeNetVpnUiInstrumentationTest {
             "Could not reset target app: " + commandOutput,
             commandOutput.toString().contains("Success")
         );
+    }
+
+    private void openDashboardForConnectivitySmoke() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            waitForWebView("document.body.innerText.includes('Command Center')");
+            return;
+        }
+
+        String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+        String clerkCookiePayload = instrumentationArguments().getString("clerk-cookie-base64");
+        if (clerkOrigin == null || clerkOrigin.trim().isEmpty() ||
+            clerkCookiePayload == null || clerkCookiePayload.trim().isEmpty()) {
+            openDashboardWithoutActiveResolver();
+            return;
+        }
+
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "/sign in to access safenet dns/i.test(document.body.innerText)"
+        );
+        String clerkCookie = new String(
+            Base64.decode(clerkCookiePayload, Base64.DEFAULT),
+            java.nio.charset.StandardCharsets.UTF_8
+        );
+        setClerkSessionCookies(clerkOrigin, clerkCookie);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+    }
+
+    private void setAirplaneMode(boolean enabled) throws Exception {
+        executeShellCommand(
+            "cmd connectivity airplane-mode " + (enabled ? "enable" : "disable")
+        );
+        String expected = enabled ? "1" : "0";
+        String initialState = executeShellCommand("settings get global airplane_mode_on").trim();
+        if (!expected.equals(initialState)) {
+            executeShellCommand("settings put global airplane_mode_on " + expected);
+            executeShellCommand(
+                "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
+                    (enabled ? "true" : "false")
+            );
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            String state = executeShellCommand("settings get global airplane_mode_on").trim();
+            if (expected.equals(state)) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(
+            "Android airplane mode did not become " + (enabled ? "enabled" : "disabled")
+        );
+    }
+
+    private byte[] queryVirtualDns(String domain) throws Exception {
+        ByteArrayOutputStream query = new ByteArrayOutputStream();
+        query.write(new byte[] {
+            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        });
+        for (String label : domain.split("\\.")) {
+            byte[] bytes = label.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            query.write(bytes.length);
+            query.write(bytes);
+        }
+        query.write(0);
+        query.write(new byte[] {0x00, 0x01, 0x00, 0x01});
+
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(5000);
+            byte[] request = query.toByteArray();
+            socket.send(new DatagramPacket(
+                request,
+                request.length,
+                new InetSocketAddress("10.248.0.1", 53)
+            ));
+            byte[] buffer = new byte[65535];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+            byte[] result = new byte[response.getLength()];
+            System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
+            assertEquals("The virtual DNS response must preserve the query ID",
+                0x534e, ((result[0] & 0xff) << 8) | (result[1] & 0xff));
+            return result;
+        }
     }
 
     private void openDashboardWithoutActiveResolver() throws Exception {

@@ -245,11 +245,13 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
     "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
     "$output_dir"/media-smoke-result.txt \
+    "$output_dir"/connectivity-recovery-logcat.txt "$output_dir"/connectivity-recovery-result.txt \
     "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
+    printf 'connectivity_recovery=required\n'
 } > "$output_dir/coverage.txt"
 
 if [[ -n "$serial" ]]; then
@@ -1076,6 +1078,7 @@ set +e
 adb_run shell am instrument -w -r \
     -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest \
     -e preserve-auth-session true \
+    -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
@@ -1098,6 +1101,21 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
         "$output_dir/instrumentation.log"; then
     test_failed=1
 fi
+
+capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+if grep -Fq 'CONNECTIVITY_RECOVERY result=PASS' \
+    "$output_dir/connectivity-recovery-logcat.txt"; then
+    connectivity_recovery_status="PASS"
+elif grep -Eiq 'CONNECTIVITY_RECOVERY result=FAIL' \
+    "$output_dir/connectivity-recovery-logcat.txt"; then
+    connectivity_recovery_status="FAIL"
+    test_failed=1
+else
+    connectivity_recovery_status="NOT_RECORDED"
+    test_failed=1
+fi
+printf 'connectivity_recovery=%s\n' "$connectivity_recovery_status" |
+    tee "$output_dir/connectivity-recovery-result.txt"
 
 # Keep the consent-gated AI Shield lifecycle evidence easy to find without
 # claiming success when a runner skipped or failed either device test.
@@ -1141,8 +1159,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nconnectivity_recovery=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+  "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$connectivity_recovery_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2
