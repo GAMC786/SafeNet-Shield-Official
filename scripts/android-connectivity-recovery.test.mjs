@@ -90,6 +90,11 @@ test("packaged resolver recovery covers bounded DoH and DoT outage phases", () =
     "the hosted smoke lane must receive the resolver failure validation switch",
   );
   assert.match(
+    workflow,
+    /name: Run browser UI tests\s+if: env\.ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION != 'true'/,
+    "the focused hosted failure proof must not be blocked by unrelated browser checks",
+  );
+  assert.match(
     smokeScript,
     /ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION requires fixture resolver mode/,
     "controlled resolver failure validation must stay on the credential-free fixture",

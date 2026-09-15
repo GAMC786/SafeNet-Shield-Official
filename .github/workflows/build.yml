@@ -671,6 +671,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run browser UI tests
+        if: env.ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION != 'true'
         run: npm run test:ui
 
       - name: Build web app
