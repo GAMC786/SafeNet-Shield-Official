@@ -709,12 +709,25 @@ jobs:
           mkdir -p "$output_dir"
           category="PASS"
           stage="completed"
+          reason="NONE"
+          attempts="0"
+          exit_status="0"
           if [[ "$SETUP_ACTION_OUTCOME" != "success" ]]; then
             category="ANDROID_SDK_SETUP_FAILURE"
             stage="android-actions/setup-android"
+            reason="SETUP_ACTION_FAILURE"
           elif [[ "$INSTALL_STEP_OUTCOME" != "success" ]]; then
             category="ANDROID_SDK_SETUP_FAILURE"
             stage="pinned-sdk-install"
+            result_file="$output_dir/result.txt"
+            if [[ -f "$result_file" ]]; then
+              reason="$(sed -n 's/^failure_reason=//p' "$result_file" | head -n 1)"
+              attempts="$(sed -n 's/^attempts=//p' "$result_file" | head -n 1)"
+              exit_status="$(sed -n 's/^exit_status=//p' "$result_file" | head -n 1)"
+            fi
+            reason="${reason:-UNCLASSIFIED_INSTALL_FAILURE}"
+            attempts="${attempts:-0}"
+            exit_status="${exit_status:-1}"
           fi
 
           if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
@@ -735,6 +748,9 @@ jobs:
             printf 'failure_class=%s\n' "$([[ "$category" == "PASS" ]] && echo "NONE" || echo "INFRASTRUCTURE")"
             printf 'failure_category=%s\n' "$category"
             printf 'failure_stage=%s\n' "$stage"
+            printf 'failure_reason=%s\n' "$reason"
+            printf 'attempts=%s\n' "$attempts"
+            printf 'exit_status=%s\n' "$exit_status"
             printf 'setup_action_outcome=%s\n' "$SETUP_ACTION_OUTCOME"
             printf 'install_step_outcome=%s\n' "$INSTALL_STEP_OUTCOME"
           } > "$output_dir/result.txt"
@@ -745,6 +761,8 @@ jobs:
             echo
             echo "- **Infrastructure category:** \`$category\`"
             echo "- **Failed stage:** \`$stage\`"
+            echo "- **Failure reason:** \`$reason\`"
+            echo "- **Install attempts:** \`$attempts\`"
             echo "- **Setup action:** \`$SETUP_ACTION_OUTCOME\`"
             echo "- **Pinned SDK install:** \`$INSTALL_STEP_OUTCOME\`"
             if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
