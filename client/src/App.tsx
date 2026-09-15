@@ -23,6 +23,7 @@ import Logs from "@/pages/Logs";
 import TetherShare from "@/pages/TetherShare";
 import Settings from "@/pages/Settings";
 import Billing from "@/pages/Billing";
+import SpamCallBlocker from "@/pages/SpamCallBlocker";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -73,6 +74,7 @@ function MainLayout() {
           <Route path="/tether" component={TetherShare} />
           <Route path="/settings" component={Settings} />
           <Route path="/billing" component={Billing} />
+          <Route path="/spam-call-blocker" component={SpamCallBlocker} />
           <Route component={NotFound} />
         </Switch>
       </main>
