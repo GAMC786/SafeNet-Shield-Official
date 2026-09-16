@@ -457,9 +457,9 @@ test("Settings show the current version without firewall controls", async () => 
     await mediaSwitch.click();
     assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
   }
-  assert.equal(await page.getByTestId("button-ai-start-camera").count(), 1);
-  assert.equal(await page.getByTestId("button-ai-start-screen").count(), 1);
-  assert.equal(await page.getByTestId("button-ai-stop").count(), 1);
+  assert.equal(await page.getByTestId("button-ai-start-camera").count(), 0);
+  assert.equal(await page.getByTestId("button-ai-start-screen").count(), 0);
+  assert.equal(await page.getByTestId("button-ai-stop").count(), 0);
   assert.equal(await page.getByText("Choose the media types DeepCleer Ai should detect while monitoring.", { exact: true }).count(), 1);
   await page.getByRole("heading", { name: "Marathon of Hope" }).waitFor();
   assert.equal(
