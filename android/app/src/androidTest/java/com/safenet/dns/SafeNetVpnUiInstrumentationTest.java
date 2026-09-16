@@ -2868,6 +2868,12 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    private String argument(String name, String fallback) {
+        Bundle arguments = InstrumentationRegistry.getArguments();
+        String value = arguments.getString(name);
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
     private JSONObject waitForAiShieldStatus(
         String expression,
         AiShieldStatusPredicate predicate
