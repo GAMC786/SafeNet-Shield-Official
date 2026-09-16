@@ -2,7 +2,6 @@ import { useAiShield } from "@/hooks/use-ai-shield";
 import type { AiShieldResult } from "@/hooks/use-vpn";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
@@ -13,10 +12,8 @@ import {
   Eye,
   Image as ImageIcon,
   Monitor,
-  Play,
   Radio,
   ShieldAlert,
-  Square,
   Type,
   Video,
 } from "lucide-react";
@@ -229,39 +226,6 @@ export function AiShieldControls() {
           })}
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Button
-            type="button"
-            size="sm"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.startCamera)}
-            disabled={!shield.supported || shield.isBusy}
-            data-testid="button-ai-start-camera"
-          >
-            <Play className="mr-2 h-4 w-4" /> Start Camera
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.startScreen)}
-            disabled={!shield.supported || shield.isBusy}
-            data-testid="button-ai-start-screen"
-          >
-            <Play className="mr-2 h-4 w-4" /> Start Screen
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.stop)}
-            disabled={!shield.supported || shield.isBusy || !monitoring}
-            data-testid="button-ai-stop"
-          >
-            <Square className="mr-2 h-4 w-4" /> Stop Detector
-          </Button>
-        </div>
       </div>
 
       {shield.supported && (
