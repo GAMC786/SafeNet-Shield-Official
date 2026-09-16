@@ -184,7 +184,8 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
 
 test("the document canvas stays dark behind the app while scrolling", () => {
   assert.match(indexHtml, /<body style="margin: 0; background: #0f172a; color: #f8fafc;">/);
-  assert.match(appSource, /min-h-screen bg-background/);
+  assert.match(appSource, /h-screen min-h-0 h-\[100dvh\][\s\S]*overflow-hidden bg-background/);
+  assert.match(appSource, /min-h-0 flex-1[\s\S]*overflow-y-auto/);
   assert.match(readFileSync(path.join(clientRoot, "src/index.css"), "utf8"), /background: hsl\(var\(--background\)\);/);
 });
 
