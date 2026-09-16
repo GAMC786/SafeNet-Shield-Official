@@ -26,7 +26,7 @@ export function SystemNavigation() {
   return (
     <nav
       aria-label="System services"
-      className="fixed inset-x-0 top-0 z-40 h-20 border-b border-white/10 bg-black/85 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
+      className="glass-panel fixed inset-x-0 top-0 z-40 h-20 border-b border-white/5 bg-black/80 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
     >
       <div className="mx-auto flex h-full max-w-7xl items-center gap-3">
         <div className="hidden shrink-0 items-center gap-2 border-r border-white/10 pr-4 sm:flex">
