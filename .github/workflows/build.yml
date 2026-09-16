@@ -1296,9 +1296,83 @@ jobs:
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
 
-  android-billing-proof:
-    needs: build-android
+  android-billing-preflight:
     if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_billing_validation == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    env:
+      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+    steps:
+      - name: Check Clerk billing session configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${AUTH_SMOKE_STORAGE_STATE}" ]]; then
+            echo "::error::AUTH_SMOKE_STORAGE_STATE repository secret is required before Android billing validation can run."
+            exit 1
+          fi
+          AUTH_SMOKE_STORAGE_STATE="$AUTH_SMOKE_STORAGE_STATE" node --input-type=module - <<'NODE'
+          const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+          let state;
+          try {
+            state = JSON.parse(raw);
+          } catch {
+            console.error("AUTH_SMOKE_STORAGE_STATE must be valid JSON for the Clerk billing session.");
+            process.exit(1);
+          }
+          const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
+          const hasCookie = cookies.some(
+            (cookie) =>
+              typeof cookie?.name === "string" &&
+              cookie.name.length > 0 &&
+              typeof cookie?.value === "string" &&
+              cookie.value.length > 0,
+          );
+          if (!hasCookie) {
+            console.error(
+              "AUTH_SMOKE_STORAGE_STATE must contain a Clerk browser cookie for the billing session.",
+            );
+            process.exit(1);
+          }
+          console.log("Clerk billing session configuration: ready.");
+          NODE
+
+      - name: Check dedicated Play billing runner
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const requiredLabel = 'android-play-billing';
+            const { data } = await github.rest.actions.listSelfHostedRunnersForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const readyRunner = (data.runners || []).find((runner) =>
+              runner.status === 'online' &&
+              runner.busy === false &&
+              (runner.labels || []).some((label) => label.name === requiredLabel)
+            );
+            if (!readyRunner) {
+              core.setFailed(
+                `No online idle self-hosted runner has the "${requiredLabel}" label. ` +
+                `Register or start that runner before dispatching Android billing validation.`
+              );
+              return;
+            }
+            core.info(`Ready Android billing runner found with the ${requiredLabel} label.`);
+
+  android-billing-proof:
+    needs: [build-android, android-billing-preflight]
+    if: >-
+      always() &&
+      needs.build-android.result == 'success' &&
+      needs.android-billing-preflight.result == 'success' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.android_billing_validation == true
     # This runner must be a configured Google Play device or Play-enabled

@@ -22,7 +22,10 @@ fail() {
     exit 2
 }
 
-[[ -n "$clerk_origin" ]] || fail "ANDROID_BILLING_CLERK_ORIGIN or MOBILE_API_URL is required."
+[[ -n "$clerk_origin" ]] ||
+    fail "ANDROID_BILLING_CLERK_ORIGIN or MOBILE_API_URL is required for the Clerk billing session."
+[[ -n "$storage_state" ]] ||
+    fail "AUTH_SMOKE_STORAGE_STATE repository secret is required for the Clerk billing session."
 [[ "$action" == "purchase" || "$action" == "restore" ]] ||
     fail "ANDROID_BILLING_ACTION must be purchase or restore."
 [[ "$(basename "$apk_path")" == "app-release.apk" ]] ||
@@ -32,7 +35,6 @@ fail() {
 [[ -s "$apk_path" ]] || fail "Signed release APK was not found: $apk_path"
 [[ -s "$test_apk_path" ]] || fail "Release instrumentation APK was not found: $test_apk_path"
 command -v adb >/dev/null 2>&1 || fail "adb is required on the dedicated Play runner."
-[[ -n "$storage_state" ]] || fail "AUTH_SMOKE_STORAGE_STATE is required for the Clerk-linked proof."
 [[ "$preflight_timeout_seconds" =~ ^[1-9][0-9]*$ ]] ||
     fail "ANDROID_BILLING_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer."
 

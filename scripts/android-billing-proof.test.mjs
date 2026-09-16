@@ -24,6 +24,7 @@ test("billing proof only accepts signed release artifacts and a Play-enabled run
   assert.match(script, /app-release-androidTest\.apk/);
   assert.match(script, /com\.android\.vending/);
   assert.match(script, /AUTH_SMOKE_STORAGE_STATE/);
+  assert.match(script, /repository secret is required for the Clerk billing session/);
   assert.match(script, /api\/billing\/preflight/);
   assert.match(script, /purchase dialog was not launched/);
   assert.match(script, /configuration_preflight=FAIL/);
@@ -49,4 +50,18 @@ test("release builds inject a public RevenueCat Android key and gate billing val
   assert.match(billing, /data-testid="billing-restore"/);
   assert.match(billing, /data-testid="billing-account"/);
   assert.match(billing, /api\/billing\/preflight/);
+});
+
+test("manual billing validation fails before queueing without its prerequisites", () => {
+  assert.match(workflow, /android-billing-preflight:/);
+  assert.match(workflow, /actions:\s*read/);
+  assert.match(workflow, /AUTH_SMOKE_STORAGE_STATE repository secret is required before Android billing validation can run/);
+  assert.match(workflow, /listSelfHostedRunnersForRepo/);
+  assert.match(workflow, /requiredLabel = 'android-play-billing'/);
+  assert.match(workflow, /No online idle self-hosted runner has the/);
+  assert.match(
+    workflow,
+    /needs:\s*\[build-android,\s*android-billing-preflight\]/,
+  );
+  assert.match(workflow, /needs\.android-billing-preflight\.result == 'success'/);
 });
