@@ -133,6 +133,10 @@ test("call-screening setup exposes a working Android settings fallback", () => {
 test("Android registers SafeNet Spam CallerID as a call-screening provider", () => {
   assert.match(
     manifestSource,
+    /<application[\s\S]*?android:label="@string\/call_screening_app_label"/,
+  );
+  assert.match(
+    manifestSource,
     /android:name="\.SafeNetCallScreeningService"[\s\S]*?android:label="@string\/call_screening_app_label"[\s\S]*?android:permission="android\.permission\.BIND_SCREENING_SERVICE"/,
   );
   assert.match(
