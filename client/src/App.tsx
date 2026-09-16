@@ -12,7 +12,9 @@ import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import * as Sentry from "@sentry/react";
 import { captureGlitchTipException } from "./lib/glitchtip";
 import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { ArrowLeft } from "lucide-react";
+import { useCallback } from "react";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -46,6 +48,12 @@ function stripBase(path: string) {
 }
 
 function MainLayout() {
+  const queryClient = useQueryClient();
+  const refreshActivePage = useCallback(
+    () => queryClient.refetchQueries({ type: "active" }).then(() => undefined),
+    [queryClient],
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
       <NetworkStatusBanner />
@@ -63,7 +71,10 @@ function MainLayout() {
            }} 
       />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28">
+      <PullToRefresh
+        className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
+        onRefresh={refreshActivePage}
+      >
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/command-center" component={Dashboard} />
@@ -79,7 +90,7 @@ function MainLayout() {
           <Route path="/spam-call-blocker" component={SpamCallBlocker} />
           <Route component={NotFound} />
         </Switch>
-      </main>
+      </PullToRefresh>
     </div>
   );
 }
