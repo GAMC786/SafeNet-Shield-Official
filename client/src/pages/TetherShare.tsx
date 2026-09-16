@@ -3,6 +3,7 @@ import {
   useCreateDnsServer,
   useDeleteDnsServer,
   useDnsServers,
+  useActivateDnsServer,
   useUpdateDnsServer,
 } from "@/hooks/use-dns";
 import { Header } from "@/components/Header";
@@ -126,11 +127,15 @@ export default function TetherShare() {
   const createResolver = useCreateDnsServer();
   const updateResolver = useUpdateDnsServer();
   const deleteResolver = useDeleteDnsServer();
+  const activateResolver = useActivateDnsServer();
   const [resolverDialogOpen, setResolverDialogOpen] = useState(false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
   const [resolverForm, setResolverForm] = useState<ResolverForm>(emptyResolver);
   const [selectedResolverProtocol, setSelectedResolverProtocol] = useState<DnsServer["type"]>("plain");
-  const isResolverMutating = createResolver.isPending || updateResolver.isPending || deleteResolver.isPending;
+  const isResolverMutating = createResolver.isPending ||
+    updateResolver.isPending ||
+    deleteResolver.isPending ||
+    activateResolver.isPending;
 
   useEffect(() => {
     if (!editingResolver) return;
@@ -237,6 +242,23 @@ export default function TetherShare() {
     }
   };
 
+  const handleActivateResolver = async (server: DnsServer) => {
+    if (server.isActive) return;
+    try {
+      await activateResolver.mutateAsync(server.id);
+      toast({
+        title: "Resolver activated",
+        description: `${server.name} is now the active SafeNet DNS resolver.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Resolver could not be activated",
+        description: error instanceof Error ? error.message : "Unable to activate this resolver.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleToggle = async () => {
     if (!supported) {
       toast({
@@ -328,11 +350,11 @@ export default function TetherShare() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-display text-lg font-bold text-white">Recommended family DNS setup</h2>
                   <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                    Add, edit, or remove
+                    Manage active resolver
                   </span>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Manage the resolvers available for connected Internet Share devices. Plain DNS, DoH, and DoT are kept in separate sections.
+                  Configure Plain DNS, DoH, and DoT options. One resolver is active at a time for SafeNet protection.
                 </p>
               </div>
               <Button type="button" size="sm" onClick={openCreateResolver} disabled={isResolverMutating} className="w-full sm:w-auto">
@@ -395,7 +417,18 @@ export default function TetherShare() {
                               {server.secondaryAddress && ` · ${server.secondaryAddress}`}
                             </p>
                           </div>
-                          <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-auto">
+                          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                            {!server.isActive && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void handleActivateResolver(server)}
+                                disabled={isResolverMutating}
+                                aria-label={`Activate ${server.name}`}
+                              >
+                                Activate
+                              </Button>
+                            )}
                             <Button
                               type="button"
                               variant="outline"
@@ -432,7 +465,7 @@ export default function TetherShare() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-sky-200">
-                Internet Share does not change DNS automatically. Set one of the resolvers above on each connected device that joins this network.
+                Choose one active resolver above. Switching it changes the resolver used when SafeNet protection starts next.
               </p>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
                 <Link href="/dns">
