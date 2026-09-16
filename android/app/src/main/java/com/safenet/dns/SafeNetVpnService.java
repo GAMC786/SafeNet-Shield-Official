@@ -158,7 +158,7 @@ public class SafeNetVpnService extends VpnService {
             authCookie = intent.getStringExtra(EXTRA_AUTH_COOKIE);
             firewall = FirewallConfigStore.load(this);
             startForeground(1001, buildNotification());
-            vpnInterface = new Builder()
+            Builder builder = new Builder()
                 .setSession("SafeNet DNS")
                 .setBlocking(true)
                 .addAddress(VIRTUAL_CLIENT, 32)
@@ -166,8 +166,12 @@ public class SafeNetVpnService extends VpnService {
                 .addRoute(VIRTUAL_DNS, 32)
                 .addRoute(VIRTUAL_DNS_V6, 128)
                 .addDnsServer(VIRTUAL_DNS)
-                .addDnsServer(VIRTUAL_DNS_V6)
-                .establish();
+                .addDnsServer(VIRTUAL_DNS_V6);
+            Network underlying = findUnderlyingNetwork();
+            if (underlying != null) {
+                builder.setUnderlyingNetworks(new Network[] { underlying });
+            }
+            vpnInterface = builder.establish();
             if (vpnInterface == null) {
                 throw new IOException("Android could not establish the DNS VPN interface.");
             }
@@ -1064,7 +1068,7 @@ public class SafeNetVpnService extends VpnService {
             IOException last = null;
             for (InetAddress upstream : upstreams) {
                 try (DatagramSocket socket = new DatagramSocket()) {
-                    if (!service.protect(socket)) {
+                    if (!service.prepareUpstreamSocket(socket)) {
                         throw new IOException("Could not protect the DNS connection from the VPN loop.");
                     }
                     socket.setSoTimeout(SOCKET_TIMEOUT_MS);
@@ -1344,7 +1348,7 @@ public class SafeNetVpnService extends VpnService {
         IOException last = null;
         for (InetAddress address : addresses) {
             Socket socket = new Socket();
-            if (!protect(socket)) {
+            if (!prepareUpstreamSocket(socket)) {
                 socket.close();
                 throw new IOException("Could not protect the DNS connection from the VPN loop.");
             }
@@ -1357,6 +1361,66 @@ public class SafeNetVpnService extends VpnService {
             }
         }
         throw last == null ? new IOException("The DNS resolver address could not be reached.") : last;
+    }
+
+    /**
+     * Upstream resolver sockets must bypass this VPN. Protecting the socket is
+     * the Android VPN contract; binding it to the current non-VPN network as
+     * well prevents Android's DNS-only VPN from accidentally sending resolver
+     * traffic back through its own virtual DNS route after a network change.
+     */
+    private boolean prepareUpstreamSocket(java.net.Socket socket) {
+        Network underlying = findUnderlyingNetwork();
+        if (underlying != null) {
+            try {
+                underlying.bindSocket(socket);
+            } catch (IOException ignored) {
+                // protect(socket) below remains the portable Android fallback.
+            }
+        }
+        return protect(socket);
+    }
+
+    private boolean prepareUpstreamSocket(DatagramSocket socket) {
+        Network underlying = findUnderlyingNetwork();
+        if (underlying != null) {
+            try {
+                underlying.bindSocket(socket);
+            } catch (IOException ignored) {
+                // protect(socket) below remains the portable Android fallback.
+            }
+        }
+        return protect(socket);
+    }
+
+    private Network findUnderlyingNetwork() {
+        ConnectivityManager connectivity =
+            (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) {
+            return null;
+        }
+
+        Network active = connectivity.getActiveNetwork();
+        if (isUsableUnderlyingNetwork(connectivity, active)) {
+            return active;
+        }
+        for (Network network : connectivity.getAllNetworks()) {
+            if (isUsableUnderlyingNetwork(connectivity, network)) {
+                return network;
+            }
+        }
+        return null;
+    }
+
+    private boolean isUsableUnderlyingNetwork(ConnectivityManager connectivity, Network network) {
+        if (network == null) {
+            return false;
+        }
+        NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+        return capabilities != null
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
     }
 
     private static final class Endpoint {

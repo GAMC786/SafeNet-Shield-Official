@@ -43,6 +43,26 @@ export default function Dashboard() {
     ? [activeDns.primaryAddress, activeDns.secondaryAddress].filter(Boolean).join(",")
     : undefined;
 
+  const startDnsProtection = async () => {
+    if (!activeDns) return;
+    if (vpn.status?.wireguardRunning) {
+      await vpn.stopWireGuard();
+    }
+    await vpn.start({
+      type: activeDns.type,
+      ipVersion: activeDns.ipVersion,
+      primaryAddress: activeDns.primaryAddress,
+      secondaryAddress: activeDns.secondaryAddress,
+    });
+  };
+
+  const startWireGuardProtection = async () => {
+    if (vpn.status?.running) {
+      await vpn.stop();
+    }
+    await vpn.startWireGuard({ dnsServers: selectedWireGuardDns });
+  };
+
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
     ? Math.round((stats.blockedQueries / stats.totalQueries) * 100)
@@ -208,16 +228,9 @@ export default function Dashboard() {
                   setEulaOpen(true);
                   return;
                 }
-                const activeResolver = activeDns;
-                if (!activeResolver) return;
-                void vpn.start({
-                  type: activeResolver.type,
-                  ipVersion: activeResolver.ipVersion,
-                  primaryAddress: activeResolver.primaryAddress,
-                  secondaryAddress: activeResolver.secondaryAddress,
-                }).catch(reportVpnActionError);
+                void startDnsProtection().catch(reportVpnActionError);
               }}
-              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns || vpn.status?.wireguardRunning}
+              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
               aria-label="SafeNet VPN On/Off"
             />
             <Button
@@ -273,15 +286,14 @@ export default function Dashboard() {
             running={vpn.status?.wireguardRunning === true}
             disabled={
               vpn.isBusy ||
-              vpn.status === null ||
-              (!vpn.status?.wireguardRunning && vpn.status?.running === true)
+              vpn.status === null
             }
             gateway={vpn.status?.wireguardGateway}
             dnsServers={vpn.status?.wireguardDnsServers || selectedWireGuardDns}
             onToggle={(checked) => {
                 setVpnActionError(null);
               if (checked) {
-                 void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(reportVpnActionError);
+                 void startWireGuardProtection().catch(reportVpnActionError);
               } else {
                  void vpn.stopWireGuard().catch(reportVpnActionError);
               }
@@ -292,7 +304,7 @@ export default function Dashboard() {
           )}
           {vpn.status?.running && !vpn.status.wireguardRunning && (
             <p className="text-xs text-muted-foreground">
-              Stop SafeNet DNS protection before starting WireGuard; Android allows one active VPN tunnel at a time.
+              Turning on WireGuard will safely switch off SafeNet DNS protection first; Android allows one active VPN tunnel at a time.
             </p>
           )}
       </CyberCard>
@@ -306,12 +318,7 @@ export default function Dashboard() {
             setEulaOpen(false);
             if (startAfterEula && activeDns) {
               setStartAfterEula(false);
-              await vpn.start({
-                type: activeDns.type,
-                ipVersion: activeDns.ipVersion,
-                primaryAddress: activeDns.primaryAddress,
-                secondaryAddress: activeDns.secondaryAddress,
-              });
+              await startDnsProtection();
             }
           }}
           isAccepting={vpn.isBusy}

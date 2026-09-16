@@ -100,6 +100,21 @@ test("resolver address family is forwarded into the native service", () => {
   assert.match(serviceSource, /resolveHost\(uri\.getHost\(\), ipVersion\)/);
 });
 
+test("DNS upstream sockets stay on the non-VPN network", () => {
+  assert.match(
+    serviceSource,
+    /setUnderlyingNetworks\(new Network\[\] \{ underlying \}\)/,
+  );
+  assert.match(
+    serviceSource,
+    /underlying\.bindSocket\(socket\)/,
+  );
+  assert.match(
+    serviceSource,
+    /prepareUpstreamSocket\(socket\)/,
+  );
+});
+
 test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs", async () => {
   const managerSource = await readFile(
     new URL("../android/app/src/main/java/com/safenet/dns/AiShieldManager.java", import.meta.url),
