@@ -165,6 +165,14 @@ test("Android registers SafeNet Spam CallerID as a call-screening provider", () 
   );
 });
 
+test("Android can inspect active network and VPN ownership", () => {
+  assert.match(
+    manifestSource,
+    /<uses-permission android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/,
+    "ConnectivityManager status checks require ACCESS_NETWORK_STATE",
+  );
+});
+
 test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs", async () => {
   const managerSource = await readFile(
     new URL("../android/app/src/main/java/com/safenet/dns/AiShieldManager.java", import.meta.url),
