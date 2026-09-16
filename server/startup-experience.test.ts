@@ -100,6 +100,10 @@ const dnsSettingsSource = readFileSync(
   path.join(clientRoot, "src/pages/DnsSettings.tsx"),
   "utf8",
 );
+const dnsResolversSource = readFileSync(
+  path.resolve(process.cwd(), "shared/dns-resolvers.ts"),
+  "utf8",
+);
 const ddnsSource = readFileSync(
   path.join(clientRoot, "src/pages/DdnsUpdater.tsx"),
   "utf8",
@@ -156,6 +160,11 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Recommended family DNS setup/);
   assert.match(tetherShareSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
   assert.match(tetherShareSource, /AdGuard DNS \(Family\) is the active SafeNet resolver/);
+  assert.match(tetherShareSource, /DNS_PROVIDER_ACCESS_RULES/);
+  assert.match(dnsResolversSource, /Control D Family/);
+  assert.match(dnsResolversSource, /OpenDNS FamilyShield/);
+  assert.match(dnsResolversSource, /AdGuard DNS Family/);
+  assert.match(dnsResolversSource, /name: "NextDNS"/);
   assert.match(tetherShareSource, /running \? "sharing" : "not-sharing"/);
   assert.match(headerSource, /status === "sharing" \? "Sharing"/);
   assert.match(headerSource, /status === "not-sharing" \? "Not Sharing"/);
@@ -393,10 +402,12 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(settingsSource, /object-contain/);
   assert.doesNotMatch(settingsSource, /clipPath|terry-fox-white-side-bar/);
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
-  assert.match(dnsSettingsSource, /AdGuard DNS \(Family\)/);
-  assert.match(dnsSettingsSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
-  assert.match(dnsSettingsSource, /NextDNS/);
-  assert.match(dnsSettingsSource, /45\.90\.28\.0/);
-  assert.match(dnsSettingsSource, /Control D/);
-  assert.match(dnsSettingsSource, /https:\/\/freedns\.controld\.com\/p2/);
+   assert.match(dnsResolversSource, /AdGuard DNS \(Family\)/);
+   assert.match(dnsResolversSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
+   assert.match(dnsResolversSource, /NextDNS/);
+   assert.match(dnsResolversSource, /45\.90\.28\.0/);
+   assert.match(dnsResolversSource, /Control D \(Family Friendly\)/);
+   assert.match(dnsResolversSource, /https:\/\/freedns\.controld\.com\/family/);
+   assert.match(dnsResolversSource, /OpenDNS \(FamilyShield\)/);
+   assert.match(dnsResolversSource, /208\.67\.222\.123/);
 });

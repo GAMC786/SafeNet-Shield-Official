@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { DNS_PROVIDER_ACCESS_RULES } from "@shared/dns-resolvers";
 
 function CopyValue({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -141,15 +142,33 @@ export default function TetherShare() {
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
           <div className="min-w-0 flex-1 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-display text-lg font-bold text-white">Recommended family DNS setup</h2>
+                <h2 className="font-display text-lg font-bold text-white">Recommended family DNS setup</h2>
               <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                AdGuard DNS (Family)
+                 4 provider options
               </span>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              For the strongest family filtering while sharing, select AdGuard DNS (Family) as SafeNet&apos;s active resolver before starting Internet Share. The encrypted DNS-over-HTTPS endpoint protects the phone&apos;s resolver path without requiring a custom profile.
+               Choose a family-safe resolver for the phone and connected devices before starting Internet Share.
+               Copy the provider addresses below into the connected device&apos;s DNS settings when needed.
             </p>
             <CopyValue value="https://family.adguard-dns.com/dns-query" label="Recommended DNS-over-HTTPS endpoint" />
+             <div className="grid gap-3 md:grid-cols-2">
+               {DNS_PROVIDER_ACCESS_RULES.map((provider) => (
+                 <div key={provider.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                   <h3 className="font-display text-sm font-bold text-white">{provider.name}</h3>
+                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{provider.description}</p>
+                   <div className="mt-2 space-y-2">
+                     {provider.addresses.map((address, index) => (
+                       <CopyValue
+                         key={address}
+                         value={address}
+                         label={`${address.includes(":") ? "IPv6" : "IPv4"} resolver ${index + 1}`}
+                       />
+                     ))}
+                   </div>
+                 </div>
+               ))}
+             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className={`text-xs ${familyResolverIsActive ? "text-emerald-300" : "text-yellow-200"}`}>
                 {familyResolverIsActive
