@@ -433,10 +433,10 @@ export default function Firewall() {
             <div className="flex items-start gap-3">
               <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-cyan-300" />
               <div className="min-w-0 flex-1">
-                <h3 className="font-display font-bold text-white">DNS Provider Presets</h3>
+                <h3 className="font-display font-bold text-white">Family DNS Provider Presets</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add official resolver addresses as LAN-to-WAN DNS allow rules. Each address is saved separately
-                  so IPv4 and IPv6 clients are matched correctly.
+                  Add family-safe resolver addresses as LAN-to-WAN DNS allow rules. Each address is saved
+                  separately so IPv4 and IPv6 clients are matched correctly.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {DNS_PROVIDER_ACCESS_RULES.map((provider) => (

@@ -26,7 +26,7 @@ export const DNS_PROVIDER_ACCESS_RULES: readonly DnsProviderAccessRule[] = [
   {
     id: "nextdns",
     name: "NextDNS",
-    description: "Standard public endpoints; use a profile URL in DNS Settings for custom NextDNS policies.",
+    description: "Family protection is profile-based; configure a family-safe NextDNS profile URL in DNS Settings.",
     addresses: [
       "45.90.28.0",
       "45.90.30.0",
@@ -36,33 +36,33 @@ export const DNS_PROVIDER_ACCESS_RULES: readonly DnsProviderAccessRule[] = [
   },
   {
     id: "control-d",
-    name: "Control D",
-    description: "Free unfiltered public resolver endpoints.",
+    name: "Control D Family",
+    description: "Control D Family Friendly free resolver preset.",
     addresses: [
-      "76.76.2.0",
-      "76.76.10.0",
-      "2606:1a40::0",
-      "2606:1a40:1::0",
+      "76.76.2.4",
+      "76.76.10.4",
+      "2606:1a40::4",
+      "2606:1a40:1::4",
     ],
   },
   {
     id: "opendns",
-    name: "OpenDNS",
-    description: "OpenDNS standard resolvers.",
+    name: "OpenDNS FamilyShield",
+    description: "OpenDNS FamilyShield resolvers for adult-content protection.",
     addresses: [
-      "208.67.222.222",
-      "208.67.220.220",
+      "208.67.222.123",
+      "208.67.220.123",
     ],
   },
   {
     id: "adguard-dns",
-    name: "AdGuard DNS",
-    description: "AdGuard public unfiltered DNS resolvers.",
+    name: "AdGuard DNS Family",
+    description: "AdGuard family protection with adult-content blocking and Safe Search where supported.",
     addresses: [
-      "94.140.14.140",
-      "94.140.14.141",
-      "2a10:50c0::1:ff",
-      "2a10:50c0::2:ff",
+      "94.140.14.15",
+      "94.140.15.16",
+      "2a10:50c0::bad1:ff",
+      "2a10:50c0::bad2:ff",
     ],
   },
 ] as const;
