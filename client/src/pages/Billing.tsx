@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { CreditCard, ShieldCheck } from "lucide-react";
-import { useUser } from "@clerk/react";
+import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { useClerk, useUser } from "@clerk/react";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,13 @@ type BillingStatus = {
 };
 
 export default function Billing() {
+  const { signOut } = useClerk();
   const { isLoaded, isSignedIn, user } = useUser();
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const { toast } = useToast();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -92,6 +94,24 @@ export default function Billing() {
     window.location.assign(`${basePath}/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
   };
 
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      window.location.assign(`${basePath}/billing`);
+    } catch (error) {
+      toast({
+        title: "Could not sign out",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const accountLabel = user?.primaryEmailAddress?.emailAddress ?? user?.username ?? user?.id;
+
   return (
     <div className="space-y-6">
       <Header title="SafeNet Premium" subtitle="Shield DNS Server+ subscription" />
@@ -127,21 +147,46 @@ export default function Billing() {
           {!isLoaded ? (
             <p className="text-sm text-muted-foreground">Loading your account…</p>
           ) : !isSignedIn ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Sign in before starting a trial or managing an existing subscription.
-              </p>
-              <Button type="button" onClick={openSignIn}>
+            <div className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/10">
+                  <UserRound className="h-5 w-5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-white">Sign in to manage billing</p>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    Start your trial or open an existing subscription.
+                  </p>
+                </div>
+              </div>
+              <Button type="button" className="w-full shrink-0 sm:w-auto" onClick={openSignIn}>
                 Sign in to continue
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
-                <p className="text-muted-foreground">Signed in as</p>
-                <p className="font-medium text-white">
-                  {user.primaryEmailAddress?.emailAddress ?? user.username ?? user.id}
-                </p>
+              <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-400/10">
+                    <UserRound className="h-5 w-5 text-emerald-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Signed in as
+                    </p>
+                    <p className="truncate font-medium text-white">{accountLabel}</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full shrink-0 sm:w-auto"
+                  disabled={isSigningOut}
+                  onClick={() => void handleSignOut()}
+                >
+                  {isSigningOut ? <Loader2 className="animate-spin" /> : <LogOut />}
+                  {isSigningOut ? "Signing out…" : "Sign out"}
+                </Button>
               </div>
               {isLoadingStatus ? (
                 <p className="text-sm text-muted-foreground">Checking subscription status…</p>
@@ -170,9 +215,15 @@ export default function Billing() {
                   disabled={isOpeningPortal || !billingStatus?.linked}
                   onClick={() => void postBillingAction("/api/billing/portal", setIsOpeningPortal)}
                 >
+                  {isOpeningPortal ? <Loader2 className="animate-spin" /> : <ExternalLink />}
                   {isOpeningPortal ? "Opening portal…" : "Manage subscription"}
                 </Button>
               </div>
+              {!billingStatus?.linked && !isLoadingStatus && (
+                <p className="text-xs text-muted-foreground">
+                  Manage subscription becomes available after Stripe links your account.
+                </p>
+              )}
             </div>
           )}
         </div>
