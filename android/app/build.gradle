@@ -69,8 +69,8 @@ android {
         testApplicationId "com.safenet.dns.test"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 64
-        versionName "1.0.72"
+        versionCode 65
+        versionName "1.0.73"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_ENDPOINT", wireGuardBuildConfigString(wireGuardGatewayEndpoint)
         buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_OWNER", wireGuardBuildConfigString(wireGuardGatewayOwner)

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.DATABASE_URL ??= "postgres://cloudflare-integration-test";
+
 test("Cloudflare connector status and DNS updates use the managed connection", async () => {
   const originalFetch = globalThis.fetch;
   const originalIdentity = process.env.REPL_IDENTITY;
