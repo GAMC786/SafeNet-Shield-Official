@@ -48,6 +48,7 @@
 - [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
 - [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.
+- [Android SDK action defaults](android-sdk-action-defaults.md) — every setup-android step must override the removed default “tools” package when a pinned installer owns the SDK.
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts whole minutes at the API/UI boundary while persistence remains milliseconds and scheduler comparisons use seconds.
 - [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
