@@ -334,14 +334,6 @@ export default function DnsSettings() {
               );
             })}
           </div>
-          <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
-            <p className="text-xs leading-5 text-amber-100/80">
-              <span className="font-semibold text-amber-100">NextDNS family protection:</span> the standard
-              NextDNS preset above does not apply a family policy. Use <strong>Add a Resolver</strong> and
-              enter your family profile DoH URL, such as{" "}
-              <span className="font-mono">https://dns.nextdns.io/your-profile-id</span>.
-            </p>
-          </div>
         </div>
       </CyberCard>
 
