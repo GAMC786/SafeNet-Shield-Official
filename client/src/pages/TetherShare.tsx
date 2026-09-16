@@ -115,11 +115,12 @@ const dotResolverPresets: readonly ResolverPreset[] = [
 const resolverProtocols: Array<{
   type: DnsServer["type"];
   label: string;
+  shortLabel: string;
   description: string;
 }> = [
-  { type: "plain", label: "Plain DNS", description: "IP addresses for devices that support standard DNS." },
-  { type: "doh", label: "DNS over HTTPS (DoH)", description: "Encrypted HTTPS resolver URLs." },
-  { type: "dot", label: "DNS over TLS (DoT)", description: "Encrypted resolver hostnames for TLS-capable devices." },
+  { type: "plain", label: "Plain DNS", shortLabel: "Plain", description: "Standard DNS addresses for connected devices." },
+  { type: "doh", label: "DNS over HTTPS", shortLabel: "DoH", description: "Encrypted DNS resolver URLs." },
+  { type: "dot", label: "DNS over TLS", shortLabel: "DoT", description: "Encrypted DNS resolver hostnames." },
 ];
 
 function resolverTypeLabel(type: DnsServer["type"]) {
@@ -187,6 +188,7 @@ export default function TetherShare() {
   const [resolverDialogOpen, setResolverDialogOpen] = useState(false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
   const [resolverForm, setResolverForm] = useState<ResolverForm>(emptyResolver);
+  const [selectedResolverProtocol, setSelectedResolverProtocol] = useState<DnsServer["type"]>("plain");
   const isResolverMutating = createResolver.isPending || updateResolver.isPending || deleteResolver.isPending;
 
   useEffect(() => {
