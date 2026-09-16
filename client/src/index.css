@@ -10,6 +10,25 @@
   opacity: 1;
 }
 
+/* Keep Clerk's logo from expanding into the sign-in heading. */
+.cl-logoBox {
+  width: 4rem !important;
+  height: 4rem !important;
+  margin: 0 auto 1rem !important;
+  overflow: hidden !important;
+}
+
+.cl-logoImage {
+  width: 4rem !important;
+  height: 4rem !important;
+  object-fit: contain !important;
+}
+
+.cl-headerTitle {
+  margin-top: 0.5rem !important;
+  line-height: 1.25 !important;
+}
+
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
   --font-display: 'Space Grotesk', sans-serif;
