@@ -14,11 +14,39 @@ type BillingStatus = {
   cancelAtPeriodEnd: boolean;
 };
 
+const BILLING_REQUEST_TIMEOUT_MS = 12_000;
+
+async function fetchBilling(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    BILLING_REQUEST_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function billingErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return "The billing service took too long to respond. Check your connection and try again.";
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function Billing() {
   const { signOut } = useClerk();
   const { isLoaded, isSignedIn, user } = useUser();
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [billingStatusError, setBillingStatusError] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [statusAttempt, setStatusAttempt] = useState(0);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -28,12 +56,14 @@ export default function Billing() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
       setBillingStatus(null);
+      setBillingStatusError(null);
       return;
     }
 
     let cancelled = false;
     setIsLoadingStatus(true);
-    void fetch("/api/billing/status", { credentials: "include" })
+    setBillingStatusError(null);
+    void fetchBilling("/api/billing/status", { credentials: "include" })
       .then(async (response) => {
         const payload = await response.json() as BillingStatus | { message?: string };
         if (!response.ok) {
@@ -41,13 +71,17 @@ export default function Billing() {
         }
         if (!cancelled) {
           setBillingStatus(payload as BillingStatus);
+          setBillingStatusError(null);
         }
       })
       .catch((error) => {
         if (!cancelled) {
+          const message = billingErrorMessage(error, "Unable to load your subscription.");
+          setBillingStatus(null);
+          setBillingStatusError(message);
           toast({
             title: "Billing status unavailable",
-            description: error instanceof Error ? error.message : "Unable to load your subscription.",
+            description: message,
             variant: "destructive",
           });
         }
@@ -61,7 +95,7 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, toast]);
+  }, [isLoaded, isSignedIn, statusAttempt, toast]);
 
   const postBillingAction = async (
     path: string,
@@ -69,7 +103,7 @@ export default function Billing() {
   ) => {
     setLoading(true);
     try {
-      const response = await fetch(path, {
+      const response = await fetchBilling(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -82,7 +116,7 @@ export default function Billing() {
     } catch (error) {
       toast({
         title: "Billing action failed",
-        description: error instanceof Error ? error.message : "Unable to contact Stripe.",
+        description: billingErrorMessage(error, "Unable to contact Stripe."),
         variant: "destructive",
       });
     } finally {
@@ -190,6 +224,17 @@ export default function Billing() {
               </div>
               {isLoadingStatus ? (
                 <p className="text-sm text-muted-foreground">Checking subscription status…</p>
+              ) : billingStatusError ? (
+                <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-red-200">{billingStatusError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full shrink-0 sm:w-auto"
+                    onClick={() => setStatusAttempt((attempt) => attempt + 1)}
+                  >
+                    Try again
+                  </Button>
               ) : billingStatus?.hasEntitlement ? (
                 <p className="text-sm text-emerald-400">
                   SafeNet Shield DNS Server+ is active
