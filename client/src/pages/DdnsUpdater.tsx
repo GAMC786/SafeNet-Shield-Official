@@ -397,7 +397,7 @@ export default function DdnsUpdater() {
                    </p>
                   <p className="mt-1 text-xs opacity-90">
                      {formData.provider === "safenet" && cloudflareStatus.data?.ready === true
-                       ? "SafeNet will keep this hostname's A record pointed at your current public IP for NextDNS and AdGuard linked-IP setup."
+                        ? "SafeNet will keep this hostname's A record pointed at your current public IP for NextDNS, Control D, OpenDNS, and AdGuard linked-IP setup."
                        : cloudflareStatus.isLoading
                       ? "Checking the connected Cloudflare account..."
                       : cloudflareStatus.data?.message
@@ -501,7 +501,7 @@ export default function DdnsUpdater() {
                        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                      </a>
                      <p className="mt-2 text-xs text-muted-foreground">
-                       Enter the hostname from this URL in NextDNS and AdGuard DNS linked-IP settings.
+                        Enter the hostname from this URL in NextDNS, Control D, OpenDNS, or AdGuard linked-IP settings.
                      </p>
                    </div>
                    )}

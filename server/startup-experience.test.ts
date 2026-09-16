@@ -356,7 +356,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsHookSource, /\/api\/ddns\/update-all/);
    assert.match(ddnsSource, /SafeNet DDNS \(Cloudflare DNS\)/);
    assert.match(ddnsSource, /SafeNet DDNS Hostname URL/);
-   assert.match(ddnsSource, /NextDNS and AdGuard DNS linked-IP settings/);
+    assert.match(ddnsSource, /NextDNS, Control D, OpenDNS, and AdGuard linked-IP setup/);
+    assert.match(ddnsSource, /NextDNS, Control D, OpenDNS, or AdGuard linked-IP settings/);
    assert.match(ddnsSource, /provider === "safenet"/);
   assert.match(tetherShareManagerSource, /candidate\.startsWith\("\["\)/);
   assert.match(tetherShareManagerSource, /parsePort/);
