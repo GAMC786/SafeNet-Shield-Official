@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SafeNet Shield DNS</string>
-    <string name="title_activity_main">SafeNet Shield DNS</string>
+    <string name="app_name">SafeNet Shield DNS Server+</string>
+    <string name="title_activity_main">SafeNet Shield DNS Server+</string>
     <string name="call_screening_app_label">SafeNet Spam CallerID</string>
     <string name="package_name">com.safenet.dns</string>
     <string name="custom_url_scheme">com.safenet.dns</string>

@@ -146,10 +146,10 @@ test("call-screening setup exposes a working Android settings fallback", () => {
   assert.match(pluginSource, /callScreeningSettingsResult/);
 });
 
-test("Android registers SafeNet Spam CallerID as a call-screening provider", () => {
+test("Android uses the Shield DNS name while keeping the call-screening provider label", () => {
   assert.match(
     manifestSource,
-    /<application[\s\S]*?android:label="@string\/call_screening_app_label"/,
+    /<application[\s\S]*?android:label="@string\/app_name"/,
   );
   assert.match(
     manifestSource,
@@ -158,6 +158,14 @@ test("Android registers SafeNet Spam CallerID as a call-screening provider", () 
   assert.match(
     manifestSource,
     /<action android:name="android\.telecom\.CallScreeningService" \/>/,
+  );
+  assert.match(
+    stringsSource,
+    /<string name="app_name">SafeNet Shield DNS Server\+<\/string>/,
+  );
+  assert.match(
+    stringsSource,
+    /<string name="title_activity_main">SafeNet Shield DNS Server\+<\/string>/,
   );
   assert.match(
     stringsSource,
