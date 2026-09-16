@@ -127,13 +127,14 @@ test("Cloudflare status reports an authenticated account without zones as not re
 test("Cloudflare API token requests use direct Cloudflare authorization", async () => {
   const originalFetch = globalThis.fetch;
   const originalToken = process.env.CLOUDFLARE_API_TOKEN;
-  let requestUrl = "";
-  let authorization = "";
+  const requests: Array<{ url: string; authorization: string }> = [];
 
   process.env.CLOUDFLARE_API_TOKEN = "test-cloudflare-token";
   globalThis.fetch = async (input, init) => {
-    requestUrl = String(input);
-    authorization = new Headers(init?.headers).get("Authorization") || "";
+    requests.push({
+      url: String(input),
+      authorization: new Headers(init?.headers).get("Authorization") || "",
+    });
     return new Response(JSON.stringify({
       success: true,
       result: { status: "active" },
@@ -145,8 +146,14 @@ test("Cloudflare API token requests use direct Cloudflare authorization", async 
     const status = await getCloudflareStatus();
     assert.equal(status.connected, true);
     assert.equal(status.authenticated, true);
-    assert.match(requestUrl, /^https:\/\/api\.cloudflare\.com\/v4\/user\/tokens\/verify$/);
-    assert.equal(authorization, "Bearer test-cloudflare-token");
+    assert.deepEqual(requests.map((request) => request.url), [
+      "https://api.cloudflare.com/client/v4/user/tokens/verify",
+      "https://api.cloudflare.com/client/v4/zones?per_page=50&status=active",
+    ]);
+    assert.deepEqual(
+      requests.map((request) => request.authorization),
+      ["Bearer test-cloudflare-token", "Bearer test-cloudflare-token"],
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalToken === undefined) {

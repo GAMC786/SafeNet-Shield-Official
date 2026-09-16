@@ -1,7 +1,7 @@
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
 const connectors = new ReplitConnectors();
-const CLOUDFLARE_API_BASE_URL = "https://api.cloudflare.com";
+const CLOUDFLARE_API_BASE_URL = "https://api.cloudflare.com/client";
 
 type CloudflareApiError = {
   code?: number;
