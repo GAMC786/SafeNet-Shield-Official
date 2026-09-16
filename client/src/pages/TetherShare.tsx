@@ -37,6 +37,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { DnsServer } from "@shared/schema";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 
 type ResolverForm = {
   name: string;
@@ -128,9 +129,19 @@ export default function TetherShare() {
   const updateResolver = useUpdateDnsServer();
   const deleteResolver = useDeleteDnsServer();
   const activateResolver = useActivateDnsServer();
-  const [resolverDialogOpen, setResolverDialogOpen] = useState(false);
+  const [resolverDialogOpen, setResolverDialogOpen, clearResolverDialogOpen] = usePersistentState(
+    "safenet-tether-resolver-dialog-open",
+    false,
+  );
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
-  const [resolverForm, setResolverForm] = useState<ResolverForm>(emptyResolver);
+  const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
+    "safenet-tether-editing-resolver-id",
+    null,
+  );
+  const [resolverForm, setResolverForm, clearResolverForm] = usePersistentState<ResolverForm>(
+    "safenet-tether-resolver-draft",
+    emptyResolver,
+  );
   const [selectedResolverProtocol, setSelectedResolverProtocol] = useState<DnsServer["type"]>("plain");
   const isResolverMutating = createResolver.isPending ||
     updateResolver.isPending ||
@@ -138,13 +149,18 @@ export default function TetherShare() {
     activateResolver.isPending;
 
   useEffect(() => {
-    if (!editingResolver) return;
-    const currentResolver = dnsServers?.find((server) => server.id === editingResolver.id);
+    if (editingResolverId === null) {
+      setEditingResolver(null);
+      return;
+    }
+    const currentResolver = dnsServers?.find((server) => server.id === editingResolverId);
     if (currentResolver) setEditingResolver(currentResolver);
-  }, [dnsServers, editingResolver]);
+  }, [dnsServers, editingResolverId]);
 
   const resetResolverForm = () => {
-    setResolverForm(emptyResolver);
+    clearResolverForm();
+    clearResolverDialogOpen();
+    clearEditingResolverId();
     setEditingResolver(null);
   };
 
@@ -155,6 +171,7 @@ export default function TetherShare() {
 
   const openEditResolver = (server: DnsServer) => {
     setEditingResolver(server);
+    setEditingResolverId(server.id);
     setResolverForm({
       name: server.name,
       type: server.type,
@@ -214,7 +231,10 @@ export default function TetherShare() {
         });
       }
       setResolverDialogOpen(false);
-      resetResolverForm();
+      clearResolverForm();
+      clearResolverDialogOpen();
+      clearEditingResolverId();
+      setEditingResolver(null);
       toast({
         title: editingResolver ? "Resolver updated" : "Resolver added",
         description: `${name} is ready for Internet Share devices.`,

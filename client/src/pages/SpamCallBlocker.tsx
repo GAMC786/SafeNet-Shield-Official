@@ -36,8 +36,14 @@ export default function SpamCallBlocker() {
     "safenet-spam-call-blocked-numbers",
     [],
   );
-  const [number, setNumber] = useState("");
-  const [reportNumber, setReportNumber] = useState("");
+  const [number, setNumber, clearNumber] = usePersistentState(
+    "safenet-spam-call-number-draft",
+    "",
+  );
+  const [reportNumber, setReportNumber, clearReportNumber] = usePersistentState(
+    "safenet-spam-call-report-number-draft",
+    "",
+  );
   const [isReporting, setIsReporting] = useState(false);
   const [browserEnabled, setBrowserEnabled] = usePersistentState(
     "safenet-spam-call-enabled",
@@ -103,8 +109,8 @@ export default function SpamCallBlocker() {
       return;
     }
     setBlockedNumbers((current) => current.includes(normalized) ? current : [...current, normalized]);
-    setNumber("");
-  }, [number, setBlockedNumbers, toast]);
+    clearNumber();
+  }, [clearNumber, number, setBlockedNumbers, toast]);
 
   const removeBlockedNumber = useCallback((value: string) => {
     setBlockedNumbers((current) => current.filter((entry) => entry !== value));
@@ -132,7 +138,7 @@ export default function SpamCallBlocker() {
         description: result.reason,
         variant: result.accepted ? "default" : "destructive",
       });
-      if (result.accepted) setReportNumber("");
+      if (result.accepted) clearReportNumber();
     } catch (error) {
       toast({
         title: "Spam report not submitted",
@@ -142,7 +148,7 @@ export default function SpamCallBlocker() {
     } finally {
       setIsReporting(false);
     }
-  }, [reportNumber, toast]);
+  }, [clearReportNumber, reportNumber, toast]);
 
   const isAndroid = Capacitor.getPlatform() === "android";
   const enabled = native.status?.enabled === true;
