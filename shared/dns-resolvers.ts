@@ -107,3 +107,16 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     description: "OpenDNS FamilyShield adult-content and phishing protection.",
   },
 ] as const;
+
+/**
+ * NextDNS has no shared family policy. This standard preset is useful for
+ * ordinary resolution; family filtering requires a profile-specific URL.
+ */
+export const DNS_NEXTDNS_RESOLVER_PRESET: DnsResolverPreset = {
+  name: "NextDNS",
+  type: "plain",
+  ipVersion: "ipv4",
+  primaryAddress: "45.90.28.0",
+  secondaryAddress: "45.90.30.0",
+  description: "Standard NextDNS anycast resolvers; use a profile URL for custom filtering policies.",
+};
