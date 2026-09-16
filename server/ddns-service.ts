@@ -59,6 +59,8 @@ function providerDisplayName(provider: string): string {
       return "DNSExit";
     case "iplink":
       return "IP Link";
+    case "safenet":
+      return "SafeNet DDNS";
     default:
       return provider;
   }
@@ -68,7 +70,7 @@ export async function testDdnsConnection(
   provider: string,
   customUrl?: string | null,
 ): Promise<DdnsConnectivityResult> {
-  if (provider.toLowerCase() === "cloudflare") {
+  if (provider.toLowerCase() === "cloudflare" || provider.toLowerCase() === "safenet") {
     const status = await getCloudflareStatus();
     return status.ready
       ? { success: true, message: status.message }
@@ -178,7 +180,8 @@ async function updateDnsRecord(
         return await updateNoIp(hostname, apiKey, ipAddress);
       case "dynu":
         return await updateDynu(hostname, apiKey, ipAddress);
-      case "cloudflare":
+       case "cloudflare":
+       case "safenet":
         await updateCloudflareDns(hostname, ipAddress);
         return providerResponseSuccess();
       case "dnsexit":

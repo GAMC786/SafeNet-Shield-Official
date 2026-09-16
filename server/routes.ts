@@ -408,14 +408,14 @@ export async function registerRoutes(
       if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      // IP Link requires customUrl. Cloudflare uses the managed connector.
+      // IP Link requires customUrl. SafeNet DDNS and Cloudflare use the managed connector.
       if (provider === "iplink" && !customUrl) {
         return res.status(400).json({ message: "Custom URL is required for IP Link provider" });
       }
       if (provider === "iplink" && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-      if (provider !== "iplink" && provider !== "cloudflare" && !apiKey) {
+      if (provider !== "iplink" && provider !== "cloudflare" && provider !== "safenet" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
        const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);

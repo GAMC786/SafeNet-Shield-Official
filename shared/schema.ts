@@ -74,7 +74,7 @@ export const appSettings = pgTable("app_settings", {
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
-  provider: text("provider", { enum: ["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"] }).notNull(),
+  provider: text("provider", { enum: ["safenet", "duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"] }).notNull(),
   apiKey: text("api_key").notNull(),
   customUrl: text("custom_url"), // For IP Link - URL with {ip} and {hostname} placeholders
   lastIpAddress: text("last_ip_address"),
@@ -231,7 +231,7 @@ export const firewallConfigSchema = z.object({
 export const publicDdnsUpdaterSchema = z.object({
   id: z.number(),
   hostname: z.string(),
-  provider: z.enum(["duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"]),
+  provider: z.enum(["safenet", "duckdns", "noip", "dynu", "cloudflare", "dnsexit", "dnsomatic", "iplink"]),
   lastIpAddress: z.string().nullable(),
   lastUpdateTime: z.coerce.date().nullable(),
   lastFailureMessage: z.string().nullable(),

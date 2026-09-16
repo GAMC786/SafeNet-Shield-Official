@@ -89,7 +89,7 @@ export default function DdnsUpdater() {
     isEnabled: boolean;
   }>("safenet-ddns-draft", {
     hostname: "",
-    provider: "duckdns" as PublicDdnsUpdater["provider"],
+    provider: "safenet" as PublicDdnsUpdater["provider"],
     apiKey: "",
     customUrl: "",
     updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
@@ -112,7 +112,7 @@ export default function DdnsUpdater() {
     clearEditingUpdaterId();
     setFormData({
       hostname: "",
-      provider: "duckdns",
+       provider: "safenet",
       apiKey: "",
       customUrl: "",
       updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
@@ -338,7 +338,7 @@ export default function DdnsUpdater() {
                 />
               </div>
 
-              <div className="space-y-2">
+               <div className="space-y-2">
                 <Label>Provider</Label>
                 <Select
                   value={formData.provider}
@@ -348,6 +348,7 @@ export default function DdnsUpdater() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
+                     <SelectItem value="safenet">SafeNet DDNS (Cloudflare DNS)</SelectItem>
                     <SelectItem value="duckdns">DuckDNS</SelectItem>
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
@@ -378,7 +379,7 @@ export default function DdnsUpdater() {
                 </div>
               )}
 
-              {formData.provider === "cloudflare" ? (
+               {formData.provider === "cloudflare" || formData.provider === "safenet" ? (
                 <div
                   className={cn(
                     "rounded-md border p-3 text-sm",
@@ -388,9 +389,13 @@ export default function DdnsUpdater() {
                   )}
                   role="status"
                 >
-                  <p className="font-medium">Managed Cloudflare connection</p>
+                   <p className="font-medium">
+                     {formData.provider === "safenet" ? "SafeNet DDNS hostname" : "Managed Cloudflare connection"}
+                   </p>
                   <p className="mt-1 text-xs opacity-90">
-                    {cloudflareStatus.isLoading
+                     {formData.provider === "safenet" && cloudflareStatus.data?.ready === true
+                       ? "SafeNet will keep this hostname's A record pointed at your current public IP for NextDNS and AdGuard linked-IP setup."
+                       : cloudflareStatus.isLoading
                       ? "Checking the connected Cloudflare account..."
                       : cloudflareStatus.data?.message
                         || cloudflareStatus.error?.message
@@ -476,8 +481,11 @@ export default function DdnsUpdater() {
                     <Globe className="w-5 h-5 text-primary" />
                     {updater.hostname}
                   </h3>
-                  <p className="text-sm text-muted-foreground font-mono mt-1">{updater.provider.toUpperCase()}</p>
-                   <div className="mt-3">
+                   <p className="text-sm text-muted-foreground font-mono mt-1">
+                     {updater.provider === "safenet" ? "SAFENET DDNS" : updater.provider.toUpperCase()}
+                   </p>
+                   {updater.provider === "safenet" && (
+                   <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
                      <p className="text-xs text-muted-foreground">SafeNet DDNS Hostname URL</p>
                      <a
                        href={getDdnsHostnameUrl(updater.hostname)}
@@ -489,7 +497,11 @@ export default function DdnsUpdater() {
                        <span>{getDdnsHostnameUrl(updater.hostname)}</span>
                        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                      </a>
+                     <p className="mt-2 text-xs text-muted-foreground">
+                       Enter the hostname from this URL in NextDNS and AdGuard DNS linked-IP settings.
+                     </p>
                    </div>
+                   )}
                 </div>
                 <Badge variant={updater.isEnabled ? "default" : "secondary"}>
                   {updater.isEnabled ? "Active" : "Inactive"}
