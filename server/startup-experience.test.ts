@@ -354,8 +354,10 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(ddnsSource, /Manual update verification successful/);
   assert.match(ddnsSource, /Manual update verification unsuccessful/);
   assert.match(ddnsHookSource, /\/api\/ddns\/update-all/);
+   assert.match(ddnsSource, /SafeNet DDNS \(Cloudflare DNS\)/);
    assert.match(ddnsSource, /SafeNet DDNS Hostname URL/);
-   assert.match(ddnsSource, /`https:\/\/\$\{normalizedHostname\}`/);
+   assert.match(ddnsSource, /NextDNS and AdGuard DNS linked-IP settings/);
+   assert.match(ddnsSource, /provider === "safenet"/);
   assert.match(tetherShareManagerSource, /candidate\.startsWith\("\["\)/);
   assert.match(tetherShareManagerSource, /parsePort/);
   assert.match(antivirusSource, /Threat mix/);

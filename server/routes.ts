@@ -408,6 +408,15 @@ export async function registerRoutes(
       if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
       }
+      if (provider === "cloudflare" || provider === "safenet") {
+        const { getCloudflareStatus } = await import("./replit_integrations/cloudflare/client");
+        const cloudflareStatus = await getCloudflareStatus();
+        if (!cloudflareStatus.ready) {
+          return res.status(503).json({
+            message: cloudflareStatus.message || "An active Cloudflare zone is required for SafeNet DDNS.",
+          });
+        }
+      }
       // IP Link requires customUrl. SafeNet DDNS and Cloudflare use the managed connector.
       if (provider === "iplink" && !customUrl) {
         return res.status(400).json({ message: "Custom URL is required for IP Link provider" });

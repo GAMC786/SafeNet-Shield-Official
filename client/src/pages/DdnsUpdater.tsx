@@ -142,7 +142,10 @@ export default function DdnsUpdater() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.provider === "cloudflare" && cloudflareStatus.data?.ready !== true) {
+    if (
+      (formData.provider === "cloudflare" || formData.provider === "safenet")
+      && cloudflareStatus.data?.ready !== true
+    ) {
       toast({
         title: "Active Cloudflare zone required",
         description: cloudflareStatus.data?.message
