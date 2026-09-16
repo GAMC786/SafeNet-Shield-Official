@@ -141,7 +141,8 @@ test("Internet Share refreshes SafeNet and pins proxy traffic to validated inter
 test("call-screening setup exposes a working Android settings fallback", () => {
   assert.match(pluginSource, /openCallScreeningSettings/);
   assert.match(pluginSource, /ACTION_MANAGE_DEFAULT_APPS_SETTINGS/);
-  assert.match(pluginSource, /EXTRA_ROLE_NAME/);
+  assert.match(pluginSource, /createRequestRoleIntent\(RoleManager\.ROLE_CALL_SCREENING\)/);
+  assert.doesNotMatch(pluginSource, /Intent\.EXTRA_ROLE_NAME/);
   assert.match(pluginSource, /callScreeningSettingsResult/);
 });
 

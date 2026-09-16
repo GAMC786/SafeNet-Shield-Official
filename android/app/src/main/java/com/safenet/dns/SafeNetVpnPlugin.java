@@ -155,9 +155,6 @@ public class SafeNetVpnPlugin extends Plugin {
     @PluginMethod
     public void openCallScreeningSettings(PluginCall call) {
         Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            settingsIntent.putExtra(Intent.EXTRA_ROLE_NAME, RoleManager.ROLE_CALL_SCREENING);
-        }
         try {
             startActivityForResult(call, settingsIntent, "callScreeningSettingsResult");
         } catch (RuntimeException error) {
