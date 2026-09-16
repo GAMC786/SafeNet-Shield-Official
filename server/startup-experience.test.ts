@@ -166,6 +166,11 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Plain DNS/);
   assert.match(tetherShareSource, /DNS over HTTPS \(DoH\)/);
   assert.match(tetherShareSource, /DNS over TLS \(DoT\)/);
+  assert.match(tetherShareSource, /dotResolverPresets/);
+  assert.match(tetherShareSource, /family\.adguard-dns\.com/);
+  assert.match(tetherShareSource, /family\.freedns\.controld\.com/);
+  assert.match(tetherShareSource, /Plain DNS only/);
+  assert.match(tetherShareSource, /Profile ID required/);
   assert.match(tetherShareSource, /Add resolver/);
   assert.match(tetherShareSource, /Edit/);
   assert.match(tetherShareSource, /Remove/);
