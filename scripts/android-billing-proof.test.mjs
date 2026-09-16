@@ -24,6 +24,9 @@ test("billing proof only accepts signed release artifacts and a Play-enabled run
   assert.match(script, /app-release-androidTest\.apk/);
   assert.match(script, /com\.android\.vending/);
   assert.match(script, /AUTH_SMOKE_STORAGE_STATE/);
+  assert.match(script, /api\/billing\/preflight/);
+  assert.match(script, /purchase dialog was not launched/);
+  assert.match(script, /configuration_preflight=FAIL/);
   assert.match(script, /billing-action/);
   assert.match(script, /server_status=PASS/);
 });
@@ -34,6 +37,8 @@ test("billing proof exercises the native bridge and authenticated status", () =>
   assert.match(instrumentation, /billing-restore/);
   assert.match(instrumentation, /api\/billing\/status/);
   assert.match(instrumentation, /hasEntitlement/);
+  assert.match(instrumentation, /api\/billing\/preflight/);
+  assert.match(instrumentation, /monthlyAvailable/);
   assert.match(instrumentation, /REVENUECAT_BILLING_PROOF result=PASS/);
 });
 
@@ -43,4 +48,5 @@ test("release builds inject a public RevenueCat Android key and gate billing val
   assert.match(billing, /data-testid="billing-purchase"/);
   assert.match(billing, /data-testid="billing-restore"/);
   assert.match(billing, /data-testid="billing-account"/);
+  assert.match(billing, /api\/billing\/preflight/);
 });

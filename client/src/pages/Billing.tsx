@@ -80,6 +80,21 @@ export default function Billing() {
       }
 
       try {
+        const preflightResponse = await fetchBilling("/api/billing/preflight", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const preflight = await preflightResponse.json() as {
+          ready?: boolean;
+          message?: string;
+        };
+        if (!preflightResponse.ok || preflight.ready !== true) {
+          throw new Error(
+            preflight.message ||
+              "RevenueCat billing is not configured for this Android test account.",
+          );
+        }
+
         const current = await Purchases.getAppUserID();
         if (current.appUserID !== user.id) {
           await Purchases.logIn({ appUserID: user.id });

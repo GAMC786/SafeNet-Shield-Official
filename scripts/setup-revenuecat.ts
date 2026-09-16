@@ -91,6 +91,68 @@ async function verifyGooglePlayProduct(projectId: string, app: Item, product: It
   }
 }
 
+async function verifyEntitlementConfiguration(
+  projectId: string,
+  entitlement: Item,
+  playProduct: Item,
+) {
+  if (entitlement.lookup_key !== entitlementIdentifier) {
+    throw new Error(
+      `RevenueCat must have the ${entitlementIdentifier} entitlement before billing validation.`,
+    );
+  }
+
+  const attachedProducts = items(
+    await request<Collection>(
+      `/projects/${projectId}/entitlements/${entitlement.id}/products`,
+    ),
+  );
+  if (
+    !attachedProducts.some(
+      (product) =>
+        product.id === playProduct.id ||
+        product.store_identifier === playStoreProductIdentifier,
+    )
+  ) {
+    throw new Error(
+      `RevenueCat entitlement ${entitlementIdentifier} is not linked to ${playStoreProductIdentifier}.`,
+    );
+  }
+}
+
+async function verifyOfferingConfiguration(
+  projectId: string,
+  offering: Item,
+  pkg: Item,
+  playProduct: Item,
+) {
+  if (offering.lookup_key !== offeringIdentifier || offering.is_current !== true) {
+    throw new Error(
+      `RevenueCat offering ${packageIdentifier} must be the active offering before billing validation.`,
+    );
+  }
+  if (pkg.lookup_key !== packageIdentifier) {
+    throw new Error(
+      `RevenueCat's active offering must include the ${packageIdentifier} package.`,
+    );
+  }
+
+  const attachedProducts = items(
+    await request<Collection>(`/projects/${projectId}/packages/${pkg.id}/products`),
+  );
+  if (
+    !attachedProducts.some(
+      (product) =>
+        product.id === playProduct.id ||
+        product.store_identifier === playStoreProductIdentifier,
+    )
+  ) {
+    throw new Error(
+      `RevenueCat package ${packageIdentifier} is not linked to ${playStoreProductIdentifier}.`,
+    );
+  }
+}
+
 async function ensureProject() {
   const projects = await request<Collection>("/projects?limit=100");
   const existing = items(projects).find((project) => project.name === projectName);
@@ -246,6 +308,8 @@ async function setup() {
   }
 
   await verifyGooglePlayProduct(projectId, playStore, playProduct);
+  await verifyEntitlementConfiguration(projectId, entitlement, playProduct);
+  await verifyOfferingConfiguration(projectId, offering, pkg, playProduct);
 
   const testKeys = await request<Collection>(
     `/projects/${projectId}/apps/${testStore.id}/public_api_keys`,
@@ -264,8 +328,8 @@ async function setup() {
         googlePlayBasePlanIdentifier,
         revenueCatPlayStoreProductIdentifier: playStoreProductIdentifier,
         entitlementIdentifier,
-        testStoreApiKey: items(testKeys)[0]?.key ?? null,
-        androidApiKey: items(playKeys)[0]?.key ?? null,
+        testStoreApiKeyConfigured: Boolean(items(testKeys)[0]?.key),
+        androidApiKeyConfigured: Boolean(items(playKeys)[0]?.key),
       },
       null,
       2,

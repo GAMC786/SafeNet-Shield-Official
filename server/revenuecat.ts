@@ -5,6 +5,11 @@ import { getRequestUserId, requireAuth } from "./auth";
 const connectors = new ReplitConnectors();
 const REVENUECAT_BASE_PATH = "/v2";
 const DEFAULT_ENTITLEMENT_IDENTIFIER = "premium";
+const ANDROID_PACKAGE_NAME = "com.safenet.dns";
+const ANDROID_PRODUCT_IDENTIFIER = "premium_monthly:monthly";
+const ANDROID_PACKAGE_IDENTIFIER = "$rc_monthly";
+const DEFAULT_OFFERING_IDENTIFIER = "default";
+const BILLING_PREFLIGHT_TIMEOUT_MS = 12_000;
 
 type RevenueCatConfig = {
   projectId: string | null;
@@ -20,6 +25,13 @@ type RevenueCatCollection = {
 type RevenueCatRequestOptions = {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;
+};
+
+type BillingPreflightChecks = {
+  googlePlayApp: boolean;
+  googlePlayProduct: boolean;
+  entitlement: boolean;
+  offering: boolean;
 };
 
 class RevenueCatError extends Error {
@@ -118,6 +130,212 @@ function booleanValue(item: Record<string, unknown>, keys: string[]) {
   return null;
 }
 
+function hasIdentifier(item: Record<string, unknown>, identifier: string) {
+  return [
+    item.id,
+    item.lookup_key,
+    item.store_identifier,
+    item.product_id,
+    item.identifier,
+  ].includes(identifier);
+}
+
+async function withBillingPreflightTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new RevenueCatError(
+        "RevenueCat billing configuration preflight timed out before purchase.",
+        504,
+      )),
+      BILLING_PREFLIGHT_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function runBillingPreflight(projectId: string, entitlementIdentifier: string) {
+  const checks: BillingPreflightChecks = {
+    googlePlayApp: false,
+    googlePlayProduct: false,
+    entitlement: false,
+    offering: false,
+  };
+
+  let apps: RevenueCatCollection;
+  let products: RevenueCatCollection;
+  let entitlements: RevenueCatCollection;
+  let offerings: RevenueCatCollection;
+  try {
+    [apps, products, entitlements, offerings] = await Promise.all([
+      requestRevenueCat<RevenueCatCollection>(
+        `/projects/${encodeURIComponent(projectId)}/apps?limit=100`,
+      ),
+      requestRevenueCat<RevenueCatCollection>(
+        `/projects/${encodeURIComponent(projectId)}/products?limit=100`,
+      ),
+      requestRevenueCat<RevenueCatCollection>(
+        `/projects/${encodeURIComponent(projectId)}/entitlements?limit=100`,
+      ),
+      requestRevenueCat<RevenueCatCollection>(
+        `/projects/${encodeURIComponent(projectId)}/offerings?limit=100`,
+      ),
+    ]);
+  } catch {
+    throw new RevenueCatError(
+      "RevenueCat billing configuration could not be read before purchase.",
+      502,
+    );
+  }
+
+  const playStoreApp = collectionItems(apps).find(
+    (app) =>
+      app.type === "play_store" &&
+      (app.play_store as Record<string, unknown> | undefined)?.package_name === ANDROID_PACKAGE_NAME,
+  );
+  if (!playStoreApp) {
+    return {
+      ready: false,
+      checks,
+      message: `Billing configuration is missing the Google Play app for ${ANDROID_PACKAGE_NAME}.`,
+    };
+  }
+  checks.googlePlayApp = true;
+
+  const playProduct = collectionItems(products).find(
+    (product) =>
+      product.app_id === playStoreApp.id &&
+      product.store_identifier === ANDROID_PRODUCT_IDENTIFIER &&
+      product.type === "subscription" &&
+      product.state === "active",
+  );
+  if (!playProduct) {
+    return {
+      ready: false,
+      checks,
+      message: `Billing configuration is missing the active Google Play subscription ${ANDROID_PRODUCT_IDENTIFIER}.`,
+    };
+  }
+
+  try {
+    await requestRevenueCat<unknown>(
+      `/projects/${encodeURIComponent(projectId)}/products/${encodeURIComponent(String(playProduct.id))}/store_state`,
+    );
+  } catch {
+    return {
+      ready: false,
+      checks,
+      message: `Google Play subscription ${ANDROID_PRODUCT_IDENTIFIER} is not available in Google Play yet.`,
+    };
+  }
+  checks.googlePlayProduct = true;
+
+  const entitlement = collectionItems(entitlements).find(
+    (candidate) =>
+      candidate.lookup_key === entitlementIdentifier &&
+      entitlementIdentifier === DEFAULT_ENTITLEMENT_IDENTIFIER,
+  );
+  if (!entitlement) {
+    return {
+      ready: false,
+      checks,
+      message: `Billing configuration is missing the ${DEFAULT_ENTITLEMENT_IDENTIFIER} entitlement.`,
+    };
+  }
+
+  try {
+    const attachedProducts = await requestRevenueCat<RevenueCatCollection>(
+      `/projects/${encodeURIComponent(projectId)}/entitlements/${encodeURIComponent(String(entitlement.id))}/products`,
+    );
+    if (!collectionItems(attachedProducts).some((item) => hasIdentifier(item, String(playProduct.id)) ||
+      hasIdentifier(item, ANDROID_PRODUCT_IDENTIFIER))) {
+      return {
+        ready: false,
+        checks,
+        message: `The ${DEFAULT_ENTITLEMENT_IDENTIFIER} entitlement is not linked to ${ANDROID_PRODUCT_IDENTIFIER}.`,
+      };
+    }
+  } catch {
+    return {
+      ready: false,
+      checks,
+      message: `The ${DEFAULT_ENTITLEMENT_IDENTIFIER} entitlement could not be verified before purchase.`,
+    };
+  }
+  checks.entitlement = true;
+
+  const activeOffering = collectionItems(offerings).find(
+    (offering) =>
+      offering.lookup_key === DEFAULT_OFFERING_IDENTIFIER &&
+      offering.is_current === true,
+  );
+  if (!activeOffering) {
+    return {
+      ready: false,
+      checks,
+      message: `Billing configuration is missing the active ${ANDROID_PACKAGE_IDENTIFIER} offering.`,
+    };
+  }
+
+  let packages: RevenueCatCollection;
+  try {
+    packages = await requestRevenueCat<RevenueCatCollection>(
+      `/projects/${encodeURIComponent(projectId)}/offerings/${encodeURIComponent(String(activeOffering.id))}/packages?limit=100`,
+    );
+  } catch {
+    return {
+      ready: false,
+      checks,
+      message: `The active ${ANDROID_PACKAGE_IDENTIFIER} offering could not be read before purchase.`,
+    };
+  }
+  const monthlyPackage = collectionItems(packages).find(
+    (candidate) => candidate.lookup_key === ANDROID_PACKAGE_IDENTIFIER,
+  );
+  if (!monthlyPackage) {
+    return {
+      ready: false,
+      checks,
+      message: `Billing configuration is missing the active ${ANDROID_PACKAGE_IDENTIFIER} offering.`,
+    };
+  }
+
+  try {
+    const attachedProducts = await requestRevenueCat<RevenueCatCollection>(
+      `/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(String(monthlyPackage.id))}/products`,
+    );
+    if (!collectionItems(attachedProducts).some((item) => hasIdentifier(item, String(playProduct.id)) ||
+      hasIdentifier(item, ANDROID_PRODUCT_IDENTIFIER))) {
+      return {
+        ready: false,
+        checks,
+        message: `The active ${ANDROID_PACKAGE_IDENTIFIER} offering is not linked to ${ANDROID_PRODUCT_IDENTIFIER}.`,
+      };
+    }
+  } catch {
+    return {
+      ready: false,
+      checks,
+      message: `The active ${ANDROID_PACKAGE_IDENTIFIER} offering could not be verified before purchase.`,
+    };
+  }
+  checks.offering = true;
+
+  return {
+    ready: true,
+    checks,
+    packageName: ANDROID_PACKAGE_NAME,
+    productIdentifier: ANDROID_PRODUCT_IDENTIFIER,
+    entitlementIdentifier: DEFAULT_ENTITLEMENT_IDENTIFIER,
+    offeringIdentifier: ANDROID_PACKAGE_IDENTIFIER,
+  };
+}
+
 async function getActiveEntitlements(projectId: string, customerId: string) {
   return requestRevenueCat<RevenueCatCollection>(
     `/projects/${encodeURIComponent(projectId)}/customers/${encodeURIComponent(customerId)}/active_entitlements`,
@@ -203,6 +421,36 @@ export function registerRevenueCatRoutes(app: Express) {
       const statusCode = error instanceof RevenueCatError ? error.statusCode : 502;
       return res.status(statusCode).json({
         message: error instanceof Error ? error.message : "Unable to load RevenueCat billing status.",
+      });
+    }
+  });
+
+  app.get("/api/billing/preflight", requireAuth, async (_req, res) => {
+    try {
+      const config = getRevenueCatConfig();
+      const projectId = requireProjectId(config);
+      const result = await withBillingPreflightTimeout(
+        runBillingPreflight(projectId, config.entitlementIdentifier),
+      );
+      return res.status(result.ready ? 200 : 503).json(result);
+    } catch (error) {
+      console.error(
+        "RevenueCat billing configuration preflight failed:",
+        error instanceof RevenueCatError ? error.statusCode : "unknown",
+      );
+      const statusCode = error instanceof RevenueCatError ? error.statusCode : 502;
+      return res.status(statusCode).json({
+        ready: false,
+        checks: {
+          googlePlayApp: false,
+          googlePlayProduct: false,
+          entitlement: false,
+          offering: false,
+        },
+        message:
+          error instanceof RevenueCatError && error.statusCode === 504
+            ? error.message
+            : "RevenueCat billing configuration could not be verified before purchase.",
       });
     }
   });

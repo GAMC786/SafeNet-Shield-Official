@@ -72,6 +72,39 @@ public class RevenueCatBillingInstrumentationTest {
         waitForWebView("document.body.innerText.includes('SafeNet Premium')");
         waitForWebView("Boolean(document.querySelector('[data-testid=\"android-billing-panel\"]'))");
 
+        JSONObject preflight = requireValue(callWebView(
+            "fetch('/api/billing/preflight',{credentials:'include',cache:'no-store'})" +
+                ".then(async response => ({http:response.status,...(await response.json())}))"
+        ));
+        assertTrue(
+            "RevenueCat billing configuration must pass before opening Google Play",
+            preflight.optBoolean("ready", false)
+        );
+        JSONObject preflightChecks = preflight.optJSONObject("checks");
+        assertTrue("Google Play app preflight check failed",
+            preflightChecks != null && preflightChecks.optBoolean("googlePlayApp", false));
+        assertTrue("Google Play product preflight check failed",
+            preflightChecks != null && preflightChecks.optBoolean("googlePlayProduct", false));
+        assertTrue("Premium entitlement preflight check failed",
+            preflightChecks != null && preflightChecks.optBoolean("entitlement", false));
+        assertTrue("Monthly offering preflight check failed",
+            preflightChecks != null && preflightChecks.optBoolean("offering", false));
+
+        JSONObject offering = requireValue(callWebView(
+            "window.Capacitor.Plugins.Purchases.getOfferings().then(result => {" +
+                "const current = result.current;" +
+                "const monthly = current?.availablePackages?.find(candidate => " +
+                    "candidate.identifier === '$rc_monthly' && " +
+                    "candidate.product?.identifier === 'premium_monthly:monthly');" +
+                "return {currentIdentifier:current?.identifier || null,monthlyAvailable:Boolean(monthly)};" +
+            "})"
+        ));
+        assertEquals("default", offering.optString("currentIdentifier"));
+        assertTrue(
+            "The active $rc_monthly package is not available for the billing test account",
+            offering.optBoolean("monthlyAvailable", false)
+        );
+
         JSONObject identity = requireValue(callWebView(
             "Promise.all([" +
                 "document.querySelector('[data-testid=\"billing-account\"]')?.dataset.clerkUserId || null," +
@@ -80,8 +113,10 @@ public class RevenueCatBillingInstrumentationTest {
         ));
         assertTrue("Clerk must be available in the billing WebView",
             identity.optString("clerkUserId", "").length() > 0);
-        assertEquals("RevenueCat must use the same Clerk user",
-            identity.getString("clerkUserId"), identity.getString("revenueCatUserId"));
+        assertTrue(
+            "RevenueCat must use the same Clerk user",
+            identity.optString("clerkUserId", "").equals(identity.optString("revenueCatUserId", ""))
+        );
 
         if ("purchase".equals(action)) {
             waitForWebView("!document.querySelector('[data-testid=\"billing-purchase\"]')?.disabled");
@@ -106,11 +141,11 @@ public class RevenueCatBillingInstrumentationTest {
         assertEquals("active", status.getString("status"));
         Log.i(
             PROOF_TAG,
-            "REVENUECAT_BILLING_PROOF result=PASS clerk_identity=PASS " +
+            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS clerk_identity=PASS " +
                 "purchase_or_restore=PASS server_status=PASS"
         );
         System.out.println(
-            "REVENUECAT_BILLING_PROOF result=PASS clerk_identity=PASS " +
+            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS clerk_identity=PASS " +
                 "purchase_or_restore=PASS server_status=PASS"
         );
     }

@@ -1312,6 +1312,7 @@ jobs:
       ANDROID_BILLING_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
       AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
       ANDROID_BILLING_OUTPUT_DIR: android/app/build/reports/android-billing/latest
+      ANDROID_BILLING_PREFLIGHT_TIMEOUT_SECONDS: 20
     steps:
       - name: Checkout billing proof
         uses: actions/checkout@v4
@@ -1360,10 +1361,13 @@ jobs:
           result_file="$ANDROID_BILLING_OUTPUT_DIR/result.txt"
           result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           result="${result:-NOT_RECORDED}"
+          preflight="$(awk -F= '$1 == "configuration_preflight" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          preflight="${preflight:-NOT_RECORDED}"
           {
             echo "## Android RevenueCat billing proof"
             echo
             echo "- **Runner:** \`dedicated Play-enabled runner\`"
+            echo "- **Configuration preflight:** \`$preflight\`"
             echo "- **Signed APK proof:** \`$result\`"
             echo "- **Purchase/restore instrumentation:** \`${PROOF_OUTCOME:-NOT_RECORDED}\`"
             echo "- **Authenticated server entitlement:** \`$result\`"
