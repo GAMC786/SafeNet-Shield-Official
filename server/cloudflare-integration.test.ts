@@ -4,9 +4,11 @@ import test from "node:test";
 test("Cloudflare connector status and DNS updates use the managed connection", async () => {
   const originalFetch = globalThis.fetch;
   const originalIdentity = process.env.REPL_IDENTITY;
+  const originalToken = process.env.CLOUDFLARE_API_TOKEN;
   const calls: Array<{ path: string; method: string; connector: string | null; body: string }> = [];
 
   process.env.REPL_IDENTITY = "test-identity";
+  delete process.env.CLOUDFLARE_API_TOKEN;
   globalThis.fetch = async (input, init) => {
     const requestUrl = new URL(typeof input === "string" ? input : input.url);
     const path = requestUrl.pathname.replace("/api/v2/proxy", "") + requestUrl.search;
@@ -71,14 +73,21 @@ test("Cloudflare connector status and DNS updates use the managed connection", a
     } else {
       process.env.REPL_IDENTITY = originalIdentity;
     }
+    if (originalToken === undefined) {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+    } else {
+      process.env.CLOUDFLARE_API_TOKEN = originalToken;
+    }
   }
 });
 
 test("Cloudflare status reports an authenticated account without zones as not ready", async () => {
   const originalFetch = globalThis.fetch;
   const originalIdentity = process.env.REPL_IDENTITY;
+  const originalToken = process.env.CLOUDFLARE_API_TOKEN;
 
   process.env.REPL_IDENTITY = "test-identity";
+  delete process.env.CLOUDFLARE_API_TOKEN;
   globalThis.fetch = async (input, init) => {
     const requestUrl = new URL(typeof input === "string" ? input : input.url);
     const path = requestUrl.pathname.replace("/api/v2/proxy", "") + requestUrl.search;
@@ -107,15 +116,55 @@ test("Cloudflare status reports an authenticated account without zones as not re
     } else {
       process.env.REPL_IDENTITY = originalIdentity;
     }
+    if (originalToken === undefined) {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+    } else {
+      process.env.CLOUDFLARE_API_TOKEN = originalToken;
+    }
+  }
+});
+
+test("Cloudflare API token requests use direct Cloudflare authorization", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalToken = process.env.CLOUDFLARE_API_TOKEN;
+  let requestUrl = "";
+  let authorization = "";
+
+  process.env.CLOUDFLARE_API_TOKEN = "test-cloudflare-token";
+  globalThis.fetch = async (input, init) => {
+    requestUrl = String(input);
+    authorization = new Headers(init?.headers).get("Authorization") || "";
+    return new Response(JSON.stringify({
+      success: true,
+      result: { status: "active" },
+    }), { status: 200 });
+  };
+
+  try {
+    const { getCloudflareStatus } = await import("./replit_integrations/cloudflare/client");
+    const status = await getCloudflareStatus();
+    assert.equal(status.connected, true);
+    assert.equal(status.authenticated, true);
+    assert.match(requestUrl, /^https:\/\/api\.cloudflare\.com\/v4\/user\/tokens\/verify$/);
+    assert.equal(authorization, "Bearer test-cloudflare-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalToken === undefined) {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+    } else {
+      process.env.CLOUDFLARE_API_TOKEN = originalToken;
+    }
   }
 });
 
 test("SafeNet DDNS routes the current public IP through the Cloudflare A record", async () => {
   const originalFetch = globalThis.fetch;
   const originalIdentity = process.env.REPL_IDENTITY;
+  const originalToken = process.env.CLOUDFLARE_API_TOKEN;
   const calls: Array<{ path: string; method: string; body: string }> = [];
 
   process.env.REPL_IDENTITY = "test-identity";
+  delete process.env.CLOUDFLARE_API_TOKEN;
   globalThis.fetch = async (input, init) => {
     const requestUrl = new URL(typeof input === "string" ? input : input.url);
     const path = requestUrl.pathname.replace("/api/v2/proxy", "") + requestUrl.search;
@@ -188,6 +237,11 @@ test("SafeNet DDNS routes the current public IP through the Cloudflare A record"
       delete process.env.REPL_IDENTITY;
     } else {
       process.env.REPL_IDENTITY = originalIdentity;
+    }
+    if (originalToken === undefined) {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+    } else {
+      process.env.CLOUDFLARE_API_TOKEN = originalToken;
     }
   }
 });
