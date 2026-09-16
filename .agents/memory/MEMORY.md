@@ -20,6 +20,7 @@
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
 - [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
 - [Cloudflare hosted retry timing](cloudflare-hosted-retry-timing.md) — hosted Chromium needs bounded 60-second recovery waits and may expose either retry or resume state.
+- [Android call-screening API compatibility](android-call-screening-api-compatibility.md) — use RoleManager for the role request; the pinned SDK does not expose Intent.EXTRA_ROLE_NAME.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
 - [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.
