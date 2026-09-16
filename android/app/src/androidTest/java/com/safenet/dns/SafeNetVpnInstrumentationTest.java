@@ -270,6 +270,25 @@ public class SafeNetVpnInstrumentationTest {
         );
     }
 
+    @Test
+    public void wireGuardFailureCategoryFixtures() {
+        String[][] fixtures = new String[][] {
+            {"HANDSHAKE", "wireguard handshake timed out"},
+            {"ROUTE", "wireguard route is unreachable"},
+            {"DNS", "wireguard DNS lookup returned EAI_AGAIN"},
+            {"NAT", "wireguard ordinary HTTPS connection timed out"}
+        };
+
+        for (String[] fixture : fixtures) {
+            String category = classifyWireGuardFailure(fixture[1]);
+            assertEquals("Synthetic WireGuard failure category changed", fixture[0], category);
+            android.util.Log.i(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_FAILURE_FIXTURE category=" + category + " result=PASS"
+            );
+        }
+    }
+
     private void assertNotEmptyGatewayField(JSONObject status, String field) throws Exception {
         assertTrue(
             "WIREGUARD_FAILURE category=CONFIGURATION message=missing_" + field,

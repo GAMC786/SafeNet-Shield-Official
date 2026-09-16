@@ -196,7 +196,7 @@ adb -s "$serial" shell am instrument -w -r \
     -e dot-primary "${ANDROID_SMOKE_DOT_PRIMARY:-cloudflare-dns.com}" \
     -e dot-secondary "${ANDROID_SMOKE_DOT_SECONDARY:-dns.google}" \
     -e ordinary-url "${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}" \
-    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown" \
+    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
     tee "$output_dir/physical-connectivity-instrumentation.log"
 physical_instrumentation_status="${PIPESTATUS[0]}"
@@ -232,12 +232,31 @@ if grep -Fq 'PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_
     vpn_handoff_status="PASS"
 fi
 wireguard_failure_category="$(
-    grep -Eo 'WIREGUARD_FAILURE category=[A-Z_]+' \
+    grep -Eo 'WIREGUARD_FAILURE category=(HANDSHAKE|ROUTE|DNS|NAT|CONFIGURATION|PERMISSION|GATEWAY_CONNECTIVITY)' \
         "$output_dir/physical-connectivity-instrumentation.log" \
         "$output_dir/physical-connectivity-logcat.txt" 2>/dev/null |
         tail -n 1 | cut -d= -f2 || true
 )"
 wireguard_failure_category="${wireguard_failure_category:-NOT_RECORDED}"
+wireguard_handshake_fixture="NOT_RECORDED"
+wireguard_route_fixture="NOT_RECORDED"
+wireguard_dns_fixture="NOT_RECORDED"
+wireguard_nat_fixture="NOT_RECORDED"
+for fixture_category in HANDSHAKE ROUTE DNS NAT; do
+    fixture_status="NOT_RECORDED"
+    if grep -Eq \
+        "WIREGUARD_FAILURE_FIXTURE category=${fixture_category} result=PASS" \
+        "$output_dir/physical-connectivity-instrumentation.log" \
+        "$output_dir/physical-connectivity-logcat.txt" 2>/dev/null; then
+        fixture_status="PASS"
+    fi
+    case "$fixture_category" in
+        HANDSHAKE) wireguard_handshake_fixture="$fixture_status" ;;
+        ROUTE) wireguard_route_fixture="$fixture_status" ;;
+        DNS) wireguard_dns_fixture="$fixture_status" ;;
+        NAT) wireguard_nat_fixture="$fixture_status" ;;
+    esac
+done
 
 if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
     "$physical_instrumentation_status" -eq 0 &&
@@ -245,7 +264,11 @@ if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
     "$resolver_doh_status" == "PASS" &&
     "$resolver_dot_status" == "PASS" &&
     "$wireguard_status" == "PASS" &&
-    "$vpn_handoff_status" == "PASS" ]]; then
+    "$vpn_handoff_status" == "PASS" &&
+    "$wireguard_handshake_fixture" == "PASS" &&
+    "$wireguard_route_fixture" == "PASS" &&
+    "$wireguard_dns_fixture" == "PASS" &&
+    "$wireguard_nat_fixture" == "PASS" ]]; then
     result="PASS"
     failure_class="NONE"
 else
@@ -273,7 +296,7 @@ fi
     printf 'target=%s\n' "$serial"
     printf 'device_access=PASS\n'
     printf 'failure_class=%s\n' "$failure_class"
-    printf 'failure_category=%s\n' "$smoke_category"
+    printf 'failure_category=%s\n' "$failure_category"
     printf 'connectivity_recovery=%s\n' "$connectivity_recovery"
     printf 'dns_plain=%s\n' "$resolver_plain_status"
     printf 'dns_doh=%s\n' "$resolver_doh_status"
@@ -281,6 +304,10 @@ fi
     printf 'wireguard_internet=%s\n' "$wireguard_status"
     printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
     printf 'wireguard_failure_category=%s\n' "$wireguard_failure_category"
+    printf 'wireguard_handshake_failure_fixture=%s\n' "$wireguard_handshake_fixture"
+    printf 'wireguard_route_failure_fixture=%s\n' "$wireguard_route_fixture"
+    printf 'wireguard_dns_failure_fixture=%s\n' "$wireguard_dns_fixture"
+    printf 'wireguard_nat_failure_fixture=%s\n' "$wireguard_nat_fixture"
     printf 'physical_instrumentation_exit_code=%s\n' "$physical_instrumentation_status"
     printf 'smoke_exit_code=%s\n' "$smoke_status"
     printf 'result=%s\n' "$result"

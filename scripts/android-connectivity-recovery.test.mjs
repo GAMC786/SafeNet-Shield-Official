@@ -76,6 +76,22 @@ const releaseSummaryScript = releaseSummary
   .split("\n")
   .map((line) => line.replace(/^ {10}/, ""))
   .join("\n");
+const physicalSummaryStart = workflow.indexOf(
+  "      - name: Publish physical-device connectivity summary",
+);
+const physicalSummaryEnd = workflow.indexOf(
+  "\n      - name: Upload physical-device connectivity evidence",
+  physicalSummaryStart,
+);
+const physicalSummary = workflow.slice(physicalSummaryStart, physicalSummaryEnd);
+const physicalSummaryScriptStart = physicalSummary.indexOf(
+  "          set -euo pipefail",
+);
+const physicalSummaryScript = physicalSummary
+  .slice(physicalSummaryScriptStart)
+  .split("\n")
+  .map((line) => line.replace(/^ {10}/, ""))
+  .join("\n");
 
 test("Android smoke requires packaged connectivity recovery evidence", () => {
   assert.match(
@@ -553,6 +569,71 @@ test("release summary publishes connectivity recovery status", () => {
   assert.match(summary, /DoT failure detail/);
 });
 
+test("physical release summary renders every WireGuard diagnostic fixture", () => {
+  assert.notEqual(physicalSummaryStart, -1, "physical summary is missing");
+  assert.notEqual(physicalSummaryEnd, -1, "physical summary boundary is missing");
+  assert.notEqual(
+    physicalSummaryScriptStart,
+    -1,
+    "physical summary script is missing",
+  );
+
+  const evidenceDirectory = mkdtempSync(join(tmpdir(), "android-physical-summary-"));
+  try {
+    const summaryEvidenceDirectory = join(
+      evidenceDirectory,
+      "android/app/build/reports/android-physical-connectivity/latest",
+    );
+    mkdirSync(summaryEvidenceDirectory, { recursive: true });
+    writeFileSync(
+      join(summaryEvidenceDirectory, "result.txt"),
+      [
+        "result=FAIL",
+        "failure_class=APPLICATION",
+        "failure_category=HANDSHAKE",
+        "connectivity_recovery=PASS",
+        "dns_plain=PASS",
+        "dns_doh=PASS",
+        "dns_dot=PASS",
+        "wireguard_internet=FAIL",
+        "vpn_handoff=PASS",
+        "wireguard_failure_category=HANDSHAKE",
+        "wireguard_handshake_failure_fixture=PASS",
+        "wireguard_route_failure_fixture=PASS",
+        "wireguard_dns_failure_fixture=PASS",
+        "wireguard_nat_failure_fixture=PASS",
+      ].join("\n") + "\n",
+    );
+    const summaryPath = join(evidenceDirectory, "summary.md");
+    const result = spawnSync(
+      "bash",
+      ["-e", "-u", "-o", "pipefail", "-c", physicalSummaryScript],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          SMOKE_STEP_OUTCOME: "failure",
+          RUN_URL: "https://github.com/example/safenet/actions/runs/123",
+          GITHUB_WORKSPACE: evidenceDirectory,
+          GITHUB_STEP_SUMMARY: summaryPath,
+        },
+      },
+    );
+    assert.equal(
+      result.status,
+      1,
+      `physical summary harness should report the synthetic application failure:\n${result.stdout}\n${result.stderr}`,
+    );
+    const summary = readFileSync(summaryPath, "utf8");
+    assert.match(summary, /WireGuard handshake failure fixture:\*\* `PASS`/);
+    assert.match(summary, /WireGuard route failure fixture:\*\* `PASS`/);
+    assert.match(summary, /WireGuard DNS failure fixture:\*\* `PASS`/);
+    assert.match(summary, /WireGuard NAT failure fixture:\*\* `PASS`/);
+  } finally {
+    rmSync(evidenceDirectory, { recursive: true, force: true });
+  }
+});
+
 test("release summary separates Android SDK blockers from resolver proof", () => {
   const summaryStart = workflow.indexOf(
     "      - name: Publish release Android smoke summary",
@@ -625,6 +706,16 @@ test("physical-device recovery rejects unavailable or emulated targets", () => {
     /PHYSICAL_VPN_SWITCH result=PASS/,
     "the physical lane must record dashboard VPN handoff evidence",
   );
+  assert.match(
+    physicalConnectivityScript,
+    /WIREGUARD_FAILURE_FIXTURE category=\$\{fixture_category\} result=PASS/,
+    "the physical lane must parse each synthetic WireGuard fixture category",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /grep -Eo 'WIREGUARD_FAILURE category=\(HANDSHAKE\|ROUTE\|DNS\|NAT\|CONFIGURATION\|PERMISSION\|GATEWAY_CONNECTIVITY\)'/,
+    "physical parsing must whitelist categories and avoid copying endpoint or credential text",
+  );
 });
 
 test("workflow exposes and publishes the physical-device recovery lane", () => {
@@ -663,4 +754,8 @@ test("workflow exposes and publishes the physical-device recovery lane", () => {
     /Dashboard DNS.*WireGuard handoff/,
     "the physical summary must publish dashboard handoff evidence",
   );
+  assert.match(workflow, /WireGuard handshake failure fixture/);
+  assert.match(workflow, /WireGuard route failure fixture/);
+  assert.match(workflow, /WireGuard DNS failure fixture/);
+  assert.match(workflow, /WireGuard NAT failure fixture/);
 });

@@ -29,10 +29,15 @@ test("Android smoke runs the configured WireGuard release check", () => {
   assert.match(smokeScript, /category=CONFIGURATION/);
   assert.match(smokeScript, /category=PERMISSION/);
   assert.match(smokeScript, /GATEWAY_CONNECTIVITY/);
+  assert.match(smokeScript, /wireGuardFailureCategoryFixtures/);
   assert.match(instrumentation, /ordinary_https=PASS/);
   assert.match(instrumentation, /default_route=PASS/);
   assert.match(instrumentation, /category=ROUTE/);
   assert.match(instrumentation, /category=DNS/);
+  assert.match(instrumentation, /"HANDSHAKE", "wireguard handshake timed out"/);
+  assert.match(instrumentation, /"ROUTE", "wireguard route is unreachable"/);
+  assert.match(instrumentation, /"DNS", "wireguard DNS lookup returned EAI_AGAIN"/);
+  assert.match(instrumentation, /"NAT", "wireguard ordinary HTTPS connection timed out"/);
   assert.match(instrumentation, /classifyWireGuardFailure/);
 });
 
@@ -53,6 +58,11 @@ test("physical validation records resolver modes, internet reachability, and das
   assert.match(physicalConnectivityScript, /PHYSICAL_DNS_MODE mode=doh result=PASS/);
   assert.match(physicalConnectivityScript, /PHYSICAL_DNS_MODE mode=dot result=PASS/);
   assert.match(physicalConnectivityScript, /PHYSICAL_VPN_SWITCH result=PASS/);
+  assert.match(physicalConnectivityScript, /WIREGUARD_FAILURE_FIXTURE category=\$\{fixture_category\} result=PASS/);
+  assert.match(physicalConnectivityScript, /wireguard_handshake_failure_fixture=/);
+  assert.match(physicalConnectivityScript, /wireguard_route_failure_fixture=/);
+  assert.match(physicalConnectivityScript, /wireguard_dns_failure_fixture=/);
+  assert.match(physicalConnectivityScript, /wireguard_nat_failure_fixture=/);
   assert.match(uiInstrumentation, /dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown/);
   assert.match(uiInstrumentation, /dns_to_wireguard=PASS wireguard_to_dns=PASS/);
 });

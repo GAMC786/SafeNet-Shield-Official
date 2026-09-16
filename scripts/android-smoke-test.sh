@@ -734,7 +734,7 @@ run_wireguard_smoke() {
     echo "Running configured SafeNet WireGuard tunnel smoke..."
     set +e
     adb_run shell am instrument -w -r \
-        -e class com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway \
+        -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway" \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/wireguard-instrumentation.log"
     wireguard_status="${PIPESTATUS[0]}"
