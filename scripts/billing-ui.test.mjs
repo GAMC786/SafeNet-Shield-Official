@@ -11,8 +11,14 @@ test("Premium billing requests cannot leave the page loading forever", () => {
   assert.match(source, /BILLING_REQUEST_TIMEOUT_MS = 12_000/);
   assert.match(source, /controller\.abort\(\)/);
   assert.match(source, /fetchBilling\("\/api\/billing\/status"/);
-  assert.match(source, /fetchBilling\(path/);
+  assert.match(source, /fetchBilling\("\/api\/billing\/portal"/);
   assert.match(source, /billingStatusError/);
   assert.match(source, /Try again/);
   assert.match(source, /Billing action failed/);
+  assert.match(source, /RevenueCat/);
+  assert.match(source, /Purchases\.configure/);
+  assert.match(source, /Purchases\.getOfferings/);
+  assert.match(source, /Purchases\.purchasePackage/);
+  assert.match(source, /Purchases\.restorePurchases/);
+  assert.doesNotMatch(source, /Stripe/);
 });

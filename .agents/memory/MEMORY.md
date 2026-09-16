@@ -66,3 +66,4 @@
 - [Android call-screening response validity](android-call-screening-response.md) — allowed silenced calls cannot carry Android's disallowed-call notification flags.
 - [CallShield evaluation](callshield-evaluation.md) — standalone MIT Android app and local feed, not a hosted reputation API; code and data licensing must be reviewed separately.
 - [Spam provider selection](spam-provider-selection.md) — Hiya Protect is the best fit with partner access; Call Control Identify is the easier fallback but needs SafeNet policy mapping.
+- [RevenueCat connector API actions](revenuecat-connector-api.md) — product relationships mutate through generated SDK action routes, not collection POST endpoints.

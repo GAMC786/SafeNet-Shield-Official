@@ -149,37 +149,6 @@ export const antivirusEvents = pgTable("antivirus_events", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
-// Direct Stripe API billing state. Stripe remains the source of truth for
-// products and prices; these tables store only the app's customer linkage,
-// entitlement state, and webhook idempotency records.
-export const stripeCustomers = pgTable("stripe_customers", {
-  stripeCustomerId: text("stripe_customer_id").primaryKey(),
-  clerkUserId: text("clerk_user_id").unique(),
-  email: text("email"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const stripeSubscriptions = pgTable("stripe_subscriptions", {
-  stripeSubscriptionId: text("stripe_subscription_id").primaryKey(),
-  stripeCustomerId: text("stripe_customer_id").notNull(),
-  priceId: text("price_id"),
-  priceAmount: integer("price_amount"),
-  priceCurrency: text("price_currency"),
-  priceInterval: text("price_interval"),
-  status: text("status").notNull(),
-  trialEnd: timestamp("trial_end"),
-  currentPeriodEnd: timestamp("current_period_end"),
-  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
-  eventId: text("event_id").primaryKey(),
-  eventType: text("event_type").notNull(),
-  receivedAt: timestamp("received_at").defaultNow(),
-});
-
 // === SCHEMAS ===
 
 export const insertAntivirusSettingsSchema = createInsertSchema(antivirusSettings).omit({ id: true, lastScanTime: true, lastUpdateTime: true });

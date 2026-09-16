@@ -6,7 +6,7 @@ import { createServer } from "http";
 import { startDdnsScheduler } from "./ddns-service";
 import { registerRequestOriginMiddleware } from "./request-origin";
 import { installGlitchTipExpressErrorHandler } from "./glitchtip";
-import { registerStripeRoutes, registerStripeWebhookRoute } from "./stripe";
+import { registerRevenueCatRoutes } from "./revenuecat";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import {
@@ -26,8 +26,6 @@ declare module "http" {
   }
 }
 
-// Stripe requires the raw request body for signature verification. This must
-// be registered before express.json() parses the rest of the API.
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(
   clerkMiddleware((req) => ({
@@ -37,8 +35,6 @@ app.use(
     ),
   })),
 );
-registerStripeWebhookRoute(app);
-
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -49,7 +45,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 registerRequestOriginMiddleware(app);
-registerStripeRoutes(app);
+registerRevenueCatRoutes(app);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
