@@ -44,6 +44,11 @@ on:
         required: true
         default: false
         type: boolean
+      android_billing_validation:
+        description: "Run the signed APK RevenueCat purchase and restore proof on a Play-enabled runner"
+        required: true
+        default: false
+        type: boolean
       android_ai_shield_physical_validation:
         description: "Run the representative AI Shield physical-device matrix"
         required: true
@@ -649,6 +654,7 @@ jobs:
       ANDROID_SDK_SETUP_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-sdk-setup
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
       ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
@@ -675,6 +681,16 @@ jobs:
       - name: Run browser UI tests
         if: env.ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION != 'true'
         run: npm run test:ui
+
+      - name: Require RevenueCat Android key for release builds
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VITE_REVENUECAT_ANDROID_API_KEY}" || {
+            echo "::error::VITE_REVENUECAT_ANDROID_API_KEY is required for signed Android release builds."
+            exit 1
+          }
 
       - name: Build web app
         run: npm run build
@@ -1279,6 +1295,87 @@ jobs:
               }
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
+
+  android-billing-proof:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_billing_validation == true
+    # This runner must be a configured Google Play device or Play-enabled
+    # emulator with a license-tester account. The ordinary hosted google_apis
+    # image cannot open a real Play Billing purchase dialog.
+    runs-on: [self-hosted, linux, x64, android-play-billing]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      ANDROID_BILLING_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+      ANDROID_BILLING_OUTPUT_DIR: android/app/build/reports/android-billing/latest
+    steps:
+      - name: Checkout billing proof
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Verify signed release APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="artifacts/android/app-release.apk"
+          test_apk="artifacts/android-test/app-release-androidTest.apk"
+          test -s "$apk"
+          test -s "$test_apk"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt -perm -u+x | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          test -n "$aapt"
+          "$apksigner" verify --verbose "$apk"
+          "$aapt" dump badging "$apk" |
+            grep -F "package: name='com.safenet.dns'"
+
+      - name: Run signed purchase, restore, and entitlement proof
+        id: android-billing-proof
+        shell: bash
+        run: bash scripts/android-billing-proof.sh
+
+      - name: Publish Android billing proof summary
+        if: always()
+        shell: bash
+        env:
+          PROOF_OUTCOME: ${{ steps.android-billing-proof.outcome }}
+        run: |
+          set -euo pipefail
+          result_file="$ANDROID_BILLING_OUTPUT_DIR/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          {
+            echo "## Android RevenueCat billing proof"
+            echo
+            echo "- **Runner:** \`dedicated Play-enabled runner\`"
+            echo "- **Signed APK proof:** \`$result\`"
+            echo "- **Purchase/restore instrumentation:** \`${PROOF_OUTCOME:-NOT_RECORDED}\`"
+            echo "- **Authenticated server entitlement:** \`$result\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android billing proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-billing-proof
+          path: android/app/build/reports/android-billing/latest
+          if-no-files-found: warn
 
   android-runner-health:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

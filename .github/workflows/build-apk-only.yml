@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MOBILE_API_URL: https://safe-net-shield-official.replit.app
+      VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -72,6 +73,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$VITE_REVENUECAT_ANDROID_API_KEY" || {
+            echo "::error::VITE_REVENUECAT_ANDROID_API_KEY is required for signed Android release builds." >&2
+            exit 1
+          }
           api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
           export VITE_API_URL="$api_origin"
           npm run build

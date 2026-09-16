@@ -11,5 +11,6 @@ self-hosted-runner:
     - android-physical-device-pixel
     - android-physical-device-samsung
     - android-physical-device-motorola
+    - android-play-billing
     # actionlint 1.7.0 predates this GitHub-hosted Intel label.
     - macos-15-intel

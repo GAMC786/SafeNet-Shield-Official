@@ -311,7 +311,13 @@ export default function Billing() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       Signed in as
                     </p>
-                    <p className="truncate font-medium text-white">{accountLabel}</p>
+                    <p
+                      data-testid="billing-account"
+                      data-clerk-user-id={user.id}
+                      className="truncate font-medium text-white"
+                    >
+                      {accountLabel}
+                    </p>
                   </div>
                 </div>
                 <Button
@@ -340,17 +346,17 @@ export default function Billing() {
                   </Button>
                 </div>
               ) : billingStatus?.hasEntitlement ? (
-                <p className="text-sm text-emerald-400">
+                <p data-testid="billing-status-active" className="text-sm text-emerald-400">
                   SafeNet Shield DNS Server+ is active
                   {billingStatus.cancelAtPeriodEnd ? " and will end at the current period." : "."}
                 </p>
               ) : (
-                  <p className="text-sm text-muted-foreground">
+                  <p data-testid="billing-status-inactive" className="text-sm text-muted-foreground">
                     No active SafeNet RevenueCat entitlement is linked to this account.
                   </p>
               )}
               {isAndroid && (
-                <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div data-testid="android-billing-panel" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                   <div>
                     <p className="font-medium text-white">Android purchase</p>
                     <p className="text-sm text-muted-foreground">
@@ -362,6 +368,7 @@ export default function Billing() {
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <Button
+                      data-testid="billing-purchase"
                       type="button"
                       disabled={!nativePackage || isPurchasing || isRestoring}
                       onClick={() => void purchaseNativePackage()}
@@ -370,6 +377,7 @@ export default function Billing() {
                       {isPurchasing ? "Opening Google Play…" : "Subscribe with Google Play"}
                     </Button>
                     <Button
+                      data-testid="billing-restore"
                       type="button"
                       variant="outline"
                       disabled={isPurchasing || isRestoring}
