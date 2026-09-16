@@ -131,9 +131,6 @@ export default function TetherShare() {
   const { toast } = useToast();
   const running = status?.running === true;
   const starting = status?.starting === true || isBusy;
-  const activeResolver = dnsServers?.find((server) => server.isActive);
-  const familyResolver = dnsServers?.find((server) => server.name === "AdGuard DNS (Family)");
-  const familyResolverIsActive = activeResolver?.id === familyResolver?.id;
   const createResolver = useCreateDnsServer();
   const updateResolver = useUpdateDnsServer();
   const deleteResolver = useDeleteDnsServer();
@@ -471,12 +468,8 @@ export default function TetherShare() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className={`text-xs ${familyResolverIsActive ? "text-emerald-300" : "text-yellow-200"}`}>
-                {familyResolverIsActive
-                  ? "AdGuard DNS (Family) is the active SafeNet resolver."
-                  : familyResolver
-                    ? "AdGuard DNS (Family) is added. Select it as active in DNS Servers before sharing."
-                    : "Add AdGuard DNS (Family), then select it as active in DNS Servers before sharing."}
+              <p className="text-xs text-sky-200">
+                Internet Share does not change DNS automatically. Set one of the resolvers above on each connected device that joins this network.
               </p>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
                 <Link href="/dns">
