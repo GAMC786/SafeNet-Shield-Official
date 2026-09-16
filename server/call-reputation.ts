@@ -25,28 +25,49 @@ export type CallReputationAvailability = {
   status: "configured" | "unavailable";
   failOpen: true;
   source: string;
-  provider: "approved-source" | "call-control-identify" | "call-control";
+  provider: "approved-source" | "callshield";
   reportingAvailable: boolean;
   reason: string;
 };
 
-const CALL_CONTROL_IDENTIFY_PROVIDER = "call-control-identify";
-const CALL_CONTROL_PROVIDER = "call-control";
-const CALL_CONTROL_SOURCE = "Call Control Identify";
-const CALL_CONTROL_PROTECT_SOURCE = "Call Control Protect";
-const CALL_CONTROL_COMBINED_SOURCE = "Call Control Protect + Identify";
-const CALL_CONTROL_REQUEST_TIMEOUT_MS = 2500;
-const CALL_CONTROL_COMBINED_REQUEST_TIMEOUT_MS = 1050;
+const CALLSHIELD_PROVIDER = "callshield";
+const CALLSHIELD_SOURCE = "CallShield";
+const CALLSHIELD_FEED_URL =
+  "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/spam_numbers.json";
+const CALLSHIELD_REPORT_URL =
+  "https://callshield-reports.snafumatthew.workers.dev/";
+const CALLSHIELD_FEED_TIMEOUT_MS = 2500;
+const CALLSHIELD_FEED_TTL_MS = 15 * 60 * 1000;
+const CALLSHIELD_FAILURE_RETRY_MS = 30 * 1000;
 
-const callControlIdentifyResponseSchema = z.object({
-  CallType: z.string().optional(),
-  Confidence: z.number().int().min(0).max(10).optional(),
-  IsSpam: z.boolean(),
-});
+const callShieldEntrySchema = z.object({
+  number: z.string().min(1),
+  type: z.string().optional(),
+  reports: z.number().int().nonnegative().optional(),
+  description: z.string().optional(),
+}).passthrough();
 
-const callControlProtectObjectResponseSchema = z.object({
-  Action: z.string(),
-});
+const callShieldPrefixSchema = z.object({
+  prefix: z.string().min(1),
+  type: z.string().optional(),
+  description: z.string().optional(),
+}).passthrough();
+
+const callShieldFeedSchema = z.object({
+  version: z.number().int().nonnegative(),
+  updated: z.string().optional(),
+  numbers: z.array(callShieldEntrySchema).default([]),
+  prefixes: z.array(callShieldPrefixSchema).default([]),
+}).passthrough();
+
+type CallShieldFeed = z.infer<typeof callShieldFeedSchema>;
+
+let callShieldFeedCache: {
+  feed: CallShieldFeed;
+  expiresAt: number;
+} | null = null;
+let callShieldFeedPromise: Promise<CallShieldFeed | null> | null = null;
+let callShieldFailureUntil = 0;
 
 function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
@@ -55,6 +76,10 @@ function normalizePhoneNumber(value: string) {
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length < 7 || digits.length > 15) return null;
   return `${hasPlus ? "+" : ""}${digits}`;
+}
+
+function phoneDigits(value: string) {
+  return value.replace(/\D/g, "");
 }
 
 function configuredEndpoint(name: string) {
@@ -110,12 +135,8 @@ function endpointForNumber(base: URL, number: string) {
   return url;
 }
 
-async function readJson(response: Response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
+function readJson(response: Response) {
+  return response.json().catch(() => null);
 }
 
 function reputationHeaders() {
@@ -126,329 +147,139 @@ function reputationHeaders() {
   };
 }
 
-function isCallControlIdentifyEnabled() {
+function isApprovedSourceEnabled() {
   return process.env.SAFE_NET_CALL_REPUTATION_PROVIDER?.trim().toLowerCase() ===
-    CALL_CONTROL_IDENTIFY_PROVIDER;
+    "approved-source";
 }
 
-function isCallControlCombinedEnabled() {
-  return process.env.SAFE_NET_CALL_REPUTATION_PROVIDER?.trim().toLowerCase() ===
-    CALL_CONTROL_PROVIDER;
+function callShieldFeedUrl() {
+  return configuredEndpoint("SAFE_NET_CALLSHIELD_FEED_URL") ??
+    new URL(CALLSHIELD_FEED_URL);
 }
 
-function isAnyCallControlEnabled() {
-  return isCallControlIdentifyEnabled() || isCallControlCombinedEnabled();
+function callShieldReportUrl() {
+  return configuredEndpoint("SAFE_NET_CALLSHIELD_REPORT_URL") ??
+    new URL(CALLSHIELD_REPORT_URL);
 }
 
-function configuredCallControlIdentifyBase() {
-  const endpoint = configuredEndpoint("SAFE_NET_CALL_CONTROL_BASE_URL");
-  if (!endpoint || endpoint.search || endpoint.hash) return null;
-  return endpoint;
+function callShieldEnabled() {
+  // CallShield is the default. Treat the former Call Control values as
+  // migrated configuration so old secrets cannot keep the retired provider
+  // active after an application restart.
+  return !isApprovedSourceEnabled();
 }
 
-function configuredCallControlProtectBase() {
-  const endpoint = configuredEndpoint("SAFE_NET_CALL_CONTROL_PROTECT_BASE_URL");
-  if (!endpoint || endpoint.search || endpoint.hash) return null;
-  return endpoint;
+function callShieldFeedFailure(reason: string) {
+  return unavailable(reason, CALLSHIELD_SOURCE);
 }
 
-function callControlApiKey() {
-  const value = process.env.SAFE_NET_CALL_CONTROL_API_KEY?.trim();
-  return value || null;
-}
-
-function callControlUnavailable(
-  reason: string,
-  provider: "call-control-identify" | "call-control" = "call-control-identify",
-): CallReputationAvailability {
-  return availability("unavailable", reason, {
-    source: provider === "call-control"
-      ? CALL_CONTROL_COMBINED_SOURCE
-      : CALL_CONTROL_SOURCE,
-    provider,
-    reportingAvailable: false,
-  });
-}
-
-function callControlIdentifyUrl(base: URL, number: string, apiKey: string) {
-  const url = new URL(base.toString());
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/${encodeURIComponent(callControlNumber(number))}`;
-  url.search = "";
-  url.searchParams.set("api_key", apiKey);
-  return url;
-}
-
-function callControlProtectUrl(
-  base: URL,
-  callerNumber: string,
-  apiKey: string,
-  customerNumber: string | null,
-) {
-  const path = [
-    base.pathname.replace(/\/+$/, ""),
-    encodeURIComponent(callControlNumber(callerNumber)),
-    ...(customerNumber ? [encodeURIComponent(callControlNumber(customerNumber))] : []),
-  ].join("/");
-  const url = new URL(base.toString());
-  url.pathname = path;
-  url.search = "";
-  url.searchParams.set("api_key", apiKey);
-  return url;
-}
-
-function callControlNumber(value: string) {
-  return value.replace(/^\+/, "");
-}
-
-function callControlCustomerNumber() {
-  const value = process.env.SAFE_NET_CALL_CONTROL_CUSTOMER_NUMBER?.trim();
-  return value ? normalizePhoneNumber(value) : null;
-}
-
-function callControlProtectAction(payload: unknown) {
-  const rawAction = typeof payload === "string"
-    ? payload
-    : callControlProtectObjectResponseSchema.safeParse(payload).success
-      ? callControlProtectObjectResponseSchema.parse(payload).Action
-      : null;
-  switch (rawAction?.trim().toLowerCase()) {
-    case "allow":
-      return "allow" as const;
-    case "block":
-      return "block" as const;
-    case "voicemail":
-    case "voice_mail":
-    case "voice mail":
-      return "silence" as const;
-    default:
-      return null;
+async function loadCallShieldFeed(): Promise<CallShieldFeed | null> {
+  const now = Date.now();
+  if (callShieldFeedCache && callShieldFeedCache.expiresAt > now) {
+    return callShieldFeedCache.feed;
   }
-}
+  if (callShieldFeedPromise) return callShieldFeedPromise;
+  if (callShieldFailureUntil > now) return callShieldFeedCache?.feed ?? null;
 
-function callControlHttpFailure(provider: string, status: number) {
-  if (status === 400) {
-    return `${provider} rejected the API key or phone number (HTTP 400).`;
-  }
-  if (status === 401) {
-    return `${provider} rejected the API key (HTTP 401).`;
-  }
-  if (status === 429) {
-    return `${provider} rate limit exceeded.`;
-  }
-  return `${provider} returned HTTP ${status}.`;
-}
-
-function callControlDecision(
-  payload: z.infer<typeof callControlIdentifyResponseSchema>,
-): Extract<CallReputationResult, { available: true }> {
-  const callType = payload.CallType?.trim() || "Unknown";
-  const normalizedCallType = callType.toLowerCase();
-  const confidence = payload.Confidence ?? 0;
-  const highRiskType = /\b(scam|fraud)\b/.test(normalizedCallType);
-  const action = !payload.IsSpam
-    ? "allow"
-    : highRiskType || confidence >= 8
-      ? "block"
-      : confidence >= 5
-        ? "silence"
-        : "allow";
-
-  return {
-    available: true,
-    action,
-    source: CALL_CONTROL_SOURCE,
-    reason: payload.IsSpam
-      ? `${CALL_CONTROL_SOURCE}: ${callType}, confidence ${confidence}/10.`
-      : `${CALL_CONTROL_SOURCE}: not marked as spam.`,
-  };
-}
-
-async function getCallControlAvailability(): Promise<CallReputationAvailability> {
-  if (!configuredCallControlIdentifyBase()) {
-    return callControlUnavailable(
-      "Call Control Identify base URL is not configured.",
-    );
-  }
-  if (!callControlApiKey()) {
-    return callControlUnavailable(
-      "Call Control Identify API key is not configured.",
-    );
-  }
-
-  // Call Control does not publish a health endpoint. Configuration is
-  // reported here and authorization/rate-limit status is verified on lookup.
-  return availability(
-    "configured",
-    "Call Control Identify is configured; live access is verified during lookup.",
-    {
-      source: CALL_CONTROL_SOURCE,
-      provider: "call-control-identify",
-      reportingAvailable: false,
-    },
-  );
-}
-
-async function getCallControlCombinedAvailability(): Promise<CallReputationAvailability> {
-  if (!configuredCallControlProtectBase()) {
-    return callControlUnavailable(
-      "Call Control Protect base URL is not configured.",
-      "call-control",
-    );
-  }
-  if (!callControlApiKey()) {
-    return callControlUnavailable(
-      "Call Control API key is not configured.",
-      "call-control",
-    );
-  }
-
-  return availability(
-    "configured",
-    "Call Control Protect is configured as primary; Identify is available as fallback when configured.",
-    {
-      source: CALL_CONTROL_COMBINED_SOURCE,
-      provider: "call-control",
-      reportingAvailable: false,
-    },
-  );
-}
-
-async function lookupCallControlIdentify(
-  normalized: string,
-  timeoutMs = CALL_CONTROL_REQUEST_TIMEOUT_MS,
-): Promise<CallReputationResult> {
-  const base = configuredCallControlIdentifyBase();
-  const apiKey = callControlApiKey();
-  if (!base || !apiKey) {
-    return unavailable(
-      !base
-        ? "Call Control Identify base URL is not configured."
-        : "Call Control Identify API key is not configured.",
-      CALL_CONTROL_SOURCE,
-    );
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(callControlIdentifyUrl(base, normalized, apiKey), {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      return unavailable(
-        callControlHttpFailure(CALL_CONTROL_SOURCE, response.status),
-        CALL_CONTROL_SOURCE,
-      );
-    }
-
-    const parsed = callControlIdentifyResponseSchema.safeParse(await readJson(response));
-    if (!parsed.success) {
-      return unavailable("Call Control Identify returned an invalid response.", CALL_CONTROL_SOURCE);
-    }
-    return callControlDecision(parsed.data);
-  } catch (error) {
-    return unavailable(
-      error instanceof Error && error.name === "AbortError"
-        ? "Call Control Identify timed out."
-        : "Call Control Identify could not be reached.",
-      CALL_CONTROL_SOURCE,
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function lookupCallControlProtect(
-  normalized: string,
-  timeoutMs = CALL_CONTROL_REQUEST_TIMEOUT_MS,
-): Promise<CallReputationResult> {
-  const base = configuredCallControlProtectBase();
-  const apiKey = callControlApiKey();
-  if (!base || !apiKey) {
-    return unavailable(
-      !base
-        ? "Call Control Protect base URL is not configured."
-        : "Call Control API key is not configured.",
-      CALL_CONTROL_PROTECT_SOURCE,
-    );
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(
-      callControlProtectUrl(base, normalized, apiKey, callControlCustomerNumber()),
-      {
+  callShieldFeedPromise = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
+    try {
+      const response = await fetch(callShieldFeedUrl(), {
         headers: { Accept: "application/json" },
         signal: controller.signal,
-      },
-    );
-    if (!response.ok) {
-      return unavailable(
-        callControlHttpFailure(CALL_CONTROL_PROTECT_SOURCE, response.status),
-        CALL_CONTROL_PROTECT_SOURCE,
-      );
-    }
+      });
+      if (!response.ok) return null;
+      const parsed = callShieldFeedSchema.safeParse(await readJson(response));
+      if (!parsed.success) return null;
 
-    const action = callControlProtectAction(await readJson(response));
-    if (!action) {
-      return unavailable(
-        "Call Control Protect returned an invalid action.",
-        CALL_CONTROL_PROTECT_SOURCE,
-      );
+      if (
+        callShieldFeedCache &&
+        parsed.data.version < callShieldFeedCache.feed.version
+      ) {
+        return callShieldFeedCache.feed;
+      }
+
+      callShieldFeedCache = {
+        feed: parsed.data,
+        expiresAt: Date.now() + CALLSHIELD_FEED_TTL_MS,
+      };
+      callShieldFailureUntil = 0;
+      return parsed.data;
+    } catch {
+      callShieldFailureUntil = Date.now() + CALLSHIELD_FAILURE_RETRY_MS;
+      return callShieldFeedCache?.feed ?? null;
+    } finally {
+      clearTimeout(timeout);
+      callShieldFeedPromise = null;
     }
+  })();
+
+  return callShieldFeedPromise;
+}
+
+function callShieldDecision(
+  feed: CallShieldFeed,
+  normalized: string,
+): Extract<CallReputationResult, { available: true }> {
+  const digits = phoneDigits(normalized);
+  const exact = feed.numbers.find((entry) => phoneDigits(entry.number) === digits);
+  if (exact) {
+    const reports = exact.reports ?? 0;
+    const action = reports >= 3 ? "block" : "silence";
+    const label = exact.type?.trim() || "reported spam";
     return {
       available: true,
       action,
-      source: CALL_CONTROL_PROTECT_SOURCE,
-      reason: `Call Control Protect returned ${action}.`,
+      source: CALLSHIELD_SOURCE,
+      reason: `CallShield ${label}: ${reports} report${reports === 1 ? "" : "s"}.`,
     };
-  } catch (error) {
-    return unavailable(
-      error instanceof Error && error.name === "AbortError"
-        ? "Call Control Protect timed out."
-        : "Call Control Protect could not be reached.",
-      CALL_CONTROL_PROTECT_SOURCE,
-    );
-  } finally {
-    clearTimeout(timeout);
   }
+
+  const prefix = feed.prefixes.find((entry) => digits.startsWith(phoneDigits(entry.prefix)));
+  if (prefix) {
+    const label = prefix.type?.trim() || "spam range";
+    return {
+      available: true,
+      action: "silence",
+      source: CALLSHIELD_SOURCE,
+      reason: `CallShield ${label} match; call silenced conservatively.`,
+    };
+  }
+
+  return {
+    available: true,
+    action: "allow",
+    source: CALLSHIELD_SOURCE,
+    reason: "CallShield found no matching spam number or range.",
+  };
 }
 
-async function lookupCallControlCombined(
-  normalized: string,
-): Promise<CallReputationResult> {
-  const protect = await lookupCallControlProtect(
-    normalized,
-    CALL_CONTROL_COMBINED_REQUEST_TIMEOUT_MS,
-  );
-  if (protect.available) return protect;
-
-  const identify = await lookupCallControlIdentify(
-    normalized,
-    CALL_CONTROL_COMBINED_REQUEST_TIMEOUT_MS,
-  );
-  if (identify.available) {
-    return {
-      ...identify,
-      source: `${CALL_CONTROL_SOURCE} (fallback)`,
-      reason: `${identify.reason ?? "Identify returned a decision."} Protect was unavailable.`,
-    };
-  }
-
-  return unavailable(
-    `Call Control Protect and Identify were unavailable. Protect: ${protect.reason} Identify: ${identify.reason}`,
-    CALL_CONTROL_COMBINED_SOURCE,
-  );
+export function resetCallShieldCache() {
+  callShieldFeedCache = null;
+  callShieldFeedPromise = null;
+  callShieldFailureUntil = 0;
 }
 
 export async function getCallReputationAvailability(): Promise<CallReputationAvailability> {
-  if (isCallControlCombinedEnabled()) {
-    return getCallControlCombinedAvailability();
-  }
-  if (isCallControlIdentifyEnabled()) {
-    return getCallControlAvailability();
+  if (callShieldEnabled()) {
+    if (!configuredEndpoint("SAFE_NET_CALLSHIELD_FEED_URL") &&
+        process.env.SAFE_NET_CALLSHIELD_FEED_URL?.trim()) {
+      return availability("unavailable", "CallShield feed URL is invalid.", {
+        source: CALLSHIELD_SOURCE,
+        provider: CALLSHIELD_PROVIDER,
+        reportingAvailable: true,
+      });
+    }
+    return availability(
+      "configured",
+      "CallShield community data is configured; lookups use a cached feed and fail open when it is unavailable.",
+      {
+        source: CALLSHIELD_SOURCE,
+        provider: CALLSHIELD_PROVIDER,
+        reportingAvailable: true,
+      },
+    );
   }
 
   const endpoint = configuredEndpoint("SAFE_NET_CALL_REPUTATION_URL");
@@ -460,23 +291,19 @@ export async function getCallReputationAvailability(): Promise<CallReputationAva
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
+  const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
       method: "HEAD",
       headers: reputationHeaders(),
       signal: controller.signal,
     });
-
-    // A provider may reject HEAD or require a phone number, but those
-    // responses still prove that the configured endpoint is reachable.
     if (response.ok || [400, 405, 422].includes(response.status)) {
       return availability(
         "configured",
         "The approved caller-reputation source is configured and reachable.",
       );
     }
-
     return availability(
       "unavailable",
       `The approved reputation source returned HTTP ${response.status}.`,
@@ -497,11 +324,14 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
   const normalized = normalizePhoneNumber(number);
   if (!normalized) return unavailable("The caller number is invalid.");
 
-  if (isCallControlCombinedEnabled()) {
-    return lookupCallControlCombined(normalized);
-  }
-  if (isCallControlIdentifyEnabled()) {
-    return lookupCallControlIdentify(normalized);
+  if (callShieldEnabled()) {
+    const feed = await loadCallShieldFeed();
+    if (!feed) {
+      return callShieldFeedFailure(
+        "CallShield feed is unavailable; the call will be allowed.",
+      );
+    }
+    return callShieldDecision(feed, normalized);
   }
 
   const endpoint = configuredEndpoint("SAFE_NET_CALL_REPUTATION_URL");
@@ -510,7 +340,7 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
+  const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
   try {
     const response = await fetch(endpointForNumber(endpoint, normalized), {
       headers: reputationHeaders(),
@@ -543,12 +373,39 @@ export async function reportCall(number: string, reason: string | undefined) {
   if (!normalized) {
     return { accepted: false, reason: "The caller number is invalid." };
   }
-  if (isAnyCallControlEnabled()) {
-    return {
-      accepted: false,
-      reason:
-        "Call Control's public APIs do not publish a report endpoint. Add the number to SafeNet's local blocklist for immediate protection.",
-    };
+
+  if (callShieldEnabled()) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
+    try {
+      const response = await fetch(callShieldReportUrl(), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ number: normalized, type: "spam" }),
+        signal: controller.signal,
+      });
+      return response.ok
+        ? {
+            accepted: true,
+            reason: "Report submitted to the CallShield community database.",
+          }
+        : {
+            accepted: false,
+            reason: `CallShield report service returned HTTP ${response.status}.`,
+          };
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: error instanceof Error && error.name === "AbortError"
+          ? "CallShield report service timed out."
+          : "CallShield report service could not be reached.",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   const endpoint = configuredEndpoint(
@@ -562,7 +419,7 @@ export async function reportCall(number: string, reason: string | undefined) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
+  const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
       method: "POST",

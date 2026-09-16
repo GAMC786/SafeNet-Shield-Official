@@ -16,7 +16,7 @@ type ReputationAvailability = {
   status: "configured" | "unavailable";
   failOpen: true;
   source: string;
-  provider: "approved-source" | "call-control-identify" | "call-control";
+  provider: "approved-source" | "callshield";
   reportingAvailable: boolean;
   reason: string;
 };
@@ -66,7 +66,7 @@ export default function SpamCallBlocker() {
             status: result.status,
             failOpen: true,
             source: typeof result.source === "string" ? result.source : "SafeNet approved source",
-            provider: result.provider === "call-control-identify" || result.provider === "call-control"
+            provider: result.provider === "callshield"
               ? result.provider
               : "approved-source",
             reportingAvailable: result.reportingAvailable !== false,
@@ -262,7 +262,7 @@ export default function SpamCallBlocker() {
             </li>
             <li className="flex gap-3">
               <span className="font-mono text-primary">02</span>
-              <span>Combine local reports with caller-reputation signals.</span>
+              <span>Check the privacy-first CallShield community feed and local reports.</span>
             </li>
             <li className="flex gap-3">
               <span className="font-mono text-primary">03</span>
@@ -298,7 +298,7 @@ export default function SpamCallBlocker() {
             </Badge>
           </div>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            {reputationAvailability?.reason ?? "Checking whether the approved reputation source is reachable."}
+            {reputationAvailability?.reason ?? "Checking whether the CallShield community feed is available."}
             {" "}
             SafeNet only acts on an explicit local block or an approved reputation response. If Android
             or the reputation source is unavailable, incoming calls are allowed.
@@ -348,17 +348,11 @@ export default function SpamCallBlocker() {
             <PhoneCall className="h-5 w-5 text-primary" />
             <div>
               <h2 className="text-base font-semibold normal-case tracking-normal text-white">Report a spam caller</h2>
-              <p className="text-xs text-muted-foreground">Send a caller number to the approved reputation source.</p>
+              <p className="text-xs text-muted-foreground">Send a caller number to the CallShield community database.</p>
             </div>
           </div>
-          {(reputationAvailability?.provider === "call-control-identify" ||
-            reputationAvailability?.provider === "call-control") &&
-          reputationAvailability.reportingAvailable === false ? (
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Call Control Identify does not publish a public report endpoint. Add the number to
-              Blocked numbers for immediate device-local protection.
-            </p>
-          ) : (
+          {reputationAvailability?.provider === "callshield" &&
+          reputationAvailability.reportingAvailable ? (
             <>
               <div className="mt-4 flex gap-2">
                 <Input
@@ -375,10 +369,14 @@ export default function SpamCallBlocker() {
                 </Button>
               </div>
               <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                A report does not automatically block a number. Add it to Blocked numbers when you want
-                an immediate device-local block.
+                Reports are sent only when you submit this form. Add the number to Blocked numbers when
+                you want an immediate device-local block.
               </p>
             </>
+          ) : (
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              Add the number to Blocked numbers for immediate device-local protection.
+            </p>
           )}
         </CyberCard>
       </div>
