@@ -156,6 +156,21 @@ export default function SpamCallBlocker() {
         : "Unavailable";
   const blockedCount = useMemo(() => blockedNumbers.length, [blockedNumbers.length]);
 
+  const requestNativeRole = useCallback(async () => {
+    const roleStatus = await native.requestRole();
+    if (!roleStatus?.roleHeld) {
+      return native.openSettings();
+    }
+    return roleStatus;
+  }, [native.openSettings, native.requestRole]);
+
+  const explainRoleSetup = useCallback(() => {
+    toast({
+      title: "Choose SafeNet for call screening",
+      description: "Android settings are open. Select SafeNet as the call-screening app, then return here.",
+    });
+  }, [toast]);
+
   return (
     <div className="space-y-6">
       <Header
@@ -189,13 +204,9 @@ export default function SpamCallBlocker() {
                         });
                         return;
                       }
-                      const roleStatus = await native.requestRole();
+                      const roleStatus = await requestNativeRole();
                       if (!roleStatus?.roleHeld) {
-                        toast({
-                          title: "Call screening remains off",
-                          description: "Grant SafeNet call-screening access in Android settings to turn it on.",
-                          variant: "destructive",
-                        });
+                        explainRoleSetup();
                         return;
                       }
                     }
@@ -233,7 +244,25 @@ export default function SpamCallBlocker() {
                 : "Call screening is available in the SafeNet Android app. Browser controls can still prepare your blocked-number list."}
             </p>
             {isAndroid && !enabled && native.status?.roleAvailable && (
-              <Button className="mt-4" onClick={() => void native.requestRole()} disabled={native.isBusy}>
+              <Button
+                className="mt-4"
+                onClick={() => {
+                  void requestNativeRole()
+                    .then((roleStatus) => {
+                      if (!roleStatus?.roleHeld) explainRoleSetup();
+                    })
+                    .catch((error) => {
+                      toast({
+                        title: "Could not open call-screening settings",
+                        description: error instanceof Error
+                          ? error.message
+                          : "Try opening Android default-app settings manually.",
+                        variant: "destructive",
+                      });
+                    });
+                }}
+                disabled={native.isBusy}
+              >
                 <PhoneCall className="h-4 w-4" />
                 {native.isBusy ? "Opening Android settings..." : "Enable call screening"}
               </Button>

@@ -43,6 +43,7 @@
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
 - [Android physical connectivity recovery](android-physical-connectivity-recovery.md) — physical phones must use public resolvers; classify missing or emulated targets as access blocks.
+ - [Android call-screening role fallback](android-call-screening-role-fallback.md) — role requests need a default-app settings fallback and must return the post-settings role state.
  - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
  - [Android DNS upstream network](android-dns-upstream-network.md) — DNS-only VPN resolver sockets must bind to a non-VPN network and remain protected from the VPN loop.
 - [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.

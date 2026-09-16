@@ -160,6 +160,7 @@ interface SafeNetVpnPlugin {
   setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
   getCallScreeningStatus(): Promise<CallScreeningStatus>;
   requestCallScreeningRole(): Promise<CallScreeningStatus>;
+  openCallScreeningSettings(): Promise<CallScreeningStatus>;
   setCallScreeningEnabled(options: { enabled: boolean }): Promise<CallScreeningStatus>;
   syncCallScreeningConfig(options: { blockedNumbers: string[] }): Promise<CallScreeningStatus>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
@@ -223,6 +224,17 @@ export function useCallScreening() {
     }
   }, []);
 
+  const openSettings = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.openCallScreeningSettings());
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
   const setEnabled = useCallback(async (enabled: boolean) => {
     if (!supported) return null;
     setIsBusy(true);
@@ -246,7 +258,7 @@ export function useCallScreening() {
     return nextStatus;
   }, [supported]);
 
-  return { supported, status, isBusy, refresh, requestRole, setEnabled, syncConfig };
+  return { supported, status, isBusy, refresh, requestRole, openSettings, setEnabled, syncConfig };
 }
 
 export function useSafeNetVpn() {

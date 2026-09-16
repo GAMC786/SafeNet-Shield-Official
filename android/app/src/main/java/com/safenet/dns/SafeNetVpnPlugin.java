@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.app.role.RoleManager;
+import android.provider.Settings;
 import android.provider.OpenableColumns;
 import android.webkit.CookieManager;
 import android.util.Base64;
@@ -152,6 +153,23 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openCallScreeningSettings(PluginCall call) {
+        Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            settingsIntent.putExtra(Intent.EXTRA_ROLE_NAME, RoleManager.ROLE_CALL_SCREENING);
+        }
+        try {
+            startActivityForResult(call, settingsIntent, "callScreeningSettingsResult");
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android call-screening settings could not be opened.",
+                "CALL_SCREENING_SETTINGS_UNAVAILABLE",
+                error
+            );
+        }
+    }
+
+    @PluginMethod
     public void setCallScreeningEnabled(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", true);
         getContext().getSharedPreferences(
@@ -165,6 +183,13 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @ActivityCallback
     private void callScreeningRoleResult(PluginCall call, ActivityResult result) {
+        if (call != null) {
+            call.resolve(callScreeningStatus());
+        }
+    }
+
+    @ActivityCallback
+    private void callScreeningSettingsResult(PluginCall call, ActivityResult result) {
         if (call != null) {
             call.resolve(callScreeningStatus());
         }

@@ -67,7 +67,8 @@
 
         <service
             android:name=".SafeNetCallScreeningService"
-            android:permission="android.permission.BIND_CALL_SCREENING_SERVICE"
+            android:label="@string/call_screening_app_label"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.telecom.CallScreeningService" />

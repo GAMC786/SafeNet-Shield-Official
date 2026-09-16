@@ -30,6 +30,14 @@ const tileSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
   "utf8",
 );
+const manifestSource = await readFile(
+  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
+  "utf8",
+);
+const stringsSource = await readFile(
+  new URL("../android/app/src/main/res/values/strings.xml", import.meta.url),
+  "utf8",
+);
 
 test("Android native check is executable and forces the debug Java build", async () => {
   const scriptStats = await stat(
@@ -112,6 +120,28 @@ test("DNS upstream sockets stay on the non-VPN network", () => {
   assert.match(
     serviceSource,
     /prepareUpstreamSocket\(socket\)/,
+  );
+});
+
+test("call-screening setup exposes a working Android settings fallback", () => {
+  assert.match(pluginSource, /openCallScreeningSettings/);
+  assert.match(pluginSource, /ACTION_MANAGE_DEFAULT_APPS_SETTINGS/);
+  assert.match(pluginSource, /EXTRA_ROLE_NAME/);
+  assert.match(pluginSource, /callScreeningSettingsResult/);
+});
+
+test("Android registers SafeNet Spam CallerID as a call-screening provider", () => {
+  assert.match(
+    manifestSource,
+    /android:name="\.SafeNetCallScreeningService"[\s\S]*?android:label="@string\/call_screening_app_label"[\s\S]*?android:permission="android\.permission\.BIND_SCREENING_SERVICE"/,
+  );
+  assert.match(
+    manifestSource,
+    /<action android:name="android\.telecom\.CallScreeningService" \/>/,
+  );
+  assert.match(
+    stringsSource,
+    /<string name="call_screening_app_label">SafeNet Spam CallerID<\/string>/,
   );
 });
 
