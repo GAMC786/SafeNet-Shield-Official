@@ -20,6 +20,12 @@ const systemServiceItems = [
   { path: "/billing", label: "Premium", icon: CreditCard },
 ];
 
+const navItemClass =
+  "relative flex w-full flex-col items-center justify-center rounded-xl p-3 transition-all duration-300 cursor-pointer group";
+const navInactiveClass = "text-muted-foreground hover:text-white hover:bg-white/5";
+const navIconClass = "w-6 h-6";
+const navLabelClass = "text-[10px] mt-1 font-medium";
+
 export function SystemNavigation() {
   const [location] = useLocation();
 
@@ -28,43 +34,32 @@ export function SystemNavigation() {
       aria-label="System services"
       className="glass-panel fixed inset-x-0 top-0 z-40 h-20 border-b border-white/5 bg-black/80 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
     >
-      <div className="mx-auto flex h-full max-w-7xl items-center gap-3">
-        <div className="hidden shrink-0 items-center gap-2 border-r border-white/10 pr-4 sm:flex">
-          <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.9)]" />
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary/90">
-            System Services
-          </span>
-        </div>
+      <div className="mx-auto grid h-full w-full max-w-7xl grid-cols-5">
+        {systemServiceItems.map((item) => {
+          const isActive = location === item.path;
+          const Icon = item.icon;
 
-        <div className="flex min-w-0 flex-1 items-center gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {systemServiceItems.map((item) => {
-            const isActive = location === item.path;
-            const Icon = item.icon;
-
-            return (
-              <Link key={item.path} href={item.path} className="flex min-w-0 flex-1 justify-center">
-                <span
-                  className={cn(
-                    "relative flex w-full flex-col items-center justify-center rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition-all duration-300",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-white/5 hover:text-white",
-                  )}
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeSystemTab"
-                      className="absolute -bottom-0.5 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
-                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                    />
-                  )}
-                  <Icon className={cn("relative z-10 h-6 w-6", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                  <span className="relative z-10 mt-1 text-center leading-tight">{item.label}</span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
+          return (
+            <Link key={item.path} href={item.path} className="flex min-w-0 justify-center">
+              <div
+                className={cn(
+                  navItemClass,
+                  isActive ? "text-primary bg-primary/10" : navInactiveClass,
+                )}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeSystemTab"
+                    className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                <span className={cn(navLabelClass, "text-center leading-tight")}>{item.label}</span>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );
@@ -94,10 +89,9 @@ export function Navigation() {
             <Link key={item.path} href={item.path} className="flex min-w-0 justify-center">
               <div 
                 className={cn(
-                  "relative flex w-full flex-col items-center justify-center rounded-xl p-3 transition-all duration-300 cursor-pointer group md:p-4",
-                  isActive 
-                    ? "text-primary md:bg-primary/10" 
-                    : "text-muted-foreground hover:text-white hover:bg-white/5"
+                  navItemClass,
+                  "md:p-4",
+                  isActive ? "text-primary bg-primary/10" : navInactiveClass,
                 )}
               >
                 {isActive && (
@@ -107,8 +101,8 @@ export function Navigation() {
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
-                <Icon className={cn("w-6 h-6", isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                <span className="text-[10px] mt-1 md:hidden font-medium">{item.label}</span>
+                <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                <span className={cn(navLabelClass, "md:hidden")}>{item.label}</span>
                 
                 {/* Tooltip for desktop */}
                 <span className="hidden md:block absolute left-16 bg-card border border-border px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
