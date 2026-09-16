@@ -50,7 +50,7 @@ export function SystemNavigation() {
                 {isActive && (
                   <motion.div
                     layoutId="activeSystemTab"
-                    className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    className="absolute -bottom-1 left-1/2 z-10 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}

@@ -17,3 +17,10 @@ test("top and bottom navigation menus share the same item design", () => {
   assert.equal((source.match(/navIconClass/g) ?? []).length, 3);
   assert.equal((source.match(/navLabelClass/g) ?? []).length, 3);
 });
+
+test("top navigation active indicator is centered on the front lower tab edge", () => {
+  assert.match(
+    source,
+    /layoutId="activeSystemTab"[\s\S]*?className="absolute -bottom-1 left-1\/2 z-10 h-1 w-8 -translate-x-1\/2/,
+  );
+});
