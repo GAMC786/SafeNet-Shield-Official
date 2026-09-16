@@ -88,6 +88,7 @@ function mockApi(
     ddnsUpdateResponses = [],
     threatFeedUpdateResponses = [],
     cloudflareProbeDelayMs = 0,
+    cloudflareProbeFailures = 0,
     settingsDelayMs = 0,
     dnsDelayMs = 0,
     blocklistUpdateDelayMs = 0,
@@ -241,6 +242,15 @@ function mockApi(
         await new Promise((resolve) => setTimeout(resolve, cloudflareProbeDelayMs));
       }
       if (url.pathname === "/__down") {
+        if (cloudflareProbeFailures > 0) {
+          cloudflareProbeFailures -= 1;
+          await route.fulfill({
+            status: 503,
+            contentType: "text/plain",
+            body: "Cloudflare probe unavailable",
+          });
+          return;
+        }
         const requestedBytes = Number(url.searchParams.get("bytes") || 0);
         await route.fulfill({
           status: 200,
@@ -1124,17 +1134,7 @@ test("Measure Your Network completes Cloudflare phases and supports pause and re
 
 test("Measure Your Network reports a Cloudflare probe failure and retries successfully", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
-  let failProbes = true;
-  await page.route("https://speed.cloudflare.com/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === "/__down" && failProbes) {
-      await route.fulfill({ status: 503, contentType: "text/plain", body: "Cloudflare probe unavailable" });
-      failProbes = false;
-      return;
-    }
-    await route.fallback();
-  });
-  await mockApi(page);
+  await mockApi(page, { cloudflareProbeFailures: 1 });
 
   await page.goto(`${baseUrl}/speedtest`);
   await page.getByTestId("button-start-speedtest").click();
