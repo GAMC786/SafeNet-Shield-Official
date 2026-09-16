@@ -40,7 +40,7 @@ export function SystemNavigation() {
           const Icon = item.icon;
 
           return (
-            <Link key={item.path} href={item.path} className="flex min-w-0 justify-center">
+            <Link key={item.path} href={item.path} className="flex w-full min-w-0 justify-center">
               <div
                 className={cn(
                   navItemClass,
@@ -50,7 +50,7 @@ export function SystemNavigation() {
                 {isActive && (
                   <motion.div
                     layoutId="activeSystemTab"
-                    className="absolute -bottom-1 left-1/2 z-10 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    className="absolute -bottom-1 inset-x-0 z-10 mx-auto h-1 w-8 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
