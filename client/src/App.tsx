@@ -55,7 +55,7 @@ function MainLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col safe-area-inset md:pl-20">
+    <div className="flex h-screen min-h-0 h-[100dvh] flex-col overflow-hidden bg-background text-foreground safe-area-inset md:pl-20">
       <NetworkStatusBanner />
       <SystemNavigation />
       <Navigation />
@@ -72,7 +72,7 @@ function MainLayout() {
       />
 
       <PullToRefresh
-        className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
+        className="min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
         onRefresh={refreshActivePage}
       >
         <Switch>
