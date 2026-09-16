@@ -116,7 +116,7 @@ export default function Billing() {
     <div className="space-y-6">
       <Header title="SafeNet Premium" subtitle="Shield DNS Server+ subscription" />
 
-      <CyberCard className="border-primary/30 bg-primary/5">
+      <CyberCard>
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-3">
