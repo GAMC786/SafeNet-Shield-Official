@@ -1534,7 +1534,8 @@ public class SafeNetVpnUiInstrumentationTest {
         );
         android.util.Log.i(
             "SafeNetPhysicalConnectivity",
-            "PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS"
+            "PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS " +
+                "device_profile=" + argument("device-profile", "unprofiled")
         );
     }
 

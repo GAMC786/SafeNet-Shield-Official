@@ -10,20 +10,26 @@ readonly TEST_RUNNER="androidx.test.runner.AndroidJUnitRunner"
 apk_path="$DEFAULT_APK"
 test_apk_path="$DEFAULT_TEST_APK"
 serial="${ANDROID_SERIAL:-}"
+profile="${ANDROID_PHYSICAL_CONNECTIVITY_PROFILE:-unprofiled}"
 output_dir="${ANDROID_PHYSICAL_CONNECTIVITY_OUTPUT_DIR:-android/app/build/reports/android-physical-connectivity/latest}"
+expected_manufacturer=""
+expected_android=""
+profile_status="NOT_CHECKED"
 
 usage() {
     cat <<'EOF'
 Usage: scripts/android-physical-connectivity-test.sh [options]
 
-Runs the signed Android connectivity-recovery smoke on one physical Android
-device. Hosted emulators are rejected so their results cannot be reported as
-physical-device evidence.
+Runs the signed Android connectivity-recovery smoke on one profiled physical
+Android device. Hosted emulators are rejected so their results cannot be
+reported as physical-device evidence.
 
 Options:
   --apk PATH       Signed app-release.apk
   --test-apk PATH  Signed app-release-androidTest.apk
   --serial ID      Physical device serial (or set ANDROID_SERIAL)
+  --profile NAME   Representative device profile
+                   (pixel-android-14, samsung-android-13, motorola-android-12)
   --output DIR     Evidence directory
   --help           Show this help
 
@@ -50,6 +56,11 @@ while [[ $# -gt 0 ]]; do
             serial="$2"
             shift 2
             ;;
+        --profile)
+            [[ $# -ge 2 ]] || { echo "ERROR: --profile requires a profile name." >&2; exit 2; }
+            profile="$2"
+            shift 2
+            ;;
         --output)
             [[ $# -ge 2 ]] || { echo "ERROR: --output requires a directory." >&2; exit 2; }
             output_dir="$2"
@@ -72,6 +83,7 @@ rm -f "$output_dir"/result.txt \
     "$output_dir"/device-access-result.txt \
     "$output_dir"/adb-devices.txt \
     "$output_dir"/physical-device-details.txt \
+    "$output_dir"/device-profile.txt \
     "$output_dir"/smoke-run.log \
     "$output_dir"/smoke-result.txt \
     "$output_dir"/physical-connectivity-instrumentation.log \
@@ -86,6 +98,8 @@ write_device_access_result() {
         printf 'validation_mode=real-device\n'
         printf 'device_kind=physical-device\n'
         printf 'target=%s\n' "$target"
+        printf 'device_profile=%s\n' "$profile"
+        printf 'profile_status=%s\n' "$profile_status"
         printf 'device_access=BLOCKED\n'
         printf 'failure_class=DEVICE_ACCESS\n'
         printf 'failure_category=%s\n' "$category"
@@ -95,6 +109,28 @@ write_device_access_result() {
     echo "Physical Android connectivity smoke was blocked ($category): $message" >&2
     exit 78
 }
+
+case "$profile" in
+    pixel-android-14)
+        expected_manufacturer="google"
+        expected_android="14"
+        ;;
+    samsung-android-13)
+        expected_manufacturer="samsung"
+        expected_android="13"
+        ;;
+    motorola-android-12)
+        expected_manufacturer="motorola"
+        expected_android="12"
+        ;;
+    unprofiled)
+        profile_status="UNPROFILED"
+        ;;
+    *)
+        write_device_access_result "INVALID_PROFILE" \
+            "unknown device profile '$profile'; choose one of the documented representative profiles"
+        ;;
+esac
 
 command -v adb >/dev/null 2>&1 ||
     write_device_access_result "ADB_UNAVAILABLE" "adb is not installed on the dedicated device runner"
@@ -146,12 +182,34 @@ fi
 {
     printf 'serial=%s\n' "$serial"
     printf 'manufacturer=%s\n' "$(adb -s "$serial" shell getprop ro.product.manufacturer | tr -d '\r')"
+    printf 'brand=%s\n' "$(adb -s "$serial" shell getprop ro.product.brand | tr -d '\r')"
     printf 'model=%s\n' "$(adb -s "$serial" shell getprop ro.product.model | tr -d '\r')"
     printf 'android=%s\n' "$(adb -s "$serial" shell getprop ro.build.version.release | tr -d '\r')"
     printf 'sdk=%s\n' "$(adb -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')"
     printf 'abi=%s\n' "$(adb -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')"
     printf 'ro.kernel.qemu=%s\n' "$(adb -s "$serial" shell getprop ro.kernel.qemu | tr -d '\r')"
 } | tee "$output_dir/physical-device-details.txt"
+
+observed_manufacturer="$(awk -F= '$1 == "manufacturer" { print tolower($2) }' "$output_dir/physical-device-details.txt")"
+observed_android="$(awk -F= '$1 == "android" { print $2 }' "$output_dir/physical-device-details.txt" | cut -d. -f1)"
+{
+    printf 'profile=%s\n' "$profile"
+    printf 'expected_manufacturer=%s\nexpected_android=%s\n' \
+        "${expected_manufacturer:-ANY}" "${expected_android:-ANY}"
+    printf 'observed_manufacturer=%s\nobserved_android=%s\n' \
+        "${observed_manufacturer:-UNKNOWN}" "${observed_android:-UNKNOWN}"
+} > "$output_dir/device-profile.txt"
+if [[ "$profile" != "unprofiled" ]]; then
+    if [[ "$observed_manufacturer" != *"$expected_manufacturer"* ||
+        "$observed_android" != "$expected_android" ]]; then
+        profile_status="MISMATCH"
+        printf 'profile_status=%s\n' "$profile_status" >> "$output_dir/device-profile.txt"
+        write_device_access_result "DEVICE_PROFILE_MISMATCH" \
+            "profile '$profile' expected $expected_manufacturer Android $expected_android, observed ${observed_manufacturer:-unknown} Android ${observed_android:-unknown}"
+    fi
+    profile_status="MATCH"
+    printf 'profile_status=%s\n' "$profile_status" >> "$output_dir/device-profile.txt"
+fi
 
 export ANDROID_SERIAL="$serial"
 export ANDROID_SMOKE_RESOLVER_MODE=public
@@ -196,6 +254,7 @@ adb -s "$serial" shell am instrument -w -r \
     -e dot-primary "${ANDROID_SMOKE_DOT_PRIMARY:-cloudflare-dns.com}" \
     -e dot-secondary "${ANDROID_SMOKE_DOT_SECONDARY:-dns.google}" \
     -e ordinary-url "${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}" \
+    -e device-profile "$profile" \
     -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
     tee "$output_dir/physical-connectivity-instrumentation.log"
@@ -258,6 +317,13 @@ for fixture_category in HANDSHAKE ROUTE DNS NAT; do
     esac
 done
 
+ordinary_https_status="NOT_RECORDED"
+if [[ "$resolver_plain_status" == "PASS" &&
+    "$resolver_doh_status" == "PASS" &&
+    "$resolver_dot_status" == "PASS" ]]; then
+    ordinary_https_status="PASS"
+fi
+
 if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
     "$physical_instrumentation_status" -eq 0 &&
     "$resolver_plain_status" == "PASS" &&
@@ -294,6 +360,8 @@ fi
     printf 'validation_mode=real-device\n'
     printf 'device_kind=physical-device\n'
     printf 'target=%s\n' "$serial"
+    printf 'device_profile=%s\n' "$profile"
+    printf 'profile_status=%s\n' "$profile_status"
     printf 'device_access=PASS\n'
     printf 'failure_class=%s\n' "$failure_class"
     printf 'failure_category=%s\n' "$failure_category"
@@ -301,8 +369,12 @@ fi
     printf 'dns_plain=%s\n' "$resolver_plain_status"
     printf 'dns_doh=%s\n' "$resolver_doh_status"
     printf 'dns_dot=%s\n' "$resolver_dot_status"
+    printf 'dns_modes=plain,doh,dot\n'
+    printf 'ordinary_https=%s\n' "$ordinary_https_status"
     printf 'wireguard_internet=%s\n' "$wireguard_status"
+    printf 'wireguard_gateway_dns=%s\n' "$wireguard_status"
     printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
+    printf 'dashboard_handoff=%s\n' "$vpn_handoff_status"
     printf 'wireguard_failure_category=%s\n' "$wireguard_failure_category"
     printf 'wireguard_handshake_failure_fixture=%s\n' "$wireguard_handshake_fixture"
     printf 'wireguard_route_failure_fixture=%s\n' "$wireguard_route_fixture"

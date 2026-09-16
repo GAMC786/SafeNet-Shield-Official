@@ -50,7 +50,7 @@ on:
         default: false
         type: boolean
       android_connectivity_physical_validation:
-        description: "Run signed internet-loss recovery on a connected physical Android device"
+        description: "Run signed DNS-to-WireGuard handoff checks across the physical Android device matrix"
         required: true
         default: false
         type: boolean
@@ -2016,10 +2016,21 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.android_connectivity_physical_validation == true
-    # This label must identify a runner with a real phone attached. The
-    # wrapper rejects emulators and records device-access blocks separately
-    # from application failures.
-    runs-on: [self-hosted, linux, x64, android-physical-device]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each label identifies a dedicated runner with the named phone
+          # attached. Separate jobs prevent USB targets from racing and make
+          # OEM-specific VPN ownership and WebView timing independently visible.
+          - profile: pixel-android-14
+            runner_label: android-physical-device-pixel
+          - profile: samsung-android-13
+            runner_label: android-physical-device-samsung
+          - profile: motorola-android-12
+            runner_label: android-physical-device-motorola
+    # Hosted emulators are intentionally rejected by the focused test script.
+    runs-on: [self-hosted, linux, x64, "${{ matrix.runner_label }}"]
     timeout-minutes: 35
     permissions:
       contents: read
@@ -2028,7 +2039,8 @@ jobs:
       ANDROID_SMOKE_RESOLVER_MODE: public
       ANDROID_SMOKE_VALIDATION_MODE: real-device
       ANDROID_SMOKE_DEVICE_KIND: physical-device
-      ANDROID_PHYSICAL_CONNECTIVITY_OUTPUT_DIR: android/app/build/reports/android-physical-connectivity/latest
+      ANDROID_PHYSICAL_CONNECTIVITY_PROFILE: ${{ matrix.profile }}
+      ANDROID_PHYSICAL_CONNECTIVITY_OUTPUT_DIR: android/app/build/reports/android-physical-connectivity/${{ matrix.profile }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -2056,20 +2068,27 @@ jobs:
           ./scripts/android-physical-connectivity-test.sh \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
             --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
-            --output "$GITHUB_WORKSPACE/android/app/build/reports/android-physical-connectivity/latest"
+            --profile "$ANDROID_PHYSICAL_CONNECTIVITY_PROFILE" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_PHYSICAL_CONNECTIVITY_OUTPUT_DIR"
 
       - name: Publish physical-device connectivity summary
         if: always()
         shell: bash
         env:
+          DEVICE_PROFILE: ${{ matrix.profile }}
           SMOKE_STEP_OUTCOME: ${{ steps.physical-connectivity-smoke.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-physical-connectivity/latest"
+          device_profile="${DEVICE_PROFILE:-latest}"
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-physical-connectivity/$device_profile"
           result_file="$evidence_dir/result.txt"
           result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           result="${result:-NOT_RECORDED}"
+          device_profile="$(awk -F= '$1 == "device_profile" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          device_profile="${device_profile:-${DEVICE_PROFILE:-latest}}"
+          profile_status="$(awk -F= '$1 == "profile_status" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          profile_status="${profile_status:-NOT_RECORDED}"
           failure_class="$(awk -F= '$1 == "failure_class" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           failure_class="${failure_class:-NOT_RECORDED}"
           failure_category="$(awk -F= '$1 == "failure_category" { print $2; exit }' "$result_file" 2>/dev/null || true)"
@@ -2086,6 +2105,12 @@ jobs:
           wireguard_internet="${wireguard_internet:-NOT_RECORDED}"
           vpn_handoff="$(awk -F= '$1 == "vpn_handoff" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           vpn_handoff="${vpn_handoff:-NOT_RECORDED}"
+          ordinary_https="$(awk -F= '$1 == "ordinary_https" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          ordinary_https="${ordinary_https:-NOT_RECORDED}"
+          wireguard_gateway_dns="$(awk -F= '$1 == "wireguard_gateway_dns" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          wireguard_gateway_dns="${wireguard_gateway_dns:-NOT_RECORDED}"
+          dashboard_handoff="$(awk -F= '$1 == "dashboard_handoff" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          dashboard_handoff="${dashboard_handoff:-NOT_RECORDED}"
           wireguard_failure_category="$(awk -F= '$1 == "wireguard_failure_category" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           wireguard_failure_category="${wireguard_failure_category:-NOT_RECORDED}"
           wireguard_handshake_fixture="$(awk -F= '$1 == "wireguard_handshake_failure_fixture" { print $2; exit }' "$result_file" 2>/dev/null || true)"
@@ -2099,6 +2124,7 @@ jobs:
           {
             echo "## Physical Android connectivity and VPN verification"
             echo
+            echo "- **Device profile:** \`$device_profile\` (\`$profile_status\`)"
             echo "- **Result:** \`$result\`"
             echo "- **Failure class:** \`$failure_class\`"
             echo "- **Failure category:** \`$failure_category\`"
@@ -2106,8 +2132,11 @@ jobs:
             echo "- **Plain DNS plus HTTPS:** \`$dns_plain\`"
             echo "- **DoH plus HTTPS:** \`$dns_doh\`"
             echo "- **DoT plus HTTPS:** \`$dns_dot\`"
+            echo "- **Ordinary HTTPS across DNS modes:** \`$ordinary_https\`"
             echo "- **WireGuard gateway DNS plus ordinary HTTPS:** \`$wireguard_internet\`"
+            echo "- **WireGuard gateway DNS:** \`$wireguard_gateway_dns\`"
             echo "- **Dashboard DNS ↔ WireGuard handoff:** \`$vpn_handoff\`"
+            echo "- **Dashboard handoff:** \`$dashboard_handoff\`"
             echo "- **WireGuard diagnostic category:** \`$wireguard_failure_category\`"
             echo "- **WireGuard handshake failure fixture:** \`$wireguard_handshake_fixture\`"
             echo "- **WireGuard route failure fixture:** \`$wireguard_route_fixture\`"
@@ -2130,8 +2159,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SafeNet-DNS-Android-connectivity-physical-evidence
-          path: android/app/build/reports/android-physical-connectivity/latest
+          name: SafeNet-DNS-Android-connectivity-physical-evidence-${{ matrix.profile }}
+          path: android/app/build/reports/android-physical-connectivity/${{ matrix.profile }}
           if-no-files-found: warn
 
   release:
