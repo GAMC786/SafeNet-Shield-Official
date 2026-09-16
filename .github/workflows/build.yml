@@ -1694,9 +1694,11 @@ jobs:
           category="EMULATOR_RUNNER_FAILURE"
           resolver_proof_status="NOT_RECORDED"
           resolver_proof_block_reason="none"
+          build_android_result="${BUILD_ANDROID_RESULT:-success}"
+          android_sdk_setup_category="${ANDROID_SDK_SETUP_CATEGORY:-NOT_RECORDED}"
 
-          if [[ "$BUILD_ANDROID_RESULT" != "success" ]]; then
-            if [[ "$ANDROID_SDK_SETUP_CATEGORY" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+          if [[ "$build_android_result" != "success" ]]; then
+            if [[ "$android_sdk_setup_category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
               category="ANDROID_SDK_SETUP_FAILURE"
               resolver_proof_status="NOT_RUN"
               resolver_proof_block_reason="ANDROID_SDK_SETUP_FAILURE"
@@ -1710,7 +1712,7 @@ jobs:
           # The emulator action can fail before its script starts. Keep the
           # summary useful in that case, and only publish categories emitted
           # by the smoke script rather than arbitrary evidence-file content.
-          if [[ "$BUILD_ANDROID_RESULT" == "success" && -f "$category_file" ]]; then
+          if [[ "$build_android_result" == "success" && -f "$category_file" ]]; then
             candidate="$(head -n 1 "$category_file" | tr -d '\r')"
             case "$candidate" in
               PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
@@ -1771,7 +1773,7 @@ jobs:
           dot_failure_elapsed_ms="${dot_failure_elapsed_ms:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
           {
-            echo "android_sdk_setup_category=$ANDROID_SDK_SETUP_CATEGORY"
+            echo "android_sdk_setup_category=$android_sdk_setup_category"
             echo "resolver_proof_status=$resolver_proof_status"
             echo "resolver_proof_block_reason=$resolver_proof_block_reason"
           } >> "$evidence_dir/android-smoke-result.txt"
@@ -1780,7 +1782,7 @@ jobs:
             echo "device_kind=hosted-emulator"
             echo "coverage=hosted-emulator"
             echo "resolver_mode=public"
-            echo "android_sdk_setup_category=$ANDROID_SDK_SETUP_CATEGORY"
+            echo "android_sdk_setup_category=$android_sdk_setup_category"
             echo "failure_category=$category"
             echo "resolver_proof_status=$resolver_proof_status"
             echo "resolver_proof_block_reason=$resolver_proof_block_reason"
@@ -1804,7 +1806,7 @@ jobs:
             echo
             echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
-            echo "- **Android SDK setup:** \`$ANDROID_SDK_SETUP_CATEGORY\`"
+            echo "- **Android SDK setup:** \`$android_sdk_setup_category\`"
             if [[ "$resolver_proof_status" == "NOT_RUN" ]]; then
               echo "- **Resolver smoke proof:** \`NOT_RUN\` — blocked by \`$resolver_proof_block_reason\`"
             else
