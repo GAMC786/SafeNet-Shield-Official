@@ -688,6 +688,10 @@ jobs:
       - name: Setup Android SDK
         id: setup-android-sdk-action
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android defaults to the removed "tools" package. The
+          # pinned installer below installs the complete Gradle toolchain.
+          packages: 'platform-tools'
 
       - name: Install and verify Android toolchain from Gradle pins
         id: install-android-sdk
