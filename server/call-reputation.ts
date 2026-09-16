@@ -242,13 +242,12 @@ function callShieldDecision(
   const exact = feed.numbers.find((entry) => phoneDigits(entry.number) === digits);
   if (exact) {
     const reports = exact.reports ?? 0;
-    const action = reports >= 3 ? "block" : "silence";
     const label = exact.type?.trim() || "reported spam";
     return {
       available: true,
-      action,
+      action: "block",
       source: CALLSHIELD_SOURCE,
-      reason: `CallShield ${label}: ${reports} report${reports === 1 ? "" : "s"}.`,
+      reason: `CallShield ${label}: ${reports} report${reports === 1 ? "" : "s"}; call blocked.`,
     };
   }
 
@@ -257,9 +256,9 @@ function callShieldDecision(
     const label = prefix.type?.trim() || "spam range";
     return {
       available: true,
-      action: "silence",
+      action: "block",
       source: CALLSHIELD_SOURCE,
-      reason: `CallShield ${label} match; call silenced conservatively.`,
+      reason: `CallShield ${label} match; call blocked.`,
     };
   }
 

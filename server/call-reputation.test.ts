@@ -73,7 +73,7 @@ test("CallShield is the default configured reputation source without API credent
   });
 });
 
-test("CallShield blocks high-confidence exact matches", async () => {
+test("CallShield blocks exact matches at every report count", async () => {
   const previousFetch = globalThis.fetch;
   let request: Request | undefined;
   globalThis.fetch = async (input, init) => {
@@ -85,7 +85,7 @@ test("CallShield blocks high-confidence exact matches", async () => {
       available: true,
       action: "block",
       source: "CallShield",
-      reason: "CallShield scam: 12 reports.",
+      reason: "CallShield scam: 12 reports; call blocked.",
     });
     assert.equal(request?.url, "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/spam_numbers.json");
     assert.equal(request?.headers.get("Accept"), "application/json");
@@ -94,22 +94,23 @@ test("CallShield blocks high-confidence exact matches", async () => {
   }
 });
 
-test("CallShield silences low-count exact matches and spam ranges conservatively", async () => {
+test("CallShield blocks low-count exact matches and spam ranges", async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => feedResponse();
   try {
     const lowCount = await lookupCallReputation("+1 (555) 765-4321");
     assert.equal(lowCount.available, true);
     if (lowCount.available) {
-      assert.equal(lowCount.action, "silence");
+      assert.equal(lowCount.action, "block");
       assert.match(lowCount.reason ?? "", /robocall: 1 report/);
+      assert.match(lowCount.reason ?? "", /call blocked/);
     }
 
     const range = await lookupCallReputation("+1 (555) 987-0000");
     assert.equal(range.available, true);
     if (range.available) {
-      assert.equal(range.action, "silence");
-      assert.match(range.reason ?? "", /telemarketing match/);
+      assert.equal(range.action, "block");
+      assert.match(range.reason ?? "", /telemarketing match; call blocked/);
     }
   } finally {
     restoreFetch(previousFetch);
@@ -159,7 +160,7 @@ test("CallShield uses the verified offline snapshot when a fresh process cannot 
       available: true,
       action: "block",
       source: "CallShield",
-      reason: "CallShield spam: 7 reports.",
+      reason: "CallShield spam: 7 reports; call blocked.",
     });
   } finally {
     restoreFetch(previousFetch);

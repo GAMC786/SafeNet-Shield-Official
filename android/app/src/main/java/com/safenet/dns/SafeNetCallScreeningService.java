@@ -206,12 +206,12 @@ public class SafeNetCallScreeningService extends CallScreeningService {
         String digits = phoneDigits(number);
         for (FeedNumber entry : feed.numbers) {
             if (phoneDigits(entry.number).equals(digits)) {
-                return entry.reports >= 3 ? "block" : "silence";
+                return "block";
             }
         }
         for (FeedPrefix entry : feed.prefixes) {
             if (digits.startsWith(phoneDigits(entry.prefix))) {
-                return "silence";
+                return "block";
             }
         }
         return "allow";

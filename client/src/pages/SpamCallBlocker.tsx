@@ -295,7 +295,7 @@ export default function SpamCallBlocker() {
             </li>
             <li className="flex gap-3">
               <span className="font-mono text-primary">03</span>
-              <span>Let Android decide whether to allow, silence, or block the call.</span>
+              <span>Apply the configured allow, silence, or block decision before the call reaches you.</span>
             </li>
           </ol>
         </CyberCard>
