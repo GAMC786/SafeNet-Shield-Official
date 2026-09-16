@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { DNS_FAMILY_RESOLVER_PRESETS } from "@shared/dns-resolvers";
 
 type ResolverForm = {
   name: string;
@@ -35,33 +36,6 @@ const emptyResolver: ResolverForm = {
   primaryAddress: "",
   secondaryAddress: "",
 };
-
-const resolverPresets = [
-  {
-    name: "AdGuard DNS (Family)",
-    type: "doh" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "https://family.adguard-dns.com/dns-query",
-    secondaryAddress: null,
-    description: "Blocks ads, trackers, malware, and adult content.",
-  },
-  {
-    name: "NextDNS",
-    type: "plain" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "45.90.28.0",
-    secondaryAddress: "45.90.30.0",
-    description: "Public NextDNS anycast resolvers without a profile ID.",
-  },
-  {
-    name: "Control D",
-    type: "doh" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "https://freedns.controld.com/p2",
-    secondaryAddress: null,
-    description: "Encrypted Ads & Tracking filtered resolver.",
-  },
-] as const;
 
 function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
@@ -247,7 +221,7 @@ export default function DnsSettings() {
     }
   };
 
-  const handleAddPreset = async (preset: (typeof resolverPresets)[number]) => {
+  const handleAddPreset = async (preset: (typeof DNS_FAMILY_RESOLVER_PRESETS)[number]) => {
     if (servers?.some((server) => server.name === preset.name)) {
       toast({
         title: "Resolver already added",
@@ -326,7 +300,7 @@ export default function DnsSettings() {
             <p className="mt-1 text-xs text-muted-foreground">Add a trusted provider without entering its addresses manually.</p>
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
-            {resolverPresets.map((preset) => {
+            {DNS_FAMILY_RESOLVER_PRESETS.map((preset) => {
               const isAdded = servers?.some((server) => server.name === preset.name) ?? false;
               return (
                 <div key={preset.name} className="flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
@@ -351,6 +325,14 @@ export default function DnsSettings() {
                 </div>
               );
             })}
+          </div>
+          <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
+            <p className="text-xs leading-5 text-amber-100/80">
+              <span className="font-semibold text-amber-100">NextDNS:</span> family protection is configured
+              inside your NextDNS profile. Use <strong>Add a Resolver</strong> and enter your family profile
+              DoH URL, such as <span className="font-mono">https://dns.nextdns.io/your-profile-id</span>.
+              A generic NextDNS IP address does not apply a family policy.
+            </p>
           </div>
         </div>
       </CyberCard>

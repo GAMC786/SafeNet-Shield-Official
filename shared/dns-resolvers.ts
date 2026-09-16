@@ -66,3 +66,44 @@ export const DNS_PROVIDER_ACCESS_RULES: readonly DnsProviderAccessRule[] = [
     ],
   },
 ] as const;
+
+export type DnsResolverPreset = {
+  name: string;
+  type: "plain" | "doh" | "dot";
+  ipVersion: "ipv4" | "ipv6";
+  primaryAddress: string;
+  secondaryAddress: string | null;
+  description: string;
+};
+
+/**
+ * Fixed family-safe resolver configurations that can be activated by SafeNet.
+ * NextDNS is intentionally not included: its family policy is stored in a
+ * user-specific profile and requires a profile URL rather than a shared IP.
+ */
+export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
+  {
+    name: "AdGuard DNS (Family)",
+    type: "doh",
+    ipVersion: "ipv4",
+    primaryAddress: "https://family.adguard-dns.com/dns-query",
+    secondaryAddress: null,
+    description: "Blocks ads, trackers, malware, and adult content; enables Safe Search where supported.",
+  },
+  {
+    name: "Control D (Family Friendly)",
+    type: "doh",
+    ipVersion: "ipv4",
+    primaryAddress: "https://freedns.controld.com/family",
+    secondaryAddress: null,
+    description: "Control D's free Family Friendly resolver preset.",
+  },
+  {
+    name: "OpenDNS (FamilyShield)",
+    type: "plain",
+    ipVersion: "ipv4",
+    primaryAddress: "208.67.222.123",
+    secondaryAddress: "208.67.220.123",
+    description: "OpenDNS FamilyShield adult-content and phishing protection.",
+  },
+] as const;
