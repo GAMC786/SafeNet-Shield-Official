@@ -56,6 +56,10 @@ const tetherShareSource = readFileSync(
   path.join(clientRoot, "src/pages/TetherShare.tsx"),
   "utf8",
 );
+const spamCallBlockerSource = readFileSync(
+  path.join(clientRoot, "src/pages/SpamCallBlocker.tsx"),
+  "utf8",
+);
 const tetherShareManagerSource = readFileSync(
   path.resolve(
     process.cwd(),
@@ -168,6 +172,10 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /DNS over TLS/);
   assert.match(tetherShareSource, /One resolver is active at a time/);
   assert.match(tetherShareSource, /Activate/);
+  assert.match(tetherShareSource, /safenet-tether-resolver-draft/);
+  assert.match(tetherShareSource, /safenet-tether-editing-resolver-id/);
+  assert.match(spamCallBlockerSource, /safenet-spam-call-number-draft/);
+  assert.match(spamCallBlockerSource, /safenet-spam-call-report-number-draft/);
   assert.doesNotMatch(tetherShareSource, /Recommended providers|dotResolverPresets/);
   assert.match(tetherShareSource, /Add resolver/);
   assert.match(tetherShareSource, /Edit/);
