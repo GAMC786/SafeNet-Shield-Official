@@ -235,6 +235,7 @@ export default function Billing() {
                   >
                     Try again
                   </Button>
+                </div>
               ) : billingStatus?.hasEntitlement ? (
                 <p className="text-sm text-emerald-400">
                   SafeNet Shield DNS Server+ is active
