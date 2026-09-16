@@ -18,6 +18,9 @@ test("Premium billing requests cannot leave the page loading forever", () => {
   assert.match(source, /RevenueCat/);
   assert.match(source, /Purchases\.configure/);
   assert.match(source, /Purchases\.getOfferings/);
+  assert.match(source, /REVENUECAT_ANDROID_PACKAGE_IDENTIFIER = "\$rc_monthly"/);
+  assert.match(source, /REVENUECAT_ANDROID_PRODUCT_IDENTIFIER = "premium_monthly:monthly"/);
+  assert.match(source, /candidate\.product\.identifier === REVENUECAT_ANDROID_PRODUCT_IDENTIFIER/);
   assert.match(source, /Purchases\.purchasePackage/);
   assert.match(source, /Purchases\.restorePurchases/);
   assert.doesNotMatch(source, /Stripe/);

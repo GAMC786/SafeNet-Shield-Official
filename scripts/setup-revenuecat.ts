@@ -4,7 +4,8 @@ const connectors = new ReplitConnectors();
 const projectName = "SafeNet Shield DNS";
 const androidPackageName = "com.safenet.dns";
 const productIdentifier = "premium_monthly";
-const playStoreProductIdentifier = `${productIdentifier}:monthly`;
+const googlePlayBasePlanIdentifier = "monthly";
+const playStoreProductIdentifier = `${productIdentifier}:${googlePlayBasePlanIdentifier}`;
 const entitlementIdentifier = "premium";
 const offeringIdentifier = "default";
 const packageIdentifier = "$rc_monthly";
@@ -44,6 +45,50 @@ async function request<T>(
 
 function items(payload: Collection) {
   return Array.isArray(payload.items) ? payload.items : [];
+}
+
+function assertGooglePlayProductConfiguration(app: Item, product: Item) {
+  if (
+    app.type !== "play_store" ||
+    (app.play_store as Item | undefined)?.package_name !== androidPackageName
+  ) {
+    throw new Error(
+      `RevenueCat's Google Play app must use the Android package ${androidPackageName}.`,
+    );
+  }
+
+  if (product.store_identifier !== playStoreProductIdentifier) {
+    throw new Error(
+      `RevenueCat's Google Play product must use ${playStoreProductIdentifier} ` +
+        `(subscription ${productIdentifier}, base plan ${googlePlayBasePlanIdentifier}).`,
+    );
+  }
+
+  if (product.type !== "subscription" || product.state !== "active") {
+    throw new Error(
+      `RevenueCat's Google Play product ${playStoreProductIdentifier} must be an active subscription.`,
+    );
+  }
+
+  if ((app.play_store as Item | undefined)?.play_service_account_credentials_configured !== true) {
+    throw new Error(
+      "Google Play Console credentials are not configured in RevenueCat. " +
+        "Connect the SafeNet Android app to Google Play before release.",
+    );
+  }
+}
+
+async function verifyGooglePlayProduct(projectId: string, app: Item, product: Item) {
+  assertGooglePlayProductConfiguration(app, product);
+
+  try {
+    await request<Item>(`/projects/${projectId}/products/${product.id}/store_state`);
+  } catch (error) {
+    throw new Error(
+      `Google Play product ${playStoreProductIdentifier} is not ready in Google Play. ` +
+        `${error instanceof Error ? error.message : "RevenueCat could not read its store state."}`,
+    );
+  }
 }
 
 async function ensureProject() {
@@ -200,6 +245,8 @@ async function setup() {
     if (!(error instanceof Error && /already|unprocessable|attached/i.test(error.message))) throw error;
   }
 
+  await verifyGooglePlayProduct(projectId, playStore, playProduct);
+
   const testKeys = await request<Collection>(
     `/projects/${projectId}/apps/${testStore.id}/public_api_keys`,
   );
@@ -213,6 +260,9 @@ async function setup() {
         projectId,
         testStoreAppId: testStore.id,
         playStoreAppId: playStore.id,
+        googlePlaySubscriptionIdentifier: productIdentifier,
+        googlePlayBasePlanIdentifier,
+        revenueCatPlayStoreProductIdentifier: playStoreProductIdentifier,
         entitlementIdentifier,
         testStoreApiKey: items(testKeys)[0]?.key ?? null,
         androidApiKey: items(playKeys)[0]?.key ?? null,

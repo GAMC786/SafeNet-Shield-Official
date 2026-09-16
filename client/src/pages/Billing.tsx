@@ -22,6 +22,8 @@ const BILLING_REQUEST_TIMEOUT_MS = 12_000;
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
+const REVENUECAT_ANDROID_PACKAGE_IDENTIFIER = "$rc_monthly";
+const REVENUECAT_ANDROID_PRODUCT_IDENTIFIER = "premium_monthly:monthly";
 
 async function fetchBilling(
   input: RequestInfo | URL,
@@ -92,10 +94,10 @@ export default function Billing() {
       const offerings = await Purchases.getOfferings();
       const monthlyPackage =
         offerings.current?.availablePackages.find(
-          (candidate) => candidate.identifier === "$rc_monthly",
+          (candidate) =>
+            candidate.identifier === REVENUECAT_ANDROID_PACKAGE_IDENTIFIER &&
+            candidate.product.identifier === REVENUECAT_ANDROID_PRODUCT_IDENTIFIER,
         ) ??
-        offerings.current?.monthly ??
-        offerings.current?.availablePackages[0] ??
         null;
 
       if (!cancelled) {
