@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  CALLSHIELD_OFFLINE_FEED,
+  CALLSHIELD_OFFLINE_MANIFEST,
+  verifyCallShieldOfflineSnapshot,
+} from "./callshield-offline-feed";
 
 const reputationActionSchema = z.enum(["allow", "silence", "block"]);
 const reputationResponseSchema = z.object({
@@ -61,6 +66,13 @@ const callShieldFeedSchema = z.object({
 }).passthrough();
 
 type CallShieldFeed = z.infer<typeof callShieldFeedSchema>;
+
+const verifiedOfflineCallShieldFeed = verifyCallShieldOfflineSnapshot(
+  CALLSHIELD_OFFLINE_FEED,
+  CALLSHIELD_OFFLINE_MANIFEST,
+)
+  ? callShieldFeedSchema.parse(CALLSHIELD_OFFLINE_FEED)
+  : null;
 
 let callShieldFeedCache: {
   feed: CallShieldFeed;
@@ -189,9 +201,13 @@ async function loadCallShieldFeed(): Promise<CallShieldFeed | null> {
         headers: { Accept: "application/json" },
         signal: controller.signal,
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return callShieldFeedCache?.feed ?? verifiedOfflineCallShieldFeed;
+      }
       const parsed = callShieldFeedSchema.safeParse(await readJson(response));
-      if (!parsed.success) return null;
+      if (!parsed.success) {
+        return callShieldFeedCache?.feed ?? verifiedOfflineCallShieldFeed;
+      }
 
       if (
         callShieldFeedCache &&
@@ -208,7 +224,7 @@ async function loadCallShieldFeed(): Promise<CallShieldFeed | null> {
       return parsed.data;
     } catch {
       callShieldFailureUntil = Date.now() + CALLSHIELD_FAILURE_RETRY_MS;
-      return callShieldFeedCache?.feed ?? null;
+      return callShieldFeedCache?.feed ?? verifiedOfflineCallShieldFeed;
     } finally {
       clearTimeout(timeout);
       callShieldFeedPromise = null;
@@ -273,7 +289,7 @@ export async function getCallReputationAvailability(): Promise<CallReputationAva
     }
     return availability(
       "configured",
-      "CallShield community data is configured; lookups use a cached feed and fail open when it is unavailable.",
+      "CallShield community data is configured; lookups use a verified offline snapshot plus the live feed and fail open when neither is available.",
       {
         source: CALLSHIELD_SOURCE,
         provider: CALLSHIELD_PROVIDER,

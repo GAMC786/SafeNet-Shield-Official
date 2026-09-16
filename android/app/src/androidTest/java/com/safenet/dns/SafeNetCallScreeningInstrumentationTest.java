@@ -43,6 +43,7 @@ public class SafeNetCallScreeningInstrumentationTest {
     private static final String UNAVAILABLE_NUMBER = "+15550000005";
     private static final String MALFORMED_NUMBER = "+15550000006";
     private static final String TIMEOUT_NUMBER = "+15550000007";
+    private static final String OFFLINE_BLOCK_NUMBER = "+19057712581";
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -144,6 +145,31 @@ public class SafeNetCallScreeningInstrumentationTest {
     }
 
     @Test
+    public void verifiedOfflineSnapshotScreensCallsWithoutAProvider() {
+        preferences.edit()
+            .putStringSet(
+                SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS,
+                Collections.emptySet()
+            )
+            .commit();
+
+        assertNotNull(
+            SafeNetCallScreeningService.loadBundledCallShieldFeed(context, preferences)
+        );
+        assertEquals("block", action(OFFLINE_BLOCK_NUMBER));
+        assertEquals("allow", action(ALLOW_NUMBER));
+
+        preferences.edit()
+            .putInt(SafeNetCallScreeningService.PREF_CALLSHIELD_FEED_VERSION, 42)
+            .commit();
+        assertEquals(
+            "allow",
+            action(OFFLINE_BLOCK_NUMBER)
+        );
+        Log.i(TAG, "CALL_SCREENING_OFFLINE_FEED result=PASS verified=BLOCK downgrade=ALLOW");
+    }
+
+    @Test
     public void reputationDecisionsAndFallbacksAreFailOpen() throws Exception {
         String origin = argument("call-screening-origin", "");
         if (origin.isEmpty()) {
@@ -181,6 +207,7 @@ public class SafeNetCallScreeningInstrumentationTest {
 
     private String action(String number) {
         return SafeNetCallScreeningService.decideAction(
+            context,
             preferences,
             SafeNetCallScreeningService.normalizeNumber(number)
         );

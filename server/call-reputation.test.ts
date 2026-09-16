@@ -7,6 +7,11 @@ import {
   reportCall,
   resetCallShieldCache,
 } from "./call-reputation";
+import {
+  CALLSHIELD_OFFLINE_FEED,
+  CALLSHIELD_OFFLINE_MANIFEST,
+  verifyCallShieldOfflineSnapshot,
+} from "./callshield-offline-feed";
 
 const feed = {
   version: 41,
@@ -64,7 +69,7 @@ test("CallShield is the default configured reputation source without API credent
     provider: "callshield",
     reportingAvailable: true,
     reason:
-      "CallShield community data is configured; lookups use a cached feed and fail open when it is unavailable.",
+      "CallShield community data is configured; lookups use a verified offline snapshot plus the live feed and fail open when neither is available.",
   });
 });
 
@@ -134,13 +139,71 @@ test("CallShield feed failures remain fail-open", async () => {
   try {
     const result = await lookupCallReputation("+1 (555) 222-3333");
     assert.deepEqual(result, {
-      available: false,
+      available: true,
+      action: "allow",
       source: "CallShield",
-      reason: "CallShield feed is unavailable; the call will be allowed.",
+      reason: "CallShield found no matching spam number or range.",
     });
   } finally {
     restoreFetch(previousFetch);
   }
+});
+
+test("CallShield uses the verified offline snapshot when a fresh process cannot reach GitHub", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("GitHub is offline");
+  };
+  try {
+    assert.deepEqual(await lookupCallReputation("+1 (905) 771-2581"), {
+      available: true,
+      action: "block",
+      source: "CallShield",
+      reason: "CallShield spam: 7 reports.",
+    });
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
+
+test("CallShield offline manifests require approved data and an exact hash", () => {
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      CALLSHIELD_OFFLINE_FEED,
+      CALLSHIELD_OFFLINE_MANIFEST,
+      41,
+    ),
+    true,
+  );
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      CALLSHIELD_OFFLINE_FEED,
+      { ...CALLSHIELD_OFFLINE_MANIFEST, sha256: "0".repeat(64) },
+    ),
+    false,
+  );
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      CALLSHIELD_OFFLINE_FEED,
+      CALLSHIELD_OFFLINE_MANIFEST,
+      42,
+    ),
+    false,
+  );
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      CALLSHIELD_OFFLINE_FEED,
+      { ...CALLSHIELD_OFFLINE_MANIFEST, redistributable: false },
+    ),
+    false,
+  );
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      CALLSHIELD_OFFLINE_FEED,
+      { ...CALLSHIELD_OFFLINE_MANIFEST, formatVersion: 2 },
+    ),
+    false,
+  );
 });
 
 test("CallShield rejects malformed feeds instead of creating a block", async () => {
@@ -154,8 +217,12 @@ test("CallShield rejects malformed feeds instead of creating a block", async () 
   });
   try {
     const result = await lookupCallReputation("+1 (555) 123-4567");
-    assert.equal(result.available, false);
-    assert.match(result.reason, /feed is unavailable/i);
+    assert.deepEqual(result, {
+      available: true,
+      action: "allow",
+      source: "CallShield",
+      reason: "CallShield found no matching spam number or range.",
+    });
   } finally {
     restoreFetch(previousFetch);
   }

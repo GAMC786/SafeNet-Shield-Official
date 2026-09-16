@@ -214,6 +214,10 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("serviceRegistered", true);
         result.put("apiConfigured", !getConfigApiOrigin().isEmpty());
         result.put(
+            "offlineReputationAvailable",
+            SafeNetCallScreeningService.hasBundledCallShieldFeed(getContext())
+        );
+        result.put(
             "blockedNumberCount",
             SafeNetCallScreeningService.readBlockedNumbers(
                 getContext().getSharedPreferences(
