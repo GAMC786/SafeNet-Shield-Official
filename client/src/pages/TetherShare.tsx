@@ -427,37 +427,70 @@ export default function TetherShare() {
               </Button>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/10 bg-black/20 p-1">
               {resolverProtocols.map((protocol) => {
-                const configuredResolvers = dnsServers?.filter((server) => server.type === protocol.type) ?? [];
-                const recommendedResolvers = protocol.type === "dot"
-                  ? dotResolverPresets
-                  : resolverPresets.filter((preset) => preset.type === protocol.type);
+                const resolverCount = dnsServers?.filter((server) => server.type === protocol.type).length ?? 0;
+                const selected = selectedResolverProtocol === protocol.type;
                 return (
-                  <div key={protocol.type} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-display text-sm font-bold text-white">{protocol.label}</h3>
-                      <Badge variant="outline" className="text-[10px] uppercase">{configuredResolvers.length}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{protocol.description}</p>
+                  <button
+                    key={protocol.type}
+                    type="button"
+                    onClick={() => setSelectedResolverProtocol(protocol.type)}
+                    className={`flex items-center justify-center gap-2 rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
+                      selected ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-white/10 hover:text-white"
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    <span>{protocol.shortLabel}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${selected ? "bg-black/20" : "bg-white/10"}`}>
+                      {resolverCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-                    <div className="mt-3 space-y-2">
-                      {configuredResolvers.length ? configuredResolvers.map((server) => (
-                        <div
-                          key={server.id}
-                          className={`rounded-lg border p-3 ${server.isActive ? "border-emerald-400/40 bg-emerald-400/10" : "border-white/10 bg-white/[0.03]"}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
+            {resolverProtocols.filter((protocol) => protocol.type === selectedResolverProtocol).map((protocol) => {
+              const configuredResolvers = dnsServers?.filter((server) => server.type === protocol.type) ?? [];
+              const recommendedResolvers = protocol.type === "dot"
+                ? dotResolverPresets
+                : resolverPresets.filter((preset) => preset.type === protocol.type);
+              const endpointLabel = protocol.type === "dot"
+                ? "DoT hostname"
+                : protocol.type === "doh"
+                  ? "DoH endpoint"
+                  : "Primary address";
+
+              return (
+                <div key={protocol.type} className="mt-3 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="font-display text-sm font-bold text-white">{protocol.label}</h3>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{protocol.description}</p>
+                    </div>
+                    <Badge variant="outline" className="w-fit text-[10px] uppercase">
+                      {configuredResolvers.length} configured
+                    </Badge>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {configuredResolvers.length ? configuredResolvers.map((server) => (
+                      <div
+                        key={server.id}
+                        className={`rounded-lg border p-3 ${server.isActive ? "border-emerald-400/40 bg-emerald-400/10" : "border-white/10 bg-white/[0.03]"}`}
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate text-sm font-semibold text-white">{server.name}</p>
-                              <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{server.primaryAddress}</p>
-                              {server.secondaryAddress && (
-                                <p className="break-all font-mono text-[11px] text-muted-foreground">{server.secondaryAddress}</p>
-                              )}
+                              {server.isActive && <Badge className="bg-emerald-600 text-[10px] text-white">Active</Badge>}
                             </div>
-                            {server.isActive && <Badge className="shrink-0 bg-emerald-600 text-[10px] text-white">Active</Badge>}
+                            <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                              {server.primaryAddress}
+                              {server.secondaryAddress && ` · ${server.secondaryAddress}`}
+                            </p>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-auto">
                             <Button
                               type="button"
                               variant="outline"
@@ -480,55 +513,57 @@ export default function TetherShare() {
                             </Button>
                           </div>
                         </div>
-                      )) : (
-                        <p className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-muted-foreground">
-                          No {protocol.label} resolver configured.
-                        </p>
-                      )}
-                    </div>
-
-                    {recommendedResolvers.length > 0 && (
-                      <div className="mt-3 border-t border-white/10 pt-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Recommended</p>
-                        <div className="mt-2 space-y-2">
-                          {recommendedResolvers.map((preset) => {
-                            const isAdded = dnsServers?.some(
-                              (server) => server.name === preset.name && server.type === preset.type,
-                            ) ?? false;
-                            return (
-                              <div key={preset.name} className="rounded-lg border border-white/10 p-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-xs font-semibold text-white">{preset.name}</p>
-                                  <Badge variant="outline" className="text-[9px] uppercase">{preset.type}</Badge>
-                                </div>
-                                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{preset.description}</p>
-                                {preset.primaryAddress && (
-                                  <CopyValue value={preset.primaryAddress} label="DoT hostname" />
-                                )}
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={isAdded ? "outline" : "default"}
-                                  className="mt-2 w-full"
-                                  disabled={preset.addable === false || isAdded || isResolverMutating}
-                                  onClick={() => void handleAddPreset(preset)}
-                                >
-                                  {isAdded
-                                    ? "Added"
-                                    : preset.addable === false
-                                      ? preset.unavailableLabel ?? "Unavailable"
-                                      : <><Plus className="mr-1 h-3.5 w-3.5" /> Add</>}
-                                </Button>
-                              </div>
-                            );
-                          })}
-                        </div>
                       </div>
+                    )) : (
+                      <p className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-muted-foreground">
+                        No {protocol.label} resolver configured.
+                      </p>
                     )}
                   </div>
-                );
-              })}
-            </div>
+
+                  {recommendedResolvers.length > 0 && (
+                    <div className="mt-5 border-t border-white/10 pt-4">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Recommended providers</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {recommendedResolvers.map((preset) => {
+                          const isAdded = dnsServers?.some(
+                            (server) => server.name === preset.name && server.type === preset.type,
+                          ) ?? false;
+                          return (
+                            <div key={preset.name} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-semibold text-white">{preset.name}</p>
+                                <Badge variant="outline" className="text-[9px] uppercase">{preset.type}</Badge>
+                              </div>
+                              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{preset.description}</p>
+                              {preset.primaryAddress && (
+                                <div className="mt-2">
+                                  <CopyValue value={preset.primaryAddress} label={endpointLabel} />
+                                </div>
+                              )}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={isAdded ? "outline" : "default"}
+                                className="mt-2 w-full"
+                                disabled={preset.addable === false || isAdded || isResolverMutating}
+                                onClick={() => void handleAddPreset(preset)}
+                              >
+                                {isAdded
+                                  ? "Added"
+                                  : preset.addable === false
+                                    ? preset.unavailableLabel ?? "Unavailable"
+                                    : <><Plus className="mr-1 h-3.5 w-3.5" /> Add</>}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-sky-200">
