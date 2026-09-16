@@ -57,6 +57,7 @@ public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
     private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
+    private static final String WIREGUARD_SWITCH_LABEL = "SafeNet WireGuard On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
@@ -1498,6 +1499,46 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    public void dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown() throws Exception {
+        openDashboardWithActiveResolver();
+        waitForWebView(
+            vpnSwitchExpression("toggle !== null && !toggle.disabled") +
+                " && document.querySelector('[data-testid=\"switch-wireguard\"]') !== null"
+        );
+
+        clickVpnSwitch();
+        waitForWebView("Boolean(document.querySelector('[role=\"dialog\"]'))");
+        clickEulaAgreement();
+        clickEulaAccept();
+        if (VpnService.prepare(context) != null) {
+            grantVpnPermissionDialog();
+        }
+        waitForVpnState(true);
+        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
+
+        clickWireGuardSwitch();
+        waitForWireGuardState(true);
+        waitForWebView(
+            vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'") +
+                " && document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+                    ".getAttribute('aria-checked') === 'true'"
+        );
+
+        clickVpnSwitch();
+        waitForVpnState(true);
+        waitForWireGuardState(false);
+        waitForWebView(
+            vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'") +
+                " && document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+                    ".getAttribute('aria-checked') === 'false'"
+        );
+        android.util.Log.i(
+            "SafeNetPhysicalConnectivity",
+            "PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS"
+        );
+    }
+
+    @Test
     public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -2419,6 +2460,21 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    private void clickWireGuardSwitch() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-wireguard\"]');" +
+                "if (!toggle) return false;" +
+                "toggle.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue(
+            "Could not click the WireGuard switch in the WebView",
+            result.getBoolean("ok") && result.getBoolean("value")
+        );
+    }
+
     private void clickEulaAgreement() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
@@ -2479,6 +2535,23 @@ public class SafeNetVpnUiInstrumentationTest {
             Thread.sleep(250);
         }
         throw new AssertionError("Native SafeNetVpn service did not become running=" + expected);
+    }
+
+    private void waitForWireGuardState(boolean expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            );
+            JSONObject value = result.optJSONObject("value");
+            if (result.optBoolean("ok", false) &&
+                value != null &&
+                expected == value.optBoolean("wireguardRunning", false)) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native SafeNet WireGuard did not become running=" + expected);
     }
 
     private JSONObject waitForRevokedVpnStatus() throws Exception {

@@ -4,6 +4,8 @@ set -Eeuo pipefail
 readonly DEFAULT_APK="android/app/build/outputs/apk/release/app-release.apk"
 readonly DEFAULT_TEST_APK="android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
 readonly SMOKE_SCRIPT="scripts/android-smoke-test.sh"
+readonly TEST_PACKAGE_NAME="com.safenet.dns.test"
+readonly TEST_RUNNER="androidx.test.runner.AndroidJUnitRunner"
 
 apk_path="$DEFAULT_APK"
 test_apk_path="$DEFAULT_TEST_APK"
@@ -70,7 +72,11 @@ rm -f "$output_dir"/result.txt \
     "$output_dir"/device-access-result.txt \
     "$output_dir"/adb-devices.txt \
     "$output_dir"/physical-device-details.txt \
-    "$output_dir"/smoke-run.log
+    "$output_dir"/smoke-run.log \
+    "$output_dir"/smoke-result.txt \
+    "$output_dir"/physical-connectivity-instrumentation.log \
+    "$output_dir"/physical-connectivity-logcat.txt \
+    "$output_dir"/physical-connectivity-result.txt
 
 write_device_access_result() {
     local category="$1"
@@ -177,12 +183,88 @@ connectivity_recovery="$(
         "$smoke_result_file" 2>/dev/null || true
 )"
 connectivity_recovery="${connectivity_recovery:-NOT_RECORDED}"
-if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" ]]; then
+
+echo "Running physical DNS, WireGuard internet, and dashboard handoff checks..."
+set +e
+adb -s "$serial" logcat -c >/dev/null 2>&1 || true
+adb -s "$serial" shell am instrument -w -r \
+    -e resolver-mode public \
+    -e plain-primary "${ANDROID_SMOKE_PLAIN_PRIMARY:-1.1.1.1}" \
+    -e plain-secondary "${ANDROID_SMOKE_PLAIN_SECONDARY:-8.8.8.8}" \
+    -e doh-primary "${ANDROID_SMOKE_DOH_PRIMARY:-https://cloudflare-dns.com/dns-query}" \
+    -e doh-secondary "${ANDROID_SMOKE_DOH_SECONDARY:-https://dns.google/dns-query}" \
+    -e dot-primary "${ANDROID_SMOKE_DOT_PRIMARY:-cloudflare-dns.com}" \
+    -e dot-secondary "${ANDROID_SMOKE_DOT_SECONDARY:-dns.google}" \
+    -e ordinary-url "${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}" \
+    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown" \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+    tee "$output_dir/physical-connectivity-instrumentation.log"
+physical_instrumentation_status="${PIPESTATUS[0]}"
+set -e
+adb -s "$serial" shell logcat -d -t 1200 > "$output_dir/physical-connectivity-logcat.txt" 2>&1 || true
+adb -s "$serial" shell dumpsys connectivity > "$output_dir/physical-connectivity-network.txt" 2>&1 || true
+adb -s "$serial" shell dumpsys vpn > "$output_dir/physical-connectivity-vpn.txt" 2>&1 || true
+
+resolver_plain_status="NOT_RECORDED"
+resolver_doh_status="NOT_RECORDED"
+resolver_dot_status="NOT_RECORDED"
+if grep -Fq 'PHYSICAL_DNS_MODE mode=plain result=PASS dns=PASS ordinary_https=PASS' \
+    "$output_dir/physical-connectivity-logcat.txt"; then
+    resolver_plain_status="PASS"
+fi
+if grep -Fq 'PHYSICAL_DNS_MODE mode=doh result=PASS dns=PASS ordinary_https=PASS' \
+    "$output_dir/physical-connectivity-logcat.txt"; then
+    resolver_doh_status="PASS"
+fi
+if grep -Fq 'PHYSICAL_DNS_MODE mode=dot result=PASS dns=PASS ordinary_https=PASS' \
+    "$output_dir/physical-connectivity-logcat.txt"; then
+    resolver_dot_status="PASS"
+fi
+wireguard_status="NOT_RECORDED"
+if grep -Fq 'WIREGUARD_SMOKE result=PASS' \
+    "$output_dir/physical-connectivity-logcat.txt" &&
+    grep -Fq 'ordinary_https=PASS' "$output_dir/physical-connectivity-logcat.txt"; then
+    wireguard_status="PASS"
+fi
+vpn_handoff_status="NOT_RECORDED"
+if grep -Fq 'PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS' \
+    "$output_dir/physical-connectivity-logcat.txt"; then
+    vpn_handoff_status="PASS"
+fi
+wireguard_failure_category="$(
+    grep -Eo 'WIREGUARD_FAILURE category=[A-Z_]+' \
+        "$output_dir/physical-connectivity-instrumentation.log" \
+        "$output_dir/physical-connectivity-logcat.txt" 2>/dev/null |
+        tail -n 1 | cut -d= -f2 || true
+)"
+wireguard_failure_category="${wireguard_failure_category:-NOT_RECORDED}"
+
+if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
+    "$physical_instrumentation_status" -eq 0 &&
+    "$resolver_plain_status" == "PASS" &&
+    "$resolver_doh_status" == "PASS" &&
+    "$resolver_dot_status" == "PASS" &&
+    "$wireguard_status" == "PASS" &&
+    "$vpn_handoff_status" == "PASS" ]]; then
     result="PASS"
     failure_class="NONE"
 else
     result="FAIL"
     failure_class="APPLICATION"
+fi
+
+failure_category="$smoke_category"
+if [[ "$failure_category" == "PASS" ]]; then
+    if [[ "$resolver_plain_status" != "PASS" ||
+        "$resolver_doh_status" != "PASS" ||
+        "$resolver_dot_status" != "PASS" ]]; then
+        failure_category="PHYSICAL_DNS_CONNECTIVITY"
+    elif [[ "$wireguard_status" != "PASS" || "$vpn_handoff_status" != "PASS" ]]; then
+        failure_category="${wireguard_failure_category}"
+        if [[ "$failure_category" == "NOT_RECORDED" ]]; then
+            failure_category="PHYSICAL_VPN_CONNECTIVITY"
+        fi
+    fi
 fi
 
 {
@@ -193,6 +275,13 @@ fi
     printf 'failure_class=%s\n' "$failure_class"
     printf 'failure_category=%s\n' "$smoke_category"
     printf 'connectivity_recovery=%s\n' "$connectivity_recovery"
+    printf 'dns_plain=%s\n' "$resolver_plain_status"
+    printf 'dns_doh=%s\n' "$resolver_doh_status"
+    printf 'dns_dot=%s\n' "$resolver_dot_status"
+    printf 'wireguard_internet=%s\n' "$wireguard_status"
+    printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
+    printf 'wireguard_failure_category=%s\n' "$wireguard_failure_category"
+    printf 'physical_instrumentation_exit_code=%s\n' "$physical_instrumentation_status"
     printf 'smoke_exit_code=%s\n' "$smoke_status"
     printf 'result=%s\n' "$result"
 } | tee "$output_dir/physical-connectivity-result.txt" "$output_dir/result.txt"

@@ -229,6 +229,17 @@ public class SafeNetVpnInstrumentationTest {
             "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=wireguard_link_properties_missing",
             vpnProperties
         );
+        boolean hasDefaultRoute = false;
+        for (RouteInfo route : vpnProperties.getRoutes()) {
+            if (route.isDefaultRoute()) {
+                hasDefaultRoute = true;
+                break;
+            }
+        }
+        assertTrue(
+            "WIREGUARD_FAILURE category=ROUTE message=wireguard_default_route_missing",
+            hasDefaultRoute
+        );
 
         JSONObject confirmed = callVpn(
             "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
@@ -241,18 +252,21 @@ public class SafeNetVpnInstrumentationTest {
         try {
             byte[] dnsResponse = queryWireGuardDns(confirmedStatus);
             assertTrue(
-                "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=gateway_dns_response_too_short",
+                "WIREGUARD_FAILURE category=DNS message=gateway_dns_response_too_short",
                 dnsResponse.length >= 12
             );
+            checkOrdinaryConnectivity();
         } catch (Exception | AssertionError error) {
-            fail("WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY " +
-                "message=gateway_dns_probe_failed:" + error.getMessage());
+            fail("WIREGUARD_FAILURE category=" +
+                classifyWireGuardFailure(error.getMessage()) +
+                " message=wireguard_internet_probe_failed");
             return;
         }
         android.util.Log.i(
             "SafeNetWireGuardSmoke",
             "WIREGUARD_SMOKE result=PASS configuration=PASS permission=PASS " +
-                "gateway_identity=SafeNet tunnel=RUNNING android_vpn=PASS gateway_probe=PASS"
+                "gateway_identity=SafeNet tunnel=RUNNING android_vpn=PASS " +
+                "default_route=PASS gateway_dns=PASS ordinary_https=PASS"
         );
     }
 
@@ -377,6 +391,31 @@ public class SafeNetVpnInstrumentationTest {
         assertResolverResponse(tcpResponse);
 
         checkOrdinaryConnectivity();
+    }
+
+    @Test
+    public void publicResolverModesKeepOrdinaryHttpsReachable() throws Exception {
+        assertFalse(
+            "PHYSICAL_DNS_FAILURE category=CONFIGURATION message=public_resolver_mode_required",
+            isFixtureMode()
+        );
+        acceptEula();
+
+        verifyPublicResolverMode(
+            "plain",
+            plainPrimary(),
+            plainSecondary()
+        );
+        verifyPublicResolverMode(
+            "doh",
+            argument("doh-primary", "https://cloudflare-dns.com/dns-query"),
+            dohSecondary()
+        );
+        verifyPublicResolverMode(
+            "dot",
+            argument("dot-primary", "cloudflare-dns.com"),
+            dotSecondary()
+        );
     }
 
     @Test
@@ -718,6 +757,52 @@ public class SafeNetVpnInstrumentationTest {
         }
     }
 
+    private void verifyPublicResolverMode(
+        String mode,
+        String primary,
+        String secondary
+    ) throws Exception {
+        boolean started = false;
+        try {
+            JSONObject result = startVpnWithPermission(mode, primary, secondary);
+            started = result.optBoolean("ok", false);
+            waitForVpnState(true, VPN_START_TIMEOUT_SECONDS);
+            byte[] response = queryVirtualDns();
+            assertTrue(
+                "PHYSICAL_DNS_FAILURE mode=" + mode + " category=DNS message=short_response",
+                response.length >= 12
+            );
+            assertResolverResponse(response);
+            checkOrdinaryConnectivity();
+            android.util.Log.i(
+                "SafeNetPhysicalConnectivity",
+                "PHYSICAL_DNS_MODE mode=" + mode +
+                    " result=PASS dns=PASS ordinary_https=PASS"
+            );
+        } catch (Exception | AssertionError error) {
+            String category = classifyNetworkFailure(error.getMessage());
+            android.util.Log.e(
+                "SafeNetPhysicalConnectivity",
+                "PHYSICAL_DNS_MODE mode=" + mode +
+                    " result=FAIL category=" + category
+            );
+            throw error;
+        } finally {
+            if (started) {
+                try {
+                    stopAndAssertClean();
+                } catch (Exception stopError) {
+                    android.util.Log.e(
+                        "SafeNetPhysicalConnectivity",
+                        "PHYSICAL_DNS_MODE mode=" + mode +
+                            " result=FAIL category=VPN_HANDOFF"
+                    );
+                    throw stopError;
+                }
+            }
+        }
+    }
+
     private String plainPrimary() {
         return argument("plain-primary", "1.1.1.1");
     }
@@ -759,6 +844,28 @@ public class SafeNetVpnInstrumentationTest {
             return "UNRELATED_NETWORK_FAILURE";
         }
         return "NON_NETWORK_FAILURE";
+    }
+
+    private static String classifyWireGuardFailure(String message) {
+        String normalized = message == null ? "" : message.toUpperCase(Locale.US);
+        if (normalized.contains("HANDSHAKE")) {
+            return "HANDSHAKE";
+        }
+        if (normalized.contains("ROUTE") || normalized.contains("ENETUNREACH") ||
+            normalized.contains("NETWORK IS UNREACHABLE") ||
+            normalized.contains("NO ROUTE")) {
+            return "ROUTE";
+        }
+        if (normalized.contains("DNS") || normalized.contains("UNKNOWNHOST") ||
+            normalized.contains("EAI_AGAIN")) {
+            return "DNS";
+        }
+        if (normalized.contains("HTTPS") || normalized.contains("HTTP") ||
+            normalized.contains("CONNECTION") || normalized.contains("TIMEOUT") ||
+            normalized.contains("TIMED OUT")) {
+            return "NAT";
+        }
+        return "GATEWAY_CONNECTIVITY";
     }
 
     private String classifyResolverFailure(String message) {

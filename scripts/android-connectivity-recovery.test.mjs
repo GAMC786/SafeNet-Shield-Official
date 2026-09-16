@@ -605,6 +605,26 @@ test("physical-device recovery rejects unavailable or emulated targets", () => {
     /--resolver-mode public/,
     "physical devices must use reachable public resolvers rather than 10.0.2.2",
   );
+  assert.match(
+    physicalConnectivityScript,
+    /PHYSICAL_DNS_MODE mode=plain result=PASS/,
+    "the physical lane must record plain DNS and HTTPS reachability",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /PHYSICAL_DNS_MODE mode=doh result=PASS/,
+    "the physical lane must record DoH and HTTPS reachability",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /PHYSICAL_DNS_MODE mode=dot result=PASS/,
+    "the physical lane must record DoT and HTTPS reachability",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /PHYSICAL_VPN_SWITCH result=PASS/,
+    "the physical lane must record dashboard VPN handoff evidence",
+  );
 });
 
 test("workflow exposes and publishes the physical-device recovery lane", () => {
@@ -627,5 +647,20 @@ test("workflow exposes and publishes the physical-device recovery lane", () => {
     workflow,
     /SafeNet-DNS-Android-connectivity-physical-evidence/,
     "physical connectivity evidence artifact is missing",
+  );
+  assert.match(
+    workflow,
+    /Plain DNS plus HTTPS/,
+    "the physical summary must publish resolver-mode evidence",
+  );
+  assert.match(
+    workflow,
+    /WireGuard gateway DNS plus ordinary HTTPS/,
+    "the physical summary must publish WireGuard internet evidence",
+  );
+  assert.match(
+    workflow,
+    /Dashboard DNS.*WireGuard handoff/,
+    "the physical summary must publish dashboard handoff evidence",
   );
 });
