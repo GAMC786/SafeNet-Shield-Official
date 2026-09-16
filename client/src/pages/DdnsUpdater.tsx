@@ -4,7 +4,7 @@ import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2 } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,13 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+
+function getDdnsHostnameUrl(hostname: string): string {
+  const normalizedHostname = hostname.trim();
+  return /^https?:\/\//i.test(normalizedHostname)
+    ? normalizedHostname
+    : `https://${normalizedHostname}`;
+}
 
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
@@ -470,6 +477,19 @@ export default function DdnsUpdater() {
                     {updater.hostname}
                   </h3>
                   <p className="text-sm text-muted-foreground font-mono mt-1">{updater.provider.toUpperCase()}</p>
+                   <div className="mt-3">
+                     <p className="text-xs text-muted-foreground">SafeNet DDNS Hostname URL</p>
+                     <a
+                       href={getDdnsHostnameUrl(updater.hostname)}
+                       target="_blank"
+                       rel="noreferrer"
+                       data-testid={`link-ddns-hostname-${updater.id}`}
+                       className="mt-1 inline-flex max-w-full items-center gap-1 break-all font-mono text-sm text-primary underline underline-offset-4 hover:text-primary/80"
+                     >
+                       <span>{getDdnsHostnameUrl(updater.hostname)}</span>
+                       <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                     </a>
+                   </div>
                 </div>
                 <Badge variant={updater.isEnabled ? "default" : "secondary"}>
                   {updater.isEnabled ? "Active" : "Inactive"}
