@@ -130,6 +130,13 @@ public class SafeNetVpnService extends VpnService {
         service.stopVpn(true);
     }
 
+    static void refreshUnderlyingNetwork() {
+        SafeNetVpnService service = instance;
+        if (service != null) {
+            service.updateUnderlyingNetwork();
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -1316,6 +1323,7 @@ public class SafeNetVpnService extends VpnService {
                 NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
                 if (capabilities == null ||
                     !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ||
                     !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                     continue;
@@ -1412,6 +1420,19 @@ public class SafeNetVpnService extends VpnService {
         return null;
     }
 
+    private void updateUnderlyingNetwork() {
+        ParcelFileDescriptor activeInterface = vpnInterface;
+        if (activeInterface == null) {
+            return;
+        }
+        Network underlying = findUnderlyingNetwork();
+        try {
+            setUnderlyingNetworks(underlying == null ? null : new Network[] { underlying });
+        } catch (RuntimeException ignored) {
+            // The VPN may be shutting down while Wi-Fi Direct changes networks.
+        }
+    }
+
     private boolean isUsableUnderlyingNetwork(ConnectivityManager connectivity, Network network) {
         if (network == null) {
             return false;
@@ -1419,6 +1440,7 @@ public class SafeNetVpnService extends VpnService {
         NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
         return capabilities != null
             && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
     }

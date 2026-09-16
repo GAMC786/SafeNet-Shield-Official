@@ -1,6 +1,9 @@
 package com.safenet.dns;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -13,9 +16,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -129,6 +134,7 @@ final class TetherShareManager {
                 new WifiP2pManager.ActionListener() {
                     @Override
                     public void onSuccess() {
+                        SafeNetVpnService.refreshUnderlyingNetwork();
                         mainHandler.postDelayed(() -> refreshGroupInfo(0), 400L);
                     }
 
@@ -161,6 +167,7 @@ final class TetherShareManager {
                 // The local proxy is already stopped; Android can clean up the group.
             }
         }
+        SafeNetVpnService.refreshUnderlyingNetwork();
     }
 
     Snapshot snapshot() {
@@ -316,9 +323,60 @@ final class TetherShareManager {
     }
 
     private Socket openUpstream(String host, int port) throws IOException {
-        Socket upstream = new Socket();
-        upstream.connect(new InetSocketAddress(host, port), 10_000);
-        return upstream;
+        Network upstreamNetwork = findUpstreamNetwork();
+        InetAddress[] addresses;
+        try {
+            // Resolve through SafeNet first so the phone's DNS policy still
+            // applies to proxy requests when the DNS VPN is active.
+            addresses = InetAddress.getAllByName(host);
+        } catch (UnknownHostException error) {
+            if (upstreamNetwork == null) throw error;
+            // Wi-Fi Direct can temporarily become Android's default network.
+            // Resolve on the validated internet network instead of the local
+            // sharing interface when that happens.
+            addresses = upstreamNetwork.getAllByName(host);
+        }
+
+        IOException lastError = null;
+        for (InetAddress address : addresses) {
+            Socket upstream = new Socket();
+            try {
+                if (upstreamNetwork != null) {
+                    upstreamNetwork.bindSocket(upstream);
+                }
+                upstream.connect(new InetSocketAddress(address, port), 10_000);
+                return upstream;
+            } catch (IOException error) {
+                lastError = error;
+                closeSocket(upstream);
+            }
+        }
+        throw lastError == null
+            ? new IOException("No address was available for the proxy destination.")
+            : lastError;
+    }
+
+    private Network findUpstreamNetwork() {
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) return null;
+
+        Network active = connectivity.getActiveNetwork();
+        if (isValidatedInternetNetwork(connectivity, active)) return active;
+        for (Network network : connectivity.getAllNetworks()) {
+            if (isValidatedInternetNetwork(connectivity, network)) return network;
+        }
+        return null;
+    }
+
+    private boolean isValidatedInternetNetwork(ConnectivityManager connectivity, Network network) {
+        if (network == null) return false;
+        NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+        return capabilities != null
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
     }
 
     private String readLine(InputStream input) throws IOException {

@@ -26,6 +26,10 @@ const serviceSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnService.java", import.meta.url),
   "utf8",
 );
+const tetherSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/TetherShareManager.java", import.meta.url),
+  "utf8",
+);
 const tileSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
   "utf8",
@@ -121,6 +125,17 @@ test("DNS upstream sockets stay on the non-VPN network", () => {
     serviceSource,
     /prepareUpstreamSocket\(socket\)/,
   );
+  assert.match(
+    serviceSource,
+    /NET_CAPABILITY_VALIDATED/,
+  );
+});
+
+test("Internet Share refreshes SafeNet and pins proxy traffic to validated internet", () => {
+  assert.match(tetherSource, /SafeNetVpnService\.refreshUnderlyingNetwork\(\)/);
+  assert.match(tetherSource, /upstreamNetwork\.bindSocket\(upstream\)/);
+  assert.match(tetherSource, /NET_CAPABILITY_VALIDATED/);
+  assert.match(tetherSource, /upstreamNetwork\.getAllByName\(host\)/);
 });
 
 test("call-screening setup exposes a working Android settings fallback", () => {
