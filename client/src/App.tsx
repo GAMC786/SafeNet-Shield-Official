@@ -12,6 +12,7 @@ import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import * as Sentry from "@sentry/react";
 import { captureGlitchTipException } from "./lib/glitchtip";
 import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
+import { ArrowLeft } from "lucide-react";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -89,8 +90,19 @@ function AppContent() {
 }
 
 function SignInPage() {
+  const [, setLocation] = useLocation();
+
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+    <div className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <button
+        type="button"
+        aria-label="Back to Premium billing"
+        title="Back to Premium billing"
+        onClick={() => setLocation("/billing")}
+        className="absolute left-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-900/80 text-slate-200 shadow-lg transition-colors hover:border-primary/50 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:left-6 sm:top-6"
+      >
+        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+      </button>
       <SignIn
         routing="path"
         path={`${basePath}/sign-in`}
