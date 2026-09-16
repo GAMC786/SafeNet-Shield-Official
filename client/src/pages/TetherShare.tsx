@@ -36,10 +36,6 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { DnsServer } from "@shared/schema";
-import {
-  DNS_FAMILY_RESOLVER_PRESETS,
-  DNS_NEXTDNS_RESOLVER_PRESET,
-} from "@shared/dns-resolvers";
 
 type ResolverForm = {
   name: string;
@@ -49,17 +45,6 @@ type ResolverForm = {
   secondaryAddress: string;
 };
 
-type ResolverPreset = {
-  name: string;
-  type: DnsServer["type"];
-  ipVersion: "ipv4" | "ipv6";
-  primaryAddress: string;
-  secondaryAddress: string | null;
-  description: string;
-  addable?: boolean;
-  unavailableLabel?: string;
-};
-
 const emptyResolver: ResolverForm = {
   name: "",
   type: "plain",
@@ -67,50 +52,6 @@ const emptyResolver: ResolverForm = {
   primaryAddress: "",
   secondaryAddress: "",
 };
-
-const resolverPresets: readonly ResolverPreset[] = [
-  ...DNS_FAMILY_RESOLVER_PRESETS,
-  DNS_NEXTDNS_RESOLVER_PRESET,
-];
-
-const dotResolverPresets: readonly ResolverPreset[] = [
-  {
-    name: "AdGuard DNS (Family)",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "family.adguard-dns.com",
-    secondaryAddress: null,
-    description: "Family filtering over DNS over TLS.",
-  },
-  {
-    name: "Control D (Family Friendly)",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "family.freedns.controld.com",
-    secondaryAddress: null,
-    description: "Control D Family Friendly over DNS over TLS.",
-  },
-  {
-    name: "OpenDNS (FamilyShield)",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "",
-    secondaryAddress: null,
-    description: "OpenDNS FamilyShield provides its public family service through plain DNS addresses.",
-    addable: false,
-    unavailableLabel: "Plain DNS only",
-  },
-  {
-    name: "NextDNS",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "profile-id.dns.nextdns.io",
-    secondaryAddress: null,
-    description: "Replace profile-id with your NextDNS profile ID to use profile-based family filtering.",
-    addable: false,
-    unavailableLabel: "Profile ID required",
-  },
-];
 
 const resolverProtocols: Array<{
   type: DnsServer["type"];
@@ -282,34 +223,6 @@ export default function TetherShare() {
     }
   };
 
-  const handleAddPreset = async (preset: ResolverPreset) => {
-    if (dnsServers?.some((server) => server.name === preset.name)) {
-      toast({
-        title: "Resolver already added",
-        description: `${preset.name} is already in your resolver list.`,
-      });
-      return;
-    }
-    try {
-      await createResolver.mutateAsync({
-        name: preset.name,
-        type: preset.type,
-        ipVersion: preset.ipVersion,
-        primaryAddress: preset.primaryAddress,
-        secondaryAddress: preset.secondaryAddress,
-        isActive: !dnsServers?.length,
-        isCustom: false,
-      });
-      toast({ title: "Resolver added", description: `${preset.name} is ready for Internet Share devices.` });
-    } catch (error) {
-      toast({
-        title: "Resolver could not be added",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleRemoveResolver = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from Internet Share DNS resolvers?`)) return;
     try {
@@ -452,14 +365,6 @@ export default function TetherShare() {
 
             {resolverProtocols.filter((protocol) => protocol.type === selectedResolverProtocol).map((protocol) => {
               const configuredResolvers = dnsServers?.filter((server) => server.type === protocol.type) ?? [];
-              const recommendedResolvers = protocol.type === "dot"
-                ? dotResolverPresets
-                : resolverPresets.filter((preset) => preset.type === protocol.type);
-              const endpointLabel = protocol.type === "dot"
-                ? "DoT hostname"
-                : protocol.type === "doh"
-                  ? "DoH endpoint"
-                  : "Primary address";
 
               return (
                 <div key={protocol.type} className="mt-3 rounded-xl border border-white/10 bg-black/20 p-4">
@@ -521,46 +426,6 @@ export default function TetherShare() {
                     )}
                   </div>
 
-                  {recommendedResolvers.length > 0 && (
-                    <div className="mt-5 border-t border-white/10 pt-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Recommended providers</p>
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {recommendedResolvers.map((preset) => {
-                          const isAdded = dnsServers?.some(
-                            (server) => server.name === preset.name && server.type === preset.type,
-                          ) ?? false;
-                          return (
-                            <div key={preset.name} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs font-semibold text-white">{preset.name}</p>
-                                <Badge variant="outline" className="text-[9px] uppercase">{preset.type}</Badge>
-                              </div>
-                              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{preset.description}</p>
-                              {preset.primaryAddress && (
-                                <div className="mt-2">
-                                  <CopyValue value={preset.primaryAddress} label={endpointLabel} />
-                                </div>
-                              )}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={isAdded ? "outline" : "default"}
-                                className="mt-2 w-full"
-                                disabled={preset.addable === false || isAdded || isResolverMutating}
-                                onClick={() => void handleAddPreset(preset)}
-                              >
-                                {isAdded
-                                  ? "Added"
-                                  : preset.addable === false
-                                    ? preset.unavailableLabel ?? "Unavailable"
-                                    : <><Plus className="mr-1 h-3.5 w-3.5" /> Add</>}
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
