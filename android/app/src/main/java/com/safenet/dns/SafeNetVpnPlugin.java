@@ -239,6 +239,18 @@ public class SafeNetVpnPlugin extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void openTetherAppSettings(PluginCall call) {
+        Intent settingsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.parse("package:" + getContext().getPackageName()));
+        try {
+            getActivity().startActivity(settingsIntent);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Android app permission settings could not be opened.", "TETHER_SETTINGS_FAILED", error);
+        }
+    }
+
     private boolean tetherPermissionGranted() {
         if (Build.VERSION.SDK_INT >= 33
                 && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {

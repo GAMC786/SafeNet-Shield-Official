@@ -20,6 +20,7 @@ import {
   Plus,
   Router,
   Save,
+  Settings2,
   Share2,
   ShieldCheck,
   Smartphone,
@@ -120,7 +121,7 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 }
 
 export default function TetherShare() {
-  const { supported, status, isBusy, start, stop, openWifiSettings } = useTetherShare();
+  const { supported, status, isBusy, start, stop, openWifiSettings, openAppSettings } = useTetherShare();
   const { data: dnsServers } = useDnsServers();
   const { toast } = useToast();
   const running = status?.running === true;
@@ -147,6 +148,8 @@ export default function TetherShare() {
     updateResolver.isPending ||
     deleteResolver.isPending ||
     activateResolver.isPending;
+  const nearbyWifiPermissionRequired =
+    status?.lastError?.toLowerCase().includes("nearby wi-fi permission") === true;
 
   useEffect(() => {
     if (editingResolverId === null) {
@@ -324,9 +327,27 @@ export default function TetherShare() {
         <CyberCard className="border-destructive/30 bg-destructive/5">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-            <div>
-              <h2 className="font-semibold text-white">Internet Share needs attention</h2>
-              <p className="mt-1 text-sm text-destructive" role="alert">{status.lastError}</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-white">
+                {nearbyWifiPermissionRequired ? "Nearby Wi-Fi permission required" : "Internet Share needs attention"}
+              </h2>
+              <p className="mt-1 text-sm text-destructive" role="alert">
+                {nearbyWifiPermissionRequired
+                  ? "Turning on your phone hotspot does not grant SafeNet access to create a Wi-Fi Direct network. Allow Nearby devices in Android app settings, then return and tap Start sharing."
+                  : status.lastError}
+              </p>
+              {nearbyWifiPermissionRequired && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 border-destructive/40 text-white hover:bg-destructive/10"
+                  onClick={() => void openAppSettings()}
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Open Android permissions
+                </Button>
+              )}
             </div>
           </div>
         </CyberCard>

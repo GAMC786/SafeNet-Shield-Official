@@ -91,5 +91,9 @@ export function useTetherShare() {
     if (supported) await enqueueNativeCommand(() => SafeNetVpn.openTetherWifiSettings());
   }, [supported]);
 
-  return { supported, status, isBusy, refresh, start, stop, openWifiSettings };
+  const openAppSettings = useCallback(async () => {
+    if (supported) await enqueueNativeCommand(() => SafeNetVpn.openTetherAppSettings());
+  }, [supported]);
+
+  return { supported, status, isBusy, refresh, start, stop, openWifiSettings, openAppSettings };
 }

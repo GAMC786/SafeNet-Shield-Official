@@ -136,6 +136,7 @@ interface SafeNetVpnPlugin {
   startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   openTetherWifiSettings(): Promise<void>;
+  openTetherAppSettings(): Promise<void>;
   addListener(
     eventName: "aiShieldResult",
     listenerFunc: (result: AiShieldResult) => void,
