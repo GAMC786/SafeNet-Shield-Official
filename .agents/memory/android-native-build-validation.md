@@ -20,3 +20,9 @@ The hosted release compiler can still catch Java-only errors that local TypeScri
 **Why:** The release reached Android packaging only after correcting an invalid Java multi-catch in the Internet Share manager.
 
 **How to apply:** Treat the hosted native compile result as authoritative when the local workspace has no Android SDK, and do not bypass it to publish an APK.
+
+Release instrumentation compilation exercises the full Android test-source graph, including retained UI tests that may be excluded from the normal app build. Removing a native feature must not leave active test calls pointing at helpers hidden inside obsolete comment blocks.
+
+**Why:** The hosted release test compile caught both a missing standard-library import and retained non-VPN UI-test helpers that had been commented out during VPN removal.
+
+**How to apply:** Use the hosted release-instrumentation preflight as the source-of-truth check for Android test Java, and keep retained instrumentation helpers active when their tests remain enabled.

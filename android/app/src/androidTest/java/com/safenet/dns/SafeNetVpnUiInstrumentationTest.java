@@ -37,6 +37,7 @@ import org.junit.rules.TestName;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Shared implementation for packaged UI, startup, media, Clerk, and AI Shield
@@ -2205,6 +2206,28 @@ abstract class SafeNetUiInstrumentationTestBase {
         );
     }
 
+    private void openDashboardWithoutActiveResolver() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const originalFetch = window.fetch;" +
+                "window.fetch = function(input, init) {" +
+                    "const url = typeof input === 'string' ? input : ((input && input.url) || '');" +
+                    "if (url.includes('/api/dns')) {" +
+                        "return Promise.resolve(new Response('[]', {" +
+                            "status: 200," +
+                            "headers: {'Content-Type': 'application/json'}" +
+                        "}));" +
+                    "}" +
+                    "return originalFetch.call(this, input, init);" +
+                "};" +
+                "history.pushState({}, '', '/');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
+    }
+
     /*
     private void openDashboardForConnectivitySmoke() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
@@ -2701,6 +2724,10 @@ abstract class SafeNetUiInstrumentationTestBase {
             Thread.sleep(250);
         }
         throw new AssertionError("Timed out waiting for WebView condition: " + expression);
+    }
+
+    private String jsQuote(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /*
