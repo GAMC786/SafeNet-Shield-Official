@@ -56,3 +56,17 @@ mtime_ms = 1788839746679
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/096e9d79-6a87-4896-84db-5a424e406ffd/e5cc3bb5-155b-4ff1-973d-6c2ff3a9d5a8"
 storage_version_token = "1788839755656525"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "EfNaXzZxK9yjwyD_pxpvS"
+uri = "file://.agents/outputs/task-420-android-validation.txt"
+type = "text"
+title = "Task 420 Android validation evidence"
+description = "Bounded evidence showing the local SDK/device blocker and the latest hosted smoke install failure; required PASS markers were not recorded."
+logical_id = "c218b8f0-8299-4a6a-8b02-986a4c4f97fa"
+content_hash = "sha256:a983f4a1d6c6802465169a2bcb3674fa3da4e688a7057a9435a313aac6f222e4"
+size = 2454
+mtime_ms = 1789669234153
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/c218b8f0-8299-4a6a-8b02-986a4c4f97fa/f484fc33-5766-46e5-8114-2b63f6da8c01"
+storage_version_token = "1789669258672762"
+content_type = "text/plain"
