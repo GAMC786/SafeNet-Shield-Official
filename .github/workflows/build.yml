@@ -653,6 +653,12 @@ jobs:
       android_sdk_setup_category: ${{ steps.android-sdk-setup-report.outputs.category }}
       android_native_compile_outcome: ${{ steps.android-native-compile.outcome }}
       android_native_instrumentation_compile_outcome: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+      android_native_release_instrumentation_compile_outcome: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+      android_native_signed_instrumentation_compile_outcome: ${{ steps.android-native-signed-release-instrumentation-compile.outcome }}
+      android_native_build_evidence_artifact_url: ${{ steps.upload-android-native-build-evidence.outputs.artifact-url }}
+      android_native_debug_failure_category: ${{ steps.android-native-compile-summary.outputs.debug_failure_category }}
+      android_native_release_instrumentation_failure_category: ${{ steps.android-native-compile-summary.outputs.release_instrumentation_failure_category }}
+      android_native_signed_instrumentation_failure_category: ${{ steps.android-native-compile-summary.outputs.signed_instrumentation_failure_category }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -907,6 +913,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Build release instrumentation APK
+        id: android-native-signed-release-instrumentation-compile
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         # The application release was already built and signed above. The
         # instrumentation APK uses the test signing configuration, so the
@@ -921,11 +928,75 @@ jobs:
 
       - name: Upload Android native build evidence
         if: always()
+        id: upload-android-native-build-evidence
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-DNS-Android-native-build-evidence
           path: android/app/build/reports/android-native-build
           if-no-files-found: warn
+
+      - name: Publish Android native compile summary
+        id: android-native-compile-summary
+        if: always()
+        shell: bash
+        env:
+          DEBUG_COMPILE_OUTCOME: ${{ steps.android-native-compile.outcome }}
+          RELEASE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+          SIGNED_INSTRUMENTATION_COMPILE_OUTCOME: ${{ steps.android-native-signed-release-instrumentation-compile.outcome }}
+          NATIVE_EVIDENCE_URL: ${{ steps.upload-android-native-build-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+
+          output_root="android/app/build/reports/android-native-build"
+          evidence_url="${NATIVE_EVIDENCE_URL:-unavailable}"
+
+          read_result_value() {
+            local result_file="$1"
+            local key="$2"
+            if [[ -s "$result_file" ]]; then
+              awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$result_file"
+            fi
+          }
+
+          category_for() {
+            local outcome="$1"
+            local result_file="$2"
+            local category=""
+            if [[ "$outcome" == "skipped" ]]; then
+              printf 'NOT_RUN'
+              return
+            fi
+            category="$(read_result_value "$result_file" failure_category)"
+            if [[ -n "$category" ]]; then
+              printf '%s' "$category"
+            elif [[ "$outcome" == "failure" ]]; then
+              printf 'ANDROID_NATIVE_BUILD_FAILURE'
+            else
+              printf 'UNCLASSIFIED'
+            fi
+          }
+
+          debug_category="$(category_for "${DEBUG_COMPILE_OUTCOME:-unavailable}" "$output_root/debug/result.txt")"
+          release_instrumentation_category="$(category_for "${RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}" "$output_root/release-instrumentation-preflight/result.txt")"
+          signed_instrumentation_category="$(category_for "${SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}" "$output_root/release-instrumentation-signed/result.txt")"
+
+          {
+            printf 'debug_failure_category=%s\n' "$debug_category"
+            printf 'release_instrumentation_failure_category=%s\n' "$release_instrumentation_category"
+            printf 'signed_instrumentation_failure_category=%s\n' "$signed_instrumentation_category"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Android native compile"
+            echo
+            echo "| Build mode | Step outcome | Failure category |"
+            echo "| --- | --- | --- |"
+            echo "| Debug | \`${DEBUG_COMPILE_OUTCOME:-unavailable}\` | \`$debug_category\` |"
+            echo "| Release instrumentation preflight | \`${RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}\` | \`$release_instrumentation_category\` |"
+            echo "| Signed release instrumentation | \`${SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}\` | \`$signed_instrumentation_category\` |"
+            echo
+            echo "- **Bounded native build evidence:** [Download the preserved evidence artifact]($evidence_url)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify release instrumentation APK
         id: verify-release-instrumentation-apk
@@ -2833,6 +2904,12 @@ jobs:
           INSTRUMENTATION_ARTIFACT_URL: ${{ needs.build-android.outputs.android_instrumentation_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           NATIVE_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_compile_outcome || 'not-run' }}
           NATIVE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_RELEASE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_release_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_SIGNED_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_signed_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_EVIDENCE_URL: ${{ needs.build-android.outputs.android_native_build_evidence_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          NATIVE_DEBUG_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_debug_failure_category || 'UNAVAILABLE' }}
+          NATIVE_RELEASE_INSTRUMENTATION_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_release_instrumentation_failure_category || 'UNAVAILABLE' }}
+          NATIVE_SIGNED_INSTRUMENTATION_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_signed_instrumentation_failure_category || 'UNAVAILABLE' }}
           INTERNET_SHARE_VERIFICATION_STATUS: ${{ steps.resolve-physical-internet-share-evidence.outputs.status || 'BLOCKED' }}
           INTERNET_SHARE_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-internet-share-evidence.outputs.blocker || 'INTERNET_SHARE_RUN_MISSING' }}
           INTERNET_SHARE_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-internet-share-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
@@ -2844,6 +2921,12 @@ jobs:
           instrumentation_outcome="${INSTRUMENTATION_VERIFICATION_OUTCOME:-unavailable}"
           native_compile_outcome="${NATIVE_COMPILE_OUTCOME:-unavailable}"
           native_instrumentation_compile_outcome="${NATIVE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_release_instrumentation_compile_outcome="${NATIVE_RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_signed_instrumentation_compile_outcome="${NATIVE_SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_evidence_url="${NATIVE_EVIDENCE_URL:-unavailable}"
+          native_debug_failure_category="${NATIVE_DEBUG_FAILURE_CATEGORY:-UNAVAILABLE}"
+          native_release_instrumentation_failure_category="${NATIVE_RELEASE_INSTRUMENTATION_FAILURE_CATEGORY:-UNAVAILABLE}"
+          native_signed_instrumentation_failure_category="${NATIVE_SIGNED_INSTRUMENTATION_FAILURE_CATEGORY:-UNAVAILABLE}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           instrumentation_url="${INSTRUMENTATION_ARTIFACT_URL:-unavailable}"
           internet_share_status="${INTERNET_SHARE_VERIFICATION_STATUS:-BLOCKED}"
@@ -2858,6 +2941,10 @@ jobs:
             echo "- **Expected application package:** \`com.safenet.dns\`"
             echo "- **Native Android compile:** \`$native_compile_outcome\`"
             echo "- **Native release instrumentation compile:** \`$native_instrumentation_compile_outcome\`"
+            echo "- **Native release instrumentation preflight:** \`$native_release_instrumentation_compile_outcome\`"
+            echo "- **Native signed instrumentation compile:** \`$native_signed_instrumentation_compile_outcome\`"
+            echo "- **Native compile evidence:** [Download the preserved evidence artifact]($native_evidence_url)"
+            echo "- **Native compile failure categories:** debug \`$native_debug_failure_category\`; release instrumentation preflight \`$native_release_instrumentation_failure_category\`; signed instrumentation \`$native_signed_instrumentation_failure_category\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
             echo "- **Physical Internet Share verification:** \`$internet_share_status\` (blocker: \`$internet_share_blocker\`; [matching physical evidence run]($internet_share_run_url))"
