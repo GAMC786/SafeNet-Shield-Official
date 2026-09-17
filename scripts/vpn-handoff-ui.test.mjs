@@ -21,3 +21,10 @@ test("WireGuard is the only dashboard VPN control", () => {
   assert.match(dashboardSource, /WireGuard is the only VPN path exposed by SafeNet/);
   assert.doesNotMatch(dashboardSource, /dashboard-vpn-card/);
 });
+
+test("WireGuard requires the shared EULA before connecting", () => {
+  assert.match(dashboardSource, /EulaDialog/);
+  assert.match(dashboardSource, /View WireGuard EULA/);
+  assert.match(dashboardSource, /!vpn\.status\?\.eulaAccepted/);
+  assert.match(dashboardSource, /await vpn\.acceptEula\(\)/);
+});
