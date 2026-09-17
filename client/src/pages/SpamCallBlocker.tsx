@@ -135,10 +135,17 @@ export default function SpamCallBlocker() {
       }
       toast({
         title: result.accepted ? "Spam report submitted" : "Spam report not submitted",
-        description: result.reason,
+        description: result.accepted
+          ? `${result.reason} This number was also added to your device-local blocklist.`
+          : result.reason,
         variant: result.accepted ? "default" : "destructive",
       });
-      if (result.accepted) clearReportNumber();
+      if (result.accepted) {
+        setBlockedNumbers((current) => current.includes(normalized)
+          ? current
+          : [...current, normalized]);
+        clearReportNumber();
+      }
     } catch (error) {
       toast({
         title: "Spam report not submitted",
@@ -148,7 +155,7 @@ export default function SpamCallBlocker() {
     } finally {
       setIsReporting(false);
     }
-  }, [clearReportNumber, reportNumber, toast]);
+  }, [clearReportNumber, reportNumber, setBlockedNumbers, toast]);
 
   const isAndroid = Capacitor.getPlatform() === "android";
   const enabled = native.status?.enabled === true;
