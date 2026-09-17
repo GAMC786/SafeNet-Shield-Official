@@ -124,9 +124,9 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 text-left">
             <LockKeyhole className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm font-medium text-foreground">App Lock</p>
+              <p className="text-sm font-medium text-foreground">AndroidX Secure App Lock</p>
               <p className="text-xs text-muted-foreground">
-                Require biometrics or your device credential for SafeNet
+                Protect SafeNet with Android's secure biometric or device-credential prompt
               </p>
             </div>
           </div>
@@ -136,13 +136,16 @@ export default function Dashboard() {
               void appLock.setEnabled(enabled).catch(() => undefined);
             }}
             disabled={!appLock.supported || !appLock.status.available || appLock.isBusy}
-            aria-label={`App Lock ${appLock.status.enabled ? "On" : "Off"}`}
+            aria-label={`AndroidX Secure App Lock ${appLock.status.enabled ? "On" : "Off"}`}
             data-testid="switch-app-lock"
           />
         </div>
         <div className="flex w-full items-center justify-between gap-3 text-left">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{appLock.status.message}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground/80">
+              SafeNet only — Android handles credentials; SafeNet never stores them or locks your phone.
+            </p>
             {!appLock.supported && (
               <p className="mt-1 text-[11px] uppercase tracking-wider text-primary/80">
                 Android app only
@@ -158,7 +161,7 @@ export default function Dashboard() {
               data-testid="button-lock-app-now"
             >
               <LockKeyhole className="mr-2 h-4 w-4" />
-              Lock now
+              Enter credentials
             </Button>
           )}
         </div>

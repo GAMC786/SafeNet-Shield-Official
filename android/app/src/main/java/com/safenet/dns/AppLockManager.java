@@ -78,12 +78,12 @@ public final class AppLockManager {
 
     public static String availabilityMessage(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return "App Lock requires Android 6.0 or newer.";
+            return "AndroidX Secure App Lock requires Android 6.0 or newer.";
         }
         if (isAuthenticationAvailable(context)) {
             return "Biometric or device-credential protection is ready.";
         }
-        return "Set a device PIN, pattern, password, or biometric before enabling App Lock.";
+        return "Set a device PIN, pattern, password, or biometric before enabling AndroidX Secure App Lock.";
     }
 
     public static JSObject status(Context context) {
@@ -99,10 +99,10 @@ public final class AppLockManager {
         result.put("message", supported
                 ? (enabled
                     ? (available
-                        ? "SafeNet App Lock is active. Authentication is required when the app returns."
-                        : "App Lock is enabled, but no device credential is currently available.")
+                        ? "AndroidX Secure App Lock is active. Authentication is required when SafeNet returns."
+                        : "AndroidX Secure App Lock is enabled, but no device credential is currently available.")
                     : availabilityMessage(context))
-                : "Native App Lock is available in the SafeNet Android app.");
+                : "AndroidX Secure App Lock is available in the SafeNet Android app.");
         return result;
     }
 
@@ -112,7 +112,12 @@ public final class AppLockManager {
             AuthenticationCallback callback
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            callback.onFailure("App Lock requires Android 6.0 or newer.");
+            callback.onFailure("AndroidX Secure App Lock requires Android 6.0 or newer.");
+            return;
+        }
+
+        if (promptActive) {
+            callback.onFailure("An Android authentication prompt is already open.");
             return;
         }
 
@@ -153,7 +158,7 @@ public final class AppLockManager {
         BiometricPrompt.PromptInfo.Builder promptBuilder =
                 new BiometricPrompt.PromptInfo.Builder()
                         .setTitle(title)
-                        .setSubtitle("Unlock SafeNet Shield");
+                        .setSubtitle("SafeNet only • AndroidX Secure App Lock");
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             promptBuilder.setAllowedAuthenticators(

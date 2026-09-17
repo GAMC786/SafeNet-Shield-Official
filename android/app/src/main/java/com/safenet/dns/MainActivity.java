@@ -13,6 +13,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
+import android.content.Intent;
+import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -153,6 +155,7 @@ public class MainActivity extends BridgeActivity {
         appLockView.setVisibility(View.GONE);
         appLockView.setElevation(200f);
         appLockView.setOnUnlockClickListener(view -> requestAppUnlock());
+        appLockView.setOnSecuritySettingsClickListener(view -> openAndroidSecuritySettings());
         container.addView(
                 appLockView,
                 new ViewGroup.LayoutParams(
@@ -164,7 +167,10 @@ public class MainActivity extends BridgeActivity {
         if (AppLockManager.isEnabled(this)) {
             appLockWebView.setVisibility(View.INVISIBLE);
             appLockView.setVisibility(View.VISIBLE);
-            appLockView.setMessage("Authenticate to access your DNS and security controls.");
+            appLockView.setMessage(
+                    "SafeNet only. Enter a biometric or device credential through AndroidX. " +
+                    "This does not lock your phone or other apps."
+            );
         }
     }
 
@@ -177,13 +183,24 @@ public class MainActivity extends BridgeActivity {
             appLockView.setVisibility(View.GONE);
             return;
         }
+        if (AppLockManager.isPromptActive()) {
+            appLockView.setMessage("The Android credential prompt is already open.");
+            return;
+        }
 
         appLockWebView.setVisibility(View.INVISIBLE);
         appLockView.setVisibility(View.VISIBLE);
-        appLockView.setMessage("Waiting for biometric or device-credential authentication…");
+        if (!AppLockManager.isAuthenticationAvailable(this)) {
+            appLockView.setMessage(
+                    "No Android credential is available. Tap Open Android security settings " +
+                    "to set a PIN, pattern, password, or biometric."
+            );
+            return;
+        }
+        appLockView.setMessage("Tap Enter credentials to continue with AndroidX Secure App Lock.");
         AppLockManager.authenticate(
                 this,
-                "Unlock SafeNet Shield",
+                "Enter credentials for SafeNet",
                 new AppLockManager.AuthenticationCallback() {
                     @Override
                     public void onSuccess() {
@@ -196,10 +213,25 @@ public class MainActivity extends BridgeActivity {
 
                     @Override
                     public void onFailure(String message) {
-                        appLockView.setMessage(message + " Tap Unlock SafeNet to try again.");
+                        appLockView.setMessage(
+                                message + " Tap Enter credentials to try again."
+                        );
                     }
                 }
         );
+    }
+
+    private void openAndroidSecuritySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
+        } catch (RuntimeException error) {
+            if (appLockView != null) {
+                appLockView.setMessage(
+                        "Android security settings could not be opened. " +
+                        "Use your phone's Settings app to set a device credential."
+                );
+            }
+        }
     }
 
     public void lockAppNow() {

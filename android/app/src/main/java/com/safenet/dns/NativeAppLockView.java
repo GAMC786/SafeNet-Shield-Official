@@ -16,6 +16,8 @@ import android.widget.TextView;
  */
 public final class NativeAppLockView extends FrameLayout {
     private final TextView messageView;
+    private final Button unlockButton;
+    private final Button settingsButton;
 
     public NativeAppLockView(Context context) {
         super(context);
@@ -40,7 +42,7 @@ public final class NativeAppLockView extends FrameLayout {
         ));
 
         TextView title = new TextView(context);
-        title.setText("SafeNet Shield Locked");
+        title.setText("AndroidX Secure App Lock");
         title.setTextColor(Color.WHITE);
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -53,7 +55,10 @@ public final class NativeAppLockView extends FrameLayout {
         content.addView(title, titleParams);
 
         messageView = new TextView(context);
-        messageView.setText("Authenticate to access your DNS and security controls.");
+        messageView.setText(
+                "SafeNet only. Android handles your biometric or device credential; " +
+                "SafeNet never sees or stores it."
+        );
         messageView.setTextColor(Color.rgb(156, 163, 175));
         messageView.setTextSize(14);
         messageView.setGravity(Gravity.CENTER);
@@ -64,8 +69,9 @@ public final class NativeAppLockView extends FrameLayout {
         messageParams.topMargin = dp(10);
         content.addView(messageView, messageParams);
 
-        Button unlockButton = new Button(context);
-        unlockButton.setText("Unlock SafeNet");
+        unlockButton = new Button(context);
+        unlockButton.setText("Enter credentials");
+        unlockButton.setContentDescription("Enter credentials to open SafeNet");
         unlockButton.setTextColor(Color.WHITE);
         unlockButton.setTextSize(14);
         GradientDrawable buttonBackground = new GradientDrawable();
@@ -79,12 +85,24 @@ public final class NativeAppLockView extends FrameLayout {
         buttonParams.topMargin = dp(24);
         content.addView(unlockButton, buttonParams);
 
+        settingsButton = new Button(context);
+        settingsButton.setText("Open Android security settings");
+        settingsButton.setContentDescription("Open Android security settings to set a device credential");
+        settingsButton.setTextColor(Color.rgb(125, 211, 252));
+        settingsButton.setTextSize(13);
+        settingsButton.setBackgroundColor(Color.TRANSPARENT);
+        LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(44)
+        );
+        settingsParams.topMargin = dp(4);
+        content.addView(settingsButton, settingsParams);
+
         addView(content, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
         ));
-        setTag(unlockButton);
     }
 
     public void setMessage(String message) {
@@ -92,8 +110,11 @@ public final class NativeAppLockView extends FrameLayout {
     }
 
     public void setOnUnlockClickListener(OnClickListener listener) {
-        View unlockButton = (View) getTag();
         unlockButton.setOnClickListener(listener);
+    }
+
+    public void setOnSecuritySettingsClickListener(OnClickListener listener) {
+        settingsButton.setOnClickListener(listener);
     }
 
     private int dp(int value) {

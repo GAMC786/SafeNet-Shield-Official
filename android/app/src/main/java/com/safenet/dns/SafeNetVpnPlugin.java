@@ -70,8 +70,8 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
         authenticateForAppLock(call, enabled, enabled
-            ? "Enable SafeNet App Lock"
-            : "Disable SafeNet App Lock");
+            ? "Enable AndroidX Secure App Lock"
+            : "Disable AndroidX Secure App Lock");
     }
 
     @PluginMethod
@@ -80,7 +80,7 @@ public class SafeNetVpnPlugin extends Plugin {
             call.resolve(AppLockManager.status(getContext()));
             return;
         }
-        authenticateForAppLock(call, true, "Unlock SafeNet Shield");
+        authenticateForAppLock(call, true, "Enter credentials for SafeNet");
     }
 
     @PluginMethod

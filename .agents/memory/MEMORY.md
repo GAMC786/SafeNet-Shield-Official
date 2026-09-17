@@ -73,3 +73,4 @@
 - [Android Internet Share failure boundary](android-internet-share-failure-boundary.md) — native Wi-Fi Direct and foreground-service failures must become visible errors instead of crashing the APK.
 - [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.
 - [Android VPN removal boundary](android-vpn-removal-boundary.md) — retire native, UI, smoke, release-evidence, and contract-test surfaces together; compatibility names may remain only for non-VPN features.
+- [AndroidX secure app lock boundary](androidx-secure-app-lock.md) — protect SafeNet only through AndroidX prompts; never capture credentials or use system-wide overlays, and keep Android Settings recovery available.
