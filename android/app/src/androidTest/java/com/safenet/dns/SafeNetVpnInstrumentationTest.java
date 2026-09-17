@@ -7,20 +7,26 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.RouteInfo;
 import android.net.VpnService;
+import android.net.wifi.p2p.WifiP2pGroup;
+import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import androidx.core.content.ContextCompat;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
@@ -63,6 +69,7 @@ public class SafeNetVpnInstrumentationTest {
     private static final int DNS_PORT = 53;
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long VPN_START_TIMEOUT_SECONDS = 15;
+    private static final long TETHER_START_TIMEOUT_SECONDS = 25;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -295,6 +302,82 @@ public class SafeNetVpnInstrumentationTest {
                 "gateway_identity=SafeNet tunnel=RUNNING android_vpn=PASS " +
                 "default_route=PASS handshake=PASS gateway_dns=PASS ordinary_https=PASS"
         );
+    }
+
+    @Test
+    public void internetShareStartsAndStopsCleanly() throws Exception {
+        JSONObject started = callTether(
+            "window.Capacitor.Plugins.SafeNetVpn.startTetherShare()",
+            true
+        );
+        assertTrue(
+            "Internet Share start call failed code=" + started.optString("code") +
+                " message=" + started.optString("message"),
+            started.optBoolean("ok", false)
+        );
+        assertTrue(
+            "Nearby Wi-Fi permission was not granted",
+            hasTetherPermission()
+        );
+
+        JSONObject settled = waitForTetherStart();
+        JSONObject status = requireValue(settled);
+        boolean hasNetworkDetails =
+            status.optBoolean("running", false) &&
+            !status.optString("networkName", "").trim().isEmpty() &&
+            !status.optString("passphrase", "").trim().isEmpty();
+        String lastError = status.optString("lastError", "").trim();
+        boolean hasReadableFailure = !lastError.isEmpty();
+        assertTrue(
+            "Internet Share returned neither network details nor a readable failure state",
+            hasNetworkDetails || hasReadableFailure
+        );
+        android.util.Log.i(
+            "InternetShareSmoke",
+            "INTERNET_SHARE_START result=PASS mode=" +
+                (hasNetworkDetails ? "NETWORK_DETAILS" : "READABLE_FAILURE") +
+                " permission=PASS"
+        );
+
+        boolean notificationBeforeStop = hasInternetShareNotification();
+        android.util.Log.i(
+            "InternetShareSmoke",
+            "INTERNET_SHARE_NOTIFICATION before_stop=" +
+                (notificationBeforeStop ? "PASS" : "NOT_RECORDED")
+        );
+
+        try {
+            JSONObject stopped = callTether(
+                "window.Capacitor.Plugins.SafeNetVpn.stopTetherShare()"
+            );
+            assertTrue(
+                "Internet Share stop call failed code=" + stopped.optString("code") +
+                    " message=" + stopped.optString("message"),
+                stopped.optBoolean("ok", false)
+            );
+            waitForTetherStopped();
+            waitForWifiDirectGroupCleared();
+            assertFalse(
+                "The app activity crashed or finished during Internet Share cleanup",
+                activity.isFinishing()
+            );
+            boolean notificationRemoved = !hasInternetShareNotification();
+            assertTrue(
+                "Internet Share foreground notification was not removed",
+                notificationRemoved
+            );
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_STOP result=PASS notification=REMOVED group=NULL"
+            );
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_SMOKE result=PASS start=PASS stop=PASS " +
+                    "notification=REMOVED group=NULL"
+            );
+        } finally {
+            context.stopService(new Intent(context, TetherShareService.class));
+        }
     }
 
     @Test
@@ -795,6 +878,23 @@ public class SafeNetVpnInstrumentationTest {
     }
 
     private JSONObject callVpn(String expression, boolean handlePermission) throws Exception {
+        return callBridge(expression, "SafeNetTestBridge", handlePermission, false);
+    }
+
+    private JSONObject callTether(String expression) throws Exception {
+        return callTether(expression, false);
+    }
+
+    private JSONObject callTether(String expression, boolean handlePermission) throws Exception {
+        return callBridge(expression, "SafeNetTetherTestBridge", false, handlePermission);
+    }
+
+    private JSONObject callBridge(
+        String expression,
+        String bridgeName,
+        boolean handleVpnPermission,
+        boolean handleTetherPermission
+    ) throws Exception {
         CountDownLatch completed = new CountDownLatch(1);
         String[] rawResult = new String[1];
         TestResultBridge resultBridge = new TestResultBridge(rawResult, completed);
@@ -804,19 +904,22 @@ public class SafeNetVpnInstrumentationTest {
                 "catch (error) { return JSON.stringify({ok:false,message:String(error.message||error)," +
                     "code:error.code||''}); }" +
             "})()" +
-            ".then(function(value) { window.SafeNetTestBridge.resolve(value); })" +
-            ".catch(function(error) { window.SafeNetTestBridge.resolve(" +
+            ".then(function(value) { window." + bridgeName + ".resolve(value); })" +
+            ".catch(function(error) { window." + bridgeName + ".resolve(" +
                 "JSON.stringify({ok:false,message:String(error.message||error),code:error.code||''})); })";
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
             WebView webView = ((MainActivity) activity).getBridge().getWebView();
-            webView.addJavascriptInterface(resultBridge, "SafeNetTestBridge");
+            webView.addJavascriptInterface(resultBridge, bridgeName);
             webView.evaluateJavascript(script, null);
         });
 
         try {
-            if (handlePermission && VpnService.prepare(context) != null) {
+            if (handleVpnPermission && VpnService.prepare(context) != null) {
                 grantVpnPermissionDialog();
+            }
+            if (handleTetherPermission && !hasTetherPermission()) {
+                grantTetherPermissionDialog();
             }
             if (!completed.await(JS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 throw new AssertionError("Timed out waiting for SafeNetVpn bridge call: " + expression);
@@ -827,10 +930,120 @@ public class SafeNetVpnInstrumentationTest {
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
                 ((MainActivity) activity).getBridge().getWebView()
-                    .removeJavascriptInterface("SafeNetTestBridge")
+                    .removeJavascriptInterface(bridgeName)
             );
         }
         return new JSONObject(rawResult[0]);
+    }
+
+    private JSONObject waitForTetherStart() throws Exception {
+        long deadline = System.nanoTime() +
+            TimeUnit.SECONDS.toNanos(TETHER_START_TIMEOUT_SECONDS);
+        JSONObject latest = null;
+        while (System.nanoTime() < deadline) {
+            latest = callTether("window.Capacitor.Plugins.SafeNetVpn.getTetherStatus()");
+            if (latest.optBoolean("ok", false)) {
+                JSONObject value = latest.optJSONObject("value");
+                if (value != null &&
+                    (value.optBoolean("running", false) ||
+                        !value.optString("lastError", "").trim().isEmpty())) {
+                    return latest;
+                }
+            }
+            Thread.sleep(400);
+        }
+        throw new AssertionError(
+            "Internet Share did not reach running or readable failure state: " + latest
+        );
+    }
+
+    private void waitForTetherStopped() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callTether(
+                "window.Capacitor.Plugins.SafeNetVpn.getTetherStatus()"
+            );
+            JSONObject value = result.optJSONObject("value");
+            if (result.optBoolean("ok", false) && value != null &&
+                !value.optBoolean("running", true) &&
+                !value.optBoolean("starting", true)) {
+                return;
+            }
+            Thread.sleep(300);
+        }
+        throw new AssertionError("Internet Share did not stop cleanly");
+    }
+
+    private boolean hasTetherPermission() {
+        String permission = android.os.Build.VERSION.SDK_INT >= 33
+            ? android.Manifest.permission.NEARBY_WIFI_DEVICES
+            : android.Manifest.permission.ACCESS_FINE_LOCATION;
+        return ContextCompat.checkSelfPermission(context, permission) ==
+            PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void grantTetherPermissionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(while using the app|only this time|allow)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                allow.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Nearby Wi-Fi permission dialog did not appear");
+    }
+
+    private boolean hasInternetShareNotification() {
+        NotificationManager notificationManager =
+            (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager == null) return false;
+        for (android.service.notification.StatusBarNotification notification :
+            notificationManager.getActiveNotifications()) {
+            if (context.getPackageName().equals(notification.getPackageName()) &&
+                notification.getId() == 6101) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void waitForWifiDirectGroupCleared() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            if (queryWifiDirectGroup() == null) return;
+            Thread.sleep(400);
+        }
+        throw new AssertionError("Wi-Fi Direct group remained after Internet Share stopped");
+    }
+
+    private WifiP2pGroup queryWifiDirectGroup() throws Exception {
+        WifiP2pManager manager =
+            (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
+        assertNotNull("Wi-Fi Direct manager is unavailable", manager);
+        WifiP2pManager.Channel channel =
+            manager.initialize(context, context.getMainLooper(), null);
+        assertNotNull("Wi-Fi Direct channel could not be initialized", channel);
+        CountDownLatch completed = new CountDownLatch(1);
+        WifiP2pGroup[] result = new WifiP2pGroup[1];
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            try {
+                manager.requestGroupInfo(channel, group -> {
+                    result[0] = group;
+                    completed.countDown();
+                });
+            } catch (SecurityException error) {
+                completed.countDown();
+            }
+        });
+        assertTrue(
+            "Timed out reading Wi-Fi Direct group state",
+            completed.await(5, TimeUnit.SECONDS)
+        );
+        return result[0];
     }
 
     private JSONObject requireValue(JSONObject result) throws Exception {

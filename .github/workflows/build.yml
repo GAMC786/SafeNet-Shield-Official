@@ -59,6 +59,11 @@ on:
         required: true
         default: false
         type: boolean
+      android_internet_share_physical_validation:
+        description: "Run the signed Internet Share Wi-Fi Direct lifecycle check on physical Android devices"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -2377,6 +2382,112 @@ jobs:
         with:
           name: SafeNet-DNS-Android-connectivity-physical-evidence-${{ matrix.profile }}
           path: android/app/build/reports/android-physical-connectivity/${{ matrix.profile }}
+          if-no-files-found: warn
+
+  android-internet-share-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_internet_share_physical_validation == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each label identifies a dedicated runner with the named phone
+          # attached. Separate jobs keep Wi-Fi Direct state isolated per OEM.
+          - profile: pixel-android-14
+            runner_label: android-physical-device-pixel
+          - profile: samsung-android-13
+            runner_label: android-physical-device-samsung
+          - profile: motorola-android-12
+            runner_label: android-physical-device-motorola
+    runs-on: [self-hosted, linux, x64, "${{ matrix.runner_label }}"]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      ANDROID_INTERNET_SHARE_DEVICE_PROFILE: ${{ matrix.profile }}
+      ANDROID_INTERNET_SHARE_OUTPUT_DIR: android/app/build/reports/android-internet-share/${{ matrix.profile }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run physical-device Internet Share lifecycle check
+        id: internet-share-smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/android-internet-share-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --profile "$ANDROID_INTERNET_SHARE_DEVICE_PROFILE" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_INTERNET_SHARE_OUTPUT_DIR"
+
+      - name: Publish Internet Share physical-device summary
+        if: always()
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ matrix.profile }}
+          SMOKE_STEP_OUTCOME: ${{ steps.internet-share-smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-internet-share/$DEVICE_PROFILE"
+          result_file="$evidence_dir/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          profile_status="$(awk -F= '$1 == "profile_status" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          profile_status="${profile_status:-NOT_RECORDED}"
+          apk_sha256="$(awk -F= '$1 == "application_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          apk_sha256="${apk_sha256:-NOT_RECORDED}"
+          start_result="$(awk -F= '$1 == "start_result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          start_result="${start_result:-NOT_RECORDED}"
+          start_outcome="$(awk -F= '$1 == "start_outcome" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          start_outcome="${start_outcome:-NOT_RECORDED}"
+          stop_result="$(awk -F= '$1 == "stop_result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          stop_result="${stop_result:-NOT_RECORDED}"
+          notification_cleanup="$(awk -F= '$1 == "notification_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          notification_cleanup="${notification_cleanup:-NOT_RECORDED}"
+          group_cleanup="$(awk -F= '$1 == "wifi_direct_group_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          group_cleanup="${group_cleanup:-NOT_RECORDED}"
+          {
+            echo "## Physical Android Internet Share verification"
+            echo
+            echo "- **Device profile:** \`$DEVICE_PROFILE\` (\`$profile_status\`)"
+            echo "- **Result:** \`$result\`"
+            echo "- **Signed application APK SHA-256:** \`$apk_sha256\`"
+            echo "- **Start result:** \`$start_result\` (\`$start_outcome\`)"
+            echo "- **Stop result:** \`$stop_result\`"
+            echo "- **Foreground notification cleanup:** \`$notification_cleanup\`"
+            echo "- **Wi-Fi Direct group cleanup:** \`$group_cleanup\`"
+            echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence:** download the physical-device artifact from this run"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$result" != "PASS" ]]; then
+            echo "::error::Physical-device Internet Share lifecycle check did not pass ($result)."
+            exit 1
+          fi
+
+      - name: Upload physical-device Internet Share evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-internet-share-physical-evidence-${{ matrix.profile }}
+          path: android/app/build/reports/android-internet-share/${{ matrix.profile }}
           if-no-files-found: warn
 
   release:
