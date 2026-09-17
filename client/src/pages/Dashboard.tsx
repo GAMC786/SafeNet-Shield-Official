@@ -83,6 +83,42 @@ export default function Dashboard() {
         </div>
       </CyberCard>
 
+      {/* Connection Status Bar */}
+      <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <Server className="w-6 h-6 text-primary" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                 <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
+                 <Badge
+                   variant="outline"
+                   className={activeDns
+                     ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
+                     : "border-primary/30 text-xs text-primary"}
+                 >
+                    {activeDns ? "DNS Resolver Active" : "Choose a DNS resolver"}
+                </Badge>
+              </div>
+              <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
+                {activeDns?.name || "No server configured"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <p className="text-xs text-muted-foreground">Protocol</p>
+            <Badge className="uppercase text-xs">
+              {activeDns?.type || "N/A"}
+            </Badge>
+          </div>
+        </div>
+      </CyberCard>
+
       <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
         <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
           <div className="flex items-center gap-2 text-left">
@@ -125,42 +161,6 @@ export default function Dashboard() {
               Lock now
             </Button>
           )}
-        </div>
-      </CyberCard>
-
-      {/* Connection Status Bar */}
-      <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-                <Server className="w-6 h-6 text-primary" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                 <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
-                 <Badge
-                   variant="outline"
-                   className={activeDns
-                     ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
-                     : "border-primary/30 text-xs text-primary"}
-                 >
-                    {activeDns ? "DNS Resolver Active" : "Choose a DNS resolver"}
-                </Badge>
-              </div>
-              <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
-                {activeDns?.name || "No server configured"}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <p className="text-xs text-muted-foreground">Protocol</p>
-            <Badge className="uppercase text-xs">
-              {activeDns?.type || "N/A"}
-            </Badge>
-          </div>
         </div>
       </CyberCard>
 
