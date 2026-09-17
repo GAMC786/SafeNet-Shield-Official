@@ -1882,7 +1882,7 @@ jobs:
           if [[ "$build_android_result" == "success" && -f "$category_file" ]]; then
             candidate="$(head -n 1 "$category_file" | tr -d '\r')"
             case "$candidate" in
-              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
+              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE|ANDROID_INSTALL_FAILURE)
                 category="$candidate"
                 ;;
               *)

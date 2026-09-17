@@ -15,8 +15,13 @@ readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-prefli
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 readonly COMPACT_STARTUP_WM_SIZE="480x640"
 readonly REQUIRED_RESOLVER_RECOVERY_CYCLES=2
+readonly MAX_INSTALL_DIAGNOSTICS_BYTES=12000
 readonly RESOLVER_PHASE_LABEL_REGEX='[A-Za-z0-9_-]+'
 readonly RESOLVER_FAILURE_RECORD_PATTERN='DOH_DOT_RECOVERY protocol=(doh|dot) phase=([^[:space:]]+) result=FAIL failure_category=([A-Z_]+) elapsed_ms=([0-9]+)$'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=android-install-failure-parser.sh
+source "$script_dir/android-install-failure-parser.sh"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -51,6 +56,11 @@ compact_wm_size_applied=false
 openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
 call_screening_status="NOT_RECORDED"
+instrumentation_apk_attempted=false
+last_install_outcome="NOT_RECORDED"
+last_install_category="NOT_RECORDED"
+last_install_status="NOT_RECORDED"
+last_install_attempts=0
 adb_args=()
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
@@ -248,6 +258,7 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
     "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
     "$output_dir"/media-smoke-result.txt \
+    "$output_dir"/install-failure.txt "$output_dir"/install-device-diagnostics.txt \
     "$output_dir"/connectivity-recovery-logcat.txt "$output_dir"/connectivity-recovery-result.txt \
     "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt \
     "$output_dir"/call-screening-instrumentation.log "$output_dir"/call-screening-logcat.txt \
@@ -558,13 +569,133 @@ fi
 
 install_release_apk() {
     local install_path="$1"
-    for _ in {1..3}; do
-        if timeout 120s adb "${adb_args[@]}" install -r "$install_path"; then
+    local attempt
+    local install_output
+    local install_status
+
+    last_install_outcome="NOT_RECORDED"
+    last_install_category="NOT_RECORDED"
+    last_install_status="NOT_RECORDED"
+    last_install_attempts=0
+    for attempt in {1..3}; do
+        set +e
+        install_output="$(timeout 120s adb "${adb_args[@]}" install -r "$install_path" 2>&1)"
+        install_status=$?
+        set -e
+        last_install_attempts="$attempt"
+        last_install_status="$install_status"
+        last_install_outcome="$(sanitize_android_install_outcome "$install_output")"
+        last_install_category="$(classify_android_install_failure "$install_output" "$install_status")"
+        printf 'adb install attempt %s/3: %s\n' "$attempt" "$last_install_outcome"
+        if [[ "$install_status" -eq 0 ]]; then
             return 0
         fi
-        sleep 5
+        if [[ "$attempt" -lt 3 ]]; then
+            sleep 5
+        fi
     done
     return 1
+}
+
+apk_sha256() {
+    local install_path="$1"
+    sha256sum "$install_path" 2>/dev/null | awk '{print $1}' || printf 'NOT_RECORDED'
+}
+
+record_install_device_diagnostics() {
+    local destination="$output_dir/install-device-diagnostics.txt"
+    local data_storage_raw
+    local package_service_raw
+    local mount_service_raw
+    local adb_state_raw
+    local data_storage
+    local package_service
+    local mount_service
+    local adb_state
+
+    data_storage_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell df -k /data 2>&1 |
+            tr -d '\r' |
+            grep -E '(^Filesystem|/data$|/data[[:space:]])' |
+            tail -n 2 || true
+    )"
+    package_service_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell cmd package path android 2>&1 |
+            tr -d '\r' || true
+    )"
+    mount_service_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell service check mount 2>&1 |
+            tr -d '\r' || true
+    )"
+    adb_state_raw="$(
+        timeout 10s adb "${adb_args[@]}" get-state 2>&1 |
+            tr -d '\r' || true
+    )"
+    data_storage="$(sanitize_android_install_outcome "$data_storage_raw")"
+    package_service="$(sanitize_android_install_outcome "$package_service_raw")"
+    mount_service="$(sanitize_android_install_outcome "$mount_service_raw")"
+    adb_state="$(sanitize_android_install_outcome "$adb_state_raw")"
+
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'target=%s\n' "$serial"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$(read_android_property ro.build.version.sdk)"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'adb_state=%s\n' "${adb_state:-NOT_RECORDED}"
+        printf 'package_service=%s\n' "${package_service:-NOT_RECORDED}"
+        printf 'mount_service=%s\n' "${mount_service:-NOT_RECORDED}"
+        printf 'data_storage=%s\n' "${data_storage:-NOT_RECORDED}"
+    } | head -c "$MAX_INSTALL_DIAGNOSTICS_BYTES" > "$destination"
+}
+
+android_install_failure() {
+    local install_path="$1"
+    local install_target="$2"
+    local instrumentation_attempted="$3"
+    local apk_name
+    local digest
+    local device_api_level
+
+    apk_name="$(basename "$install_path")"
+    digest="$(apk_sha256 "$install_path")"
+    device_api_level="$(read_android_property ro.build.version.sdk)"
+    record_install_device_diagnostics
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'failure_category=ANDROID_INSTALL_FAILURE\n'
+        printf 'failure_stage=%s\n' "$install_target"
+        printf 'target=%s\n' "$serial"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$device_api_level"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'apk_name=%s\n' "$apk_name"
+        printf 'apk_sha256=%s\n' "$digest"
+        printf 'package_manager_category=%s\n' "$last_install_category"
+        printf 'adb_install_outcome=%s\n' "$last_install_outcome"
+        printf 'install_attempts=%s\n' "$last_install_attempts"
+        printf 'adb_exit_status=%s\n' "$last_install_status"
+        printf 'instrumentation_apk_attempted=%s\n' "$instrumentation_attempted"
+    } | tee "$output_dir/install-failure.txt" >&2
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'target=%s\n' "$serial"
+        printf 'apk=%s\n' "$apk_name"
+        printf 'validation_mode=%s\n' "$validation_mode"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$device_api_level"
+        printf 'instrumentation_status=NOT_STARTED\n'
+        printf 'instrumentation_apk_attempted=%s\n' "$instrumentation_attempted"
+        printf 'apk_sha256=%s\n' "$digest"
+        printf 'package_manager_category=%s\n' "$last_install_category"
+        printf 'adb_install_outcome=%s\n' "$last_install_outcome"
+        printf 'failure_category=ANDROID_INSTALL_FAILURE\n'
+        printf 'result=FAIL\n'
+    } | tee "$output_dir/result.txt" >&2
+    printf 'ANDROID_INSTALL_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
+    echo "Android $install_target installation failed after bounded retries. Evidence: $output_dir" >&2
+    exit 1
 }
 
 remount_system() {
@@ -734,7 +865,7 @@ run_startup_check() {
     echo "Launching signed SafeNet APK for direct WebView startup check..."
     timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
     install_release_apk "$apk_path" ||
-        startup_failure "the signed release APK could not be installed"
+        android_install_failure "$apk_path" "release APK" false
     timeout 30s adb "${adb_args[@]}" shell am force-stop "$PACKAGE_NAME" || true
     timeout 30s adb "${adb_args[@]}" logcat -c || true
     launch_output="$(
@@ -779,8 +910,9 @@ run_startup_check() {
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
         printf 'native_loader=REMOVED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
+    instrumentation_apk_attempted=true
     if ! install_release_apk "$test_apk_path"; then
-        media_smoke_failure "the release instrumentation APK could not be installed"
+        android_install_failure "$test_apk_path" "release instrumentation APK" "$instrumentation_apk_attempted"
     fi
     run_media_smoke
     echo "Android startup check passed. Evidence: $output_dir"
@@ -797,12 +929,11 @@ if [[ "$startup_only" == true ]]; then
     exit 0
 fi
 if ! install_release_apk "$apk_path"; then
-    echo "ERROR: Release APK could not be installed after bounded retries." >&2
-    exit 1
+    android_install_failure "$apk_path" "release APK" false
 fi
+instrumentation_apk_attempted=true
 if ! install_release_apk "$test_apk_path"; then
-    echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
-    exit 1
+    android_install_failure "$test_apk_path" "release instrumentation APK" "$instrumentation_apk_attempted"
 fi
 
 prepare_clerk_session || {

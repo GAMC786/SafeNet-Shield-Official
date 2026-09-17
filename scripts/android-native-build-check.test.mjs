@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
@@ -30,6 +31,11 @@ const releaseSmokeSource = await readFile(
   new URL("./android-smoke-test.sh", import.meta.url),
   "utf8",
 );
+const installFailureParserPath = new URL(
+  "./android-install-failure-parser.sh",
+  import.meta.url,
+);
+const installFailureParser = await readFile(installFailureParserPath, "utf8");
 const resolverDdnsInstrumentationSource = await readFile(
   new URL(
     "../android/app/src/androidTest/java/com/safenet/dns/SafeNetDnsDdnsInstrumentationTest.java",
@@ -122,4 +128,37 @@ test("the signed smoke lane proves DNS, DDNS, Internet Share, and no-VPN package
   assert.match(releaseSmokeSource, /VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
+});
+
+test("signed APK install failures preserve sanitized package-manager evidence", () => {
+  const fixture =
+    "adb: failed to install /home/runner/work/safe-net/android/app-release.apk: " +
+    "Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE: token=do-not-publish]";
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "source \"$1\"",
+        "printf 'category=%s\\n' \"$(classify_android_install_failure \"$2\" 1)\"",
+        "printf 'outcome=%s\\n' \"$(sanitize_android_install_outcome \"$2\")\"",
+      ].join("\n"),
+      "android-install-failure-test",
+      installFailureParserPath.pathname,
+      fixture,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^category=INSTALL_FAILED_INSUFFICIENT_STORAGE$/m);
+  assert.match(result.stdout, /Failure \[INSTALL_FAILED_INSUFFICIENT_STORAGE:/);
+  assert.doesNotMatch(result.stdout, /\/home\/runner\/work/);
+  assert.doesNotMatch(result.stdout, /do-not-publish/);
+  assert.doesNotMatch(result.stdout, /logcat/);
+  assert.match(releaseSmokeSource, /failure_category=ANDROID_INSTALL_FAILURE/);
+  assert.match(releaseSmokeSource, /instrumentation_apk_attempted=/);
+  assert.match(releaseSmokeSource, /install-device-diagnostics\.txt/);
+  assert.match(mainWorkflow, /ANDROID_INSTALL_FAILURE/);
+  assert.match(installFailureParser, /4096/);
 });
