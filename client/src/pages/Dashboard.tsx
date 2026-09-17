@@ -63,6 +63,24 @@ export default function Dashboard() {
         status={isProtected ? "active" : "unprotected"}
       />
 
+      <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
+        <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Music className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Soundtrack</p>
+              <p className="text-xs text-muted-foreground">Keep the SafeNet soundtrack enabled</p>
+            </div>
+          </div>
+          <Switch
+            checked={soundtrack.enabled}
+            onCheckedChange={soundtrack.setEnabled}
+            aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
+            data-testid="switch-soundtrack"
+          />
+        </div>
+      </CyberCard>
+
       {/* Connection Status Bar */}
       <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
         <div className="flex items-center justify-between flex-wrap gap-4">
@@ -138,23 +156,6 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-         <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
-           <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
-             <div className="flex items-center gap-2">
-               <Music className="h-4 w-4 text-primary" />
-               <div>
-                 <p className="text-sm font-medium text-foreground">Soundtrack</p>
-                 <p className="text-xs text-muted-foreground">Keep the SafeNet soundtrack enabled</p>
-               </div>
-             </div>
-             <Switch
-               checked={soundtrack.enabled}
-               onCheckedChange={soundtrack.setEnabled}
-               aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
-               data-testid="switch-soundtrack"
-             />
-           </div>
-        </CyberCard>
       </div>
 
       {/* Live Traffic Analysis */}
