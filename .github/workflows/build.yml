@@ -657,6 +657,7 @@ jobs:
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       ANDROID_SDK_SETUP_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-sdk-setup
+      ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/debug
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
@@ -854,6 +855,12 @@ jobs:
         shell: bash
         run: ./scripts/check-android-native-build.sh
 
+      - name: Compile release instrumentation target before signing
+        shell: bash
+        env:
+          ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/release-instrumentation-preflight
+        run: ./scripts/check-android-native-build.sh --release-instrumentation
+
       - name: Build debug APK
         if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
         working-directory: android
@@ -900,16 +907,24 @@ jobs:
 
       - name: Build release instrumentation APK
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        working-directory: android
         # The application release was already built and signed above. The
-        # instrumentation APK uses the test signing configuration, so do not
-        # re-run the application release-signing guard for this task.
-        run: ./gradlew :app:assembleReleaseAndroidTest -x verifyReleaseSigning
+        # instrumentation APK uses the test signing configuration, so the
+        # checker does not re-run the application release-signing guard here.
+        run: ./scripts/check-android-native-build.sh --signed-release-instrumentation
         env:
+          ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/release-instrumentation-signed
           ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload Android native build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-native-build-evidence
+          path: android/app/build/reports/android-native-build
+          if-no-files-found: warn
 
       - name: Verify release instrumentation APK
         id: verify-release-instrumentation-apk

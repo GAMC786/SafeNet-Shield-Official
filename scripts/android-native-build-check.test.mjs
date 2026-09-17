@@ -38,7 +38,7 @@ const resolverDdnsInstrumentationSource = await readFile(
   "utf8",
 );
 
-test("Android native check is executable and forces the debug Java build", async () => {
+test("Android native check is executable and supports bounded debug and release instrumentation builds", async () => {
   const scriptStats = await stat(
     new URL("./check-android-native-build.sh", import.meta.url),
   );
@@ -46,6 +46,9 @@ test("Android native check is executable and forces the debug Java build", async
   assert.match(nativeBuildScript, /ANDROID_SDK_ROOT/);
   assert.match(nativeBuildScript, /local\.properties/);
   assert.match(nativeBuildScript, /assembleDebug --rerun-tasks/);
+  assert.match(nativeBuildScript, /:app:assembleReleaseAndroidTest/);
+  assert.match(nativeBuildScript, /--release-instrumentation/);
+  assert.match(nativeBuildScript, /max_diagnostics_bytes=16000/);
 });
 
 test("release-capable workflows compile native sources before packaging", () => {
@@ -68,6 +71,16 @@ test("release-capable workflows compile native sources before packaging", () => 
     assert.notEqual(packageIndex, -1, `${name} is missing release packaging`);
     assert.ok(setupIndex < compileIndex && compileIndex < packageIndex);
   }
+  const releaseCompileIndex = mainWorkflow.indexOf(
+    "Compile release instrumentation target before signing",
+  );
+  const releasePackageIndex = mainWorkflow.indexOf(
+    "Build release instrumentation APK",
+    releaseCompileIndex,
+  );
+  assert.notEqual(releaseCompileIndex, -1, "main Android workflow is missing release instrumentation preflight");
+  assert.notEqual(releasePackageIndex, -1, "main Android workflow is missing signed instrumentation packaging");
+  assert.ok(releaseCompileIndex < releasePackageIndex);
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
