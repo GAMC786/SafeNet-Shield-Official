@@ -651,6 +651,8 @@ jobs:
       android_apk_artifact_url: ${{ steps.upload-signed-release-apk.outputs.artifact-url }}
       android_instrumentation_artifact_url: ${{ steps.upload-release-instrumentation-apk.outputs.artifact-url }}
       android_sdk_setup_category: ${{ steps.android-sdk-setup-report.outputs.category }}
+      android_native_compile_outcome: ${{ steps.android-native-compile.outcome }}
+      android_native_instrumentation_compile_outcome: ${{ steps.android-native-release-instrumentation-compile.outcome }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -857,10 +859,12 @@ jobs:
           MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
 
       - name: Compile Android native sources before APK packaging
+        id: android-native-compile
         shell: bash
         run: ./scripts/check-android-native-build.sh
 
       - name: Compile release instrumentation target before signing
+        id: android-native-release-instrumentation-compile
         shell: bash
         env:
           ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/release-instrumentation-preflight
@@ -1922,6 +1926,19 @@ jobs:
           recovery_status="${recovery_status:-NOT_RECORDED}"
           resolver_recovery_status="$(awk -F= '$1 == "resolver_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
           resolver_recovery_status="${resolver_recovery_status:-NOT_RECORDED}"
+          install_failure_category="$(awk -F= '$1 == "package_manager_category" { print substr($0, index($0, "=") + 1); exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_failure_category="${install_failure_category:-NOT_RECORDED}"
+          install_outcome="$(awk -F= '$1 == "adb_install_outcome" { print substr($0, index($0, "=") + 1); exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_outcome="${install_outcome:-NOT_RECORDED}"
+          install_attempts="$(awk -F= '$1 == "install_attempts" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_attempts="${install_attempts:-NOT_RECORDED}"
+          install_exit_status="$(awk -F= '$1 == "adb_exit_status" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_exit_status="${install_exit_status:-NOT_RECORDED}"
+          if [[ -s "$evidence_dir/install-device-diagnostics.txt" ]]; then
+            install_device_diagnostics="PRESENT"
+          else
+            install_device_diagnostics="NOT_RECORDED"
+          fi
           doh_recovery_status="$(awk -F= '$1 == "doh_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
           doh_recovery_status="${doh_recovery_status:-NOT_RECORDED}"
           dot_recovery_status="$(awk -F= '$1 == "dot_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
@@ -1962,6 +1979,11 @@ jobs:
             echo "dot_recovery_failure_category=$dot_failure_category"
             echo "dot_recovery_failure_phase=$dot_failure_phase"
             echo "dot_recovery_failure_elapsed_ms=$dot_failure_elapsed_ms"
+            echo "install_failure_category=$install_failure_category"
+            echo "install_outcome=$install_outcome"
+            echo "install_attempts=$install_attempts"
+            echo "install_exit_status=$install_exit_status"
+            echo "install_device_diagnostics=$install_device_diagnostics"
             echo "smoke_step_outcome=$SMOKE_STEP_OUTCOME"
             echo "workflow_run=$RUN_URL"
             echo "release_evidence_url=$release_evidence_url"
@@ -1984,6 +2006,7 @@ jobs:
             echo "- **DoT outage recovery:** \`$dot_recovery_status\`"
             echo "- **DoH failure detail:** \`$doh_failure_category\` in \`$doh_failure_phase\` after \`${doh_failure_elapsed_ms}ms\`"
             echo "- **DoT failure detail:** \`$dot_failure_category\` in \`$dot_failure_phase\` after \`${dot_failure_elapsed_ms}ms\`"
+            echo "- **Android install diagnostics:** category \`$install_failure_category\`; sanitized outcome \`$install_outcome\`; attempts \`$install_attempts\`; exit status \`$install_exit_status\`; device diagnostics \`$install_device_diagnostics\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"
@@ -2808,6 +2831,8 @@ jobs:
           APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           INSTRUMENTATION_VERIFICATION_OUTCOME: ${{ steps.verify-android-release-apks.outcome }}
           INSTRUMENTATION_ARTIFACT_URL: ${{ needs.build-android.outputs.android_instrumentation_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          NATIVE_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_compile_outcome || 'not-run' }}
+          NATIVE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_instrumentation_compile_outcome || 'not-run' }}
           INTERNET_SHARE_VERIFICATION_STATUS: ${{ steps.resolve-physical-internet-share-evidence.outputs.status || 'BLOCKED' }}
           INTERNET_SHARE_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-internet-share-evidence.outputs.blocker || 'INTERNET_SHARE_RUN_MISSING' }}
           INTERNET_SHARE_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-internet-share-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
@@ -2817,6 +2842,8 @@ jobs:
           version_code="${ANDROID_VERSION_CODE:-unresolved}"
           apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
           instrumentation_outcome="${INSTRUMENTATION_VERIFICATION_OUTCOME:-unavailable}"
+          native_compile_outcome="${NATIVE_COMPILE_OUTCOME:-unavailable}"
+          native_instrumentation_compile_outcome="${NATIVE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           instrumentation_url="${INSTRUMENTATION_ARTIFACT_URL:-unavailable}"
           internet_share_status="${INTERNET_SHARE_VERIFICATION_STATUS:-BLOCKED}"
@@ -2829,6 +2856,8 @@ jobs:
             echo "- **Resolved versionName:** \`$version_name\`"
             echo "- **Resolved versionCode:** \`$version_code\`"
             echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Native Android compile:** \`$native_compile_outcome\`"
+            echo "- **Native release instrumentation compile:** \`$native_instrumentation_compile_outcome\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
             echo "- **Physical Internet Share verification:** \`$internet_share_status\` (blocker: \`$internet_share_blocker\`; [matching physical evidence run]($internet_share_run_url))"

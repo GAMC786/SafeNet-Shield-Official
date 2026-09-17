@@ -98,6 +98,7 @@ jobs:
         run: ./scripts/setup-android-sdk.sh
 
       - name: Compile Android native sources before APK packaging
+        id: android-native-compile
         shell: bash
         run: ./scripts/check-android-native-build.sh
 
@@ -180,6 +181,7 @@ jobs:
           ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
           ANDROID_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
           APK_VERIFICATION_OUTCOME: ${{ steps.verify-apk.outcome }}
+          NATIVE_COMPILE_OUTCOME: ${{ steps.android-native-compile.outcome }}
           APK_ARTIFACT_URL: ${{ steps.upload-apk-only.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           CHECKSUM_ARTIFACT_URL: ${{ steps.upload-apk-sha256.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
         run: |
@@ -187,6 +189,7 @@ jobs:
           version_name="${ANDROID_VERSION_NAME:-unresolved}"
           version_code="${ANDROID_VERSION_CODE:-unresolved}"
           apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
+          native_compile_outcome="${NATIVE_COMPILE_OUTCOME:-unavailable}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           checksum_url="${CHECKSUM_ARTIFACT_URL:-unavailable}"
           {
@@ -195,6 +198,7 @@ jobs:
             echo "- **Resolved versionName:** \`$version_name\`"
             echo "- **Resolved versionCode:** \`$version_code\`"
             echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Native Android compile:** \`$native_compile_outcome\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **APK checksum:** [preserved SHA-256 artifact]($checksum_url)"
             echo "- **Instrumentation APK verification:** \`not run in APK-only workflow\`"

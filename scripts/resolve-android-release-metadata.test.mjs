@@ -259,6 +259,18 @@ test("both release workflows consume the shared metadata contract", async () => 
     );
     assert.match(
       summaryBlock,
+      /Native Android compile:\*\*.*\$native_compile_outcome/,
+      `${validator.name} summary must include native Android compile status`,
+    );
+    if (validator.name === "tagged release workflow") {
+      assert.match(
+        summaryBlock,
+        /Native release instrumentation compile:\*\*.*\$native_instrumentation_compile_outcome/,
+        `${validator.name} summary must include release instrumentation compile status`,
+      );
+    }
+    assert.match(
+      summaryBlock,
       /Expected application package:\*\*.*com\.safenet\.dns/,
       `${validator.name} summary must include the expected application package`,
     );

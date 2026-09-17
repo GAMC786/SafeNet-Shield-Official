@@ -161,4 +161,16 @@ test("signed APK install failures preserve sanitized package-manager evidence", 
   assert.match(releaseSmokeSource, /install-device-diagnostics\.txt/);
   assert.match(mainWorkflow, /ANDROID_INSTALL_FAILURE/);
   assert.match(installFailureParser, /4096/);
+  assert.match(mainWorkflow, /install_failure_category=/);
+  assert.match(mainWorkflow, /install-device-diagnostics\.txt/);
+  assert.match(mainWorkflow, /Android install diagnostics:/);
+});
+
+test("release summaries expose native compile outcomes", () => {
+  assert.match(mainWorkflow, /android_native_compile_outcome:/);
+  assert.match(mainWorkflow, /android_native_instrumentation_compile_outcome:/);
+  assert.match(mainWorkflow, /Native Android compile:/);
+  assert.match(mainWorkflow, /Native release instrumentation compile:/);
+  assert.match(apkOnlyWorkflow, /NATIVE_COMPILE_OUTCOME:/);
+  assert.match(apkOnlyWorkflow, /Native Android compile:/);
 });
