@@ -47,6 +47,19 @@ export function WireGuardInfographic({
                   ? "Connect the official Android tunnel when you need a full-device VPN path."
                   : "This release is waiting for a signed SafeNet WireGuard configuration."}
             </p>
+           {!configured && supported && (
+             <div
+               className="mt-3 max-w-xl rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-left text-xs text-amber-100"
+               data-testid="wireguard-configuration-help"
+             >
+               <p className="font-semibold">SafeNet Gateway not configured</p>
+               <p className="mt-1 text-amber-100/80">
+                 This installed APK does not contain the complete protected gateway profile required
+                 to connect. It is a build-configuration issue, not a problem with the DNS resolver
+                 you selected. Install a signed release built with SafeNet&apos;s gateway settings.
+               </p>
+             </div>
+           )}
           </div>
         </div>
         <Switch

@@ -38,45 +38,44 @@ export function EulaDialog({ open, onOpenChange, onAccept, isAccepting = false }
       <DialogContent className="max-h-[88vh] overflow-y-auto bg-card border-border text-foreground sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-display tracking-wider text-xl">
-            SafeNet DNS VPN End User License Agreement
+            SafeNet WireGuard End User License Agreement
           </DialogTitle>
           <DialogDescription>
-            Please read this agreement before enabling DNS protection. Version {SAFE_NET_VPN_EULA_VERSION}.
+            Please read this agreement before connecting the SafeNet WireGuard tunnel. Version {SAFE_NET_VPN_EULA_VERSION}.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 text-sm leading-6 text-muted-foreground">
           <section>
-            <h3 className="font-semibold text-foreground">1. DNS-only protection</h3>
+            <h3 className="font-semibold text-foreground">1. Encrypted tunnel scope</h3>
             <p>
-              SafeNet DNS creates a local Android VPN interface to route DNS requests through the
-              resolver you select in the app. It is not a full-device traffic tunnel, proxy, or
-              anonymity service. Ordinary non-DNS traffic remains on your normal network connection.
+              SafeNet WireGuard creates an Android VPN interface that routes device traffic through
+              the SafeNet gateway. It is an encrypted transport tunnel, not a promise of anonymity,
+              uninterrupted access, or complete threat detection.
             </p>
           </section>
           <section>
-            <h3 className="font-semibold text-foreground">2. Resolver availability</h3>
+            <h3 className="font-semibold text-foreground">2. Gateway and resolver availability</h3>
             <p>
-              Protection depends on the selected DNS resolver and your network connection. If the
-              resolver is unavailable, DNS lookups may fail until you stop protection or choose another
-              resolver. Applications that use their own encrypted DNS, proxy, or VPN can bypass this
-              DNS-only service.
+              The tunnel depends on the SafeNet gateway, the selected DNS resolver, and your network
+              connection. If any of these are unavailable, traffic or DNS lookups may fail until you
+              stop the tunnel or choose another resolver. Applications with their own proxy or VPN
+              may use a different network path.
             </p>
           </section>
           <section>
             <h3 className="font-semibold text-foreground">3. Your responsibility</h3>
             <p>
               You are responsible for choosing resolvers you trust and for complying with applicable
-              laws, network rules, and the terms of any third-party resolver. SafeNet DNS does not
-              guarantee uninterrupted service, complete threat detection, or that every DNS request
-              will be intercepted.
+              laws, network rules, and the terms of any third-party resolver. SafeNet does not
+              guarantee uninterrupted service or that every application will use the tunnel.
             </p>
           </section>
           <section>
             <h3 className="font-semibold text-foreground">4. Consent and changes</h3>
             <p>
               Android may show its own VPN permission prompt. You may stop the service at any time
-              from SafeNet DNS or Android system settings. We may update this agreement for a future
+              from SafeNet or Android system settings. We may update this agreement for a future
               app version; an updated version must be accepted before protection can be enabled again.
             </p>
           </section>
@@ -90,8 +89,8 @@ export function EulaDialog({ open, onOpenChange, onAccept, isAccepting = false }
             disabled={isAccepting}
           />
           <label htmlFor="safenet-vpn-eula-agreement" className="cursor-pointer text-sm leading-5">
-            I have read and agree to this EULA, including the DNS-only scope and limitations described
-            above.
+            I have read and agree to this EULA, including the WireGuard tunnel scope and limitations
+            described above.
           </label>
         </div>
 

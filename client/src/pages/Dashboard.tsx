@@ -5,6 +5,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
+import { EulaDialog } from "@/components/EulaDialog";
+import { Button } from "@/components/ui/button";
 import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
@@ -25,6 +27,8 @@ export default function Dashboard() {
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
   const [vpnActionError, setVpnActionError] = useState<string | null>(null);
+  const [eulaOpen, setEulaOpen] = useState(false);
+  const [startAfterEula, setStartAfterEula] = useState(false);
   const reportVpnActionError = (error: unknown) => {
     setVpnActionError(error instanceof Error ? error.message : "SafeNet WireGuard could not update its state.");
   };
@@ -190,6 +194,11 @@ export default function Dashboard() {
             onToggle={(checked) => {
                 setVpnActionError(null);
               if (checked) {
+                 if (!vpn.status?.eulaAccepted) {
+                   setStartAfterEula(true);
+                   setEulaOpen(true);
+                   return;
+                 }
                  void startWireGuardProtection().catch(reportVpnActionError);
               } else {
                  void vpn.stopWireGuard().catch(reportVpnActionError);
@@ -204,10 +213,47 @@ export default function Dashboard() {
               {vpnActionError}
             </p>
           )}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <p className="text-xs text-muted-foreground">
+              Review the agreement before connecting this Android VPN tunnel.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setStartAfterEula(false);
+                setEulaOpen(true);
+              }}
+            >
+              View WireGuard EULA
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             WireGuard is the only VPN path exposed by SafeNet. DNS servers below are used as the tunnel’s resolver settings.
           </p>
       </CyberCard>
+
+      {vpn.supported && (
+        <EulaDialog
+          open={eulaOpen}
+          onOpenChange={(open) => {
+            setEulaOpen(open);
+            if (!open) {
+              setStartAfterEula(false);
+            }
+          }}
+          onAccept={async () => {
+            await vpn.acceptEula();
+            setEulaOpen(false);
+            if (startAfterEula) {
+              setStartAfterEula(false);
+              await startWireGuardProtection();
+            }
+          }}
+          isAccepting={vpn.isBusy}
+        />
+      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">
