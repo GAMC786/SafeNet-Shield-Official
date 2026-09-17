@@ -5,9 +5,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { EulaDialog } from "@/components/EulaDialog";
-import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2, Music } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -26,15 +24,13 @@ export default function Dashboard() {
   const { data: settings } = useSettings();
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
-  const [eulaOpen, setEulaOpen] = useState(false);
-  const [startAfterEula, setStartAfterEula] = useState(false);
   const [vpnActionError, setVpnActionError] = useState<string | null>(null);
   const reportVpnActionError = (error: unknown) => {
-    setVpnActionError(error instanceof Error ? error.message : "SafeNet VPN could not update its state.");
+    setVpnActionError(error instanceof Error ? error.message : "SafeNet WireGuard could not update its state.");
   };
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected =
-    vpn.status?.running === true &&
+    vpn.status?.wireguardRunning === true &&
     settings?.firewallEnabled === true &&
     antivirusSettings?.isEnabled === true;
   
@@ -42,19 +38,6 @@ export default function Dashboard() {
   const selectedWireGuardDns = activeDns
     ? [activeDns.primaryAddress, activeDns.secondaryAddress].filter(Boolean).join(",")
     : undefined;
-
-  const startDnsProtection = async () => {
-    if (!activeDns) return;
-    if (vpn.status?.wireguardRunning) {
-      await vpn.stopWireGuard();
-    }
-    await vpn.start({
-      type: activeDns.type,
-      ipVersion: activeDns.ipVersion,
-      primaryAddress: activeDns.primaryAddress,
-      secondaryAddress: activeDns.secondaryAddress,
-    });
-  };
 
   const startWireGuardProtection = async () => {
     if (vpn.status?.running) {
@@ -90,15 +73,6 @@ export default function Dashboard() {
     });
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
-  const vpnCardState = !vpn.supported
-    ? "unsupported"
-    : vpn.status === null
-      ? "checking"
-      : vpn.status.running
-        ? "running"
-        : vpn.status.error
-          ? "error"
-          : "inactive";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -120,9 +94,9 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm text-muted-foreground">Active DNS Server</p>
-                <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
-                  Connected
+                 <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
+                 <Badge variant="outline" className="text-xs text-primary border-primary/30">
+                   {vpn.status?.wireguardRunning ? "Tunnel active" : "Ready for WireGuard"}
                 </Badge>
               </div>
               <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
@@ -140,7 +114,7 @@ export default function Dashboard() {
       </CyberCard>
 
       {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 lg:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:gap-6">
         <CyberCard glow className="bg-gradient-to-br from-primary/10 to-transparent border-primary/20">
           <div className="flex items-start justify-between">
             <div>
@@ -183,65 +157,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard
-          className="flex flex-col justify-center items-center text-center space-y-4"
-          data-testid="dashboard-vpn-card"
-          data-vpn-state={vpnCardState}
-        >
-          <div
-            className={`w-16 h-16 rounded-full flex items-center justify-center border relative ${
-              vpn.status?.running
-                ? "bg-green-500/10 border-green-500/30"
-                : "bg-white/5 border-white/10"
-            }`}
-          >
-            {vpn.status === null && vpn.supported ? (
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            ) : (
-              <ShieldCheck className={`w-8 h-8 ${vpn.status?.running ? "text-green-400" : "text-primary"}`} />
-            )}
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">SafeNet VPN</h3>
-            <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
-              {!vpn.supported
-                ? "Available in the SafeNet Android APK"
-                : vpn.status === null
-                  ? "Checking protection status…"
-                  : vpn.status.running
-                     ? "SafeNet VPN protection is running"
-                     : vpn.status.error || "Protection is inactive · Turn On to connect"}
-            </p>
-          </div>
-          <div className="flex w-full flex-wrap items-center justify-center gap-3">
-            <Switch
-              checked={vpn.status?.running ?? false}
-              onCheckedChange={(checked) => {
-                if (!vpn.supported) return;
-                setVpnActionError(null);
-                if (!checked) {
-                  void vpn.stop().catch(reportVpnActionError);
-                  return;
-                }
-                if (!vpn.status?.eulaAccepted) {
-                  setStartAfterEula(true);
-                  setEulaOpen(true);
-                  return;
-                }
-                void startDnsProtection().catch(reportVpnActionError);
-              }}
-              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns}
-              aria-label="SafeNet VPN On/Off"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEulaOpen(true)}
-            >
-                View SafeNet VPN EULA
-            </Button>
-          </div>
+        <CyberCard className="flex flex-col justify-center items-center text-center space-y-4">
            <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
              <div className="flex items-center gap-2">
                <Music className="h-4 w-4 text-primary" />
@@ -257,29 +173,10 @@ export default function Dashboard() {
                data-testid="switch-soundtrack"
              />
            </div>
-          {vpn.status?.error && (
-            <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs">
-              <p role="alert" className="text-destructive">{vpn.status.error}</p>
-              <p className="mt-2 text-muted-foreground">
-                 Recovery is available here: turn protection Off, select a working resolver, then turn it On again.
-              </p>
-            </div>
-          )}
-           {vpnActionError && (
-             <p role="alert" className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive">
-               {vpnActionError}
-             </p>
-           )}
-          {vpn.status?.vpnPermissionOwner && vpn.status.vpnPermissionOwner !== "none" && (
-            <p className="w-full text-left text-xs text-muted-foreground">
-              Android allows one VPN owner at a time. Current owner:{" "}
-              <span className="font-medium text-foreground">{vpn.status.vpnPermissionOwner}</span>.
-            </p>
-          )}
         </CyberCard>
       </div>
 
-      <CyberCard className="space-y-4">
+      <CyberCard className="space-y-4" data-testid="dashboard-wireguard-panel">
           <WireGuardInfographic
             supported={vpn.supported}
             configured={vpn.status?.wireguardConfigured === true}
@@ -302,28 +199,15 @@ export default function Dashboard() {
           {vpn.status?.wireguardError && (
             <p role="alert" className="text-xs text-destructive">{vpn.status.wireguardError}</p>
           )}
-          {vpn.status?.running && !vpn.status.wireguardRunning && (
-            <p className="text-xs text-muted-foreground">
-              Turning on WireGuard will safely switch off SafeNet DNS protection first; Android allows one active VPN tunnel at a time.
+          {vpnActionError && (
+            <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive">
+              {vpnActionError}
             </p>
           )}
+          <p className="text-xs text-muted-foreground">
+            WireGuard is the only VPN path exposed by SafeNet. DNS servers below are used as the tunnel’s resolver settings.
+          </p>
       </CyberCard>
-
-      {vpn.supported && (
-        <EulaDialog
-          open={eulaOpen}
-          onOpenChange={setEulaOpen}
-          onAccept={async () => {
-            await vpn.acceptEula();
-            setEulaOpen(false);
-            if (startAfterEula && activeDns) {
-              setStartAfterEula(false);
-              await startDnsProtection();
-            }
-          }}
-          isAccepting={vpn.isBusy}
-        />
-      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">

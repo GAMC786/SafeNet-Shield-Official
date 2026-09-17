@@ -32,6 +32,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -56,7 +57,8 @@ import java.util.regex.Pattern;
 public class SafeNetVpnUiInstrumentationTest {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
-    private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
+    private static final String LEGACY_VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
+    private static final String VPN_SWITCH_LABEL = LEGACY_VPN_SWITCH_LABEL;
     private static final String WIREGUARD_SWITCH_LABEL = "SafeNet WireGuard On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
@@ -107,88 +109,47 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
-    public void vpnSwitchIsAccessibleAndUnavailableWithoutActiveResolver() throws Exception {
+    public void onlyWireGuardSwitchIsExposedOnDashboard() throws Exception {
         openDashboardWithoutActiveResolver();
         waitForWebView(
             "Boolean(document.querySelector('[role=\"switch\"][aria-label=\"" +
-                VPN_SWITCH_LABEL +
+                WIREGUARD_SWITCH_LABEL +
                 "\"]'))"
         );
 
         JSONObject domState = callWebView(
             "(() => {" +
                 "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
+                    WIREGUARD_SWITCH_LABEL +
                     "\"]');" +
-                "const beforeClick = toggle.getAttribute('aria-checked');" +
-                "const count = document.querySelectorAll('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
-                    "\"]').length;" +
-                "toggle.focus();" +
-                "const focusedAfterProgrammaticFocus = document.activeElement === toggle;" +
-                "toggle.click();" +
                 "return {" +
-                    "count: count," +
+                    "wireguardCount: document.querySelectorAll('[role=\"switch\"][aria-label=\"" +
+                        WIREGUARD_SWITCH_LABEL +
+                        "\"]').length," +
+                    "legacyDnsCount: document.querySelectorAll('[role=\"switch\"][aria-label=\"SafeNet VPN On/Off\"]').length," +
                     "label: toggle.getAttribute('aria-label')," +
                     "role: toggle.getAttribute('role')," +
-                    "checked: toggle.getAttribute('aria-checked')," +
-                    "disabled: toggle.disabled," +
-                    "focusable: focusedAfterProgrammaticFocus," +
-                    "afterClick: toggle.getAttribute('aria-checked')," +
-                    "beforeClick: beforeClick" +
+                    "checked: toggle.getAttribute('aria-checked')" +
                 "};" +
             "})()"
         );
 
-        assertEquals("Dashboard must render exactly one VPN switch", 1, domState.getInt("count"));
-        assertEquals(VPN_SWITCH_LABEL, domState.getString("label"));
+        assertEquals("Dashboard must render exactly one WireGuard switch", 1, domState.getInt("wireguardCount"));
+        assertEquals("Dashboard must not render the legacy DNS VPN switch", 0, domState.getInt("legacyDnsCount"));
+        assertEquals(WIREGUARD_SWITCH_LABEL, domState.getString("label"));
         assertEquals("switch", domState.getString("role"));
         assertEquals("false", domState.getString("checked"));
-        assertTrue("No resolver must disable the VPN switch", domState.getBoolean("disabled"));
-        assertFalse(
-            "A disabled VPN switch must not receive programmatic focus",
-            domState.getBoolean("focusable")
-        );
-        assertEquals("false", domState.getString("beforeClick"));
-        assertEquals(
-            "A disabled VPN switch must not change state from a click",
-            "false",
-            domState.getString("afterClick")
-        );
-
-        JSONObject scrollResult = callWebView(
-            "(() => {" +
-                "document.querySelector('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
-                    "\"]').scrollIntoView({block:'center'});" +
-                "return true;" +
-            "})()"
-        );
-        assertTrue(
-            "Could not bring the VPN switch into the WebView viewport",
-            scrollResult.getBoolean("ok")
-        );
 
         UiObject2 accessibleSwitch = device.wait(
-            Until.findObject(By.desc(VPN_SWITCH_LABEL)),
+            Until.findObject(By.desc(WIREGUARD_SWITCH_LABEL)),
             UI_TIMEOUT_MILLIS
         );
         assertNotNull(
-            "The Android accessibility tree must expose the VPN switch label",
+            "The Android accessibility tree must expose the WireGuard switch label",
             accessibleSwitch
         );
-        assertEquals(VPN_SWITCH_LABEL, accessibleSwitch.getContentDescription());
-        assertTrue("The VPN control must expose switch semantics", accessibleSwitch.isCheckable());
-        assertFalse("The VPN switch must initially be unchecked", accessibleSwitch.isChecked());
-        assertFalse("The VPN switch must be disabled without a resolver", accessibleSwitch.isEnabled());
-        assertFalse("A disabled VPN switch must not be clickable", accessibleSwitch.isClickable());
-        assertFalse("A disabled VPN switch must not be focusable", accessibleSwitch.isFocusable());
-
-        device.pressKeyCode(KeyEvent.KEYCODE_TAB);
-        assertFalse(
-            "Keyboard navigation must not focus the disabled VPN switch",
-            accessibleSwitch.isFocused()
-        );
+        assertEquals(WIREGUARD_SWITCH_LABEL, accessibleSwitch.getContentDescription());
+        assertTrue("The WireGuard control must expose switch semantics", accessibleSwitch.isCheckable());
     }
 
     @Test
@@ -1407,6 +1368,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
@@ -1461,6 +1423,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -1499,6 +1462,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(
@@ -1540,6 +1504,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -1591,6 +1556,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchRecoversWhenAndroidRevokesVpnAccess() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));

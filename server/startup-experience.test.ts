@@ -346,24 +346,23 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("the Dashboard reports SafeNet VPN protection instead of generic system activity", () => {
+test("the Dashboard exposes WireGuard as its only VPN path", () => {
   assert.match(dashboardSource, /useSafeNetVpn/);
   assert.match(dashboardSource, /useSettings/);
   assert.match(dashboardSource, /useAntivirusSettings/);
   assert.match(dashboardSource, /settings\?\.firewallEnabled === true/);
   assert.match(dashboardSource, /antivirusSettings\?\.isEnabled === true/);
+  assert.match(dashboardSource, /wireguardRunning === true/);
   assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
   assert.match(headerSource, /"Unprotected"/);
   assert.match(headerSource, /yellow-500/);
-  assert.match(dashboardSource, /SafeNet VPN/);
-  assert.match(dashboardSource, /SafeNet VPN On\/Off/);
-  assert.match(dashboardSource, /startAfterEula/);
-  assert.match(dashboardSource, /Available in the SafeNet Android APK/);
-   assert.match(dashboardSource, /SafeNet VPN protection is running/);
   assert.match(dashboardSource, /WireGuardInfographic/);
+  assert.match(dashboardSource, /WireGuard is the only VPN path exposed by SafeNet/);
   assert.match(wireGuardInfographicSource, /Official WireGuard tunnel/);
   assert.match(wireGuardInfographicSource, /SafeNet WireGuard On\/Off/);
   assert.match(wireGuardInfographicSource, /Android Tunnel Library/);
+  assert.doesNotMatch(dashboardSource, /SafeNet VPN On\/Off/);
+  assert.doesNotMatch(dashboardSource, /View SafeNet VPN EULA/);
   assert.doesNotMatch(dashboardSource, /System Active/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });

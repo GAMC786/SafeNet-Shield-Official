@@ -143,13 +143,9 @@ export default function DnsSettings() {
         await vpn.stopWireGuard();
         await vpn.startWireGuard({ dnsServers: wireGuardDns });
       } else if (vpn.supported && vpn.status?.running) {
+        // The legacy DNS-only VPN is no longer exposed by the app. Stop an
+        // older instance rather than restarting a second VPN implementation.
         await vpn.stop();
-        await vpn.start({
-          type: server.type,
-          ipVersion: server.ipVersion,
-          primaryAddress: server.primaryAddress,
-          secondaryAddress: server.secondaryAddress,
-        });
       }
       toast({
         title: "DNS resolver activated",

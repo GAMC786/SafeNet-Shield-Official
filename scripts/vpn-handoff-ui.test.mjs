@@ -4,24 +4,20 @@ import test from "node:test";
 
 const dashboardSource = await readFile("client/src/pages/Dashboard.tsx", "utf8");
 
-test("Dashboard switches away from the other Android VPN before starting", () => {
-  assert.match(
-    dashboardSource,
-    /const startDnsProtection = async \(\) => \{[\s\S]*?await vpn\.stopWireGuard\(\);[\s\S]*?await vpn\.start\(/,
-  );
+test("Dashboard starts only WireGuard and clears a legacy DNS tunnel first", () => {
   assert.match(
     dashboardSource,
     /const startWireGuardProtection = async \(\) => \{[\s\S]*?await vpn\.stop\(\);[\s\S]*?await vpn\.startWireGuard\(/,
   );
+  assert.doesNotMatch(dashboardSource, /const startDnsProtection/);
+  assert.doesNotMatch(dashboardSource, /SafeNet VPN On\/Off/);
 });
 
-test("WireGuard remains actionable while DNS protection is running", () => {
+test("WireGuard is the only dashboard VPN control", () => {
   assert.match(
     dashboardSource,
     /disabled=\{\s*vpn\.isBusy \|\|\s*vpn\.status === null\s*\}/,
   );
-  assert.match(
-    dashboardSource,
-    /Turning on WireGuard will safely switch off SafeNet DNS protection first/,
-  );
+  assert.match(dashboardSource, /WireGuard is the only VPN path exposed by SafeNet/);
+  assert.doesNotMatch(dashboardSource, /dashboard-vpn-card/);
 });
