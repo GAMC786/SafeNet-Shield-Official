@@ -132,6 +132,10 @@ interface SafeNetVpnPlugin {
   openCallScreeningSettings(): Promise<CallScreeningStatus>;
   setCallScreeningEnabled(options: { enabled: boolean }): Promise<CallScreeningStatus>;
   syncCallScreeningConfig(options: { blockedNumbers: string[] }): Promise<CallScreeningStatus>;
+  getAppLockStatus(): Promise<import("./use-app-lock").AppLockStatus>;
+  setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
+  unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
+  lockAppNow(): Promise<import("./use-app-lock").AppLockStatus>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
   startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;

@@ -27,6 +27,10 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
     private NativeStartupFallbackView startupFallback;
+    private NativeAppLockView appLockView;
+    private WebView appLockWebView;
+    private boolean appLockHasResumed;
+    private boolean appLockNeedsUnlockOnResume;
     private Runnable startupCheck;
     private long startupDeadline;
 
@@ -47,6 +51,7 @@ public class MainActivity extends BridgeActivity {
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
         installNativeFallback(webView);
+        installAppLock(webView);
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -137,6 +142,75 @@ public class MainActivity extends BridgeActivity {
         beginStartupCheck(webView);
     }
 
+    private void installAppLock(WebView webView) {
+        if (!(webView.getParent() instanceof ViewGroup)) {
+            return;
+        }
+
+        appLockWebView = webView;
+        ViewGroup container = (ViewGroup) webView.getParent();
+        appLockView = new NativeAppLockView(this);
+        appLockView.setVisibility(View.GONE);
+        appLockView.setElevation(200f);
+        appLockView.setOnUnlockClickListener(view -> requestAppUnlock());
+        container.addView(
+                appLockView,
+                new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
+
+        if (AppLockManager.isEnabled(this)) {
+            appLockWebView.setVisibility(View.INVISIBLE);
+            appLockView.setVisibility(View.VISIBLE);
+            appLockView.setMessage("Authenticate to access your DNS and security controls.");
+        }
+    }
+
+    private void requestAppUnlock() {
+        if (appLockWebView == null || appLockView == null) {
+            return;
+        }
+        if (!AppLockManager.isEnabled(this)) {
+            appLockWebView.setVisibility(View.VISIBLE);
+            appLockView.setVisibility(View.GONE);
+            return;
+        }
+
+        appLockWebView.setVisibility(View.INVISIBLE);
+        appLockView.setVisibility(View.VISIBLE);
+        appLockView.setMessage("Waiting for biometric or device-credential authentication…");
+        AppLockManager.authenticate(
+                this,
+                "Unlock SafeNet Shield",
+                new AppLockManager.AuthenticationCallback() {
+                    @Override
+                    public void onSuccess() {
+                        AppLockManager.markAuthenticated();
+                        appLockNeedsUnlockOnResume = false;
+                        appLockView.setVisibility(View.GONE);
+                        appLockWebView.setVisibility(View.VISIBLE);
+                        beginStartupCheck(appLockWebView);
+                    }
+
+                    @Override
+                    public void onFailure(String message) {
+                        appLockView.setMessage(message + " Tap Unlock SafeNet to try again.");
+                    }
+                }
+        );
+    }
+
+    public void lockAppNow() {
+        if (appLockWebView == null || appLockView == null) {
+            return;
+        }
+        appLockWebView.setVisibility(View.INVISIBLE);
+        appLockView.setVisibility(View.VISIBLE);
+        requestAppUnlock();
+    }
+
     private void beginStartupCheck(WebView webView) {
         if (startupCheck != null) {
             startupHandler.removeCallbacks(startupCheck);
@@ -195,6 +269,8 @@ public class MainActivity extends BridgeActivity {
             startupHandler.removeCallbacks(startupCheck);
         }
         startupFallback = null;
+        appLockView = null;
+        appLockWebView = null;
         stopSoundtrack();
         super.onDestroy();
     }
@@ -202,6 +278,18 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         stopSoundtrack();
+        if (AppLockManager.isEnabled(this) && !AppLockManager.isPromptActive()) {
+            AppLockManager.clearSession();
+            if (appLockHasResumed) {
+                appLockNeedsUnlockOnResume = true;
+            }
+            if (appLockWebView != null) {
+                appLockWebView.setVisibility(View.INVISIBLE);
+            }
+            if (appLockView != null) {
+                appLockView.setVisibility(View.VISIBLE);
+            }
+        }
         super.onPause();
     }
 
@@ -210,6 +298,18 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         restoreSystemBars();
         resumeSoundtrack();
+        if (!appLockHasResumed) {
+            appLockHasResumed = true;
+            appLockNeedsUnlockOnResume = AppLockManager.isEnabled(this)
+                    && !AppLockManager.isSessionAuthenticated();
+        }
+        if (appLockNeedsUnlockOnResume
+                && AppLockManager.isEnabled(this)
+                && !AppLockManager.isSessionAuthenticated()
+                && appLockView != null) {
+            appLockNeedsUnlockOnResume = false;
+            appLockView.post(this::requestAppUnlock);
+        }
     }
 
     @Override

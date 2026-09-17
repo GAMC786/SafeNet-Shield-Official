@@ -5,13 +5,14 @@ import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
+import { useAppLock } from "@/hooks/use-app-lock";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const { data: settings } = useSettings();
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
+  const appLock = useAppLock();
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected = isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
   
@@ -78,6 +80,51 @@ export default function Dashboard() {
             aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
             data-testid="switch-soundtrack"
           />
+        </div>
+      </CyberCard>
+
+      <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
+        <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
+          <div className="flex items-center gap-2 text-left">
+            <LockKeyhole className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">App Lock</p>
+              <p className="text-xs text-muted-foreground">
+                Require biometrics or your device credential for SafeNet
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={appLock.status.enabled}
+            onCheckedChange={(enabled) => {
+              void appLock.setEnabled(enabled).catch(() => undefined);
+            }}
+            disabled={!appLock.supported || !appLock.status.available || appLock.isBusy}
+            aria-label={`App Lock ${appLock.status.enabled ? "On" : "Off"}`}
+            data-testid="switch-app-lock"
+          />
+        </div>
+        <div className="flex w-full items-center justify-between gap-3 text-left">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{appLock.status.message}</p>
+            {!appLock.supported && (
+              <p className="mt-1 text-[11px] uppercase tracking-wider text-primary/80">
+                Android app only
+              </p>
+            )}
+          </div>
+          {appLock.status.enabled && appLock.supported && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void appLock.lockNow()}
+              disabled={appLock.isBusy}
+              data-testid="button-lock-app-now"
+            >
+              <LockKeyhole className="mr-2 h-4 w-4" />
+              Lock now
+            </Button>
+          )}
         </div>
       </CyberCard>
 

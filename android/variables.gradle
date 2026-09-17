@@ -5,6 +5,7 @@ ext {
     androidBuildToolsVersion = '36.0.0'
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'
+    androidxBiometricVersion = '1.1.0'
     androidxCoordinatorLayoutVersion = '1.3.0'
     androidxCoreVersion = '1.17.0'
     androidxFragmentVersion = '1.8.9'

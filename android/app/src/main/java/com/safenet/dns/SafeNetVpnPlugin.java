@@ -58,6 +58,75 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getAppLockStatus(PluginCall call) {
+        call.resolve(AppLockManager.status(getContext()));
+    }
+
+    @PluginMethod
+    public void setAppLockEnabled(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", false);
+        if (!enabled && !AppLockManager.isEnabled(getContext())) {
+            call.resolve(AppLockManager.status(getContext()));
+            return;
+        }
+        authenticateForAppLock(call, enabled, enabled
+            ? "Enable SafeNet App Lock"
+            : "Disable SafeNet App Lock");
+    }
+
+    @PluginMethod
+    public void unlockAppLock(PluginCall call) {
+        if (!AppLockManager.isEnabled(getContext())) {
+            call.resolve(AppLockManager.status(getContext()));
+            return;
+        }
+        authenticateForAppLock(call, true, "Unlock SafeNet Shield");
+    }
+
+    @PluginMethod
+    public void lockAppNow(PluginCall call) {
+        if (!AppLockManager.isEnabled(getContext())) {
+            call.resolve(AppLockManager.status(getContext()));
+            return;
+        }
+        AppLockManager.clearSession();
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).lockAppNow();
+        }
+        call.resolve(AppLockManager.status(getContext()));
+    }
+
+    private void authenticateForAppLock(
+            PluginCall call,
+            boolean enabledAfterAuthentication,
+            String title
+    ) {
+        if (!(getActivity() instanceof androidx.fragment.app.FragmentActivity)) {
+            call.reject("SafeNet authentication is unavailable.", "APP_LOCK_UNAVAILABLE");
+            return;
+        }
+        AppLockManager.authenticate(
+            (androidx.fragment.app.FragmentActivity) getActivity(),
+            title,
+            new AppLockManager.AuthenticationCallback() {
+                @Override
+                public void onSuccess() {
+                    AppLockManager.setEnabled(getContext(), enabledAfterAuthentication);
+                    if (enabledAfterAuthentication) {
+                        AppLockManager.markAuthenticated();
+                    }
+                    call.resolve(AppLockManager.status(getContext()));
+                }
+
+                @Override
+                public void onFailure(String message) {
+                    call.reject(message, "APP_LOCK_AUTHENTICATION_FAILED");
+                }
+            }
+        );
+    }
+
+    @PluginMethod
     public void requestCallScreeningRole(PluginCall call) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             call.resolve(callScreeningStatus());
