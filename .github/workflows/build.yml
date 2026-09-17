@@ -60,10 +60,15 @@ on:
         default: false
         type: boolean
       android_internet_share_physical_validation:
-        description: "Run the signed Internet Share Wi-Fi Direct lifecycle check on physical Android devices"
+        description: "Run the signed Internet Share Wi-Fi Direct proxy check on physical Android devices"
         required: true
         default: false
         type: boolean
+      android_internet_share_client_serial:
+        description: "ADB serial of the second physical Android device used as the Internet Share client"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -2407,6 +2412,7 @@ jobs:
       contents: read
     env:
       ANDROID_INTERNET_SHARE_DEVICE_PROFILE: ${{ matrix.profile }}
+      ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT: ${{ inputs.android_internet_share_client_serial }}
       ANDROID_INTERNET_SHARE_OUTPUT_DIR: android/app/build/reports/android-internet-share/${{ matrix.profile }}
     steps:
       - name: Checkout code
@@ -2424,16 +2430,21 @@ jobs:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
 
-      - name: Run physical-device Internet Share lifecycle check
+      - name: Run physical-device Internet Share proxy check
         id: internet-share-smoke
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
+          client_serial_args=()
+          if [[ -n "${ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT:-}" ]]; then
+            client_serial_args=(--client-serial "$ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT")
+          fi
           ./scripts/android-internet-share-device-test.sh \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
             --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
             --profile "$ANDROID_INTERNET_SHARE_DEVICE_PROFILE" \
+            "${client_serial_args[@]}" \
             --output "$GITHUB_WORKSPACE/$ANDROID_INTERNET_SHARE_OUTPUT_DIR"
 
       - name: Publish Internet Share physical-device summary
@@ -2463,6 +2474,16 @@ jobs:
           notification_cleanup="${notification_cleanup:-NOT_RECORDED}"
           group_cleanup="$(awk -F= '$1 == "wifi_direct_group_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           group_cleanup="${group_cleanup:-NOT_RECORDED}"
+          client_connection="$(awk -F= '$1 == "client_connection" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_connection="${client_connection:-NOT_RECORDED}"
+          proxy_configuration="$(awk -F= '$1 == "proxy_configuration" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_configuration="${proxy_configuration:-NOT_RECORDED}"
+          proxy_response="$(awk -F= '$1 == "proxy_response" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_response="${proxy_response:-NOT_RECORDED}"
+          client_proxy_cleanup="$(awk -F= '$1 == "client_proxy_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_proxy_cleanup="${client_proxy_cleanup:-NOT_RECORDED}"
+          client_wifi_cleanup="$(awk -F= '$1 == "client_wifi_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_wifi_cleanup="${client_wifi_cleanup:-NOT_RECORDED}"
           {
             echo "## Physical Android Internet Share verification"
             echo
@@ -2473,6 +2494,10 @@ jobs:
             echo "- **Stop result:** \`$stop_result\`"
             echo "- **Foreground notification cleanup:** \`$notification_cleanup\`"
             echo "- **Wi-Fi Direct group cleanup:** \`$group_cleanup\`"
+            echo "- **Client connection:** \`$client_connection\`"
+            echo "- **Proxy configuration:** \`$proxy_configuration\`"
+            echo "- **Proxy response:** \`$proxy_response\`"
+            echo "- **Client cleanup:** proxy \`$client_proxy_cleanup\`; Wi-Fi \`$client_wifi_cleanup\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence:** download the physical-device artifact from this run"
@@ -2828,6 +2853,11 @@ jobs:
             profile_stop_result="NOT_RECORDED"
             profile_notification_cleanup="NOT_RECORDED"
             profile_group_cleanup="NOT_RECORDED"
+             profile_client_connection="NOT_RECORDED"
+             profile_proxy_configuration="NOT_RECORDED"
+             profile_proxy_response="NOT_RECORDED"
+             profile_client_proxy_cleanup="NOT_RECORDED"
+             profile_client_wifi_cleanup="NOT_RECORDED"
             profile_cleanup_result="NOT_RECORDED"
 
             if [[ -n "$profile_result" ]]; then
@@ -2846,13 +2876,22 @@ jobs:
               profile_stop_result="$(read_result stop_result)"
               profile_notification_cleanup="$(read_result notification_cleanup)"
               profile_group_cleanup="$(read_result wifi_direct_group_cleanup)"
+               profile_client_connection="$(read_result client_connection)"
+               profile_proxy_configuration="$(read_result proxy_configuration)"
+               profile_proxy_response="$(read_result proxy_response)"
+               profile_client_proxy_cleanup="$(read_result client_proxy_cleanup)"
+               profile_client_wifi_cleanup="$(read_result client_wifi_cleanup)"
               if [[ "$profile_stop_result" == "PASS" &&
                 "$profile_notification_cleanup" == "PASS" &&
-                "$profile_group_cleanup" == "PASS" ]]; then
+                 "$profile_group_cleanup" == "PASS" &&
+                 "$profile_client_proxy_cleanup" == "PASS" &&
+                 "$profile_client_wifi_cleanup" == "PASS" ]]; then
                 profile_cleanup_result="PASS"
               elif [[ "$profile_stop_result" != "NOT_RECORDED" ||
                 "$profile_notification_cleanup" != "NOT_RECORDED" ||
-                "$profile_group_cleanup" != "NOT_RECORDED" ]]; then
+                 "$profile_group_cleanup" != "NOT_RECORDED" ||
+                 "$profile_client_proxy_cleanup" != "NOT_RECORDED" ||
+                 "$profile_client_wifi_cleanup" != "NOT_RECORDED" ]]; then
                 profile_cleanup_result="FAIL"
               fi
             else
@@ -2877,8 +2916,15 @@ jobs:
             if [[ "$profile_cleanup_result" != "PASS" ]]; then
               blockers+=("INTERNET_SHARE_CLEANUP_NOT_CONFIRMED_${profile}")
             fi
+             if [[ "$profile_client_connection" != "PASS" ]]; then
+               blockers+=("INTERNET_SHARE_CLIENT_CONNECTION_NOT_CONFIRMED_${profile}")
+             fi
+             if [[ "$profile_proxy_configuration" != "PASS" ||
+               "$profile_proxy_response" != "PASS" ]]; then
+               blockers+=("INTERNET_SHARE_PROXY_REQUEST_NOT_CONFIRMED_${profile}")
+             fi
             if [[ "$profile_result_value" != "PASS" ]]; then
-              blockers+=("INTERNET_SHARE_LIFECYCLE_FAILED_${profile}")
+              blockers+=("INTERNET_SHARE_PROXY_CHECK_FAILED_${profile}")
             fi
 
             {
@@ -2892,6 +2938,11 @@ jobs:
               echo "profile_${profile_index}_stop_result=${profile_stop_result:-NOT_RECORDED}"
               echo "profile_${profile_index}_notification_cleanup=${profile_notification_cleanup:-NOT_RECORDED}"
               echo "profile_${profile_index}_wifi_direct_group_cleanup=${profile_group_cleanup:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_connection=${profile_client_connection:-NOT_RECORDED}"
+               echo "profile_${profile_index}_proxy_configuration=${profile_proxy_configuration:-NOT_RECORDED}"
+               echo "profile_${profile_index}_proxy_response=${profile_proxy_response:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_proxy_cleanup=${profile_client_proxy_cleanup:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_wifi_cleanup=${profile_client_wifi_cleanup:-NOT_RECORDED}"
               echo "profile_${profile_index}_cleanup_result=$profile_cleanup_result"
             } >> "$report.profiles"
           done
@@ -2978,7 +3029,10 @@ jobs:
                 profile_start="$(awk -F= -v key="profile_${profile_index}_start_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_start_outcome="$(awk -F= -v key="profile_${profile_index}_start_outcome" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_cleanup="$(awk -F= -v key="profile_${profile_index}_cleanup_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
-                echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); cleanup \`$profile_cleanup\`"
+                 profile_client="$(awk -F= -v key="profile_${profile_index}_client_connection" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                 profile_proxy_config="$(awk -F= -v key="profile_${profile_index}_proxy_configuration" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                 profile_proxy_response="$(awk -F= -v key="profile_${profile_index}_proxy_response" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                 echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`/\`$profile_proxy_response\`; cleanup \`$profile_cleanup\`"
               done
               echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
             fi
@@ -2995,7 +3049,7 @@ jobs:
             echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
             echo "- **Signed APK and instrumentation APK:** independently verified before publication."
             echo "- **Physical WireGuard validation:** reported separately; missing runner, gateway handshake, or device evidence is a bounded blocker and does not prevent APK publication."
-            echo "- **Physical Internet Share validation:** reported separately; missing runner, lifecycle evidence, or signed APK match is a bounded blocker and does not prevent APK publication."
+            echo "- **Physical Internet Share validation:** reported separately; missing runner, client/proxy evidence, or signed APK match is a bounded blocker and does not prevent APK publication."
             echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
           } >> "$GITHUB_STEP_SUMMARY"
 

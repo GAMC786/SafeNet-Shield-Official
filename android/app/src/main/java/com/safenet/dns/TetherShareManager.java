@@ -278,7 +278,7 @@ final class TetherShareManager {
                 HostPort destination = parseHostPort(target, 443);
                 Socket upstream = openUpstream(destination.host, destination.port);
                 OutputStream output = client.getOutputStream();
-                output.write("HTTP/1.1 200 Connection Established\\r\\nProxy-Agent: SafeNet Internet Share\\r\\n\\r\\n".getBytes(StandardCharsets.ISO_8859_1));
+                output.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: SafeNet Internet Share\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
                 output.flush();
                 relay(client, upstream);
                 return;
@@ -298,15 +298,15 @@ final class TetherShareManager {
             String path = targetUri.getRawPath();
             if (path == null || path.isEmpty()) path = "/";
             if (targetUri.getRawQuery() != null) path += "?" + targetUri.getRawQuery();
-            upstreamWriter.write(method + " " + path + " HTTP/1.1\\r\\n");
+            upstreamWriter.write(method + " " + path + " HTTP/1.1\r\n");
             for (String header : headers) {
                 int separator = header.indexOf(':');
                 if (separator <= 0) continue;
                 String name = header.substring(0, separator).trim();
                 if ("Proxy-Connection".equalsIgnoreCase(name) || "Connection".equalsIgnoreCase(name)) continue;
-                upstreamWriter.write(header + "\\r\\n");
+                upstreamWriter.write(header + "\r\n");
             }
-            upstreamWriter.write("Connection: close\\r\\n\\r\\n");
+            upstreamWriter.write("Connection: close\r\n\r\n");
             upstreamWriter.flush();
             if (contentLength > 0) {
                 byte[] buffer = new byte[8192];
@@ -426,8 +426,8 @@ final class TetherShareManager {
 
     private void writeError(Socket client, String status) throws IOException {
         String body = "SafeNet Internet Share: " + status;
-        String response = "HTTP/1.1 " + status + "\\r\\nContent-Type: text/plain\\r\\nContent-Length: "
-            + body.length() + "\\r\\nConnection: close\\r\\n\\r\\n" + body;
+        String response = "HTTP/1.1 " + status + "\r\nContent-Type: text/plain\r\nContent-Length: "
+            + body.length() + "\r\nConnection: close\r\n\r\n" + body;
         client.getOutputStream().write(response.getBytes(StandardCharsets.ISO_8859_1));
         client.getOutputStream().flush();
     }

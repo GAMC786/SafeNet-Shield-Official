@@ -11,6 +11,7 @@ apk_path="$DEFAULT_APK"
 test_apk_path="$DEFAULT_TEST_APK"
 serial="${ANDROID_SERIAL:-}"
 profile="${ANDROID_INTERNET_SHARE_DEVICE_PROFILE:-unprofiled}"
+client_serial="${ANDROID_INTERNET_SHARE_CLIENT_SERIAL:-}"
 output_dir="${ANDROID_INTERNET_SHARE_OUTPUT_DIR:-android/app/build/reports/android-internet-share/latest}"
 profile_status="NOT_CHECKED"
 expected_manufacturer=""
@@ -21,12 +22,15 @@ usage() {
 Usage: scripts/android-internet-share-device-test.sh [options]
 
 Runs the focused Internet Share Wi-Fi Direct lifecycle check on one profiled
-physical Android device. Hosted emulators are rejected.
+physical Android device and verifies a second physical Android client can use
+the advertised HTTP proxy. Hosted emulators are rejected.
 
 Options:
   --apk PATH       Signed app-release.apk
   --test-apk PATH  Signed app-release-androidTest.apk
   --serial ID      Physical device serial (or set ANDROID_SERIAL)
+  --client-serial ID
+                   Physical client serial (or set ANDROID_INTERNET_SHARE_CLIENT_SERIAL)
   --profile NAME   Representative device profile
                    (pixel-android-14, samsung-android-13, motorola-android-12)
   --output DIR     Evidence directory
@@ -49,6 +53,11 @@ while [[ $# -gt 0 ]]; do
         --serial)
             [[ $# -ge 2 ]] || { echo "ERROR: --serial requires a device serial." >&2; exit 2; }
             serial="$2"
+            shift 2
+            ;;
+        --client-serial)
+            [[ $# -ge 2 ]] || { echo "ERROR: --client-serial requires a device serial." >&2; exit 2; }
+            client_serial="$2"
             shift 2
             ;;
         --profile)
@@ -78,7 +87,10 @@ rm -f "$output_dir"/result.txt "$output_dir"/device-access-result.txt \
     "$output_dir"/adb-devices.txt "$output_dir"/device-details.txt \
     "$output_dir"/device-profile.txt "$output_dir"/instrumentation.log \
     "$output_dir"/logcat.txt "$output_dir"/notification-state.txt \
-    "$output_dir"/wifi-direct-state.txt
+    "$output_dir"/wifi-direct-state.txt "$output_dir"/client-logcat.txt \
+    "$output_dir"/client-connect.log "$output_dir"/client-state.txt \
+    "$output_dir"/client-instrumentation.log "$output_dir"/primary-logcat-live.txt \
+    "$output_dir"/primary-status.txt
 
 application_apk_sha256="NOT_RECORDED"
 instrumentation_apk_sha256="NOT_RECORDED"
@@ -106,6 +118,11 @@ write_blocked_result() {
         printf 'notification_before_stop=NOT_RECORDED\n'
         printf 'stop_result=NOT_RECORDED\nnotification_cleanup=NOT_RECORDED\n'
         printf 'wifi_direct_group_cleanup=NOT_RECORDED\n'
+        printf 'client_target=%s\n' "${client_serial:-unavailable}"
+        printf 'client_connection=NOT_RECORDED\n'
+        printf 'proxy_advertisement=NOT_RECORDED\nproxy_configuration=NOT_RECORDED\n'
+        printf 'proxy_response=NOT_RECORDED\n'
+        printf 'client_proxy_cleanup=NOT_RECORDED\nclient_wifi_cleanup=NOT_RECORDED\n'
         printf 'physical_evidence=BLOCKED\nresult=BLOCKED\nmessage=%s\n' "$message"
     } | tee "$output_dir/device-access-result.txt" "$output_dir/result.txt" >&2
     exit 78
@@ -159,6 +176,17 @@ else
     serial="${physical_devices[0]}"
 fi
 
+[[ -n "$client_serial" ]] ||
+    write_blocked_result "CLIENT_DEVICE_UNAVAILABLE" \
+        "a second physical Android client serial is required"
+[[ "$client_serial" != "$serial" ]] ||
+    write_blocked_result "CLIENT_TARGET_DUPLICATES_HOST" \
+        "the Wi-Fi Direct client must be a different physical device"
+adb -s "$client_serial" get-state 2>/dev/null | tr -d '\r' | grep -qx "device" ||
+    write_blocked_result "CLIENT_TARGET_OFFLINE" "the configured client device is not online"
+device_is_physical "$client_serial" ||
+    write_blocked_result "CLIENT_EMULATOR_TARGET" "the configured client target is an emulator"
+
 {
     printf 'serial=%s\n' "$serial"
     printf 'manufacturer=%s\n' "$(adb -s "$serial" shell getprop ro.product.manufacturer | tr -d '\r')"
@@ -196,18 +224,146 @@ adb -s "$serial" install -r "$apk_path" > "$output_dir/install-app.log" 2>&1 ||
     write_blocked_result "INSTALLATION_FAILURE" "the signed app APK could not be installed"
 adb -s "$serial" install -r "$test_apk_path" > "$output_dir/install-test.log" 2>&1 ||
     write_blocked_result "INSTALLATION_FAILURE" "the signed instrumentation APK could not be installed"
+adb -s "$client_serial" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
+adb -s "$client_serial" uninstall "$TEST_PACKAGE_NAME" >/dev/null 2>&1 || true
+adb -s "$client_serial" install -r "$apk_path" > "$output_dir/client-install-app.log" 2>&1 ||
+    write_blocked_result "CLIENT_INSTALLATION_FAILURE" "the signed app APK could not be installed on the client"
+adb -s "$client_serial" install -r "$test_apk_path" > "$output_dir/client-install-test.log" 2>&1 ||
+    write_blocked_result "CLIENT_INSTALLATION_FAILURE" "the signed instrumentation APK could not be installed on the client"
 adb -s "$serial" logcat -c
 
+primary_status_file="$output_dir/primary-status.txt"
+rm -f "$primary_status_file"
 set +e
-adb -s "$serial" shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareStartsAndStopsCleanly" \
-    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
-instrumentation_status="${PIPESTATUS[0]}"
+(
+    adb -s "$serial" shell am instrument -w -r \
+        -e hold-internet-share true \
+        -e hold-internet-share-seconds 45 \
+        -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareStartsAndStopsCleanly" \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/instrumentation.log"
+    printf '%s\n' "${PIPESTATUS[0]}" > "$primary_status_file"
+) &
+primary_pid=$!
+set -e
+
+ready_line=""
+proxy_line=""
+for _ in $(seq 1 60); do
+    adb -s "$serial" logcat -d -t 1600 2>/dev/null > "$output_dir/primary-logcat-live.txt" || true
+    ready_line="$(grep -F 'INTERNET_SHARE_READY result=PASS proxy=ADVERTISED' \
+        "$output_dir/primary-logcat-live.txt" | tail -n 1 || true)"
+    proxy_line="$(grep -E 'INTERNET_SHARE_PROXY result=PASS host=[^ ]+ port=[0-9]+' \
+        "$output_dir/primary-logcat-live.txt" | tail -n 1 || true)"
+    if [[ -n "$ready_line" && -n "$proxy_line" ]]; then break; fi
+    sleep 1
+done
+
+proxy_host="$(sed -nE 's/.*host=([^ ]+).*/\1/p' <<< "$proxy_line" | tail -n 1)"
+proxy_port="$(sed -nE 's/.*port=([0-9]+).*/\1/p' <<< "$proxy_line" | tail -n 1)"
+proxy_advertisement="NOT_RECORDED"
+if [[ -n "$proxy_host" && -n "$proxy_port" ]]; then proxy_advertisement="PASS"; fi
+
+group_info="$(adb -s "$serial" shell dumpsys wifi p2p 2>/dev/null || true)"
+network_name="$(
+    grep -Eio 'network[ _-]?name:[[:space:]]*[^,[:space:]]+' <<< "$group_info" |
+        head -n 1 | sed -E 's/^[^:]+:[[:space:]]*//'
+)"
+passphrase="$(
+    grep -Eio 'passphrase:[[:space:]]*[^,[:space:]]+' <<< "$group_info" |
+        head -n 1 | sed -E 's/^[^:]+:[[:space:]]*//'
+)"
+client_connection="NOT_RECORDED"
+proxy_configuration="NOT_RECORDED"
+proxy_response="NOT_RECORDED"
+client_proxy_cleanup="NOT_RECORDED"
+client_wifi_cleanup="NOT_RECORDED"
+previous_proxy="$(adb -s "$client_serial" shell settings get global http_proxy 2>/dev/null | tr -d '\r' || true)"
+
+if [[ "$proxy_advertisement" == "PASS" && -n "$network_name" && -n "$passphrase" ]]; then
+    if adb -s "$client_serial" shell cmd -w wifi connect-network \
+        "$network_name" wpa2 "$passphrase" > "$output_dir/client-connect.log" 2>&1; then
+        for _ in $(seq 1 30); do
+            client_wifi_state="$(adb -s "$client_serial" shell dumpsys wifi 2>/dev/null || true)"
+            client_route_state="$(adb -s "$client_serial" shell ip route 2>/dev/null || true)"
+            if grep -Fq "$network_name" <<< "$client_wifi_state" &&
+                grep -Eq '192[.]168[.]49[.][0-9]+|192[.]168[.]49[.]0/24' <<< "$client_route_state"; then
+                client_connection="PASS"
+                break
+            fi
+            sleep 1
+        done
+    fi
+fi
+printf 'connection=%s\n' "$client_connection" > "$output_dir/client-state.txt"
+
+if [[ "$client_connection" == "PASS" ]]; then
+    if adb -s "$client_serial" shell settings put global http_proxy \
+        "$proxy_host:$proxy_port" >/dev/null 2>&1; then
+        configured_proxy="$(adb -s "$client_serial" shell settings get global http_proxy 2>/dev/null | tr -d '\r' || true)"
+        if [[ "$configured_proxy" == "$proxy_host:$proxy_port" ]]; then
+            proxy_configuration="PASS"
+        fi
+    fi
+fi
+
+if [[ "$proxy_configuration" == "PASS" ]]; then
+    adb -s "$client_serial" logcat -c >/dev/null 2>&1 || true
+    set +e
+    adb -s "$client_serial" shell am instrument -w -r \
+        -e proxy-host "$proxy_host" \
+        -e proxy-port "$proxy_port" \
+        -e proxy-url "http://example.com/" \
+        -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareClientUsesAdvertisedProxy" \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/client-instrumentation.log"
+    client_instrumentation_status="${PIPESTATUS[0]}"
+    set -e
+    adb -s "$client_serial" logcat -d -t 1200 > "$output_dir/client-logcat.txt" 2>&1 || true
+    if [[ "$client_instrumentation_status" -eq 0 ]] &&
+        grep -Fq 'INTERNET_SHARE_CLIENT_PROXY result=PASS response=' \
+            "$output_dir/client-logcat.txt" "$output_dir/client-instrumentation.log"; then
+        proxy_response="PASS"
+    else
+        proxy_response="FAIL"
+    fi
+fi
+
+if [[ "$previous_proxy" == "null" || -z "$previous_proxy" ]]; then
+    adb -s "$client_serial" shell settings delete global http_proxy >/dev/null 2>&1 || true
+else
+    adb -s "$client_serial" shell settings put global http_proxy "$previous_proxy" >/dev/null 2>&1 || true
+fi
+restored_proxy="$(adb -s "$client_serial" shell settings get global http_proxy 2>/dev/null | tr -d '\r' || true)"
+if [[ "$previous_proxy" == "null" || -z "$previous_proxy" ]]; then
+    [[ "$restored_proxy" == "null" || -z "$restored_proxy" ]] && client_proxy_cleanup="PASS"
+elif [[ "$restored_proxy" == "$previous_proxy" ]]; then
+    client_proxy_cleanup="PASS"
+fi
+if adb -s "$client_serial" shell cmd wifi disconnect >/dev/null 2>&1; then
+    client_wifi_cleanup="PASS"
+fi
+
+for _ in $(seq 1 70); do
+    if ! kill -0 "$primary_pid" 2>/dev/null; then break; fi
+    sleep 1
+done
+if kill -0 "$primary_pid" 2>/dev/null; then
+    kill "$primary_pid" 2>/dev/null || true
+    adb -s "$serial" shell am force-stop "$PACKAGE_NAME" >/dev/null 2>&1 || true
+fi
+wait "$primary_pid" 2>/dev/null || true
+
+set +e
+instrumentation_status="$(cat "$primary_status_file" 2>/dev/null || true)"
+instrumentation_status="${instrumentation_status:-1}"
 set -e
 
 adb -s "$serial" logcat -d -t 1600 > "$output_dir/logcat.txt" 2>&1 || true
-adb -s "$serial" shell dumpsys notification > "$output_dir/notification-state.txt" 2>&1 || true
-adb -s "$serial" shell dumpsys wifi p2p > "$output_dir/wifi-direct-state.txt" 2>&1 || true
+adb -s "$serial" dumpsys notification > "$output_dir/notification-state.txt" 2>&1 || true
+adb -s "$serial" dumpsys wifi p2p 2>/dev/null |
+    sed -E 's/(passphrase|password):[[:space:]]*[^,[:space:]]+/\1: [REDACTED]/Ig' \
+    > "$output_dir/wifi-direct-state.txt" || true
 
 start_result="NOT_RECORDED"
 start_outcome="NOT_RECORDED"
@@ -238,7 +394,10 @@ if grep -Fq "INTERNET_SHARE_STOP result=PASS notification=REMOVED group=NULL" \
 fi
 
 if [[ "$instrumentation_status" -eq 0 && "$start_result" == "PASS" &&
-    "$stop_result" == "PASS" && "$nearby_wifi_permission" == "PASS" ]]; then
+    "$stop_result" == "PASS" && "$nearby_wifi_permission" == "PASS" &&
+    "$proxy_advertisement" == "PASS" && "$client_connection" == "PASS" &&
+    "$proxy_configuration" == "PASS" && "$proxy_response" == "PASS" &&
+    "$client_proxy_cleanup" == "PASS" && "$client_wifi_cleanup" == "PASS" ]]; then
     result="PASS"
     failure_class="NONE"
     failure_category="PASS"
@@ -246,7 +405,7 @@ if [[ "$instrumentation_status" -eq 0 && "$start_result" == "PASS" &&
 else
     result="FAIL"
     failure_class="APPLICATION"
-    failure_category="INTERNET_SHARE_LIFECYCLE"
+    failure_category="INTERNET_SHARE_PROXY"
     physical_evidence="FAIL"
 fi
 
@@ -254,7 +413,8 @@ fi
     printf 'validation_mode=real-device\n'
     printf 'device_kind=physical-device\ntarget=%s\n' "$serial"
     printf 'device_profile=%s\nprofile_status=%s\n' "$profile" "$profile_status"
-    printf 'device_evidence=PASS\nfailure_class=%s\nfailure_category=%s\n' \
+    printf 'device_evidence=%s\nfailure_class=%s\nfailure_category=%s\n' \
+        "$physical_evidence" \
         "$failure_class" "$failure_category"
     printf 'application_apk_sha256=%s\ninstrumentation_apk_sha256=%s\n' \
         "$application_apk_sha256" "$instrumentation_apk_sha256"
@@ -264,12 +424,18 @@ fi
         "$notification_before_stop" "$stop_result" "$notification_cleanup"
     printf 'wifi_direct_group_cleanup=%s\nphysical_evidence=%s\n' \
         "$wifi_direct_group_cleanup" "$physical_evidence"
+    printf 'client_target=%s\nclient_connection=%s\n' \
+        "$client_serial" "$client_connection"
+    printf 'proxy_advertisement=%s\nproxy_configuration=%s\nproxy_response=%s\n' \
+        "$proxy_advertisement" "$proxy_configuration" "$proxy_response"
+    printf 'client_proxy_cleanup=%s\nclient_wifi_cleanup=%s\n' \
+        "$client_proxy_cleanup" "$client_wifi_cleanup"
     printf 'instrumentation_exit_code=%s\nresult=%s\n' \
         "$instrumentation_status" "$result"
 } | tee "$output_dir/result.txt"
 
 if [[ "$result" != "PASS" ]]; then
-    echo "Internet Share physical-device lifecycle check failed. Evidence: $output_dir" >&2
+    echo "Internet Share physical-device proxy check failed. Evidence: $output_dir" >&2
     exit 1
 fi
-echo "Internet Share physical-device lifecycle check passed. Evidence: $output_dir"
+echo "Internet Share physical-device proxy check passed. Evidence: $output_dir"

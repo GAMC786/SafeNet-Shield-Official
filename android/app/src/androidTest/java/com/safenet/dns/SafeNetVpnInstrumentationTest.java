@@ -47,6 +47,7 @@ import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.Socket;
 import java.net.URL;
 import java.util.Locale;
@@ -70,6 +71,7 @@ public class SafeNetVpnInstrumentationTest {
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long VPN_START_TIMEOUT_SECONDS = 15;
     private static final long TETHER_START_TIMEOUT_SECONDS = 25;
+    private static final long TETHER_CLIENT_HOLD_SECONDS = 45;
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -332,12 +334,39 @@ public class SafeNetVpnInstrumentationTest {
             "Internet Share returned neither network details nor a readable failure state",
             hasNetworkDetails || hasReadableFailure
         );
+        boolean hasProxyDetails =
+            status.optBoolean("running", false) &&
+            !status.optString("proxyHost", "").trim().isEmpty() &&
+            status.optInt("proxyPort", 0) > 0;
+        if (hasProxyDetails) {
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_PROXY result=PASS host=" +
+                    status.optString("proxyHost") + " port=" + status.optInt("proxyPort")
+            );
+        }
         android.util.Log.i(
             "InternetShareSmoke",
             "INTERNET_SHARE_START result=PASS mode=" +
                 (hasNetworkDetails ? "NETWORK_DETAILS" : "READABLE_FAILURE") +
                 " permission=PASS"
         );
+
+        if (Boolean.parseBoolean(argument("hold-internet-share", "false"))) {
+            assertTrue(
+                "Internet Share did not advertise a usable proxy",
+                hasProxyDetails
+            );
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_READY result=PASS proxy=ADVERTISED"
+            );
+            Thread.sleep(
+                TimeUnit.SECONDS.toMillis(
+                    boundedTetherHoldSeconds(argument("hold-internet-share-seconds", "45"))
+                )
+            );
+        }
 
         boolean notificationBeforeStop = hasInternetShareNotification();
         android.util.Log.i(
@@ -377,6 +406,56 @@ public class SafeNetVpnInstrumentationTest {
             );
         } finally {
             context.stopService(new Intent(context, TetherShareService.class));
+        }
+    }
+
+    @Test
+    public void internetShareClientUsesAdvertisedProxy() throws Exception {
+        String proxyHost = argument("proxy-host", "");
+        int proxyPort;
+        try {
+            proxyPort = Integer.parseInt(argument("proxy-port", "0"));
+        } catch (NumberFormatException error) {
+            fail("Internet Share client proxy port was invalid");
+            return;
+        }
+        assertTrue("Internet Share client proxy host was missing", !proxyHost.isEmpty());
+        assertTrue("Internet Share client proxy port was invalid", proxyPort > 0 && proxyPort <= 65535);
+
+        HttpURLConnection connection = null;
+        try {
+            Proxy proxy = new Proxy(
+                Proxy.Type.HTTP,
+                new InetSocketAddress(proxyHost, proxyPort)
+            );
+            connection = (HttpURLConnection) new URL(
+                argument("proxy-url", "http://example.com/")
+            ).openConnection(proxy);
+            connection.setConnectTimeout(7_000);
+            connection.setReadTimeout(7_000);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestMethod("GET");
+            int responseCode = connection.getResponseCode();
+            assertTrue(
+                "Internet Share proxy returned an invalid HTTP response",
+                responseCode >= 200 && responseCode < 500
+            );
+            String responseClass = (responseCode / 100) + "XX";
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_CLIENT_PROXY result=PASS response=" + responseClass
+            );
+        } catch (IOException error) {
+            android.util.Log.e(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_CLIENT_PROXY result=FAIL category=" +
+                    classifyNetworkFailure(error.getMessage())
+            );
+            throw error;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -980,6 +1059,15 @@ public class SafeNetVpnInstrumentationTest {
             : android.Manifest.permission.ACCESS_FINE_LOCATION;
         return ContextCompat.checkSelfPermission(context, permission) ==
             PackageManager.PERMISSION_GRANTED;
+    }
+
+    private long boundedTetherHoldSeconds(String value) {
+        try {
+            long seconds = Long.parseLong(value);
+            return Math.max(1L, Math.min(TETHER_CLIENT_HOLD_SECONDS, seconds));
+        } catch (NumberFormatException error) {
+            return TETHER_CLIENT_HOLD_SECONDS;
+        }
     }
 
     private void grantTetherPermissionDialog() throws Exception {
