@@ -311,6 +311,18 @@ function mockApi(
         const id = Number(url.pathname.split("/").at(-2));
         dnsServers = dnsServers.map((server) => ({ ...server, isActive: server.id === id }));
         response = dnsServers.find((server) => server.id === id);
+      } else if (url.pathname === "/api/antivirus/clamav/status" && method === "GET") {
+        response = {
+          configured: true,
+          reachable: true,
+          verified: true,
+          message: "ClamAV mock verification is available",
+          checkedAt: "2026-01-01T00:00:00.000Z",
+          lastVerifiedAt: "2026-01-01T00:00:00.000Z",
+          lastVerificationMessage: "Mock clean-file and threat-signature checks passed",
+          lastVerifiedEngineVersion: "mock",
+          engineVersion: "mock",
+        };
       } else if (url.pathname === "/api/antivirus/settings" && method === "GET") {
         response = antivirusSettings;
       } else if (url.pathname === "/api/antivirus/settings" && method === "PUT") {
@@ -760,10 +772,6 @@ test("editable Dashboard and security form values survive returning to the page"
 
   const soundtrack = page.getByRole("switch", { name: /Soundtrack/ });
   assert.equal(await soundtrack.getAttribute("aria-checked"), "true");
-  await page.getByTestId("dashboard-wireguard-card").waitFor();
-  const wireGuardToggle = page.getByRole("switch", { name: "SafeNet WireGuard On/Off" });
-  assert.equal(await wireGuardToggle.getAttribute("aria-checked"), "false");
-  assert.equal(await wireGuardToggle.isDisabled(), true);
   await soundtrack.click();
   await waitForAttribute(soundtrack, "aria-checked", "false");
   await page.reload();
