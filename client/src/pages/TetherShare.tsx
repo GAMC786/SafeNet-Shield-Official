@@ -354,7 +354,7 @@ export default function TetherShare() {
       )}
 
       <CyberCard glow className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-transparent to-transparent">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-6">
           <div className="flex items-start gap-4">
             <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border ${running ? "border-emerald-400/40 bg-emerald-400/10" : "border-primary/30 bg-primary/10"}`}>
               {running ? <Router className="h-8 w-8 text-emerald-300" /> : <Share2 className="h-8 w-8 text-primary" />}
@@ -369,7 +369,7 @@ export default function TetherShare() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+          <div className="flex items-center justify-center gap-3 self-center rounded-xl border border-white/10 bg-black/20 px-3 py-2">
             <div className="text-right">
               <p className="text-sm font-semibold text-white">
                 {starting ? "Updating…" : running ? "Sharing on" : "Sharing off"}
