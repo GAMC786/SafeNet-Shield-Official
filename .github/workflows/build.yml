@@ -2478,8 +2478,10 @@ jobs:
           client_connection="${client_connection:-NOT_RECORDED}"
           proxy_configuration="$(awk -F= '$1 == "proxy_configuration" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           proxy_configuration="${proxy_configuration:-NOT_RECORDED}"
-          proxy_response="$(awk -F= '$1 == "proxy_response" { print $2; exit }' "$result_file" 2>/dev/null || true)"
-          proxy_response="${proxy_response:-NOT_RECORDED}"
+          proxy_https_response="$(awk -F= '$1 == "proxy_https_response" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_https_response="${proxy_https_response:-NOT_RECORDED}"
+          proxy_http_diagnostic="$(awk -F= '$1 == "proxy_http_diagnostic" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_http_diagnostic="${proxy_http_diagnostic:-NOT_RECORDED}"
           client_proxy_cleanup="$(awk -F= '$1 == "client_proxy_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           client_proxy_cleanup="${client_proxy_cleanup:-NOT_RECORDED}"
           client_wifi_cleanup="$(awk -F= '$1 == "client_wifi_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
@@ -2496,7 +2498,8 @@ jobs:
             echo "- **Wi-Fi Direct group cleanup:** \`$group_cleanup\`"
             echo "- **Client connection:** \`$client_connection\`"
             echo "- **Proxy configuration:** \`$proxy_configuration\`"
-            echo "- **Proxy response:** \`$proxy_response\`"
+            echo "- **HTTPS proxy response:** \`$proxy_https_response\`"
+            echo "- **HTTP diagnostic response:** \`$proxy_http_diagnostic\`"
             echo "- **Client cleanup:** proxy \`$client_proxy_cleanup\`; Wi-Fi \`$client_wifi_cleanup\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
@@ -2856,6 +2859,8 @@ jobs:
              profile_client_connection="NOT_RECORDED"
              profile_proxy_configuration="NOT_RECORDED"
              profile_proxy_response="NOT_RECORDED"
+             profile_proxy_https_response="NOT_RECORDED"
+             profile_proxy_http_diagnostic="NOT_RECORDED"
              profile_client_proxy_cleanup="NOT_RECORDED"
              profile_client_wifi_cleanup="NOT_RECORDED"
             profile_cleanup_result="NOT_RECORDED"
@@ -2879,6 +2884,8 @@ jobs:
                profile_client_connection="$(read_result client_connection)"
                profile_proxy_configuration="$(read_result proxy_configuration)"
                profile_proxy_response="$(read_result proxy_response)"
+                profile_proxy_https_response="$(read_result proxy_https_response)"
+                profile_proxy_http_diagnostic="$(read_result proxy_http_diagnostic)"
                profile_client_proxy_cleanup="$(read_result client_proxy_cleanup)"
                profile_client_wifi_cleanup="$(read_result client_wifi_cleanup)"
               if [[ "$profile_stop_result" == "PASS" &&
@@ -2919,8 +2926,8 @@ jobs:
              if [[ "$profile_client_connection" != "PASS" ]]; then
                blockers+=("INTERNET_SHARE_CLIENT_CONNECTION_NOT_CONFIRMED_${profile}")
              fi
-             if [[ "$profile_proxy_configuration" != "PASS" ||
-               "$profile_proxy_response" != "PASS" ]]; then
+              if [[ "$profile_proxy_configuration" != "PASS" ||
+                "$profile_proxy_https_response" != "PASS" ]]; then
                blockers+=("INTERNET_SHARE_PROXY_REQUEST_NOT_CONFIRMED_${profile}")
              fi
             if [[ "$profile_result_value" != "PASS" ]]; then
@@ -2941,6 +2948,8 @@ jobs:
                echo "profile_${profile_index}_client_connection=${profile_client_connection:-NOT_RECORDED}"
                echo "profile_${profile_index}_proxy_configuration=${profile_proxy_configuration:-NOT_RECORDED}"
                echo "profile_${profile_index}_proxy_response=${profile_proxy_response:-NOT_RECORDED}"
+                echo "profile_${profile_index}_proxy_https_response=${profile_proxy_https_response:-NOT_RECORDED}"
+                echo "profile_${profile_index}_proxy_http_diagnostic=${profile_proxy_http_diagnostic:-NOT_RECORDED}"
                echo "profile_${profile_index}_client_proxy_cleanup=${profile_client_proxy_cleanup:-NOT_RECORDED}"
                echo "profile_${profile_index}_client_wifi_cleanup=${profile_client_wifi_cleanup:-NOT_RECORDED}"
               echo "profile_${profile_index}_cleanup_result=$profile_cleanup_result"
@@ -3031,8 +3040,9 @@ jobs:
                 profile_cleanup="$(awk -F= -v key="profile_${profile_index}_cleanup_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                  profile_client="$(awk -F= -v key="profile_${profile_index}_client_connection" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                  profile_proxy_config="$(awk -F= -v key="profile_${profile_index}_proxy_configuration" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
-                 profile_proxy_response="$(awk -F= -v key="profile_${profile_index}_proxy_response" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
-                 echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`/\`$profile_proxy_response\`; cleanup \`$profile_cleanup\`"
+                  profile_proxy_https_response="$(awk -F= -v key="profile_${profile_index}_proxy_https_response" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                  profile_proxy_http_diagnostic="$(awk -F= -v key="profile_${profile_index}_proxy_http_diagnostic" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                  echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`; HTTPS \`$profile_proxy_https_response\`; HTTP diagnostic \`$profile_proxy_http_diagnostic\`; cleanup \`$profile_cleanup\`"
               done
               echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
             fi

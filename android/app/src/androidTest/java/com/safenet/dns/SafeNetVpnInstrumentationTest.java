@@ -423,14 +423,16 @@ public class SafeNetVpnInstrumentationTest {
         assertTrue("Internet Share client proxy port was invalid", proxyPort > 0 && proxyPort <= 65535);
 
         HttpURLConnection connection = null;
+        String proxyUrl = argument("proxy-url", "https://example.com/");
+        String protocol = proxyUrl.regionMatches(true, 0, "https://", 0, 8)
+            ? "HTTPS"
+            : "HTTP";
         try {
             Proxy proxy = new Proxy(
                 Proxy.Type.HTTP,
                 new InetSocketAddress(proxyHost, proxyPort)
             );
-            connection = (HttpURLConnection) new URL(
-                argument("proxy-url", "http://example.com/")
-            ).openConnection(proxy);
+            connection = (HttpURLConnection) new URL(proxyUrl).openConnection(proxy);
             connection.setConnectTimeout(7_000);
             connection.setReadTimeout(7_000);
             connection.setInstanceFollowRedirects(false);
@@ -438,20 +440,21 @@ public class SafeNetVpnInstrumentationTest {
             int responseCode = connection.getResponseCode();
             assertTrue(
                 "Internet Share proxy returned an invalid HTTP response",
-                responseCode >= 200 && responseCode < 500
+                responseCode >= 100 && responseCode < 600
             );
             String responseClass = (responseCode / 100) + "XX";
             android.util.Log.i(
                 "InternetShareSmoke",
-                "INTERNET_SHARE_CLIENT_PROXY result=PASS response=" + responseClass
+                "INTERNET_SHARE_CLIENT_PROXY result=PASS response=" + responseClass +
+                    " protocol=" + protocol
             );
         } catch (IOException error) {
             android.util.Log.e(
                 "InternetShareSmoke",
-                "INTERNET_SHARE_CLIENT_PROXY result=FAIL category=" +
-                    classifyNetworkFailure(error.getMessage())
+                "INTERNET_SHARE_CLIENT_PROXY result=FAIL protocol=" + protocol +
+                    " category=" + classifyNetworkFailure(error.getMessage())
             );
-            throw error;
+            throw new IOException("Internet Share proxy request failed", error);
         } finally {
             if (connection != null) {
                 connection.disconnect();

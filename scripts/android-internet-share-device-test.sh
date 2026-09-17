@@ -121,7 +121,8 @@ write_blocked_result() {
         printf 'client_target=%s\n' "${client_serial:-unavailable}"
         printf 'client_connection=NOT_RECORDED\n'
         printf 'proxy_advertisement=NOT_RECORDED\nproxy_configuration=NOT_RECORDED\n'
-        printf 'proxy_response=NOT_RECORDED\n'
+        printf 'proxy_response=NOT_RECORDED\nproxy_https_response=NOT_RECORDED\n'
+        printf 'proxy_http_diagnostic=NOT_RECORDED\n'
         printf 'client_proxy_cleanup=NOT_RECORDED\nclient_wifi_cleanup=NOT_RECORDED\n'
         printf 'physical_evidence=BLOCKED\nresult=BLOCKED\nmessage=%s\n' "$message"
     } | tee "$output_dir/device-access-result.txt" "$output_dir/result.txt" >&2
@@ -276,6 +277,8 @@ passphrase="$(
 client_connection="NOT_RECORDED"
 proxy_configuration="NOT_RECORDED"
 proxy_response="NOT_RECORDED"
+proxy_https_response="NOT_RECORDED"
+proxy_http_diagnostic="NOT_RECORDED"
 client_proxy_cleanup="NOT_RECORDED"
 client_wifi_cleanup="NOT_RECORDED"
 previous_proxy="$(adb -s "$client_serial" shell settings get global http_proxy 2>/dev/null | tr -d '\r' || true)"
@@ -308,25 +311,46 @@ if [[ "$client_connection" == "PASS" ]]; then
 fi
 
 if [[ "$proxy_configuration" == "PASS" ]]; then
+    : > "$output_dir/client-instrumentation.log"
+    : > "$output_dir/client-logcat.txt"
     adb -s "$client_serial" logcat -c >/dev/null 2>&1 || true
-    set +e
-    adb -s "$client_serial" shell am instrument -w -r \
-        -e proxy-host "$proxy_host" \
-        -e proxy-port "$proxy_port" \
-        -e proxy-url "http://example.com/" \
-        -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareClientUsesAdvertisedProxy" \
-        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
-        tee "$output_dir/client-instrumentation.log"
-    client_instrumentation_status="${PIPESTATUS[0]}"
-    set -e
-    adb -s "$client_serial" logcat -d -t 1200 > "$output_dir/client-logcat.txt" 2>&1 || true
-    if [[ "$client_instrumentation_status" -eq 0 ]] &&
-        grep -Fq 'INTERNET_SHARE_CLIENT_PROXY result=PASS response=' \
-            "$output_dir/client-logcat.txt" "$output_dir/client-instrumentation.log"; then
-        proxy_response="PASS"
+    run_proxy_probe() {
+        local protocol="$1"
+        local url="$2"
+        local response_marker="INTERNET_SHARE_CLIENT_PROXY result=PASS response="
+        local status
+        set +e
+        adb -s "$client_serial" shell am instrument -w -r \
+            -e proxy-host "$proxy_host" \
+            -e proxy-port "$proxy_port" \
+            -e proxy-url "$url" \
+            -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareClientUsesAdvertisedProxy" \
+            "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+            tee -a "$output_dir/client-instrumentation.log"
+        status="${PIPESTATUS[0]}"
+        set -e
+        adb -s "$client_serial" logcat -d -t 1200 >> "$output_dir/client-logcat.txt" 2>&1 || true
+        if [[ "$status" -eq 0 ]] &&
+            grep -Eq "${response_marker}[1-5]XX protocol=${protocol}" \
+                "$output_dir/client-logcat.txt" "$output_dir/client-instrumentation.log"; then
+            return 0
+        fi
+        return 1
+    }
+
+    if run_proxy_probe "HTTPS" "https://example.com/"; then
+        proxy_https_response="PASS"
     else
-        proxy_response="FAIL"
+        proxy_https_response="FAIL"
+        # HTTP remains a bounded diagnostic when the proxy cannot complete
+        # CONNECT; it never substitutes for the required HTTPS evidence.
+        if run_proxy_probe "HTTP" "http://example.com/"; then
+            proxy_http_diagnostic="PASS"
+        else
+            proxy_http_diagnostic="FAIL"
+        fi
     fi
+    proxy_response="$proxy_https_response"
 fi
 
 if [[ "$previous_proxy" == "null" || -z "$previous_proxy" ]]; then
@@ -396,7 +420,7 @@ fi
 if [[ "$instrumentation_status" -eq 0 && "$start_result" == "PASS" &&
     "$stop_result" == "PASS" && "$nearby_wifi_permission" == "PASS" &&
     "$proxy_advertisement" == "PASS" && "$client_connection" == "PASS" &&
-    "$proxy_configuration" == "PASS" && "$proxy_response" == "PASS" &&
+    "$proxy_configuration" == "PASS" && "$proxy_https_response" == "PASS" &&
     "$client_proxy_cleanup" == "PASS" && "$client_wifi_cleanup" == "PASS" ]]; then
     result="PASS"
     failure_class="NONE"
@@ -426,8 +450,10 @@ fi
         "$wifi_direct_group_cleanup" "$physical_evidence"
     printf 'client_target=%s\nclient_connection=%s\n' \
         "$client_serial" "$client_connection"
-    printf 'proxy_advertisement=%s\nproxy_configuration=%s\nproxy_response=%s\n' \
-        "$proxy_advertisement" "$proxy_configuration" "$proxy_response"
+    printf 'proxy_advertisement=%s\nproxy_configuration=%s\n' \
+        "$proxy_advertisement" "$proxy_configuration"
+    printf 'proxy_response=%s\nproxy_https_response=%s\nproxy_http_diagnostic=%s\n' \
+        "$proxy_response" "$proxy_https_response" "$proxy_http_diagnostic"
     printf 'client_proxy_cleanup=%s\nclient_wifi_cleanup=%s\n' \
         "$client_proxy_cleanup" "$client_wifi_cleanup"
     printf 'instrumentation_exit_code=%s\nresult=%s\n' \

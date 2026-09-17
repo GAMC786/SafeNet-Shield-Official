@@ -20,6 +20,7 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
   assert.match(instrumentation, /INTERNET_SHARE_START result=PASS mode=/);
   assert.match(instrumentation, /INTERNET_SHARE_READY result=PASS proxy=ADVERTISED/);
   assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY result=PASS response=/);
+  assert.match(instrumentation, /argument\("proxy-url", "https:\/\/example\.com\/"\)/);
   assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS notification=REMOVED group=NULL/);
   assert.match(instrumentation, /hasInternetShareNotification/);
   assert.match(instrumentation, /waitForWifiDirectGroupCleared/);
@@ -34,6 +35,8 @@ test("physical Internet Share evidence is bound to the signed APK and device pro
   assert.match(deviceScript, /client_connection=/);
   assert.match(deviceScript, /proxy_configuration=/);
   assert.match(deviceScript, /proxy_response=/);
+  assert.match(deviceScript, /proxy_https_response=/);
+  assert.match(deviceScript, /proxy_http_diagnostic=/);
   assert.match(deviceScript, /client_proxy_cleanup=/);
   assert.match(deviceScript, /client_wifi_cleanup=/);
   assert.match(deviceScript, /--client-serial/);
@@ -60,6 +63,8 @@ test("tagged releases publish bounded Internet Share verification evidence", () 
   assert.match(workflow, /profile_.*start_result/);
   assert.match(workflow, /profile_.*client_connection/);
   assert.match(workflow, /profile_.*proxy_response/);
+  assert.match(workflow, /profile_.*proxy_https_response/);
+  assert.match(workflow, /profile_.*proxy_http_diagnostic/);
   assert.match(workflow, /profile_.*cleanup_result/);
 });
 
@@ -72,6 +77,7 @@ test("proxy evidence does not persist the client network secret or request conte
   )?.[0] ?? "";
   assert.notEqual(clientMethod, "");
   assert.doesNotMatch(clientMethod, /getInputStream\(\)/);
+  assert.doesNotMatch(clientMethod, /Log\.[iewd].*proxyUrl/);
 });
 
 test("the Internet Share proxy emits real HTTP line endings", () => {
