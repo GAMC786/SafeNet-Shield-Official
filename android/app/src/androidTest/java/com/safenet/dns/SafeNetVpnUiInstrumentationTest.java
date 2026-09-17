@@ -37,6 +37,7 @@ import org.junit.rules.TestName;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Shared implementation for packaged UI, startup, media, Clerk, and AI Shield
