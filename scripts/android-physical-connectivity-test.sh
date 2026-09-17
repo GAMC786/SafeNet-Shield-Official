@@ -34,8 +34,10 @@ Options:
   --help           Show this help
 
 The wrapper uses the public resolver mode because a physical device cannot
-reach the emulator-only 10.0.2.2 fixture address. The packaged test still
-validates local VPN DNS filtering while Android airplane mode is toggled.
+reach the emulator-only 10.0.2.2 fixture address. The packaged test validates
+WireGuard DNS and HTTPS before and after Wi-Fi/mobile handoffs. If the phone
+has no usable cellular or Wi-Fi network, it records a bounded unavailable
+result instead of claiming that the handoff passed.
 EOF
 }
 
@@ -89,6 +91,7 @@ rm -f "$output_dir"/result.txt \
     "$output_dir"/physical-connectivity-instrumentation.log \
     "$output_dir"/physical-connectivity-logcat.txt \
     "$output_dir"/wireguard-evidence.txt \
+    "$output_dir"/wireguard-handoff-evidence.txt \
     "$output_dir"/physical-connectivity-result.txt
 
 application_apk_sha256="NOT_RECORDED"
@@ -261,7 +264,7 @@ connectivity_recovery="$(
 )"
 connectivity_recovery="${connectivity_recovery:-NOT_RECORDED}"
 
-echo "Running physical DNS, WireGuard internet, and dashboard handoff checks..."
+echo "Running physical DNS, WireGuard internet, and Wi-Fi/mobile handoff checks..."
 set +e
 adb -s "$serial" logcat -c >/dev/null 2>&1 || true
 adb -s "$serial" shell am instrument -w -r \
@@ -274,7 +277,7 @@ adb -s "$serial" shell am instrument -w -r \
     -e dot-secondary "${ANDROID_SMOKE_DOT_SECONDARY:-dns.google}" \
     -e ordinary-url "${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}" \
     -e device-profile "$profile" \
-    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardWireGuardSwitchControlsTheSingleTunnel" \
+    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardSurvivesWifiMobileHandoff,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardWireGuardSwitchControlsTheSingleTunnel" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
     tee "$output_dir/physical-connectivity-instrumentation.log"
 physical_instrumentation_status="${PIPESTATUS[0]}"
@@ -335,6 +338,55 @@ grep -hE \
     'WIREGUARD_(TUNNEL|HANDSHAKE|DNS|HTTPS|SMOKE) result=PASS|WIREGUARD_FAILURE category=(HANDSHAKE|ROUTE|DNS|NAT|CONFIGURATION|PERMISSION|GATEWAY_CONNECTIVITY)' \
     "${evidence_sources[@]}" 2>/dev/null |
     tail -n 20 > "$output_dir/wireguard-evidence.txt" || true
+grep -hE \
+    'WIREGUARD_HANDOFF phase=(baseline|wifi_to_mobile|mobile_to_wifi) result=(PASS|UNAVAILABLE) (underlying=(WIFI|CELLULAR) tunnel=UP handshake=FRESH gateway_dns=PASS ordinary_https=PASS|category=(WIFI_UNAVAILABLE|CELLULAR_UNAVAILABLE))|WIREGUARD_HANDOFF_FAILURE phase=(baseline|wifi_to_mobile|mobile_to_wifi) category=(TUNNEL|ROUTE|HANDSHAKE|DNS|HTTPS|TRANSITION)' \
+    "${evidence_sources[@]}" 2>/dev/null |
+    tail -n 20 > "$output_dir/wireguard-handoff-evidence.txt" || true
+wireguard_handoff_status="NOT_RECORDED"
+wifi_to_mobile_handoff="NOT_RECORDED"
+mobile_to_wifi_handoff="NOT_RECORDED"
+wifi_to_mobile_failure_category="NOT_RECORDED"
+mobile_to_wifi_failure_category="NOT_RECORDED"
+wireguard_handoff_unavailable_category="NOT_RECORDED"
+if grep -Fq \
+    'WIREGUARD_HANDOFF phase=wifi_to_mobile result=PASS underlying=CELLULAR tunnel=UP handshake=FRESH gateway_dns=PASS ordinary_https=PASS' \
+    "${evidence_sources[@]}"; then
+    wifi_to_mobile_handoff="PASS"
+fi
+if grep -Fq \
+    'WIREGUARD_HANDOFF phase=mobile_to_wifi result=PASS underlying=WIFI tunnel=UP handshake=FRESH gateway_dns=PASS ordinary_https=PASS' \
+    "${evidence_sources[@]}"; then
+    mobile_to_wifi_handoff="PASS"
+fi
+wifi_to_mobile_failure_category="$(
+    grep -Eo \
+        'WIREGUARD_HANDOFF_FAILURE phase=wifi_to_mobile category=(TUNNEL|ROUTE|HANDSHAKE|DNS|HTTPS|TRANSITION)' \
+        "${evidence_sources[@]}" 2>/dev/null |
+        tail -n 1 | sed 's/.*category=//' || true
+)"
+wifi_to_mobile_failure_category="${wifi_to_mobile_failure_category:-NOT_RECORDED}"
+mobile_to_wifi_failure_category="$(
+    grep -Eo \
+        'WIREGUARD_HANDOFF_FAILURE phase=mobile_to_wifi category=(TUNNEL|ROUTE|HANDSHAKE|DNS|HTTPS|TRANSITION)' \
+        "${evidence_sources[@]}" 2>/dev/null |
+        tail -n 1 | sed 's/.*category=//' || true
+)"
+mobile_to_wifi_failure_category="${mobile_to_wifi_failure_category:-NOT_RECORDED}"
+if [[ "$wifi_to_mobile_handoff" == "PASS" &&
+    "$mobile_to_wifi_handoff" == "PASS" ]]; then
+    wireguard_handoff_status="PASS"
+else
+    wireguard_handoff_unavailable_category="$(
+        grep -Eo \
+            'WIREGUARD_HANDOFF phase=(wifi_to_mobile|mobile_to_wifi) result=UNAVAILABLE category=(WIFI_UNAVAILABLE|CELLULAR_UNAVAILABLE)' \
+            "${evidence_sources[@]}" 2>/dev/null |
+            tail -n 1 | sed 's/.*category=//' || true
+    )"
+    wireguard_handoff_unavailable_category="${wireguard_handoff_unavailable_category:-NOT_RECORDED}"
+    if [[ "$wireguard_handoff_unavailable_category" != "NOT_RECORDED" ]]; then
+        wireguard_handoff_status="UNAVAILABLE"
+    fi
+fi
 vpn_handoff_status="NOT_RECORDED"
 if grep -Fq 'PHYSICAL_WIREGUARD_SWITCH result=PASS off_to_on=PASS on_to_off=PASS' \
     "$output_dir/physical-connectivity-logcat.txt"; then
@@ -380,6 +432,7 @@ if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
     "$resolver_doh_status" == "PASS" &&
     "$resolver_dot_status" == "PASS" &&
     "$wireguard_status" == "PASS" &&
+    "$wireguard_handoff_status" == "PASS" &&
     "$vpn_handoff_status" == "PASS" &&
     "$wireguard_handshake_fixture" == "PASS" &&
     "$wireguard_route_fixture" == "PASS" &&
@@ -388,8 +441,13 @@ if [[ "$smoke_status" -eq 0 && "$smoke_category" == "PASS" &&
     result="PASS"
     failure_class="NONE"
 else
-    result="FAIL"
-    failure_class="APPLICATION"
+    if [[ "$wireguard_handoff_status" == "UNAVAILABLE" ]]; then
+        result="UNAVAILABLE"
+        failure_class="DEVICE_ACCESS"
+    else
+        result="FAIL"
+        failure_class="APPLICATION"
+    fi
 fi
 
 failure_category="$smoke_category"
@@ -398,10 +456,18 @@ if [[ "$failure_category" == "PASS" ]]; then
         "$resolver_doh_status" != "PASS" ||
         "$resolver_dot_status" != "PASS" ]]; then
         failure_category="PHYSICAL_DNS_CONNECTIVITY"
-    elif [[ "$wireguard_status" != "PASS" || "$vpn_handoff_status" != "PASS" ]]; then
+    elif [[ "$wireguard_status" != "PASS" ||
+        "$vpn_handoff_status" != "PASS" ||
+        "$wireguard_handoff_status" != "PASS" ]]; then
         failure_category="${wireguard_failure_category}"
         if [[ "$failure_category" == "NOT_RECORDED" ]]; then
-            if [[ "$wireguard_tunnel_status" != "PASS" ]]; then
+            if [[ "$wireguard_handoff_status" == "UNAVAILABLE" ]]; then
+                failure_category="$wireguard_handoff_unavailable_category"
+            elif [[ "$wifi_to_mobile_failure_category" != "NOT_RECORDED" ]]; then
+                failure_category="WIFI_TO_MOBILE_${wifi_to_mobile_failure_category}"
+            elif [[ "$mobile_to_wifi_failure_category" != "NOT_RECORDED" ]]; then
+                failure_category="MOBILE_TO_WIFI_${mobile_to_wifi_failure_category}"
+            elif [[ "$wireguard_tunnel_status" != "PASS" ]]; then
                 failure_category="GATEWAY_CONNECTIVITY"
             elif [[ "$wireguard_handshake_status" != "PASS" ]]; then
                 failure_category="HANDSHAKE"
@@ -441,6 +507,13 @@ fi
     printf 'gateway_handshake_observed=%s\n' "$wireguard_handshake_status"
     printf 'wireguard_dns=%s\n' "$wireguard_dns_status"
     printf 'wireguard_https=%s\n' "$wireguard_https_status"
+    printf 'wireguard_handoff=%s\n' "$wireguard_handoff_status"
+    printf 'wifi_to_mobile_handoff=%s\n' "$wifi_to_mobile_handoff"
+    printf 'mobile_to_wifi_handoff=%s\n' "$mobile_to_wifi_handoff"
+    printf 'wifi_to_mobile_failure_category=%s\n' "$wifi_to_mobile_failure_category"
+    printf 'mobile_to_wifi_failure_category=%s\n' "$mobile_to_wifi_failure_category"
+    printf 'wireguard_handoff_unavailable_category=%s\n' \
+        "$wireguard_handoff_unavailable_category"
     printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
     printf 'dashboard_handoff=%s\n' "$vpn_handoff_status"
     printf 'wireguard_failure_category=%s\n' "$wireguard_failure_category"
@@ -454,7 +527,11 @@ fi
     printf 'result=%s\n' "$result"
 } | tee "$output_dir/physical-connectivity-result.txt" "$output_dir/result.txt"
 
-if [[ "$result" != "PASS" ]]; then
+if [[ "$result" == "UNAVAILABLE" ]]; then
+    echo "Physical Android connectivity handoff was unavailable ($wireguard_handoff_unavailable_category)." >&2
+    echo "Evidence: $output_dir" >&2
+    exit 78
+elif [[ "$result" != "PASS" ]]; then
     echo "Physical Android connectivity smoke failed ($smoke_category)." >&2
     echo "Evidence: $output_dir" >&2
     exit 1

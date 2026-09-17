@@ -17,6 +17,7 @@ import android.net.RouteInfo;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -297,6 +298,68 @@ public class SafeNetVpnInstrumentationTest {
     }
 
     @Test
+    public void wireGuardSurvivesWifiMobileHandoff() throws Exception {
+        JSONObject started = callVpn(
+            "window.Capacitor.Plugins.SafeNetVpn.startWireGuard({})",
+            true
+        );
+        if (!started.optBoolean("ok", false)) {
+            fail("WIREGUARD_HANDOFF_FAILURE phase=baseline category=START");
+        }
+        waitForWireGuardState(true, VPN_START_TIMEOUT_SECONDS);
+
+        long previousHandshake = verifyWireGuardHandoffCheckpoint(
+            "baseline",
+            0L,
+            transportName(findUnderlyingNetwork(NetworkCapabilities.TRANSPORT_WIFI))
+        );
+        String initialWifiState = executeShellCommand("settings get global wifi_on").trim();
+        String initialMobileState = executeShellCommand("settings get global mobile_data").trim();
+
+        try {
+            Network wifi = findUnderlyingNetwork(NetworkCapabilities.TRANSPORT_WIFI);
+            if (wifi == null) {
+                logWireGuardHandoffUnavailable("wifi_to_mobile", "WIFI_UNAVAILABLE");
+                return;
+            }
+
+            executeShellCommand("svc wifi disable");
+            Network cellular = awaitUnderlyingNetwork(
+                NetworkCapabilities.TRANSPORT_CELLULAR,
+                30
+            );
+            if (cellular == null) {
+                logWireGuardHandoffUnavailable("wifi_to_mobile", "CELLULAR_UNAVAILABLE");
+                return;
+            }
+            previousHandshake = verifyWireGuardHandoffCheckpoint(
+                "wifi_to_mobile",
+                previousHandshake,
+                "CELLULAR"
+            );
+
+            executeShellCommand("svc data disable");
+            executeShellCommand("svc wifi enable");
+            Network restoredWifi = awaitUnderlyingNetwork(
+                NetworkCapabilities.TRANSPORT_WIFI,
+                30
+            );
+            if (restoredWifi == null) {
+                logWireGuardHandoffUnavailable("mobile_to_wifi", "WIFI_UNAVAILABLE");
+                return;
+            }
+            verifyWireGuardHandoffCheckpoint(
+                "mobile_to_wifi",
+                previousHandshake,
+                "WIFI"
+            );
+        } finally {
+            restoreNetworkSetting("wifi", initialWifiState);
+            restoreNetworkSetting("data", initialMobileState);
+        }
+    }
+
+    @Test
     public void wireGuardFailureCategoryFixtures() {
         String[][] fixtures = new String[][] {
             {"HANDSHAKE", "wireguard handshake timed out"},
@@ -323,12 +386,17 @@ public class SafeNetVpnInstrumentationTest {
     }
 
     private byte[] queryWireGuardDns(JSONObject status) throws Exception {
+        return queryWireGuardDns(status, 0x534e);
+    }
+
+    private byte[] queryWireGuardDns(JSONObject status, int queryId) throws Exception {
         String configuredDns = status.getString("wireguardDnsServers")
             .split("[,\\s]+", -1)[0]
             .trim();
         InetAddress resolver = InetAddress.getByName(configuredDns);
         byte[] query = new byte[] {
-            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            (byte) ((queryId >> 8) & 0xff), (byte) (queryId & 0xff),
+            0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00,
             0x07, 's', 'a', 'f', 'e', 'n', 'e', 't',
             0x03, 'c', 'o', 'm', 0x00,
@@ -348,10 +416,213 @@ public class SafeNetVpnInstrumentationTest {
             System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
             assertEquals(
                 "WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY message=gateway_dns_id_mismatch",
-                0x534e,
+                queryId,
                 readUnsignedShort(result, 0)
             );
             return result;
+        }
+    }
+
+    private long verifyWireGuardHandoffCheckpoint(
+        String phase,
+        long previousHandshake,
+        String expectedTransport
+    ) throws Exception {
+        try {
+            if (!"baseline".equals(phase)) {
+                int expectedTransportType = "CELLULAR".equals(expectedTransport)
+                    ? NetworkCapabilities.TRANSPORT_CELLULAR
+                    : NetworkCapabilities.TRANSPORT_WIFI;
+                assertNotNull(
+                    "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=TRANSITION",
+                    findUnderlyingNetwork(expectedTransportType)
+                );
+            }
+            JSONObject statusResult = callVpn(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            );
+            JSONObject status = requireValue(statusResult);
+            assertTrue(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=TUNNEL",
+                status.optBoolean("wireguardRunning", false) &&
+                    "wireguard".equals(status.optString("activeTunnel")) &&
+                    "SafeNet WireGuard".equals(status.optString("vpnPermissionOwner"))
+            );
+
+            Network vpnNetwork = findVpnNetwork();
+            assertNotNull(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=ROUTE",
+                vpnNetwork
+            );
+            LinkProperties vpnProperties = connectivityProperties(vpnNetwork);
+            assertNotNull(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=ROUTE",
+                vpnProperties
+            );
+            boolean hasDefaultRoute = false;
+            for (RouteInfo route : vpnProperties.getRoutes()) {
+                if (route.isDefaultRoute()) {
+                    hasDefaultRoute = true;
+                    break;
+                }
+            }
+            assertTrue(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=ROUTE",
+                hasDefaultRoute
+            );
+
+            int queryId = "wifi_to_mobile".equals(phase) ? 0x534f : 0x5350;
+            byte[] dnsResponse = queryWireGuardDns(status, queryId);
+            assertTrue(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=DNS",
+                dnsResponse.length >= 12
+            );
+            assertEquals(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=DNS",
+                queryId,
+                readUnsignedShort(dnsResponse, 0)
+            );
+            checkOrdinaryConnectivity();
+
+            JSONObject refreshed = requireValue(callVpn(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            long handshake = refreshed.optLong(
+                "wireguardLatestHandshakeEpochMillis",
+                0L
+            );
+            assertTrue(
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase + " category=HANDSHAKE",
+                handshake > previousHandshake
+            );
+            android.util.Log.i(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_HANDOFF phase=" + phase +
+                    " result=PASS underlying=" + expectedTransport +
+                    " tunnel=UP handshake=FRESH gateway_dns=PASS ordinary_https=PASS"
+            );
+            return handshake;
+        } catch (AssertionError error) {
+            String category = classifyHandoffFailure(error.getMessage());
+            android.util.Log.e(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase +
+                    " category=" + category
+            );
+            throw error;
+        } catch (Exception error) {
+            android.util.Log.e(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_HANDOFF_FAILURE phase=" + phase +
+                    " category=" + classifyHandoffFailure(error.getMessage())
+            );
+            throw error;
+        }
+    }
+
+    private void logWireGuardHandoffUnavailable(String phase, String category) {
+        android.util.Log.w(
+            "SafeNetWireGuardSmoke",
+            "WIREGUARD_HANDOFF phase=" + phase +
+                " result=UNAVAILABLE category=" + category
+        );
+    }
+
+    private Network awaitUnderlyingNetwork(int transport, long timeoutSeconds)
+        throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        Network network;
+        while (System.nanoTime() < deadline) {
+            network = findUnderlyingNetwork(transport);
+            if (network != null) {
+                return network;
+            }
+            SystemClock.sleep(1000);
+        }
+        return null;
+    }
+
+    private Network findUnderlyingNetwork(int transport) {
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) {
+            return null;
+        }
+        for (Network network : connectivity.getAllNetworks()) {
+            NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+            if (capabilities != null &&
+                capabilities.hasTransport(transport) &&
+                !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return network;
+            }
+        }
+        return null;
+    }
+
+    private Network findVpnNetwork() {
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) {
+            return null;
+        }
+        for (Network network : connectivity.getAllNetworks()) {
+            NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+            if (capabilities != null &&
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                return network;
+            }
+        }
+        return null;
+    }
+
+    private LinkProperties connectivityProperties(Network network) {
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        return connectivity == null ? null : connectivity.getLinkProperties(network);
+    }
+
+    private String transportName(Network network) {
+        if (network == null) {
+            return "UNKNOWN";
+        }
+        ConnectivityManager connectivity =
+            (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkCapabilities capabilities =
+            connectivity == null ? null : connectivity.getNetworkCapabilities(network);
+        if (capabilities == null) {
+            return "UNKNOWN";
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+            return "WIFI";
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+            return "CELLULAR";
+        }
+        return "OTHER";
+    }
+
+    private String executeShellCommand(String command) throws IOException {
+        ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .executeShellCommand(command);
+        StringBuilder commandOutput = new StringBuilder();
+        try (ParcelFileDescriptor.AutoCloseInputStream input =
+                 new ParcelFileDescriptor.AutoCloseInputStream(output)) {
+            int value;
+            while ((value = input.read()) != -1) {
+                commandOutput.append((char) value);
+            }
+        }
+        return commandOutput.toString();
+    }
+
+    private void restoreNetworkSetting(String network, String initialState)
+        throws IOException {
+        if ("0".equals(initialState)) {
+            executeShellCommand("svc " + network + " disable");
+        } else if ("1".equals(initialState)) {
+            executeShellCommand("svc " + network + " enable");
         }
     }
 
@@ -911,6 +1182,28 @@ public class SafeNetVpnInstrumentationTest {
             return "NAT";
         }
         return "GATEWAY_CONNECTIVITY";
+    }
+
+    private static String classifyHandoffFailure(String message) {
+        String normalized = message == null ? "" : message.toUpperCase(Locale.US);
+        if (normalized.contains("CATEGORY=TUNNEL") ||
+            normalized.contains("CATEGORY=START")) {
+            return "TUNNEL";
+        }
+        if (normalized.contains("CATEGORY=ROUTE")) {
+            return "ROUTE";
+        }
+        if (normalized.contains("CATEGORY=HANDSHAKE")) {
+            return "HANDSHAKE";
+        }
+        if (normalized.contains("CATEGORY=DNS")) {
+            return "DNS";
+        }
+        if (normalized.contains("HTTPS") || normalized.contains("HTTP") ||
+            normalized.contains("CONNECTION") || normalized.contains("TIMEOUT")) {
+            return "HTTPS";
+        }
+        return "TRANSITION";
     }
 
     private String classifyResolverFailure(String message) {

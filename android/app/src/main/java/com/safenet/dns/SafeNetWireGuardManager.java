@@ -5,8 +5,10 @@ import android.net.VpnService;
 
 import com.wireguard.android.backend.Backend;
 import com.wireguard.android.backend.GoBackend;
+import com.wireguard.android.backend.Statistics;
 import com.wireguard.android.backend.Tunnel;
 import com.wireguard.config.Config;
+import com.wireguard.crypto.Key;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,6 +65,25 @@ final class SafeNetWireGuardManager {
             return backend.getState(tunnel) == Tunnel.State.UP;
         } catch (Exception ignored) {
             return false;
+        }
+    }
+
+    long latestHandshakeEpochMillis() {
+        try {
+            Statistics statistics = backend.getStatistics(tunnel);
+            long latestHandshake = 0L;
+            for (Key peer : statistics.peers()) {
+                Statistics.PeerStats peerStats = statistics.peer(peer);
+                if (peerStats != null) {
+                    latestHandshake = Math.max(
+                        latestHandshake,
+                        peerStats.latestHandshakeEpochMillis()
+                    );
+                }
+            }
+            return latestHandshake;
+        } catch (Exception ignored) {
+            return 0L;
         }
     }
 

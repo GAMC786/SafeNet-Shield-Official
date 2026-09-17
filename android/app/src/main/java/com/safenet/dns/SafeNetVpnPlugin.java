@@ -85,11 +85,18 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("eulaAccepted", hasAcceptedEula());
         boolean wireGuardConfigured = SafeNetWireGuardConfig.isCoreConfigured();
         boolean wireGuardRunning = false;
+        long wireGuardLatestHandshake = 0L;
         if (wireGuardConfigured) {
-            wireGuardRunning = SafeNetWireGuardManager.get(getContext()).isRunning();
+            SafeNetWireGuardManager wireGuardManager =
+                SafeNetWireGuardManager.get(getContext());
+            wireGuardRunning = wireGuardManager.isRunning();
+            if (wireGuardRunning) {
+                wireGuardLatestHandshake = wireGuardManager.latestHandshakeEpochMillis();
+            }
         }
         result.put("wireguardConfigured", wireGuardConfigured);
         result.put("wireguardRunning", wireGuardRunning);
+        result.put("wireguardLatestHandshakeEpochMillis", wireGuardLatestHandshake);
         result.put("activeTunnel", wireGuardRunning
             ? TUNNEL_WIREGUARD
             : SafeNetVpnService.isRunning() ? TUNNEL_DNS : "none");
