@@ -676,6 +676,26 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Resolve and verify app release version
+        id: app_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolver_args=(--output "$GITHUB_OUTPUT")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            expected_version="${GITHUB_REF_NAME#v}"
+            if [[ -z "$expected_version" ]]; then
+              echo "::error::Could not resolve the release version from GITHUB_REF_NAME."
+              exit 1
+            fi
+            resolver_args+=(
+              --expected-version "$expected_version"
+              --expected-label tag
+              --mismatch-prefix "Release version mismatch"
+            )
+          fi
+          bash scripts/resolve-android-release-metadata.sh "${resolver_args[@]}"
+
       - name: Install dependencies with bounded retry
         run: bash scripts/npm-ci-with-retry.sh
 

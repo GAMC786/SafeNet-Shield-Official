@@ -13,9 +13,37 @@ import test from "node:test";
 const scriptPath = new URL("./resolve-android-release-metadata.sh", import.meta.url);
 const repositoryRoot = new URL("..", import.meta.url);
 
-function createFixture(buildGradle) {
+function createFixture(
+  buildGradle,
+  {
+    packageVersion = "1.0.60",
+    packageLockVersion = packageVersion,
+    packageLockRootVersion = packageVersion,
+    manifestVersion = packageVersion,
+  } = {},
+) {
   const directory = mkdtempSync(join(tmpdir(), "android-release-metadata-"));
   mkdirSync(join(directory, "android", "app"), { recursive: true });
+  mkdirSync(join(directory, "client", "public"), { recursive: true });
+  writeFileSync(
+    join(directory, "package.json"),
+    JSON.stringify({ version: packageVersion }),
+  );
+  writeFileSync(
+    join(directory, "package-lock.json"),
+    JSON.stringify({
+      version: packageLockVersion,
+      packages: {
+        "": {
+          version: packageLockRootVersion,
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(directory, "client", "public", "manifest.json"),
+    JSON.stringify({ name: `SafeNet Shield DNS v${manifestVersion}` }),
+  );
   writeFileSync(join(directory, "android", "app", "build.gradle"), buildGradle);
   return directory;
 }
@@ -62,6 +90,23 @@ test("uses one error when Gradle metadata is incomplete", () => {
   assert.match(
     result.stderr,
     /Could not resolve versionName and versionCode from android\/app\/build\.gradle\./,
+  );
+});
+
+test("fails with a file-specific error when the manifest label is stale", () => {
+  const directory = createFixture(
+    `
+      versionCode 52
+      versionName "1.0.60"
+    `,
+    { manifestVersion: "1.0.59" },
+  );
+  const result = runResolver(directory);
+
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.stderr,
+    /App version mismatch: client\/public\/manifest\.json name version=1\.0\.59, package\.json=1\.0\.60/,
   );
 });
 
