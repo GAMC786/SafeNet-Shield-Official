@@ -169,6 +169,13 @@ public final class AppLockManager {
             promptBuilder.setDeviceCredentialAllowed(true);
         }
 
-        prompt.authenticate(promptBuilder.build());
+        try {
+            prompt.authenticate(promptBuilder.build());
+        } catch (RuntimeException error) {
+            // A prompt can fail to launch when the activity is transitioning
+            // state. Always release the guard so a later explicit retry works.
+            promptActive = false;
+            callback.onFailure("The Android credential prompt could not be opened. Try again.");
+        }
     }
 }
