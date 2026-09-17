@@ -161,7 +161,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex flex-col justify-center items-center text-center space-y-4">
+         <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
            <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
              <div className="flex items-center gap-2">
                <Music className="h-4 w-4 text-primary" />
