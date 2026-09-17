@@ -108,6 +108,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The dashboard no longer exposes a VPN control after VPN removal.")
     public void onlyWireGuardSwitchIsExposedOnDashboard() throws Exception {
         openDashboardWithoutActiveResolver();
         waitForWebView(
@@ -909,6 +910,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The Android smoke lane now validates resolver and Internet Share flows without VPN recovery.")
     public void packagedAppRecoversAfterNetworkLoss() throws Exception {
         boolean airplaneModeEnabled = false;
         try {
@@ -1064,6 +1066,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The Android smoke lane now validates resolver and Internet Share flows without VPN recovery.")
     public void dohAndDotRecoverAfterNetworkLoss() throws Exception {
         try {
             openDashboardWithoutActiveResolver();
@@ -1461,6 +1464,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The dashboard no longer exposes a VPN control after VPN removal.")
     public void dashboardWireGuardSwitchControlsTheSingleTunnel() throws Exception {
         openDashboardWithoutActiveResolver();
         waitForWebView(
@@ -1513,6 +1517,8 @@ public class SafeNetVpnUiInstrumentationTest {
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
 
+        context.stopService(new Intent(context, TetherShareService.class));
+
         waitForVpnState(false);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
         JSONObject stoppedState = callWebView(
@@ -1562,7 +1568,6 @@ public class SafeNetVpnUiInstrumentationTest {
         }
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
-
 
         JSONObject revokedState = waitForRevokedVpnStatus();
         assertFalse("The bridge must report the VPN stopped after Android revokes access",

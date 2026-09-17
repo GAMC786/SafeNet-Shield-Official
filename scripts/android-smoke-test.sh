@@ -1083,7 +1083,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 echo "Running SafeNet Android instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume" \
+    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest" \
     -e preserve-auth-session true \
     -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \
@@ -1157,9 +1157,40 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
     test_failed=1
 fi
 
-resolver_recovery_status="PASS"
-doh_recovery_status="PASS"
-dot_recovery_status="PASS"
+dns_resolver_ui_status="PASS"
+ddns_ui_status="PASS"
+vpn_package_surface_status="PASS"
+internet_share_start_status="PASS"
+internet_share_stop_status="PASS"
+if ! grep -Fq 'DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS' \
+    "$output_dir/instrumentation.log"; then
+    dns_resolver_ui_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS' \
+    "$output_dir/instrumentation.log"; then
+    ddns_ui_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT' \
+    "$output_dir/instrumentation.log"; then
+    vpn_package_surface_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'INTERNET_SHARE_START result=PASS' \
+    "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+    internet_share_start_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'INTERNET_SHARE_STOP result=PASS' \
+    "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+    internet_share_stop_status="FAIL"
+    test_failed=1
+fi
+
+resolver_recovery_status="NOT_APPLICABLE"
+doh_recovery_status="NOT_APPLICABLE"
+dot_recovery_status="NOT_APPLICABLE"
 doh_recovery_cycles=0
 dot_recovery_cycles=0
 doh_recovery_failure_category="NOT_RECORDED"
@@ -1168,56 +1199,6 @@ doh_recovery_failure_elapsed_ms="NOT_RECORDED"
 dot_recovery_failure_category="NOT_RECORDED"
 dot_recovery_failure_phase="NOT_RECORDED"
 dot_recovery_failure_elapsed_ms="NOT_RECORDED"
-if [[ "$resolver_recovery_contract_status" == "FAIL" ]]; then
-    test_failed=1
-    resolver_recovery_status="FAIL"
-fi
-if [[ -s "$output_dir/resolver-recovery-failures.txt" ]]; then
-    doh_failure_record="$(grep -m 1 'protocol=doh ' \
-        "$output_dir/resolver-recovery-failures.txt" || true)"
-    dot_failure_record="$(grep -m 1 'protocol=dot ' \
-        "$output_dir/resolver-recovery-failures.txt" || true)"
-    doh_recovery_failure_category="$(sed -n 's/.*failure_category=\([^ ]*\).*/\1/p' \
-        <<< "$doh_failure_record")"
-    doh_recovery_failure_phase="$(sed -n 's/.* phase=\([^ ]*\).*/\1/p' \
-        <<< "$doh_failure_record")"
-    doh_recovery_failure_elapsed_ms="$(sed -n 's/.*elapsed_ms=\([0-9]*\).*/\1/p' \
-        <<< "$doh_failure_record")"
-    dot_recovery_failure_category="$(sed -n 's/.*failure_category=\([^ ]*\).*/\1/p' \
-        <<< "$dot_failure_record")"
-    dot_recovery_failure_phase="$(sed -n 's/.* phase=\([^ ]*\).*/\1/p' \
-        <<< "$dot_failure_record")"
-    dot_recovery_failure_elapsed_ms="$(sed -n 's/.*elapsed_ms=\([0-9]*\).*/\1/p' \
-        <<< "$dot_failure_record")"
-    doh_recovery_failure_category="${doh_recovery_failure_category:-NOT_RECORDED}"
-    doh_recovery_failure_phase="${doh_recovery_failure_phase:-NOT_RECORDED}"
-    doh_recovery_failure_elapsed_ms="${doh_recovery_failure_elapsed_ms:-NOT_RECORDED}"
-    dot_recovery_failure_category="${dot_recovery_failure_category:-NOT_RECORDED}"
-    dot_recovery_failure_phase="${dot_recovery_failure_phase:-NOT_RECORDED}"
-    dot_recovery_failure_elapsed_ms="${dot_recovery_failure_elapsed_ms:-NOT_RECORDED}"
-fi
-for cycle in $(seq 1 "$REQUIRED_RESOLVER_RECOVERY_CYCLES"); do
-    if grep -Fq \
-        "DOH_DOT_RECOVERY protocol=doh result=PASS cycle=$cycle" \
-        "$output_dir/resolver-recovery-logcat.txt"; then
-        doh_recovery_cycles=$((doh_recovery_cycles + 1))
-    fi
-    if grep -Fq \
-        "DOH_DOT_RECOVERY protocol=dot result=PASS cycle=$cycle" \
-        "$output_dir/resolver-recovery-logcat.txt"; then
-        dot_recovery_cycles=$((dot_recovery_cycles + 1))
-    fi
-done
-if [[ "$doh_recovery_cycles" -ne "$REQUIRED_RESOLVER_RECOVERY_CYCLES" ]]; then
-    doh_recovery_status="NOT_RECORDED"
-    resolver_recovery_status="FAIL"
-    test_failed=1
-fi
-if [[ "$dot_recovery_cycles" -ne "$REQUIRED_RESOLVER_RECOVERY_CYCLES" ]]; then
-    dot_recovery_status="NOT_RECORDED"
-    resolver_recovery_status="FAIL"
-    test_failed=1
-fi
 {
     printf 'resolver_recovery_contract=%s\n' "$resolver_recovery_contract_status"
     printf 'resolver_recovery=%s\n' "$resolver_recovery_status"
@@ -1291,8 +1272,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$dns_resolver_ui_status" "$ddns_ui_status" "$vpn_package_surface_status" "$internet_share_start_status" "$internet_share_stop_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

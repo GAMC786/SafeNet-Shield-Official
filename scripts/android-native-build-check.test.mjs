@@ -26,6 +26,17 @@ const manifestSource = await readFile(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
 );
+const releaseSmokeSource = await readFile(
+  new URL("./android-smoke-test.sh", import.meta.url),
+  "utf8",
+);
+const resolverDdnsInstrumentationSource = await readFile(
+  new URL(
+    "../android/app/src/androidTest/java/com/safenet/dns/SafeNetDnsDdnsInstrumentationTest.java",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("Android native check is executable and forces the debug Java build", async () => {
   const scriptStats = await stat(
@@ -82,4 +93,20 @@ test("the native plugin keeps shared non-VPN features", () => {
 
 test("the Android manifest has no VPN service or VPN permission", () => {
   assert.doesNotMatch(manifestSource, /android\.net\.VpnService|BIND_VPN_SERVICE|SafeNetVpnService|SafeNetVpnTileService/);
+});
+
+test("the signed smoke lane proves DNS, DDNS, Internet Share, and no-VPN package state", () => {
+  assert.match(
+    releaseSmokeSource,
+    /SafeNetDnsDdnsInstrumentationTest/,
+    "the signed smoke lane must run the resolver/DDNS/package instrumentation",
+  );
+  assert.match(resolverDdnsInstrumentationSource, /dnsResolverCreateEditAndActivateFlow/);
+  assert.match(resolverDdnsInstrumentationSource, /ddnsManagementFlow/);
+  assert.match(resolverDdnsInstrumentationSource, /signedPackageRequestsNoVpnServiceOrPermission/);
+  assert.match(releaseSmokeSource, /DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS/);
+  assert.match(releaseSmokeSource, /DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS/);
+  assert.match(releaseSmokeSource, /VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT/);
+  assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
+  assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
 });
