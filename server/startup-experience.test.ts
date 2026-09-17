@@ -184,7 +184,11 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /running \? "sharing" : "not-sharing"/);
   assert.match(headerSource, /status === "sharing" \? "Sharing"/);
   assert.match(headerSource, /status === "not-sharing" \? "Not Sharing"/);
-  assert.match(tetherShareSource, /Start sharing/);
+  assert.match(tetherShareSource, /from "@\/components\/ui\/switch"/);
+  assert.match(tetherShareSource, /<Switch/);
+  assert.match(tetherShareSource, /checked=\{running\}/);
+  assert.match(tetherShareSource, /onCheckedChange=\{\(checked\) => void handleToggle\(checked\)\}/);
+  assert.match(tetherShareSource, /nextRunning \? start\(\) : stop\(\)/);
   assert.match(tetherShareSource, /Proxy host/);
   assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
   assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);

@@ -9,6 +9,7 @@ import {
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -24,7 +25,6 @@ import {
   Share2,
   ShieldCheck,
   Smartphone,
-  Square,
   Trash2,
   Wifi,
   WifiOff,
@@ -282,7 +282,7 @@ export default function TetherShare() {
     }
   };
 
-  const handleToggle = async () => {
+  const handleToggle = async (nextRunning: boolean) => {
     if (!supported) {
       toast({
         title: "Android device required",
@@ -291,7 +291,7 @@ export default function TetherShare() {
       return;
     }
     try {
-      await (running ? stop() : start());
+      await (nextRunning ? start() : stop());
     } catch (error) {
       toast({
         title: "Internet Share could not be changed",
@@ -369,16 +369,24 @@ export default function TetherShare() {
               </p>
             </div>
           </div>
-          <Button
-            type="button"
-            size="lg"
-            variant={running ? "destructive" : "default"}
-            disabled={starting}
-            onClick={() => void handleToggle()}
-            data-testid="button-tether-toggle"
-          >
-            {starting ? "Starting…" : running ? <><Square className="mr-2 h-4 w-4 fill-current" /> Stop sharing</> : <><Share2 className="mr-2 h-4 w-4" /> Start sharing</>}
-          </Button>
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+            <div className="text-right">
+              <p className="text-sm font-semibold text-white">
+                {starting ? "Updating…" : running ? "Sharing on" : "Sharing off"}
+              </p>
+              <p id="tether-share-toggle-help" className="text-xs text-muted-foreground">
+                {starting ? "Applying change" : running ? "Tap to stop" : "Tap to start"}
+              </p>
+            </div>
+            <Switch
+              checked={running}
+              disabled={!supported || starting}
+              onCheckedChange={(checked) => void handleToggle(checked)}
+              aria-label="Share this connection"
+              aria-describedby="tether-share-toggle-help"
+              data-testid="toggle-tether-sharing"
+            />
+          </div>
         </div>
       </CyberCard>
 
