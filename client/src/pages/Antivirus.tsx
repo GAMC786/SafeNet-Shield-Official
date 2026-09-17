@@ -39,7 +39,8 @@ export default function Antivirus() {
   const verifyClamAv = useVerifyClamAv();
   const oneSignal = useOneSignalStatus();
   const { toast } = useToast();
-  const antivirusEnabled = settings?.isEnabled ?? true;
+  const clamAvVerified = clamAv.data?.verified === true;
+  const antivirusEnabled = clamAvVerified && settings?.isEnabled === true;
 
   const [isFeedDialogOpen, setIsFeedDialogOpen] = usePersistentState("safenet-antivirus-feed-dialog-open", false);
   const [editingFeed, setEditingFeed] = useState<ThreatFeed | null>(null);
@@ -91,6 +92,14 @@ export default function Antivirus() {
   };
 
   const handleAntivirusSettingToggle = (key: string, checked: boolean) => {
+    if (key === "isEnabled" && checked && !clamAvVerified) {
+      toast({
+        title: "ClamAV verification required",
+        description: "Verify the ClamAV REST engine before enabling antivirus protection.",
+        variant: "destructive",
+      });
+      return;
+    }
     const label = antivirusSettingLabels[key] || "Antivirus setting";
     updateSettings.mutate(
       { [key]: checked },
@@ -793,7 +802,7 @@ export default function Antivirus() {
                   <Switch
                     checked={antivirusEnabled}
                     onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
-                    disabled={updateSettings.isPending}
+                    disabled={updateSettings.isPending || !clamAvVerified}
                     aria-label="Toggle antivirus protection"
                     data-testid="switch-antivirus-enabled"
                   />
@@ -1095,7 +1104,7 @@ export default function Antivirus() {
                     <Switch
                       checked={antivirusEnabled}
                       onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
-                    disabled={updateSettings.isPending}
+                      disabled={updateSettings.isPending || !clamAvVerified}
                       data-testid="switch-main-enabled"
                     />
                   </div>

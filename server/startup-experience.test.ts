@@ -371,6 +371,9 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(tetherShareManagerSource, /parsePort/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
+  assert.match(antivirusSource, /const clamAvVerified = clamAv\.data\?\.verified === true/);
+  assert.match(antivirusSource, /const antivirusEnabled = clamAvVerified && settings\?\.isEnabled === true/);
+  assert.match(antivirusSource, /disabled=\{updateSettings\.isPending \|\| !clamAvVerified\}/);
   assert.match(antivirusSource, /status=\{antivirusEnabled \? "active" : "unprotected"\}/);
   assert.match(appSource, /useFirewallConfig/);
   assert.match(aiShieldSource, /switch-ai-camera/);
