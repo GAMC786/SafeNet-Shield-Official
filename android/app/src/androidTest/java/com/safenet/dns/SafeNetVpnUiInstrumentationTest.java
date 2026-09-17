@@ -10,7 +10,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
@@ -21,7 +20,6 @@ import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
@@ -32,44 +30,25 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.rules.TestName;
 
-import java.io.ByteArrayOutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 /**
- * Accessibility checks for the VPN switch rendered by the Android WebView.
- *
- * This deliberately keeps resolver data out of the page so the switch must
- * remain visible, correctly labelled, and safely unavailable when there is no
- * active DNS resolver.
+ * Shared implementation for packaged UI, startup, media, Clerk, and AI Shield
+ * instrumentation checks. The public runner is SafeNetUiInstrumentationTest.
  */
-@RunWith(AndroidJUnit4.class)
-public class SafeNetVpnUiInstrumentationTest {
+abstract class SafeNetUiInstrumentationTestBase {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
-    private static final String LEGACY_VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
-    private static final String VPN_SWITCH_LABEL = LEGACY_VPN_SWITCH_LABEL;
-    private static final String WIREGUARD_SWITCH_LABEL = "SafeNet WireGuard On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
     private static final int STARTUP_LOADER_MAX_SAMPLES = 100;
-    private static final int RESOLVER_RECOVERY_CYCLES = 2;
-    private static final long MAX_RESOLVER_FAILURE_ELAPSED_MILLIS = 300_000;
-    private static final String RESOLVER_PHASE_LABEL_REGEX = "[A-Za-z0-9_-]+";
-    private static final Pattern RESOLVER_PHASE_LABEL_PATTERN = Pattern.compile(
-        "^" + RESOLVER_PHASE_LABEL_REGEX + "$"
-    );
 
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -107,6 +86,7 @@ public class SafeNetVpnUiInstrumentationTest {
         }
     }
 
+    /*
     @Test
     @Ignore("The dashboard no longer exposes a VPN control after VPN removal.")
     public void onlyWireGuardSwitchIsExposedOnDashboard() throws Exception {
@@ -151,6 +131,7 @@ public class SafeNetVpnUiInstrumentationTest {
         assertEquals(WIREGUARD_SWITCH_LABEL, accessibleSwitch.getContentDescription());
         assertTrue("The WireGuard control must expose switch semantics", accessibleSwitch.isCheckable());
     }
+    */
 
     @Test
     public void startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff() throws Exception {
@@ -909,6 +890,7 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    /*
     @Test
     @Ignore("The Android smoke lane now validates resolver and Internet Share flows without VPN recovery.")
     public void packagedAppRecoversAfterNetworkLoss() throws Exception {
@@ -1612,6 +1594,8 @@ public class SafeNetVpnUiInstrumentationTest {
             accessibleSwitch.isEnabled());
     }
 
+    */
+
     @Test
     public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
         assertTrue(
@@ -2221,6 +2205,7 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    /*
     private void openDashboardForConnectivitySmoke() throws Exception {
         if (hasInstrumentationArgument("preserve-auth-session")) {
             waitForWebView("document.body.innerText.includes('Command Center')");
@@ -2361,6 +2346,9 @@ public class SafeNetVpnUiInstrumentationTest {
         assertTrue("Could not navigate to the Dashboard with an active resolver", result.getBoolean("ok"));
     }
 
+    */
+
+    /*
     private String vpnSwitchExpression(String condition) {
         return "(() => {" +
             "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
@@ -2550,6 +2538,8 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Android VPN permission dialog did not appear");
     }
 
+    */
+
     private void grantCameraPermissionDialog() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
@@ -2713,6 +2703,7 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Timed out waiting for WebView condition: " + expression);
     }
 
+    /*
     private JSONObject callVpn(String expression) throws Exception {
         return callVpn(expression, false);
     }
@@ -2775,6 +2766,8 @@ public class SafeNetVpnUiInstrumentationTest {
     private String jsQuote(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
+
+    */
 
     private JSONObject callWebView(String expression) throws Exception {
         return callWebViewWithConsent(expression, null);

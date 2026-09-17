@@ -669,7 +669,7 @@ run_media_smoke() {
     set +e
     adb_run shell am instrument -w -r \
         "${preserve_auth_args[@]}" \
-        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
+        -e class com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/media-smoke-instrumentation.log"
     media_status="${PIPESTATUS[0]}"
@@ -706,7 +706,7 @@ run_compact_startup_sampling() {
 
     set +e
     adb_run shell am instrument -w -r \
-        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
+        -e class com.safenet.dns.SafeNetUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/compact-startup-instrumentation.log"
     compact_status="${PIPESTATUS[0]}"
@@ -815,7 +815,7 @@ set +e
 adb_run shell am instrument -w -r \
     -e clerk-origin "$clerk_origin" \
     -e clerk-cookie-base64 "$clerk_cookie_payload" \
-    -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
+    -e class com.safenet.dns.SafeNetUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/clerk-auth-instrumentation.log"
 clerk_auth_status="${PIPESTATUS[0]}"
 set -e
@@ -1083,7 +1083,7 @@ capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 echo "Running SafeNet Android instrumentation..."
 set +e
 adb_run shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest" \
+    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest" \
     -e preserve-auth-session true \
     -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \

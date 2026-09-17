@@ -200,7 +200,7 @@ adb_run logcat -c
 
 set +e
 adb_run shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetVpnUiInstrumentationTest#aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive,com.safenet.dns.SafeNetVpnUiInstrumentationTest#aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive" \
+    -e class "com.safenet.dns.SafeNetUiInstrumentationTest#aiShieldRapidCameraToScreenSwitchKeepsNewProjectionActive,com.safenet.dns.SafeNetUiInstrumentationTest#aiShieldRapidScreenToCameraSwitchKeepsNewCameraActive" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
 set -e
