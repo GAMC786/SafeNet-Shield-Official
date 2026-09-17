@@ -703,8 +703,8 @@ test("physical-device recovery rejects unavailable or emulated targets", () => {
   );
   assert.match(
     physicalConnectivityScript,
-    /PHYSICAL_VPN_SWITCH result=PASS/,
-    "the physical lane must record dashboard VPN handoff evidence",
+    /PHYSICAL_WIREGUARD_SWITCH result=PASS/,
+    "the physical lane must record dashboard WireGuard control evidence",
   );
   assert.match(
     physicalConnectivityScript,
@@ -751,8 +751,18 @@ test("workflow exposes and publishes the physical-device recovery lane", () => {
   );
   assert.match(
     workflow,
-    /Dashboard DNS.*WireGuard handoff/,
-    "the physical summary must publish dashboard handoff evidence",
+    /WireGuard gateway handshake/,
+    "the physical summary must publish gateway handshake evidence",
+  );
+  assert.match(
+    workflow,
+    /WireGuard ordinary HTTPS/,
+    "the physical summary must publish ordinary HTTPS evidence through WireGuard",
+  );
+  assert.match(
+    workflow,
+    /Dashboard WireGuard control/,
+    "the physical summary must publish dashboard WireGuard control evidence",
   );
   assert.match(workflow, /WireGuard handshake failure fixture/);
   assert.match(workflow, /WireGuard route failure fixture/);

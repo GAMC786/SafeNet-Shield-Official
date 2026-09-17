@@ -240,6 +240,10 @@ public class SafeNetVpnInstrumentationTest {
             "WIREGUARD_FAILURE category=ROUTE message=wireguard_default_route_missing",
             hasDefaultRoute
         );
+        android.util.Log.i(
+            "SafeNetWireGuardSmoke",
+            "WIREGUARD_TUNNEL result=PASS state=UP transport=VPN route=PASS"
+        );
 
         JSONObject confirmed = callVpn(
             "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
@@ -255,18 +259,40 @@ public class SafeNetVpnInstrumentationTest {
                 "WIREGUARD_FAILURE category=DNS message=gateway_dns_response_too_short",
                 dnsResponse.length >= 12
             );
+            // A valid response from the configured gateway resolver is the
+            // observable proof that the authenticated WireGuard peer has
+            // completed a handshake and is carrying traffic. GoBackend does
+            // not expose wg(8)'s latest-handshake timestamp to the app.
+            android.util.Log.i(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_HANDSHAKE result=PASS gateway_dns=PASS"
+            );
+            android.util.Log.i(
+                "SafeNetWireGuardSmoke",
+                "WIREGUARD_DNS result=PASS response=VALID"
+            );
+        } catch (AssertionError error) {
+            fail("WIREGUARD_FAILURE category=DNS message=gateway_dns_response_invalid");
+            return;
+        } catch (Exception error) {
+            fail("WIREGUARD_FAILURE category=HANDSHAKE message=gateway_handshake_probe_failed");
+            return;
+        }
+        try {
             checkOrdinaryConnectivity();
         } catch (Exception | AssertionError error) {
-            fail("WIREGUARD_FAILURE category=" +
-                classifyWireGuardFailure(error.getMessage()) +
-                " message=wireguard_internet_probe_failed");
+            fail("WIREGUARD_FAILURE category=NAT message=wireguard_ordinary_https_probe_failed");
             return;
         }
         android.util.Log.i(
             "SafeNetWireGuardSmoke",
+            "WIREGUARD_HTTPS result=PASS ordinary_https=PASS"
+        );
+        android.util.Log.i(
+            "SafeNetWireGuardSmoke",
             "WIREGUARD_SMOKE result=PASS configuration=PASS permission=PASS " +
                 "gateway_identity=SafeNet tunnel=RUNNING android_vpn=PASS " +
-                "default_route=PASS gateway_dns=PASS ordinary_https=PASS"
+                "default_route=PASS handshake=PASS gateway_dns=PASS ordinary_https=PASS"
         );
     }
 

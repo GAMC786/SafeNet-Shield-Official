@@ -88,6 +88,7 @@ rm -f "$output_dir"/result.txt \
     "$output_dir"/smoke-result.txt \
     "$output_dir"/physical-connectivity-instrumentation.log \
     "$output_dir"/physical-connectivity-logcat.txt \
+    "$output_dir"/wireguard-evidence.txt \
     "$output_dir"/physical-connectivity-result.txt
 
 write_device_access_result() {
@@ -255,7 +256,7 @@ adb -s "$serial" shell am instrument -w -r \
     -e dot-secondary "${ANDROID_SMOKE_DOT_SECONDARY:-dns.google}" \
     -e ordinary-url "${ANDROID_SMOKE_ORDINARY_URL:-https://example.com/}" \
     -e device-profile "$profile" \
-    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown" \
+    -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#publicResolverModesKeepOrdinaryHttpsReachable,com.safenet.dns.SafeNetVpnInstrumentationTest#wireGuardFailureCategoryFixtures,com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway,com.safenet.dns.SafeNetVpnUiInstrumentationTest#dashboardWireGuardSwitchControlsTheSingleTunnel" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
     tee "$output_dir/physical-connectivity-instrumentation.log"
 physical_instrumentation_status="${PIPESTATUS[0]}"
@@ -280,13 +281,44 @@ if grep -Fq 'PHYSICAL_DNS_MODE mode=dot result=PASS dns=PASS ordinary_https=PASS
     resolver_dot_status="PASS"
 fi
 wireguard_status="NOT_RECORDED"
-if grep -Fq 'WIREGUARD_SMOKE result=PASS' \
-    "$output_dir/physical-connectivity-logcat.txt" &&
-    grep -Fq 'ordinary_https=PASS' "$output_dir/physical-connectivity-logcat.txt"; then
+wireguard_tunnel_status="NOT_RECORDED"
+wireguard_handshake_status="NOT_RECORDED"
+wireguard_dns_status="NOT_RECORDED"
+wireguard_https_status="NOT_RECORDED"
+evidence_sources=(
+    "$output_dir/physical-connectivity-instrumentation.log"
+    "$output_dir/physical-connectivity-logcat.txt"
+)
+if grep -Fq 'WIREGUARD_TUNNEL result=PASS state=UP transport=VPN route=PASS' \
+    "${evidence_sources[@]}"; then
+    wireguard_tunnel_status="PASS"
+fi
+if grep -Fq 'WIREGUARD_HANDSHAKE result=PASS gateway_dns=PASS' \
+    "${evidence_sources[@]}"; then
+    wireguard_handshake_status="PASS"
+fi
+if grep -Fq 'WIREGUARD_DNS result=PASS response=VALID' \
+    "${evidence_sources[@]}"; then
+    wireguard_dns_status="PASS"
+fi
+if grep -Fq 'WIREGUARD_HTTPS result=PASS ordinary_https=PASS' \
+    "${evidence_sources[@]}"; then
+    wireguard_https_status="PASS"
+fi
+if [[ "$wireguard_tunnel_status" == "PASS" &&
+    "$wireguard_handshake_status" == "PASS" &&
+    "$wireguard_dns_status" == "PASS" &&
+    "$wireguard_https_status" == "PASS" ]] &&
+    grep -Fq 'WIREGUARD_SMOKE result=PASS' \
+        "${evidence_sources[@]}"; then
     wireguard_status="PASS"
 fi
+grep -hE \
+    'WIREGUARD_(TUNNEL|HANDSHAKE|DNS|HTTPS|SMOKE) result=PASS|WIREGUARD_FAILURE category=(HANDSHAKE|ROUTE|DNS|NAT|CONFIGURATION|PERMISSION|GATEWAY_CONNECTIVITY)' \
+    "${evidence_sources[@]}" 2>/dev/null |
+    tail -n 20 > "$output_dir/wireguard-evidence.txt" || true
 vpn_handoff_status="NOT_RECORDED"
-if grep -Fq 'PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS' \
+if grep -Fq 'PHYSICAL_WIREGUARD_SWITCH result=PASS off_to_on=PASS on_to_off=PASS' \
     "$output_dir/physical-connectivity-logcat.txt"; then
     vpn_handoff_status="PASS"
 fi
@@ -351,7 +383,17 @@ if [[ "$failure_category" == "PASS" ]]; then
     elif [[ "$wireguard_status" != "PASS" || "$vpn_handoff_status" != "PASS" ]]; then
         failure_category="${wireguard_failure_category}"
         if [[ "$failure_category" == "NOT_RECORDED" ]]; then
-            failure_category="PHYSICAL_VPN_CONNECTIVITY"
+            if [[ "$wireguard_tunnel_status" != "PASS" ]]; then
+                failure_category="GATEWAY_CONNECTIVITY"
+            elif [[ "$wireguard_handshake_status" != "PASS" ]]; then
+                failure_category="HANDSHAKE"
+            elif [[ "$wireguard_dns_status" != "PASS" ]]; then
+                failure_category="DNS"
+            elif [[ "$wireguard_https_status" != "PASS" ]]; then
+                failure_category="NAT"
+            else
+                failure_category="PHYSICAL_VPN_CONNECTIVITY"
+            fi
         fi
     fi
 fi
@@ -373,6 +415,10 @@ fi
     printf 'ordinary_https=%s\n' "$ordinary_https_status"
     printf 'wireguard_internet=%s\n' "$wireguard_status"
     printf 'wireguard_gateway_dns=%s\n' "$wireguard_status"
+    printf 'wireguard_tunnel=%s\n' "$wireguard_tunnel_status"
+    printf 'wireguard_handshake=%s\n' "$wireguard_handshake_status"
+    printf 'wireguard_dns=%s\n' "$wireguard_dns_status"
+    printf 'wireguard_https=%s\n' "$wireguard_https_status"
     printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
     printf 'dashboard_handoff=%s\n' "$vpn_handoff_status"
     printf 'wireguard_failure_category=%s\n' "$wireguard_failure_category"

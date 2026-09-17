@@ -1462,43 +1462,37 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
-    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
-    public void dashboardSwitchesBetweenDnsAndWireGuardWithoutManualTeardown() throws Exception {
-        openDashboardWithActiveResolver();
+    public void dashboardWireGuardSwitchControlsTheSingleTunnel() throws Exception {
+        openDashboardWithoutActiveResolver();
         waitForWebView(
-            vpnSwitchExpression("toggle !== null && !toggle.disabled") +
-                " && document.querySelector('[data-testid=\"switch-wireguard\"]') !== null"
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-wireguard\"]');" +
+                "return toggle !== null && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-checked') === 'false';" +
+            "})()"
         );
 
-        clickVpnSwitch();
-        waitForWebView("Boolean(document.querySelector('[role=\"dialog\"]'))");
-        clickEulaAgreement();
-        clickEulaAccept();
         if (VpnService.prepare(context) != null) {
+            clickWireGuardSwitch();
             grantVpnPermissionDialog();
+        } else {
+            clickWireGuardSwitch();
         }
-        waitForVpnState(true);
-        waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
-
-        clickWireGuardSwitch();
         waitForWireGuardState(true);
         waitForWebView(
-            vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'") +
-                " && document.querySelector('[data-testid=\"switch-wireguard\"]')" +
-                    ".getAttribute('aria-checked') === 'true'"
+            "document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+                ".getAttribute('aria-checked') === 'true'"
         );
 
-        clickVpnSwitch();
-        waitForVpnState(true);
+        clickWireGuardSwitch();
         waitForWireGuardState(false);
         waitForWebView(
-            vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'") +
-                " && document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+            "document.querySelector('[data-testid=\"switch-wireguard\"]')" +
                     ".getAttribute('aria-checked') === 'false'"
         );
         android.util.Log.i(
             "SafeNetPhysicalConnectivity",
-            "PHYSICAL_VPN_SWITCH result=PASS dns_to_wireguard=PASS wireguard_to_dns=PASS " +
+            "PHYSICAL_WIREGUARD_SWITCH result=PASS off_to_on=PASS on_to_off=PASS " +
                 "device_profile=" + argument("device-profile", "unprofiled")
         );
     }
