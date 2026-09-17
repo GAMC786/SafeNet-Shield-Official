@@ -195,7 +195,7 @@ final class TetherShareManager {
                     @Override public void onSuccess() {}
                     @Override public void onFailure(int reason) {}
                 });
-            } catch (SecurityException | RuntimeException ignored) {
+            } catch (RuntimeException ignored) {
                 // The local proxy is already stopped; Android can clean up the group.
             }
         }
