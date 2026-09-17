@@ -64,10 +64,10 @@ on:
         required: true
         default: false
         type: boolean
-      android_internet_share_client_serial:
-        description: "ADB serial of the second physical Android device used as the Internet Share client"
+      android_internet_share_client_serials:
+        description: "JSON map of profile names to separate client-phone ADB serials"
         required: false
-        default: ""
+        default: "{}"
         type: string
 
 permissions:
@@ -2412,7 +2412,7 @@ jobs:
       contents: read
     env:
       ANDROID_INTERNET_SHARE_DEVICE_PROFILE: ${{ matrix.profile }}
-      ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT: ${{ inputs.android_internet_share_client_serial }}
+      ANDROID_INTERNET_SHARE_CLIENT_SERIALS_INPUT: ${{ inputs.android_internet_share_client_serials }}
       ANDROID_INTERNET_SHARE_OUTPUT_DIR: android/app/build/reports/android-internet-share/${{ matrix.profile }}
     steps:
       - name: Checkout code
@@ -2436,9 +2436,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          client_serial="$(jq -r --arg profile "$ANDROID_INTERNET_SHARE_DEVICE_PROFILE" \
+            '.[$profile] // empty' <<< "${ANDROID_INTERNET_SHARE_CLIENT_SERIALS_INPUT:-{}}" \
+            2>/dev/null || true)"
           client_serial_args=()
-          if [[ -n "${ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT:-}" ]]; then
-            client_serial_args=(--client-serial "$ANDROID_INTERNET_SHARE_CLIENT_SERIAL_INPUT")
+          if [[ -n "$client_serial" ]]; then
+            client_serial_args=(--client-serial "$client_serial")
           fi
           ./scripts/android-internet-share-device-test.sh \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
@@ -2464,6 +2467,16 @@ jobs:
           profile_status="${profile_status:-NOT_RECORDED}"
           apk_sha256="$(awk -F= '$1 == "application_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           apk_sha256="${apk_sha256:-NOT_RECORDED}"
+          instrumentation_apk_sha256="$(awk -F= '$1 == "instrumentation_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          instrumentation_apk_sha256="${instrumentation_apk_sha256:-NOT_RECORDED}"
+          failure_class="$(awk -F= '$1 == "failure_class" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_class="${failure_class:-NOT_RECORDED}"
+          failure_category="$(awk -F= '$1 == "failure_category" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_category="${failure_category:-NOT_RECORDED}"
+          message="$(awk -F= '$1 == "message" { print substr($0, index($0, "=") + 1); exit }' "$result_file" 2>/dev/null || true)"
+          message="${message:-NOT_RECORDED}"
+          client_target="$(awk -F= '$1 == "client_target" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_target="${client_target:-NOT_RECORDED}"
           start_result="$(awk -F= '$1 == "start_result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           start_result="${start_result:-NOT_RECORDED}"
           start_outcome="$(awk -F= '$1 == "start_outcome" { print $2; exit }' "$result_file" 2>/dev/null || true)"
@@ -2491,11 +2504,15 @@ jobs:
             echo
             echo "- **Device profile:** \`$DEVICE_PROFILE\` (\`$profile_status\`)"
             echo "- **Result:** \`$result\`"
+            echo "- **Failure classification:** \`$failure_class\` / \`$failure_category\`"
+            echo "- **Details:** \`$message\`"
             echo "- **Signed application APK SHA-256:** \`$apk_sha256\`"
+            echo "- **Signed instrumentation APK SHA-256:** \`$instrumentation_apk_sha256\`"
             echo "- **Start result:** \`$start_result\` (\`$start_outcome\`)"
             echo "- **Stop result:** \`$stop_result\`"
             echo "- **Foreground notification cleanup:** \`$notification_cleanup\`"
             echo "- **Wi-Fi Direct group cleanup:** \`$group_cleanup\`"
+            echo "- **Client target:** \`$client_target\`"
             echo "- **Client connection:** \`$client_connection\`"
             echo "- **Proxy configuration:** \`$proxy_configuration\`"
             echo "- **HTTPS proxy response:** \`$proxy_https_response\`"
@@ -2505,8 +2522,10 @@ jobs:
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence:** download the physical-device artifact from this run"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$result" != "PASS" ]]; then
-            echo "::error::Physical-device Internet Share lifecycle check did not pass ($result)."
+          if [[ "$failure_class" == "DEVICE_ACCESS" ]]; then
+            echo "::warning::Physical-device Internet Share validation was blocked by host/client access ($failure_category); this is not an application result."
+          elif [[ "$result" != "PASS" ]]; then
+            echo "::error::Physical-device Internet Share lifecycle check did not pass ($result; $failure_category)."
             exit 1
           fi
 
@@ -2805,8 +2824,12 @@ jobs:
           evidence_run_id="NONE"
           evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
           signed_apk_sha256="NOT_RECORDED"
+          signed_instrumentation_apk_sha256="NOT_RECORDED"
           if [[ -s artifacts/android/app-release.apk ]]; then
             signed_apk_sha256="$(sha256sum artifacts/android/app-release.apk | awk '{ print $1 }')"
+          fi
+          if [[ -s artifacts/android-test/app-release-androidTest.apk ]]; then
+            signed_instrumentation_apk_sha256="$(sha256sum artifacts/android-test/app-release-androidTest.apk | awk '{ print $1 }')"
           fi
 
           run_json="$(gh run list \
@@ -2849,8 +2872,12 @@ jobs:
             profile_device_profile="$profile"
             profile_status="NOT_RECORDED"
             profile_apk_sha256="NOT_RECORDED"
+            profile_instrumentation_apk_sha256="NOT_RECORDED"
             profile_device_evidence="NOT_RECORDED"
             profile_physical_evidence="NOT_RECORDED"
+            profile_failure_class="NOT_RECORDED"
+            profile_failure_category="NOT_RECORDED"
+            profile_message="NOT_RECORDED"
             profile_start_result="NOT_RECORDED"
             profile_start_outcome="NOT_RECORDED"
             profile_stop_result="NOT_RECORDED"
@@ -2874,8 +2901,12 @@ jobs:
               profile_device_profile="$(read_result device_profile)"
               profile_status="$(read_result profile_status)"
               profile_apk_sha256="$(read_result application_apk_sha256)"
+              profile_instrumentation_apk_sha256="$(read_result instrumentation_apk_sha256)"
               profile_device_evidence="$(read_result device_evidence)"
               profile_physical_evidence="$(read_result physical_evidence)"
+              profile_failure_class="$(read_result failure_class)"
+              profile_failure_category="$(read_result failure_category)"
+              profile_message="$(read_result message)"
               profile_start_result="$(read_result start_result)"
               profile_start_outcome="$(read_result start_outcome)"
               profile_stop_result="$(read_result stop_result)"
@@ -2912,6 +2943,10 @@ jobs:
               "$profile_apk_sha256" != "$signed_apk_sha256" ]]; then
               blockers+=("INTERNET_SHARE_APK_EVIDENCE_MISMATCH_${profile}")
             fi
+            if [[ "$signed_instrumentation_apk_sha256" == "NOT_RECORDED" ||
+              "$profile_instrumentation_apk_sha256" != "$signed_instrumentation_apk_sha256" ]]; then
+              blockers+=("INTERNET_SHARE_INSTRUMENTATION_APK_EVIDENCE_MISMATCH_${profile}")
+            fi
             if [[ "$profile_device_evidence" != "PASS" ||
               "$profile_physical_evidence" != "PASS" ]]; then
               blockers+=("INTERNET_SHARE_DEVICE_EVIDENCE_INVALID_${profile}")
@@ -2940,6 +2975,10 @@ jobs:
               echo "profile_${profile_index}_profile_status=${profile_status:-NOT_RECORDED}"
               echo "profile_${profile_index}_result=$profile_result_value"
               echo "profile_${profile_index}_application_apk_sha256=${profile_apk_sha256:-NOT_RECORDED}"
+              echo "profile_${profile_index}_instrumentation_apk_sha256=${profile_instrumentation_apk_sha256:-NOT_RECORDED}"
+              echo "profile_${profile_index}_failure_class=${profile_failure_class:-NOT_RECORDED}"
+              echo "profile_${profile_index}_failure_category=${profile_failure_category:-NOT_RECORDED}"
+              echo "profile_${profile_index}_message=${profile_message:-NOT_RECORDED}"
               echo "profile_${profile_index}_start_result=${profile_start_result:-NOT_RECORDED}"
               echo "profile_${profile_index}_start_outcome=${profile_start_outcome:-NOT_RECORDED}"
               echo "profile_${profile_index}_stop_result=${profile_stop_result:-NOT_RECORDED}"
@@ -2969,6 +3008,7 @@ jobs:
             echo "release_ref=$GITHUB_REF_NAME"
             echo "release_sha=$GITHUB_SHA"
             echo "signed_apk_sha256=$signed_apk_sha256"
+            echo "signed_instrumentation_apk_sha256=$signed_instrumentation_apk_sha256"
             echo "signed_apk_artifact_url=${APK_ARTIFACT_URL:-unavailable}"
             echo "internet_share_evidence_run_id=$evidence_run_id"
             echo "internet_share_evidence_run_url=$evidence_run_url"
@@ -3031,10 +3071,14 @@ jobs:
             echo "- **Physical Internet Share verification:** \`$internet_share_status\` (blocker: \`$internet_share_blocker\`; [matching physical evidence run]($internet_share_run_url))"
             if [[ -s "$internet_share_report" ]]; then
               signed_apk_sha256="$(awk -F= '$1 == "signed_apk_sha256" { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+              signed_instrumentation_apk_sha256="$(awk -F= '$1 == "signed_instrumentation_apk_sha256" { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
               profile_count="$(awk -F= '$1 == "profile_count" { print $2; exit }' "$internet_share_report")"
               for ((profile_index = 1; profile_index <= profile_count; profile_index++)); do
                 profile_name="$(awk -F= -v key="profile_${profile_index}_name" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_digest="$(awk -F= -v key="profile_${profile_index}_application_apk_sha256" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_instrumentation_digest="$(awk -F= -v key="profile_${profile_index}_instrumentation_apk_sha256" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_failure_class="$(awk -F= -v key="profile_${profile_index}_failure_class" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_failure_category="$(awk -F= -v key="profile_${profile_index}_failure_category" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_start="$(awk -F= -v key="profile_${profile_index}_start_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_start_outcome="$(awk -F= -v key="profile_${profile_index}_start_outcome" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                 profile_cleanup="$(awk -F= -v key="profile_${profile_index}_cleanup_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
@@ -3042,9 +3086,10 @@ jobs:
                  profile_proxy_config="$(awk -F= -v key="profile_${profile_index}_proxy_configuration" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                   profile_proxy_https_response="$(awk -F= -v key="profile_${profile_index}_proxy_https_response" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
                   profile_proxy_http_diagnostic="$(awk -F= -v key="profile_${profile_index}_proxy_http_diagnostic" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
-                  echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`; HTTPS \`$profile_proxy_https_response\`; HTTP diagnostic \`$profile_proxy_http_diagnostic\`; cleanup \`$profile_cleanup\`"
+                  echo "- **Internet Share $profile_name:** failure \`$profile_failure_class/$profile_failure_category\`; signed APK SHA-256 \`$profile_digest\`; instrumentation SHA-256 \`$profile_instrumentation_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`; HTTPS \`$profile_proxy_https_response\`; HTTP diagnostic \`$profile_proxy_http_diagnostic\`; cleanup \`$profile_cleanup\`"
               done
               echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
+              echo "- **Internet Share signed instrumentation APK SHA-256:** \`$signed_instrumentation_apk_sha256\`"
             fi
             echo "- **Release claim boundary:** a signed APK is not physically verified unless the matching run reports a real device and observed gateway handshake."
           } >> "$GITHUB_STEP_SUMMARY"

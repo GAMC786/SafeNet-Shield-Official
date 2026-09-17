@@ -28,6 +28,7 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
 
 test("physical Internet Share evidence is bound to the signed APK and device profile", () => {
   assert.match(deviceScript, /application_apk_sha256=/);
+  assert.match(deviceScript, /instrumentation_apk_sha256=/);
   assert.match(deviceScript, /device_profile=/);
   assert.match(deviceScript, /INTERNET_SHARE_START result=PASS/);
   assert.match(deviceScript, /INTERNET_SHARE_STOP result=PASS/);
@@ -48,7 +49,10 @@ test("workflow exposes a separate profiled physical Internet Share lane", () => 
   assert.match(workflow, /android_internet_share_physical_validation:/);
   assert.match(workflow, /android-internet-share-physical:/);
   assert.match(workflow, /android-internet-share-device-test\.sh/);
-  assert.match(workflow, /android_internet_share_client_serial:/);
+  assert.match(workflow, /android_internet_share_client_serials:/);
+  assert.match(workflow, /\.\[\$profile\]/);
+  assert.match(workflow, /ANDROID_INTERNET_SHARE_CLIENT_SERIALS_INPUT/);
+  assert.match(workflow, /ANDROID_INTERNET_SHARE_DEVICE_PROFILE/);
   assert.match(workflow, /SafeNet-DNS-Android-internet-share-physical-evidence/);
 });
 
@@ -59,6 +63,9 @@ test("tagged releases publish bounded Internet Share verification evidence", () 
   assert.match(workflow, /\.headBranch == \$ref/);
   assert.match(workflow, /SafeNet-DNS-Android-internet-share-verification\.txt/);
   assert.match(workflow, /INTERNET_SHARE_RUN_MISSING|INTERNET_SHARE_APK_EVIDENCE_MISMATCH/);
+  assert.match(workflow, /INTERNET_SHARE_INSTRUMENTATION_APK_EVIDENCE_MISMATCH/);
+  assert.match(workflow, /failure_class/);
+  assert.match(workflow, /DEVICE_ACCESS/);
   assert.match(workflow, /Physical Internet Share validation.*does not prevent APK publication/);
   assert.match(workflow, /profile_.*start_result/);
   assert.match(workflow, /profile_.*client_connection/);
