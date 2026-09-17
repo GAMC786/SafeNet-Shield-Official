@@ -97,6 +97,32 @@ fi
     join(assets, "SafeNet-DNS-Android-smoke-evidence.sha256"),
     `${smokeChecksum.join("\n")}\n`,
   );
+  const physicalVerification = [
+    "evidence_schema_version=1",
+    "release_ref=v1.0.66",
+    "release_sha=fixture",
+    "signed_apk_sha256=fixture",
+    "signed_apk_artifact_url=https://github.com/example/safenet/actions/runs/1#artifacts",
+    "physical_evidence_run_id=1",
+    "physical_evidence_run_url=https://github.com/example/safenet/actions/runs/2",
+    "verification_status=BLOCKED",
+    "verification_blocker=PHYSICAL_RUN_MISSING",
+    "",
+  ].join("\n");
+  const physicalVerificationPath = join(
+    assets,
+    "SafeNet-DNS-Android-physical-verification.txt",
+  );
+  writeFileSync(physicalVerificationPath, physicalVerification);
+  const physicalVerificationDigest = spawnSync(
+    "sha256sum",
+    [physicalVerificationPath],
+    { encoding: "utf8" },
+  ).stdout.split(/\s+/)[0];
+  writeFileSync(
+    join(assets, "SafeNet-DNS-Android-physical-verification.sha256"),
+    `${physicalVerificationDigest}  SafeNet-DNS-Android-physical-verification.txt\n`,
+  );
 
   return { root, assets, sdk };
 }

@@ -2282,6 +2282,14 @@ jobs:
           vpn_handoff="${vpn_handoff:-NOT_RECORDED}"
           ordinary_https="$(awk -F= '$1 == "ordinary_https" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           ordinary_https="${ordinary_https:-NOT_RECORDED}"
+          application_apk_sha256="$(awk -F= '$1 == "application_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          application_apk_sha256="${application_apk_sha256:-NOT_RECORDED}"
+          device_evidence="$(awk -F= '$1 == "device_evidence" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          device_evidence="${device_evidence:-NOT_RECORDED}"
+          gateway_handshake_observed="$(awk -F= '$1 == "gateway_handshake_observed" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          gateway_handshake_observed="${gateway_handshake_observed:-NOT_RECORDED}"
+          physical_evidence="$(awk -F= '$1 == "physical_evidence" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          physical_evidence="${physical_evidence:-NOT_RECORDED}"
           wireguard_gateway_dns="$(awk -F= '$1 == "wireguard_gateway_dns" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           wireguard_gateway_dns="${wireguard_gateway_dns:-NOT_RECORDED}"
           wireguard_tunnel="$(awk -F= '$1 == "wireguard_tunnel" { print $2; exit }' "$result_file" 2>/dev/null || true)"
@@ -2309,8 +2317,10 @@ jobs:
             echo
             echo "- **Device profile:** \`$device_profile\` (\`$profile_status\`)"
             echo "- **Result:** \`$result\`"
+            echo "- **Physical evidence:** \`$physical_evidence\` (device evidence: \`$device_evidence\`)"
             echo "- **Failure class:** \`$failure_class\`"
             echo "- **Failure category:** \`$failure_category\`"
+            echo "- **Application APK SHA-256:** \`$application_apk_sha256\`"
             echo "- **Internet loss recovery:** \`$connectivity_recovery\`"
             echo "- **Plain DNS plus HTTPS:** \`$dns_plain\`"
             echo "- **DoH plus HTTPS:** \`$dns_doh\`"
@@ -2318,6 +2328,7 @@ jobs:
             echo "- **Ordinary HTTPS across DNS modes:** \`$ordinary_https\`"
             echo "- **WireGuard tunnel transport and default route:** \`$wireguard_tunnel\`"
             echo "- **WireGuard gateway handshake:** \`$wireguard_handshake\`"
+            echo "- **Gateway handshake observed:** \`$gateway_handshake_observed\`"
             echo "- **WireGuard gateway DNS response:** \`$wireguard_dns\`"
             echo "- **WireGuard ordinary HTTPS:** \`$wireguard_https\`"
             echo "- **WireGuard gateway DNS plus ordinary HTTPS:** \`$wireguard_internet\`"
@@ -2361,6 +2372,7 @@ jobs:
       needs.android-release-smoke.result == 'failure')
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout release scripts
         uses: actions/checkout@v4
@@ -2484,6 +2496,136 @@ jobs:
           echo "Verified $apk_count signed Android APK installer with versionCode $ANDROID_VERSION_CODE, versionName $ANDROID_VERSION_NAME, and SHA-256 $checksum."
           echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
 
+      - name: Resolve matching physical WireGuard evidence
+        id: resolve-physical-wireguard-evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -uo pipefail
+
+          release_dir="artifacts/release"
+          evidence_dir="artifacts/android-physical-evidence"
+          report="$release_dir/SafeNet-DNS-Android-physical-verification.txt"
+          report_checksum="$release_dir/SafeNet-DNS-Android-physical-verification.sha256"
+          mkdir -p "$release_dir"
+          rm -rf "$evidence_dir"
+
+          status="BLOCKED"
+          blocker="PHYSICAL_RUN_MISSING"
+          evidence_run_id="NONE"
+          evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          signed_apk_sha256="NOT_RECORDED"
+          if [[ -s artifacts/android/app-release.apk ]]; then
+            signed_apk_sha256="$(sha256sum artifacts/android/app-release.apk | awk '{ print $1 }')"
+          fi
+
+          run_json="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow build.yml \
+            --event workflow_dispatch \
+            --commit "$GITHUB_SHA" \
+            --status completed \
+            --json databaseId,url,headSha,headBranch \
+            --limit 20 2>/dev/null || printf '[]')"
+          evidence_run_id="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref))[0].databaseId // empty' <<< "$run_json" 2>/dev/null || true)"
+          evidence_run_url="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref))[0].url // empty' <<< "$run_json" 2>/dev/null || true)"
+          if [[ -z "$evidence_run_id" ]]; then
+            evidence_run_id="NONE"
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          elif [[ -z "$evidence_run_url" ]]; then
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/$evidence_run_id"
+          fi
+
+          blockers=()
+          if [[ "$evidence_run_id" != "NONE" ]]; then
+            if ! gh run download "$evidence_run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'SafeNet-DNS-Android-connectivity-physical-evidence-*' \
+              --dir "$evidence_dir" >/dev/null 2>&1; then
+              blockers+=("PHYSICAL_EVIDENCE_DOWNLOAD_FAILED")
+            fi
+          else
+            blockers+=("PHYSICAL_RUN_MISSING")
+          fi
+
+          profiles=(pixel-android-14 samsung-android-13 motorola-android-12)
+          for profile in "${profiles[@]}"; do
+            profile_result="$(find "$evidence_dir" -type f -name result.txt -print 2>/dev/null | grep -F "$profile" | head -n 1 || true)"
+            if [[ -z "$profile_result" ]]; then
+              blockers+=("DEVICE_EVIDENCE_MISSING_${profile}")
+              continue
+            fi
+
+            profile_result_value="$(awk -F= '$1 == "result" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_failure_class="$(awk -F= '$1 == "failure_class" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_failure_category="$(awk -F= '$1 == "failure_category" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_apk_sha256="$(awk -F= '$1 == "application_apk_sha256" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_device_evidence="$(awk -F= '$1 == "device_evidence" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_physical_evidence="$(awk -F= '$1 == "physical_evidence" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_handshake="$(awk -F= '$1 == "gateway_handshake_observed" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+            profile_wireguard="$(awk -F= '$1 == "wireguard_internet" { print $2; exit }' "$profile_result" 2>/dev/null || true)"
+
+            if [[ "$signed_apk_sha256" == "NOT_RECORDED" ||
+              "$profile_apk_sha256" != "$signed_apk_sha256" ]]; then
+              blockers+=("APK_EVIDENCE_MISMATCH_${profile}")
+            fi
+            if [[ "$profile_device_evidence" != "PASS" ||
+              "$profile_physical_evidence" != "PASS" ]]; then
+              blockers+=("DEVICE_EVIDENCE_MISSING_${profile}")
+            elif [[ "$profile_result_value" != "PASS" ]]; then
+              if [[ "$profile_failure_class" == "DEVICE_ACCESS" ]]; then
+                blockers+=("RUNNER_OR_DEVICE_UNAVAILABLE_${profile}")
+              elif [[ "$profile_handshake" != "PASS" ]]; then
+                blockers+=("GATEWAY_HANDSHAKE_NOT_OBSERVED_${profile}")
+              else
+                case "$profile_failure_category" in
+                  HANDSHAKE|GATEWAY_CONNECTIVITY|ROUTE|DNS|NAT)
+                    blockers+=("WIREGUARD_${profile_failure_category}_${profile}")
+                    ;;
+                  *)
+                    blockers+=("PHYSICAL_SMOKE_FAILED_${profile}")
+                    ;;
+                esac
+              fi
+            elif [[ "$profile_handshake" != "PASS" || "$profile_wireguard" != "PASS" ]]; then
+              blockers+=("GATEWAY_HANDSHAKE_NOT_OBSERVED_${profile}")
+            fi
+          done
+
+          if [[ "${#blockers[@]}" -eq 0 ]]; then
+            status="PASS"
+            blocker="NONE"
+          else
+            IFS=,
+            blocker="${blockers[*]}"
+          fi
+
+          {
+            echo "evidence_schema_version=1"
+            echo "release_ref=$GITHUB_REF_NAME"
+            echo "release_sha=$GITHUB_SHA"
+            echo "signed_apk_sha256=$signed_apk_sha256"
+            echo "signed_apk_artifact_url=${APK_ARTIFACT_URL:-unavailable}"
+            echo "physical_evidence_run_id=$evidence_run_id"
+            echo "physical_evidence_run_url=$evidence_run_url"
+            echo "verification_status=$status"
+            echo "verification_blocker=$blocker"
+          } > "$report"
+          printf '%s  %s\n' \
+            "$(sha256sum "$report" | awk '{ print $1 }')" \
+            "$(basename "$report")" > "$report_checksum"
+          {
+            echo "status=$status"
+            echo "blocker=$blocker"
+            echo "run_id=$evidence_run_id"
+            echo "run_url=$evidence_run_url"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish Android release summary
         if: always()
         shell: bash
@@ -2494,6 +2636,9 @@ jobs:
           APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           INSTRUMENTATION_VERIFICATION_OUTCOME: ${{ steps.verify-android-release-apks.outcome }}
           INSTRUMENTATION_ARTIFACT_URL: ${{ needs.build-android.outputs.android_instrumentation_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          PHYSICAL_VERIFICATION_STATUS: ${{ steps.resolve-physical-wireguard-evidence.outputs.status || 'BLOCKED' }}
+          PHYSICAL_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-wireguard-evidence.outputs.blocker || 'PHYSICAL_RUN_MISSING' }}
+          PHYSICAL_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-wireguard-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
         run: |
           set -euo pipefail
           version_name="${ANDROID_VERSION_NAME:-unresolved}"
@@ -2502,6 +2647,9 @@ jobs:
           instrumentation_outcome="${INSTRUMENTATION_VERIFICATION_OUTCOME:-unavailable}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           instrumentation_url="${INSTRUMENTATION_ARTIFACT_URL:-unavailable}"
+          physical_status="${PHYSICAL_VERIFICATION_STATUS:-BLOCKED}"
+          physical_blocker="${PHYSICAL_VERIFICATION_BLOCKER:-PHYSICAL_RUN_MISSING}"
+          physical_run_url="${PHYSICAL_EVIDENCE_RUN_URL:-unavailable}"
           {
             echo "## Android release verification"
             echo
@@ -2510,6 +2658,8 @@ jobs:
             echo "- **Expected application package:** \`com.safenet.dns\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
+            echo "- **Physical WireGuard verification:** \`$physical_status\` (blocker: \`$physical_blocker\`; [matching physical evidence run]($physical_run_url))"
+            echo "- **Release claim boundary:** a signed APK is not physically verified unless the matching run reports a real device and observed gateway handshake."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish hosted-only release assurance scope
@@ -2521,6 +2671,7 @@ jobs:
             echo
             echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
             echo "- **Signed APK and instrumentation APK:** independently verified before publication."
+            echo "- **Physical WireGuard validation:** reported separately; missing runner, gateway handshake, or device evidence is a bounded blocker and does not prevent APK publication."
             echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -2566,6 +2717,8 @@ jobs:
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.tar.gz
             artifacts/release/SafeNet-DNS-Android-smoke-result.txt
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
+            artifacts/release/SafeNet-DNS-Android-physical-verification.txt
+            artifacts/release/SafeNet-DNS-Android-physical-verification.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -2633,6 +2786,8 @@ jobs:
             SafeNet-DNS-Android-smoke-evidence.tar.gz
             SafeNet-DNS-Android-smoke-result.txt
             SafeNet-DNS-Android-smoke-evidence.sha256
+            SafeNet-DNS-Android-physical-verification.txt
+            SafeNet-DNS-Android-physical-verification.sha256
           )
           for asset in "${assets[@]}"; do
             if ! gh release download "$GITHUB_REF_NAME" \

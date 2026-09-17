@@ -1,0 +1,10 @@
+---
+name: Physical release verification boundary
+description: How tagged Android releases distinguish signed APK publication from real physical WireGuard verification
+---
+
+Tagged Android releases may publish the signed APK even when the manually dispatched physical-device lane has no available runner or no usable evidence. The release must report that state as a bounded blocker, not as physical verification.
+
+**Why:** A hosted smoke pass and a valid signature do not prove that a real phone established the WireGuard gateway handshake. Treating missing physical evidence as a pass creates a false release claim.
+
+**How to apply:** Resolve only a completed physical workflow run on the exact release ref and commit. Require each expected device profile to report explicit device and physical evidence, match the signed APK digest, and record the real gateway handshake before reporting PASS. Publish the evidence-run link and blocker state alongside the APK without making APK publication depend on the phone runner.

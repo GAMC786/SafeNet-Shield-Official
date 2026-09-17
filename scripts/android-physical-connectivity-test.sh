@@ -91,6 +91,15 @@ rm -f "$output_dir"/result.txt \
     "$output_dir"/wireguard-evidence.txt \
     "$output_dir"/physical-connectivity-result.txt
 
+application_apk_sha256="NOT_RECORDED"
+instrumentation_apk_sha256="NOT_RECORDED"
+if [[ -s "$apk_path" ]]; then
+    application_apk_sha256="$(sha256sum "$apk_path" | awk '{ print $1 }')"
+fi
+if [[ -s "$test_apk_path" ]]; then
+    instrumentation_apk_sha256="$(sha256sum "$test_apk_path" | awk '{ print $1 }')"
+fi
+
 write_device_access_result() {
     local category="$1"
     local message="$2"
@@ -102,8 +111,17 @@ write_device_access_result() {
         printf 'device_profile=%s\n' "$profile"
         printf 'profile_status=%s\n' "$profile_status"
         printf 'device_access=BLOCKED\n'
+        printf 'device_evidence=BLOCKED\n'
         printf 'failure_class=DEVICE_ACCESS\n'
         printf 'failure_category=%s\n' "$category"
+        printf 'application_apk_sha256=%s\n' "$application_apk_sha256"
+        printf 'instrumentation_apk_sha256=%s\n' "$instrumentation_apk_sha256"
+        printf 'wireguard_tunnel=NOT_RECORDED\n'
+        printf 'wireguard_handshake=NOT_RECORDED\n'
+        printf 'gateway_handshake_observed=NOT_RECORDED\n'
+        printf 'wireguard_dns=NOT_RECORDED\n'
+        printf 'wireguard_https=NOT_RECORDED\n'
+        printf 'physical_evidence=BLOCKED\n'
         printf 'result=BLOCKED\n'
         printf 'message=%s\n' "$message"
     } | tee "$output_dir/device-access-result.txt" "$output_dir/result.txt" >&2
@@ -405,8 +423,11 @@ fi
     printf 'device_profile=%s\n' "$profile"
     printf 'profile_status=%s\n' "$profile_status"
     printf 'device_access=PASS\n'
+    printf 'device_evidence=PASS\n'
     printf 'failure_class=%s\n' "$failure_class"
     printf 'failure_category=%s\n' "$failure_category"
+    printf 'application_apk_sha256=%s\n' "$application_apk_sha256"
+    printf 'instrumentation_apk_sha256=%s\n' "$instrumentation_apk_sha256"
     printf 'connectivity_recovery=%s\n' "$connectivity_recovery"
     printf 'dns_plain=%s\n' "$resolver_plain_status"
     printf 'dns_doh=%s\n' "$resolver_doh_status"
@@ -417,6 +438,7 @@ fi
     printf 'wireguard_gateway_dns=%s\n' "$wireguard_status"
     printf 'wireguard_tunnel=%s\n' "$wireguard_tunnel_status"
     printf 'wireguard_handshake=%s\n' "$wireguard_handshake_status"
+    printf 'gateway_handshake_observed=%s\n' "$wireguard_handshake_status"
     printf 'wireguard_dns=%s\n' "$wireguard_dns_status"
     printf 'wireguard_https=%s\n' "$wireguard_https_status"
     printf 'vpn_handoff=%s\n' "$vpn_handoff_status"
@@ -428,6 +450,7 @@ fi
     printf 'wireguard_nat_failure_fixture=%s\n' "$wireguard_nat_fixture"
     printf 'physical_instrumentation_exit_code=%s\n' "$physical_instrumentation_status"
     printf 'smoke_exit_code=%s\n' "$smoke_status"
+    printf 'physical_evidence=%s\n' "$result"
     printf 'result=%s\n' "$result"
 } | tee "$output_dir/physical-connectivity-result.txt" "$output_dir/result.txt"
 

@@ -716,6 +716,21 @@ test("physical-device recovery rejects unavailable or emulated targets", () => {
     /grep -Eo 'WIREGUARD_FAILURE category=\(HANDSHAKE\|ROUTE\|DNS\|NAT\|CONFIGURATION\|PERMISSION\|GATEWAY_CONNECTIVITY\)'/,
     "physical parsing must whitelist categories and avoid copying endpoint or credential text",
   );
+  assert.match(
+    physicalConnectivityScript,
+    /application_apk_sha256=/,
+    "physical evidence must identify the signed application APK it exercised",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /gateway_handshake_observed=/,
+    "physical evidence must expose whether the real gateway handshake was observed",
+  );
+  assert.match(
+    physicalConnectivityScript,
+    /device_evidence=BLOCKED/,
+    "missing physical devices must remain a bounded evidence blocker",
+  );
 });
 
 test("workflow exposes and publishes the physical-device recovery lane", () => {
@@ -768,4 +783,39 @@ test("workflow exposes and publishes the physical-device recovery lane", () => {
   assert.match(workflow, /WireGuard route failure fixture/);
   assert.match(workflow, /WireGuard DNS failure fixture/);
   assert.match(workflow, /WireGuard NAT failure fixture/);
+  assert.match(
+    workflow,
+    /Resolve matching physical WireGuard evidence/,
+    "tagged releases must resolve a matching physical evidence run",
+  );
+  assert.match(
+    workflow,
+    /--commit "\$GITHUB_SHA"/,
+    "physical evidence must match the tagged release commit",
+  );
+  assert.match(
+    workflow,
+    /\.headBranch == \$ref/,
+    "physical evidence must match the tagged release ref",
+  );
+  assert.match(
+    workflow,
+    /profile_device_evidence[\s\S]*profile_physical_evidence/,
+    "tagged releases must require explicit device and physical evidence markers",
+  );
+  assert.match(
+    workflow,
+    /PHYSICAL_RUN_MISSING|RUNNER_OR_DEVICE_UNAVAILABLE|GATEWAY_HANDSHAKE_NOT_OBSERVED/,
+    "missing physical evidence must use bounded blocker categories",
+  );
+  assert.match(
+    workflow,
+    /SafeNet-DNS-Android-physical-verification\.txt/,
+    "the release must publish the physical verification state alongside the APK",
+  );
+  assert.match(
+    workflow,
+    /Release claim boundary.*matching run reports a real device and observed gateway handshake/,
+    "release reporting must not call a signed APK physically verified without a handshake",
+  );
 });
