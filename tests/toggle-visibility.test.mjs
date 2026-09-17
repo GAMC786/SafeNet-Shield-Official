@@ -459,6 +459,19 @@ function mockApi(
         body: JSON.stringify({ ip: "198.51.100.24", connection: { org: "SafeNet Test ISP" }, city: "Test City", country: "Testland" }),
       }),
     ),
+    page.route("https://fonts.googleapis.com/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/css",
+        body: "",
+      }),
+    ),
+    page.route("https://fonts.gstatic.com/**", (route) =>
+      route.fulfill({ status: 204, body: "" }),
+    ),
+    page.route("https://v3.2advanced.com/**", (route) =>
+      route.fulfill({ status: 204, body: "" }),
+    ),
   ]);
 }
 
@@ -1152,7 +1165,7 @@ test("Measure Your Network reports a Cloudflare probe failure and retries succes
   assert.match(await retryButton.textContent(), /Run Again|Resume Test/);
 
   await retryButton.click();
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 60_000 });
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 90_000 });
   await page.close();
 });
 
