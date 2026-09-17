@@ -113,8 +113,6 @@ test_apk_checksum="$assets_dir/app-release-androidTest.apk.sha256"
 smoke_archive="$assets_dir/SafeNet-DNS-Android-smoke-evidence.tar.gz"
 smoke_result="$assets_dir/SafeNet-DNS-Android-smoke-result.txt"
 smoke_checksum="$assets_dir/SafeNet-DNS-Android-smoke-evidence.sha256"
-physical_verification="$assets_dir/SafeNet-DNS-Android-physical-verification.txt"
-physical_verification_checksum="$assets_dir/SafeNet-DNS-Android-physical-verification.sha256"
 internet_share_verification="$assets_dir/SafeNet-DNS-Android-internet-share-verification.txt"
 internet_share_verification_checksum="$assets_dir/SafeNet-DNS-Android-internet-share-verification.sha256"
 
@@ -125,8 +123,6 @@ require_file "$test_apk_checksum" "Instrumentation APK checksum"
 require_file "$smoke_archive" "Smoke evidence archive"
 require_file "$smoke_result" "Smoke result asset"
 require_file "$smoke_checksum" "Smoke evidence checksum"
-require_file "$physical_verification" "Physical WireGuard verification report"
-require_file "$physical_verification_checksum" "Physical WireGuard verification checksum"
 require_file "$internet_share_verification" "Physical Internet Share verification report"
 require_file "$internet_share_verification_checksum" "Physical Internet Share verification checksum"
 
@@ -175,9 +171,6 @@ verify_checksum_file \
     "$smoke_checksum" \
     "SafeNet-DNS-Android-smoke-evidence.tar.gz" \
     "SafeNet-DNS-Android-smoke-result.txt"
-verify_checksum_file \
-    "$physical_verification_checksum" \
-    "SafeNet-DNS-Android-physical-verification.txt"
 verify_checksum_file \
     "$internet_share_verification_checksum" \
     "SafeNet-DNS-Android-internet-share-verification.txt"
@@ -256,12 +249,6 @@ grep -Eq '^validation_mode=[^[:space:]]+' "$smoke_result" ||
     fail "Published smoke result is missing validation_mode."
 grep -Eq '^failure_category=[^[:space:]]+' "$smoke_result" ||
     fail "Published smoke result is missing failure_category."
-grep -Eq '^evidence_schema_version=1$' "$physical_verification" ||
-    fail "Published physical verification report is missing evidence_schema_version=1."
-grep -Eq '^verification_status=(PASS|BLOCKED)$' "$physical_verification" ||
-    fail "Published physical verification report has an invalid verification status."
-grep -Eq '^verification_blocker=[^[:space:]]+' "$physical_verification" ||
-    fail "Published physical verification report is missing verification_blocker."
 grep -Eq '^evidence_schema_version=1$' "$internet_share_verification" ||
     fail "Published Internet Share verification report is missing evidence_schema_version=1."
 grep -Eq '^verification_status=(PASS|BLOCKED)$' "$internet_share_verification" ||
@@ -273,4 +260,4 @@ grep -Eq '^profile_count=3$' "$internet_share_verification" ||
 grep -Eq '^signed_apk_sha256=[[:xdigit:]]{64}$|^signed_apk_sha256=NOT_RECORDED$' "$internet_share_verification" ||
     fail "Published Internet Share verification report has an invalid signed APK digest."
 
-echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, WireGuard verification, and Internet Share verification state."
+echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, and Internet Share verification state."

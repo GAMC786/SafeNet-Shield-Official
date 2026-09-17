@@ -44,10 +44,6 @@ const headerSource = readFileSync(
   path.join(clientRoot, "src/components/Header.tsx"),
   "utf8",
 );
-const wireGuardInfographicSource = readFileSync(
-  path.join(clientRoot, "src/components/WireGuardInfographic.tsx"),
-  "utf8",
-);
 const navigationSource = readFileSync(
   path.join(clientRoot, "src/components/Navigation.tsx"),
   "utf8",
@@ -346,24 +342,8 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("the Dashboard exposes WireGuard as its only VPN path", () => {
-  assert.match(dashboardSource, /useSafeNetVpn/);
-  assert.match(dashboardSource, /useSettings/);
-  assert.match(dashboardSource, /useAntivirusSettings/);
-  assert.match(dashboardSource, /settings\?\.firewallEnabled === true/);
-  assert.match(dashboardSource, /antivirusSettings\?\.isEnabled === true/);
-  assert.match(dashboardSource, /wireguardRunning === true/);
-  assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
-  assert.match(headerSource, /"Unprotected"/);
-  assert.match(headerSource, /yellow-500/);
-  assert.match(dashboardSource, /WireGuardInfographic/);
-  assert.match(dashboardSource, /WireGuard is the only VPN path exposed by SafeNet/);
-  assert.match(wireGuardInfographicSource, /Official WireGuard tunnel/);
-  assert.match(wireGuardInfographicSource, /SafeNet WireGuard On\/Off/);
-  assert.match(wireGuardInfographicSource, /Android Tunnel Library/);
-  assert.doesNotMatch(dashboardSource, /SafeNet VPN On\/Off/);
-  assert.doesNotMatch(dashboardSource, /View SafeNet VPN EULA/);
-  assert.doesNotMatch(dashboardSource, /System Active/);
+test("the Dashboard does not expose an Android VPN control", () => {
+  assert.doesNotMatch(dashboardSource, /WireGuard|VPN|EULA|VpnService/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
 

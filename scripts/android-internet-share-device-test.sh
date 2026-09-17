@@ -245,7 +245,7 @@ set +e
     adb -s "$serial" shell am instrument -w -r \
         -e hold-internet-share true \
         -e hold-internet-share-seconds 45 \
-        -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareStartsAndStopsCleanly" \
+        -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest#internetShareStartsAndStopsCleanly" \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/instrumentation.log"
     printf '%s\n' "${PIPESTATUS[0]}" > "$primary_status_file"
@@ -357,7 +357,7 @@ if [[ "$proxy_configuration" == "PASS" ]]; then
             -e proxy-host "$proxy_host" \
             -e proxy-port "$proxy_port" \
             -e proxy-url "$url" \
-            -e class "com.safenet.dns.SafeNetVpnInstrumentationTest#internetShareClientUsesAdvertisedProxy" \
+            -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest#internetShareClientUsesAdvertisedProxy" \
             "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
             tee -a "$output_dir/client-instrumentation.log"
         status="${PIPESTATUS[0]}"

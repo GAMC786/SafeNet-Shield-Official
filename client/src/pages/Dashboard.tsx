@@ -1,11 +1,9 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
-import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { EulaDialog } from "@/components/EulaDialog";
 import { Button } from "@/components/ui/button";
 import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -14,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
-import { WireGuardInfographic } from "@/components/WireGuardInfographic";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -22,33 +19,13 @@ export default function Dashboard() {
   const { data: stats } = statsQuery;
   const { data: logs } = logsQuery;
   const { data: dnsServers } = useDnsServers();
-  const vpn = useSafeNetVpn();
   const { data: settings } = useSettings();
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
-  const [vpnActionError, setVpnActionError] = useState<string | null>(null);
-  const [eulaOpen, setEulaOpen] = useState(false);
-  const [startAfterEula, setStartAfterEula] = useState(false);
-  const reportVpnActionError = (error: unknown) => {
-    setVpnActionError(error instanceof Error ? error.message : "SafeNet WireGuard could not update its state.");
-  };
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
-  const isProtected =
-    vpn.status?.wireguardRunning === true &&
-    settings?.firewallEnabled === true &&
-    antivirusSettings?.isEnabled === true;
+  const isProtected = isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
   
   const activeDns = dnsServers?.find(s => s.isActive);
-  const selectedWireGuardDns = activeDns
-    ? [activeDns.primaryAddress, activeDns.secondaryAddress].filter(Boolean).join(",")
-    : undefined;
-
-  const startWireGuardProtection = async () => {
-    if (vpn.status?.running) {
-      await vpn.stop();
-    }
-    await vpn.startWireGuard({ dnsServers: selectedWireGuardDns });
-  };
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -100,7 +77,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 flex-wrap">
                  <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
                  <Badge variant="outline" className="text-xs text-primary border-primary/30">
-                   {vpn.status?.wireguardRunning ? "Tunnel active" : "Ready for WireGuard"}
+                    {activeDns ? "DNS resolver active" : "Choose a DNS resolver"}
                 </Badge>
               </div>
               <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
@@ -179,81 +156,6 @@ export default function Dashboard() {
            </div>
         </CyberCard>
       </div>
-
-      <CyberCard className="space-y-4" data-testid="dashboard-wireguard-panel">
-          <WireGuardInfographic
-            supported={vpn.supported}
-            configured={vpn.status?.wireguardConfigured === true}
-            running={vpn.status?.wireguardRunning === true}
-            disabled={
-              vpn.isBusy ||
-              vpn.status === null
-            }
-            gateway={vpn.status?.wireguardGateway}
-            dnsServers={vpn.status?.wireguardDnsServers || selectedWireGuardDns}
-            onToggle={(checked) => {
-                setVpnActionError(null);
-              if (checked) {
-                 if (!vpn.status?.eulaAccepted) {
-                   setStartAfterEula(true);
-                   setEulaOpen(true);
-                   return;
-                 }
-                 void startWireGuardProtection().catch(reportVpnActionError);
-              } else {
-                 void vpn.stopWireGuard().catch(reportVpnActionError);
-              }
-            }}
-          />
-          {vpn.status?.wireguardError && (
-            <p role="alert" className="text-xs text-destructive">{vpn.status.wireguardError}</p>
-          )}
-          {vpnActionError && (
-            <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive">
-              {vpnActionError}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
-            <p className="text-xs text-muted-foreground">
-              Review the agreement before connecting this Android VPN tunnel.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setStartAfterEula(false);
-                setEulaOpen(true);
-              }}
-            >
-              View WireGuard EULA
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            WireGuard is the only VPN path exposed by SafeNet. DNS servers below are used as the tunnel’s resolver settings.
-          </p>
-      </CyberCard>
-
-      {vpn.supported && (
-        <EulaDialog
-          open={eulaOpen}
-          onOpenChange={(open) => {
-            setEulaOpen(open);
-            if (!open) {
-              setStartAfterEula(false);
-            }
-          }}
-          onAccept={async () => {
-            await vpn.acceptEula();
-            setEulaOpen(false);
-            if (startAfterEula) {
-              setStartAfterEula(false);
-              await startWireGuardProtection();
-            }
-          }}
-          isAccepting={vpn.isBusy}
-        />
-      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">

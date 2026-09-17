@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
   DNS_FAMILY_RESOLVER_PRESETS,
@@ -85,7 +84,6 @@ export default function DnsSettings() {
   const createServer = useCreateDnsServer();
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
-  const vpn = useSafeNetVpn();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
@@ -136,17 +134,6 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
-      const wireGuardDns = [server.primaryAddress, server.secondaryAddress]
-        .filter(Boolean)
-        .join(",");
-      if (vpn.supported && vpn.status?.wireguardRunning) {
-        await vpn.stopWireGuard();
-        await vpn.startWireGuard({ dnsServers: wireGuardDns });
-      } else if (vpn.supported && vpn.status?.running) {
-        // The legacy DNS-only VPN is no longer exposed by the app. Stop an
-        // older instance rather than restarting a second VPN implementation.
-        await vpn.stop();
-      }
       toast({
         title: "DNS resolver activated",
         description: `${server.name} is now the active SafeNet resolver.`,

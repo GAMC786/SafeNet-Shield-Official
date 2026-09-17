@@ -148,7 +148,6 @@ final class TetherShareManager {
             WifiP2pManager.ActionListener listener = new WifiP2pManager.ActionListener() {
                     @Override
                     public void onSuccess() {
-                        SafeNetVpnService.refreshUnderlyingNetwork();
                         mainHandler.postDelayed(() -> refreshGroupInfo(0), 400L);
                     }
 
@@ -199,7 +198,6 @@ final class TetherShareManager {
                 // The local proxy is already stopped; Android can clean up the group.
             }
         }
-        SafeNetVpnService.refreshUnderlyingNetwork();
     }
 
     Snapshot snapshot() {

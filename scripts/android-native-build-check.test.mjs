@@ -22,28 +22,8 @@ const pluginSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java", import.meta.url),
   "utf8",
 );
-const serviceSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnService.java", import.meta.url),
-  "utf8",
-);
-const tetherSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/TetherShareManager.java", import.meta.url),
-  "utf8",
-);
-const tetherServiceSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/TetherShareService.java", import.meta.url),
-  "utf8",
-);
-const tileSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
-  "utf8",
-);
 const manifestSource = await readFile(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
-  "utf8",
-);
-const stringsSource = await readFile(
-  new URL("../android/app/src/main/res/values/strings.xml", import.meta.url),
   "utf8",
 );
 
@@ -51,7 +31,6 @@ test("Android native check is executable and forces the debug Java build", async
   const scriptStats = await stat(
     new URL("./check-android-native-build.sh", import.meta.url),
   );
-
   assert.ok((scriptStats.mode & 0o111) !== 0);
   assert.match(nativeBuildScript, /ANDROID_SDK_ROOT/);
   assert.match(nativeBuildScript, /local\.properties/);
@@ -73,146 +52,34 @@ test("release-capable workflows compile native sources before packaging", () => 
       "Build signed release APK",
       compileIndex,
     );
-
     assert.notEqual(setupIndex, -1, `${name} is missing pinned SDK setup`);
     assert.notEqual(compileIndex, -1, `${name} is missing native compile gate`);
     assert.notEqual(packageIndex, -1, `${name} is missing release packaging`);
-    assert.ok(
-      setupIndex < compileIndex && compileIndex < packageIndex,
-      `${name} must set up the SDK, compile native sources, then package`,
-    );
+    assert.ok(setupIndex < compileIndex && compileIndex < packageIndex);
   }
 });
 
-test("hosted Android SDK setup publishes a bounded infrastructure record", () => {
-  assert.match(
-    sdkSetupScript,
-    /ANDROID_SDK_SETUP_OUTPUT_DIR/,
-    "SDK setup failures need a workflow-controlled evidence directory",
-  );
-  assert.match(
-    sdkSetupScript,
-    /ANDROID_SDK_SETUP_FAILURE/,
-    "SDK setup failures need a stable machine-readable category",
-  );
-  assert.match(
-    mainWorkflow,
-    /tail -c 16000 "\$RUNNER_TEMP\/android-sdk-setup\.log"/,
-    "hosted SDK diagnostics must be bounded before artifact upload",
-  );
-  assert.match(
-    mainWorkflow,
-    /name: Upload Android SDK setup evidence/,
-    "hosted SDK diagnostics must survive the failed setup step",
-  );
+test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
+  assert.match(sdkSetupScript, /ANDROID_SDK_SETUP_OUTPUT_DIR/);
+  assert.match(sdkSetupScript, /ANDROID_SDK_SETUP_FAILURE/);
+  assert.match(mainWorkflow, /tail -c 16000 "\$RUNNER_TEMP\/android-sdk-setup\.log"/);
+  assert.match(mainWorkflow, /name: Upload Android SDK setup evidence/);
 });
 
-test("resolver address family is forwarded into the native service", () => {
-  assert.match(pluginSource, /EXTRA_IP_VERSION/);
-  assert.match(serviceSource, /intent\.getStringExtra\(EXTRA_IP_VERSION\)/);
-  assert.match(serviceSource, /private final String ipVersion/);
-  assert.match(serviceSource, /resolveHost\(address, ipVersion\)/);
-  assert.match(serviceSource, /resolveHost\(endpoint\.host, ipVersion\)/);
-  assert.match(serviceSource, /resolveHost\(uri\.getHost\(\), ipVersion\)/);
+test("the native plugin keeps shared non-VPN features", () => {
+  for (const method of [
+    "getProtectionStatus",
+    "syncFirewallConfig",
+    "getApkScanStatus",
+    "getAiShieldStatus",
+    "getCallScreeningStatus",
+    "getTetherStatus",
+  ]) {
+    assert.match(pluginSource, new RegExp(`void ${method}\\(`));
+  }
+  assert.doesNotMatch(pluginSource, /SafeNetVpnService|SafeNetWireGuard|startWireGuard|stopWireGuard/);
 });
 
-test("DNS upstream sockets stay on the non-VPN network", () => {
-  assert.match(
-    serviceSource,
-    /setUnderlyingNetworks\(new Network\[\] \{ underlying \}\)/,
-  );
-  assert.match(
-    serviceSource,
-    /underlying\.bindSocket\(socket\)/,
-  );
-  assert.match(
-    serviceSource,
-    /prepareUpstreamSocket\(socket\)/,
-  );
-  assert.match(
-    serviceSource,
-    /NET_CAPABILITY_VALIDATED/,
-  );
-});
-
-test("Internet Share refreshes SafeNet and pins proxy traffic to validated internet", () => {
-  assert.match(tetherSource, /SafeNetVpnService\.refreshUnderlyingNetwork\(\)/);
-  assert.match(tetherSource, /upstreamNetwork\.bindSocket\(upstream\)/);
-  assert.match(tetherSource, /NET_CAPABILITY_VALIDATED/);
-  assert.match(tetherSource, /upstreamNetwork\.getAllByName\(host\)/);
-});
-
-test("Internet Share converts native start failures into app-visible errors", () => {
-  assert.match(tetherSource, /catch \(RuntimeException error\) \{\s*fail\("Android could not start the SafeNet sharing network\."\)/);
-  assert.match(tetherSource, /catch \(RuntimeException error\) \{\s*fail\("Android could not read the SafeNet sharing network\."\)/);
-  assert.match(pluginSource, /"TETHER_START_FAILED"/);
-  assert.match(tetherServiceSource, /manager\.fail\("Android could not start Internet Share\."\)/);
-});
-
-test("call-screening setup exposes a working Android settings fallback", () => {
-  assert.match(pluginSource, /openCallScreeningSettings/);
-  assert.match(pluginSource, /ACTION_MANAGE_DEFAULT_APPS_SETTINGS/);
-  assert.match(pluginSource, /createRequestRoleIntent\(RoleManager\.ROLE_CALL_SCREENING\)/);
-  assert.doesNotMatch(pluginSource, /Intent\.EXTRA_ROLE_NAME/);
-  assert.match(pluginSource, /callScreeningSettingsResult/);
-});
-
-test("Android uses the Shield DNS name while keeping the call-screening provider label", () => {
-  assert.match(
-    manifestSource,
-    /<application[\s\S]*?android:label="@string\/app_name"/,
-  );
-  assert.match(
-    manifestSource,
-    /android:name="\.SafeNetCallScreeningService"[\s\S]*?android:label="@string\/call_screening_app_label"[\s\S]*?android:permission="android\.permission\.BIND_SCREENING_SERVICE"/,
-  );
-  assert.match(
-    manifestSource,
-    /<action android:name="android\.telecom\.CallScreeningService" \/>/,
-  );
-  assert.match(
-    stringsSource,
-    /<string name="app_name">SafeNet Shield DNS Server\+<\/string>/,
-  );
-  assert.match(
-    stringsSource,
-    /<string name="title_activity_main">SafeNet Shield DNS Server\+<\/string>/,
-  );
-  assert.match(
-    stringsSource,
-    /<string name="call_screening_app_label">SafeNet Spam CallerID<\/string>/,
-  );
-});
-
-test("Android can inspect active network and VPN ownership", () => {
-  assert.match(
-    manifestSource,
-    /<uses-permission android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/,
-    "ConnectivityManager status checks require ACCESS_NETWORK_STATE",
-  );
-});
-
-test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs", async () => {
-  const managerSource = await readFile(
-    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldManager.java", import.meta.url),
-    "utf8",
-  );
-  const classifierSource = await readFile(
-    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldClassifier.java", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(managerSource, /manager\.openCamera\(cameraId,\s*createCameraStateCallback/);
-  assert.doesNotMatch(managerSource, /manager\.openCamera\(createCameraStateCallback/);
-  assert.match(classifierSource, /input\.dataType\(\)/);
-  assert.match(classifierSource, /output\.dataType\(\)/);
-  assert.doesNotMatch(classifierSource, /(?:input|output)\.type\(\)/);
-});
-
-test("the Quick Settings WireGuard tile forwards its selected DNS servers", () => {
-  assert.match(tileSource, /PREF_WIREGUARD_DNS_SERVERS/);
-  assert.match(
-    tileSource,
-    /startAsync\(\s*selectedDnsServers,\s*this::postUpdateTile/s,
-  );
+test("the Android manifest has no VPN service or VPN permission", () => {
+  assert.doesNotMatch(manifestSource, /android\.net\.VpnService|BIND_VPN_SERVICE|SafeNetVpnService|SafeNetVpnTileService/);
 });

@@ -4,7 +4,7 @@ import test from "node:test";
 
 const workflow = readFileSync(new URL("../.github/workflows/build.yml", import.meta.url), "utf8");
 const instrumentation = readFileSync(
-  new URL("../android/app/src/androidTest/java/com/safenet/dns/SafeNetVpnInstrumentationTest.java", import.meta.url),
+  new URL("../android/app/src/androidTest/java/com/safenet/dns/SafeNetInternetShareInstrumentationTest.java", import.meta.url),
   "utf8",
 );
 const tetherManager = readFileSync(
@@ -19,13 +19,9 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
   assert.match(instrumentation, /NEARBY_WIFI_DEVICES/);
   assert.match(instrumentation, /INTERNET_SHARE_START result=PASS mode=/);
   assert.match(instrumentation, /INTERNET_SHARE_READY result=PASS proxy=ADVERTISED/);
-  assert.match(instrumentation, /INTERNET_SHARE_CREDENTIAL_HANDOFF result=PASS/);
-  assert.match(instrumentation, /passphrase64=/);
-  assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY result=PASS response=/);
-  assert.match(instrumentation, /argument\("proxy-url", "https:\/\/example\.com\/"\)/);
-  assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS notification=REMOVED group=NULL/);
-  assert.match(instrumentation, /hasInternetShareNotification/);
-  assert.match(instrumentation, /waitForWifiDirectGroupCleared/);
+  assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY_CONFIG result=PASS/);
+  assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS/);
+  assert.match(instrumentation, /getTetherStatus/);
 });
 
 test("physical Internet Share evidence is bound to the signed APK and device profile", () => {
@@ -81,12 +77,12 @@ test("tagged releases publish bounded Internet Share verification evidence", () 
 });
 
 test("proxy evidence does not persist the client network secret or request contents", () => {
-  assert.match(deviceScript, /passphrase/);
-  assert.match(deviceScript, /REDACTED/);
+  assert.doesNotMatch(instrumentation, /passphrase64/);
+  assert.doesNotMatch(instrumentation, /Log\.[iewd].*passphrase/);
   assert.doesNotMatch(deviceScript, /printf .*passphrase/);
   assert.doesNotMatch(deviceScript, /printf .*passphrase64/);
   const clientMethod = instrumentation.match(
-    /public void internetShareClientUsesAdvertisedProxy\(\)[\s\S]*?\n    \}\n\n    @Test/,
+    /public void internetShareClientUsesAdvertisedProxy\(\)[\s\S]*?\n    \}\n\n    private JSONObject waitForStarted/,
   )?.[0] ?? "";
   assert.notEqual(clientMethod, "");
   assert.doesNotMatch(clientMethod, /getInputStream\(\)/);

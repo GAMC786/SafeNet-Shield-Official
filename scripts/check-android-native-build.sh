@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Run the same native debug APK build used as the pre-release compile gate.
-# The build includes SafeNetVpnPlugin and SafeNetVpnService, so resolver
+# The build includes the shared native Capacitor plugin, so resolver
 # address-family forwarding must compile before any APK can be published.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

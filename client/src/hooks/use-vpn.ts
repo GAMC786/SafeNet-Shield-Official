@@ -57,26 +57,6 @@ export interface ApkScanStatus {
   quarantineBytes?: number;
 }
 
-export interface VpnStatus {
-  supported: boolean;
-  running: boolean;
-  permissionGranted: boolean;
-  eulaVersion: string;
-  eulaAccepted: boolean;
-  wireguardConfigured?: boolean;
-  wireguardRunning?: boolean;
-  activeTunnel?: "dns" | "wireguard" | "none" | string;
-  vpnPermissionOwner?: "SafeNet DNS" | "SafeNet WireGuard" | "none" | string;
-  wireguardGateway?: string;
-  wireguardGatewayOwner?: string;
-  wireguardPeerPublicKey?: string;
-  wireguardAllowedIps?: string;
-  wireguardDnsServers?: string;
-  wireguardError?: string | null;
-  error?: string;
-  protection?: ProtectionStatus;
-}
-
 export type ProtectionState =
   | "protected"
   | "vpn_replaced"
@@ -131,7 +111,6 @@ export interface CallScreeningStatus {
 }
 
 interface SafeNetVpnPlugin {
-  getStatus(): Promise<VpnStatus>;
   syncFirewallConfig(options: { config: FirewallConfig }): Promise<{
     synced: boolean;
     firewallEnabled: boolean;
@@ -142,16 +121,6 @@ interface SafeNetVpnPlugin {
   scanInstalledApks(): Promise<{ results: ApkScanResult[] }>;
   deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;
   clearApkScanHistory(): Promise<ApkScanStatus>;
-  acceptEula(options: { version: string }): Promise<VpnStatus>;
-  start(options: {
-    type: string;
-    ipVersion: "ipv4" | "ipv6";
-    primaryAddress: string;
-    secondaryAddress?: string | null;
-  }): Promise<VpnStatus>;
-  stop(): Promise<VpnStatus>;
-  startWireGuard(options?: { dnsServers?: string }): Promise<VpnStatus>;
-  stopWireGuard(): Promise<VpnStatus>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
@@ -259,121 +228,4 @@ export function useCallScreening() {
   }, [supported]);
 
   return { supported, status, isBusy, refresh, requestRole, openSettings, setEnabled, syncConfig };
-}
-
-export function useSafeNetVpn() {
-  const supported = Capacitor.getPlatform() === "android";
-  const [status, setStatus] = useState<VpnStatus | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (!supported) {
-      return null;
-    }
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getStatus());
-      setStatus(nextStatus);
-      return nextStatus;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Android could not read VPN status.";
-      setStatus((previous) => ({
-        supported: true,
-        running: false,
-        permissionGranted: previous?.permissionGranted ?? false,
-        eulaVersion: previous?.eulaVersion ?? SAFE_NET_VPN_EULA_VERSION,
-        eulaAccepted: previous?.eulaAccepted ?? false,
-        wireguardConfigured: previous?.wireguardConfigured ?? false,
-        wireguardRunning: previous?.wireguardRunning ?? false,
-        activeTunnel: previous?.activeTunnel ?? "none",
-        vpnPermissionOwner: previous?.vpnPermissionOwner ?? "none",
-        error: `DNS protection status is unavailable. ${message}`,
-      }));
-      throw error;
-    }
-  }, [supported]);
-
-  useEffect(() => {
-    if (!supported) {
-      return;
-    }
-    void refresh().catch(() => undefined);
-    const interval = window.setInterval(() => void refresh().catch(() => undefined), 2000);
-    return () => window.clearInterval(interval);
-  }, [refresh, supported]);
-
-  const acceptEula = useCallback(async () => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.acceptEula({ version: SAFE_NET_VPN_EULA_VERSION }));
-      setStatus(nextStatus);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, []);
-
-  const start = useCallback(async (options: {
-    type: string;
-    ipVersion: "ipv4" | "ipv6";
-    primaryAddress: string;
-    secondaryAddress?: string | null;
-  }) => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.start(options));
-      setStatus(nextStatus);
-      await refresh().catch(() => null);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [refresh]);
-
-  const stop = useCallback(async () => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stop());
-      setStatus(nextStatus);
-      await refresh().catch(() => null);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [refresh]);
-
-  const startWireGuard = useCallback(async (options?: { dnsServers?: string }) => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startWireGuard(options ?? {}));
-      setStatus(nextStatus);
-      await refresh().catch(() => null);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [refresh]);
-
-  const stopWireGuard = useCallback(async () => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopWireGuard());
-      setStatus(nextStatus);
-      await refresh().catch(() => null);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [refresh]);
-
-  return {
-    supported,
-    status,
-    isBusy,
-    refresh,
-    acceptEula,
-    start,
-    stop,
-    startWireGuard,
-    stopWireGuard,
-  };
 }

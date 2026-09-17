@@ -82,7 +82,6 @@ public class SafeNetVpnUiInstrumentationTest {
     @Before
     public void setUp() throws Exception {
         assertEquals(PACKAGE_NAME, context.getPackageName());
-        context.stopService(new Intent(context, SafeNetVpnService.class));
         clearTargetAppData();
 
         Intent launchIntent = new Intent(context, MainActivity.class)
@@ -1514,8 +1513,6 @@ public class SafeNetVpnUiInstrumentationTest {
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
 
-        context.stopService(new Intent(context, SafeNetVpnService.class));
-
         waitForVpnState(false);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
         JSONObject stoppedState = callWebView(
@@ -1566,7 +1563,6 @@ public class SafeNetVpnUiInstrumentationTest {
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
 
-        SafeNetVpnService.invokeOnRevokeForTesting();
 
         JSONObject revokedState = waitForRevokedVpnStatus();
         assertFalse("The bridge must report the VPN stopped after Android revokes access",

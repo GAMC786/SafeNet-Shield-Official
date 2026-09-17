@@ -368,7 +368,7 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Block domains through SafeNet&apos;s DNS path. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
           </div>
           <div className="flex items-center gap-2">
