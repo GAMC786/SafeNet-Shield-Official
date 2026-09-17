@@ -352,6 +352,8 @@ test("the Dashboard does not expose an Android VPN control", () => {
 });
 
 test("resolver, DDNS, and threat views expose the requested controls", () => {
+  assert.match(dashboardSource, /DNS Resolver Active/);
+  assert.match(dashboardSource, /text-emerald-300/);
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);

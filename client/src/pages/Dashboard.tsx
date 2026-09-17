@@ -94,8 +94,13 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                  <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
-                 <Badge variant="outline" className="text-xs text-primary border-primary/30">
-                    {activeDns ? "DNS resolver active" : "Choose a DNS resolver"}
+                 <Badge
+                   variant="outline"
+                   className={activeDns
+                     ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
+                     : "border-primary/30 text-xs text-primary"}
+                 >
+                    {activeDns ? "DNS Resolver Active" : "Choose a DNS resolver"}
                 </Badge>
               </div>
               <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
