@@ -12,3 +12,9 @@ test("call-screening controls share the role request and settings fallback", () 
   assert.match(pageSource, /Could not open call-screening settings/);
   assert.match(hookSource, /openCallScreeningSettings\(\): Promise<CallScreeningStatus>/);
 });
+
+test("accepted spam reports also create an immediate device-local block", () => {
+  assert.match(pageSource, /if \(result\.accepted\) \{/);
+  assert.match(pageSource, /setBlockedNumbers\(\(current\) => current\.includes\(normalized\)/);
+  assert.match(pageSource, /added to your device-local blocklist/);
+});
