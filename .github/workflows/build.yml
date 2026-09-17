@@ -2755,6 +2755,179 @@ jobs:
             echo "run_url=$evidence_run_url"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve matching physical Internet Share evidence
+        id: resolve-physical-internet-share-evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -uo pipefail
+
+          release_dir="artifacts/release"
+          evidence_dir="artifacts/android-internet-share-physical-evidence"
+          report="$release_dir/SafeNet-DNS-Android-internet-share-verification.txt"
+          report_checksum="$release_dir/SafeNet-DNS-Android-internet-share-verification.sha256"
+          mkdir -p "$release_dir"
+          rm -rf "$evidence_dir"
+
+          status="BLOCKED"
+          blocker="INTERNET_SHARE_RUN_MISSING"
+          evidence_run_id="NONE"
+          evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          signed_apk_sha256="NOT_RECORDED"
+          if [[ -s artifacts/android/app-release.apk ]]; then
+            signed_apk_sha256="$(sha256sum artifacts/android/app-release.apk | awk '{ print $1 }')"
+          fi
+
+          run_json="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow build.yml \
+            --event workflow_dispatch \
+            --commit "$GITHUB_SHA" \
+            --status completed \
+            --json databaseId,url,headSha,headBranch,createdAt \
+            --limit 20 2>/dev/null || printf '[]')"
+          evidence_run_id="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref)) | sort_by(.createdAt) | reverse | .[0].databaseId // empty' <<< "$run_json" 2>/dev/null || true)"
+          evidence_run_url="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref)) | sort_by(.createdAt) | reverse | .[0].url // empty' <<< "$run_json" 2>/dev/null || true)"
+          if [[ -z "$evidence_run_id" ]]; then
+            evidence_run_id="NONE"
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          elif [[ -z "$evidence_run_url" ]]; then
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/$evidence_run_id"
+          fi
+
+          blockers=()
+          if [[ "$evidence_run_id" != "NONE" ]]; then
+            if ! gh run download "$evidence_run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'SafeNet-DNS-Android-internet-share-physical-evidence-*' \
+              --dir "$evidence_dir" >/dev/null 2>&1; then
+              blockers+=("INTERNET_SHARE_EVIDENCE_DOWNLOAD_FAILED")
+            fi
+          else
+            blockers+=("INTERNET_SHARE_RUN_MISSING")
+          fi
+
+          profiles=(pixel-android-14 samsung-android-13 motorola-android-12)
+          profile_index=0
+          for profile in "${profiles[@]}"; do
+            profile_index=$((profile_index + 1))
+            profile_result="$(find "$evidence_dir" -type f -name result.txt -print 2>/dev/null | grep -F "$profile" | head -n 1 || true)"
+            profile_result_value="NOT_RECORDED"
+            profile_device_profile="$profile"
+            profile_status="NOT_RECORDED"
+            profile_apk_sha256="NOT_RECORDED"
+            profile_device_evidence="NOT_RECORDED"
+            profile_physical_evidence="NOT_RECORDED"
+            profile_start_result="NOT_RECORDED"
+            profile_start_outcome="NOT_RECORDED"
+            profile_stop_result="NOT_RECORDED"
+            profile_notification_cleanup="NOT_RECORDED"
+            profile_group_cleanup="NOT_RECORDED"
+            profile_cleanup_result="NOT_RECORDED"
+
+            if [[ -n "$profile_result" ]]; then
+              read_result() {
+                awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+                  "$profile_result" 2>/dev/null || true
+              }
+              profile_result_value="$(read_result result)"
+              profile_device_profile="$(read_result device_profile)"
+              profile_status="$(read_result profile_status)"
+              profile_apk_sha256="$(read_result application_apk_sha256)"
+              profile_device_evidence="$(read_result device_evidence)"
+              profile_physical_evidence="$(read_result physical_evidence)"
+              profile_start_result="$(read_result start_result)"
+              profile_start_outcome="$(read_result start_outcome)"
+              profile_stop_result="$(read_result stop_result)"
+              profile_notification_cleanup="$(read_result notification_cleanup)"
+              profile_group_cleanup="$(read_result wifi_direct_group_cleanup)"
+              if [[ "$profile_stop_result" == "PASS" &&
+                "$profile_notification_cleanup" == "PASS" &&
+                "$profile_group_cleanup" == "PASS" ]]; then
+                profile_cleanup_result="PASS"
+              elif [[ "$profile_stop_result" != "NOT_RECORDED" ||
+                "$profile_notification_cleanup" != "NOT_RECORDED" ||
+                "$profile_group_cleanup" != "NOT_RECORDED" ]]; then
+                profile_cleanup_result="FAIL"
+              fi
+            else
+              blockers+=("INTERNET_SHARE_DEVICE_EVIDENCE_MISSING_${profile}")
+            fi
+
+            if [[ "$profile_device_profile" != "$profile" ]]; then
+              blockers+=("INTERNET_SHARE_DEVICE_PROFILE_MISMATCH_${profile}")
+            fi
+            if [[ "$signed_apk_sha256" == "NOT_RECORDED" ||
+              "$profile_apk_sha256" != "$signed_apk_sha256" ]]; then
+              blockers+=("INTERNET_SHARE_APK_EVIDENCE_MISMATCH_${profile}")
+            fi
+            if [[ "$profile_device_evidence" != "PASS" ||
+              "$profile_physical_evidence" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_DEVICE_EVIDENCE_INVALID_${profile}")
+            fi
+            if [[ "$profile_start_result" != "PASS" ||
+              "$profile_start_outcome" == "NOT_RECORDED" ]]; then
+              blockers+=("INTERNET_SHARE_START_NOT_CONFIRMED_${profile}")
+            fi
+            if [[ "$profile_cleanup_result" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_CLEANUP_NOT_CONFIRMED_${profile}")
+            fi
+            if [[ "$profile_result_value" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_LIFECYCLE_FAILED_${profile}")
+            fi
+
+            {
+              echo "profile_${profile_index}_name=$profile"
+              echo "profile_${profile_index}_device_profile=$profile_device_profile"
+              echo "profile_${profile_index}_profile_status=${profile_status:-NOT_RECORDED}"
+              echo "profile_${profile_index}_result=$profile_result_value"
+              echo "profile_${profile_index}_application_apk_sha256=${profile_apk_sha256:-NOT_RECORDED}"
+              echo "profile_${profile_index}_start_result=${profile_start_result:-NOT_RECORDED}"
+              echo "profile_${profile_index}_start_outcome=${profile_start_outcome:-NOT_RECORDED}"
+              echo "profile_${profile_index}_stop_result=${profile_stop_result:-NOT_RECORDED}"
+              echo "profile_${profile_index}_notification_cleanup=${profile_notification_cleanup:-NOT_RECORDED}"
+              echo "profile_${profile_index}_wifi_direct_group_cleanup=${profile_group_cleanup:-NOT_RECORDED}"
+              echo "profile_${profile_index}_cleanup_result=$profile_cleanup_result"
+            } >> "$report.profiles"
+          done
+
+          if [[ "${#blockers[@]}" -eq 0 ]]; then
+            status="PASS"
+            blocker="NONE"
+          else
+            IFS=,
+            blocker="${blockers[*]}"
+          fi
+
+          {
+            echo "evidence_schema_version=1"
+            echo "release_ref=$GITHUB_REF_NAME"
+            echo "release_sha=$GITHUB_SHA"
+            echo "signed_apk_sha256=$signed_apk_sha256"
+            echo "signed_apk_artifact_url=${APK_ARTIFACT_URL:-unavailable}"
+            echo "internet_share_evidence_run_id=$evidence_run_id"
+            echo "internet_share_evidence_run_url=$evidence_run_url"
+            echo "verification_status=$status"
+            echo "verification_blocker=$blocker"
+            echo "profile_count=${#profiles[@]}"
+            cat "$report.profiles"
+          } > "$report"
+          rm -f "$report.profiles"
+          printf '%s  %s\n' \
+            "$(sha256sum "$report" | awk '{ print $1 }')" \
+            "$(basename "$report")" > "$report_checksum"
+          {
+            echo "status=$status"
+            echo "blocker=$blocker"
+            echo "run_id=$evidence_run_id"
+            echo "run_url=$evidence_run_url"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish Android release summary
         if: always()
         shell: bash
@@ -2768,6 +2941,9 @@ jobs:
           PHYSICAL_VERIFICATION_STATUS: ${{ steps.resolve-physical-wireguard-evidence.outputs.status || 'BLOCKED' }}
           PHYSICAL_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-wireguard-evidence.outputs.blocker || 'PHYSICAL_RUN_MISSING' }}
           PHYSICAL_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-wireguard-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
+          INTERNET_SHARE_VERIFICATION_STATUS: ${{ steps.resolve-physical-internet-share-evidence.outputs.status || 'BLOCKED' }}
+          INTERNET_SHARE_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-internet-share-evidence.outputs.blocker || 'INTERNET_SHARE_RUN_MISSING' }}
+          INTERNET_SHARE_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-internet-share-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
         run: |
           set -euo pipefail
           version_name="${ANDROID_VERSION_NAME:-unresolved}"
@@ -2779,6 +2955,10 @@ jobs:
           physical_status="${PHYSICAL_VERIFICATION_STATUS:-BLOCKED}"
           physical_blocker="${PHYSICAL_VERIFICATION_BLOCKER:-PHYSICAL_RUN_MISSING}"
           physical_run_url="${PHYSICAL_EVIDENCE_RUN_URL:-unavailable}"
+          internet_share_status="${INTERNET_SHARE_VERIFICATION_STATUS:-BLOCKED}"
+          internet_share_blocker="${INTERNET_SHARE_VERIFICATION_BLOCKER:-INTERNET_SHARE_RUN_MISSING}"
+          internet_share_run_url="${INTERNET_SHARE_EVIDENCE_RUN_URL:-unavailable}"
+          internet_share_report="artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt"
           {
             echo "## Android release verification"
             echo
@@ -2788,6 +2968,20 @@ jobs:
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
             echo "- **Physical WireGuard verification:** \`$physical_status\` (blocker: \`$physical_blocker\`; [matching physical evidence run]($physical_run_url))"
+            echo "- **Physical Internet Share verification:** \`$internet_share_status\` (blocker: \`$internet_share_blocker\`; [matching physical evidence run]($internet_share_run_url))"
+            if [[ -s "$internet_share_report" ]]; then
+              signed_apk_sha256="$(awk -F= '$1 == "signed_apk_sha256" { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+              profile_count="$(awk -F= '$1 == "profile_count" { print $2; exit }' "$internet_share_report")"
+              for ((profile_index = 1; profile_index <= profile_count; profile_index++)); do
+                profile_name="$(awk -F= -v key="profile_${profile_index}_name" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_digest="$(awk -F= -v key="profile_${profile_index}_application_apk_sha256" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_start="$(awk -F= -v key="profile_${profile_index}_start_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_start_outcome="$(awk -F= -v key="profile_${profile_index}_start_outcome" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_cleanup="$(awk -F= -v key="profile_${profile_index}_cleanup_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                echo "- **Internet Share $profile_name:** signed APK SHA-256 \`$profile_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); cleanup \`$profile_cleanup\`"
+              done
+              echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
+            fi
             echo "- **Release claim boundary:** a signed APK is not physically verified unless the matching run reports a real device and observed gateway handshake."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -2801,6 +2995,7 @@ jobs:
             echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
             echo "- **Signed APK and instrumentation APK:** independently verified before publication."
             echo "- **Physical WireGuard validation:** reported separately; missing runner, gateway handshake, or device evidence is a bounded blocker and does not prevent APK publication."
+            echo "- **Physical Internet Share validation:** reported separately; missing runner, lifecycle evidence, or signed APK match is a bounded blocker and does not prevent APK publication."
             echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -2848,6 +3043,8 @@ jobs:
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
             artifacts/release/SafeNet-DNS-Android-physical-verification.txt
             artifacts/release/SafeNet-DNS-Android-physical-verification.sha256
+            artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt
+            artifacts/release/SafeNet-DNS-Android-internet-share-verification.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -2917,6 +3114,8 @@ jobs:
             SafeNet-DNS-Android-smoke-evidence.sha256
             SafeNet-DNS-Android-physical-verification.txt
             SafeNet-DNS-Android-physical-verification.sha256
+            SafeNet-DNS-Android-internet-share-verification.txt
+            SafeNet-DNS-Android-internet-share-verification.sha256
           )
           for asset in "${assets[@]}"; do
             if ! gh release download "$GITHUB_REF_NAME" \

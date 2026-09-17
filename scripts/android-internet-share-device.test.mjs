@@ -34,3 +34,15 @@ test("workflow exposes a separate profiled physical Internet Share lane", () => 
   assert.match(workflow, /android-internet-share-device-test\.sh/);
   assert.match(workflow, /SafeNet-DNS-Android-internet-share-physical-evidence/);
 });
+
+test("tagged releases publish bounded Internet Share verification evidence", () => {
+  assert.match(workflow, /Resolve matching physical Internet Share evidence/);
+  assert.match(workflow, /--event workflow_dispatch/);
+  assert.match(workflow, /--commit "\$GITHUB_SHA"/);
+  assert.match(workflow, /\.headBranch == \$ref/);
+  assert.match(workflow, /SafeNet-DNS-Android-internet-share-verification\.txt/);
+  assert.match(workflow, /INTERNET_SHARE_RUN_MISSING|INTERNET_SHARE_APK_EVIDENCE_MISMATCH/);
+  assert.match(workflow, /Physical Internet Share validation.*does not prevent APK publication/);
+  assert.match(workflow, /profile_.*start_result/);
+  assert.match(workflow, /profile_.*cleanup_result/);
+});
