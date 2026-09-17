@@ -25,6 +25,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
+import android.util.Base64;
 
 import androidx.core.content.ContextCompat;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -328,6 +329,9 @@ public class SafeNetVpnInstrumentationTest {
             status.optBoolean("running", false) &&
             !status.optString("networkName", "").trim().isEmpty() &&
             !status.optString("passphrase", "").trim().isEmpty();
+        boolean hasCredentialHandoff =
+            hasNetworkDetails &&
+            !"ANDROID_SETTINGS".equals(status.optString("credentialSource", ""));
         String lastError = status.optString("lastError", "").trim();
         boolean hasReadableFailure = !lastError.isEmpty();
         assertTrue(
@@ -351,6 +355,21 @@ public class SafeNetVpnInstrumentationTest {
                 (hasNetworkDetails ? "NETWORK_DETAILS" : "READABLE_FAILURE") +
                 " permission=PASS"
         );
+        if (hasCredentialHandoff) {
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_CREDENTIAL_HANDOFF result=PASS source=" +
+                    status.optString("credentialSource") +
+                    " ssid64=" + encodeCredential(status.optString("networkName")) +
+                    " passphrase64=" + encodeCredential(status.optString("passphrase"))
+            );
+        } else if (status.optBoolean("running", false)) {
+            android.util.Log.i(
+                "InternetShareSmoke",
+                "INTERNET_SHARE_CREDENTIAL_HANDOFF result=FALLBACK_REQUIRED " +
+                    "source=ANDROID_SETTINGS"
+            );
+        }
 
         if (Boolean.parseBoolean(argument("hold-internet-share", "false"))) {
             assertTrue(
@@ -1071,6 +1090,13 @@ public class SafeNetVpnInstrumentationTest {
         } catch (NumberFormatException error) {
             return TETHER_CLIENT_HOLD_SECONDS;
         }
+    }
+
+    private String encodeCredential(String value) {
+        return Base64.encodeToString(
+            value.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            Base64.NO_WRAP
+        );
     }
 
     private void grantTetherPermissionDialog() throws Exception {

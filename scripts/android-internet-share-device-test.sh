@@ -119,7 +119,7 @@ write_blocked_result() {
         printf 'stop_result=NOT_RECORDED\nnotification_cleanup=NOT_RECORDED\n'
         printf 'wifi_direct_group_cleanup=NOT_RECORDED\n'
         printf 'client_target=%s\n' "${client_serial:-unavailable}"
-        printf 'client_connection=NOT_RECORDED\n'
+        printf 'credential_handoff=NOT_RECORDED\nclient_connection=NOT_RECORDED\n'
         printf 'proxy_advertisement=NOT_RECORDED\nproxy_configuration=NOT_RECORDED\n'
         printf 'proxy_response=NOT_RECORDED\nproxy_https_response=NOT_RECORDED\n'
         printf 'proxy_http_diagnostic=NOT_RECORDED\n'
@@ -235,6 +235,11 @@ adb -s "$serial" logcat -c
 
 primary_status_file="$output_dir/primary-status.txt"
 rm -f "$primary_status_file"
+redact_credentials() {
+    sed -E \
+        -e 's/(ssid64|passphrase64)=[^[:space:]]+/\1=[REDACTED]/g' \
+        -e 's/(passphrase|password|psk)([=:])[[:space:]]*[^,[:space:]]+/\1\2 [REDACTED]/Ig'
+}
 set +e
 (
     adb -s "$serial" shell am instrument -w -r \
@@ -251,7 +256,8 @@ set -e
 ready_line=""
 proxy_line=""
 for _ in $(seq 1 60); do
-    adb -s "$serial" logcat -d -t 1600 2>/dev/null > "$output_dir/primary-logcat-live.txt" || true
+    primary_logcat="$(adb -s "$serial" logcat -d -t 1600 2>/dev/null || true)"
+    printf '%s\n' "$primary_logcat" | redact_credentials > "$output_dir/primary-logcat-live.txt"
     ready_line="$(grep -F 'INTERNET_SHARE_READY result=PASS proxy=ADVERTISED' \
         "$output_dir/primary-logcat-live.txt" | tail -n 1 || true)"
     proxy_line="$(grep -E 'INTERNET_SHARE_PROXY result=PASS host=[^ ]+ port=[0-9]+' \
@@ -274,6 +280,26 @@ passphrase="$(
     grep -Eio 'passphrase:[[:space:]]*[^,[:space:]]+' <<< "$group_info" |
         head -n 1 | sed -E 's/^[^:]+:[[:space:]]*//'
 )"
+credential_handoff="DIAGNOSTIC"
+credential_line="$(
+    printf '%s\n' "$primary_logcat" |
+        grep -E 'INTERNET_SHARE_CREDENTIAL_HANDOFF result=PASS .*ssid64=[^ ]+ passphrase64=[^ ]+' |
+        tail -n 1 || true
+)"
+ssid64="$(sed -nE 's/.*ssid64=([^ ]+).*/\1/p' <<< "$credential_line")"
+passphrase64="$(sed -nE 's/.*passphrase64=([^ ]+).*/\1/p' <<< "$credential_line")"
+decode_base64() {
+    base64 --decode 2>/dev/null <<< "$1" | tr -d '\r\n'
+}
+handoff_network_name="$(decode_base64 "$ssid64")"
+handoff_passphrase="$(decode_base64 "$passphrase64")"
+if [[ -n "$handoff_network_name" && -n "$handoff_passphrase" ]]; then
+    network_name="$handoff_network_name"
+    passphrase="$handoff_passphrase"
+    credential_handoff="APP_HANDOFF"
+elif [[ -z "$network_name" || -z "$passphrase" ]]; then
+    credential_handoff="UNAVAILABLE"
+fi
 client_connection="NOT_RECORDED"
 proxy_configuration="NOT_RECORDED"
 proxy_response="NOT_RECORDED"
@@ -283,9 +309,11 @@ client_proxy_cleanup="NOT_RECORDED"
 client_wifi_cleanup="NOT_RECORDED"
 previous_proxy="$(adb -s "$client_serial" shell settings get global http_proxy 2>/dev/null | tr -d '\r' || true)"
 
-if [[ "$proxy_advertisement" == "PASS" && -n "$network_name" && -n "$passphrase" ]]; then
+if [[ "$proxy_advertisement" == "PASS" && "$credential_handoff" != "UNAVAILABLE" &&
+    -n "$network_name" && -n "$passphrase" ]]; then
     if adb -s "$client_serial" shell cmd -w wifi connect-network \
-        "$network_name" wpa2 "$passphrase" > "$output_dir/client-connect.log" 2>&1; then
+        "$network_name" wpa2 "$passphrase" >/dev/null 2>&1; then
+        printf 'connect=PASS\n' > "$output_dir/client-connect.log"
         for _ in $(seq 1 30); do
             client_wifi_state="$(adb -s "$client_serial" shell dumpsys wifi 2>/dev/null || true)"
             client_route_state="$(adb -s "$client_serial" shell ip route 2>/dev/null || true)"
@@ -296,7 +324,12 @@ if [[ "$proxy_advertisement" == "PASS" && -n "$network_name" && -n "$passphrase"
             fi
             sleep 1
         done
+    else
+        printf 'connect=FAIL\n' > "$output_dir/client-connect.log"
     fi
+elif [[ "$credential_handoff" == "UNAVAILABLE" ]]; then
+    printf 'connect=BLOCKED credential_handoff=UNAVAILABLE\n' > "$output_dir/client-connect.log"
+    client_connection="BLOCKED_CREDENTIAL_HANDOFF"
 fi
 printf 'connection=%s\n' "$client_connection" > "$output_dir/client-state.txt"
 
@@ -383,10 +416,9 @@ instrumentation_status="$(cat "$primary_status_file" 2>/dev/null || true)"
 instrumentation_status="${instrumentation_status:-1}"
 set -e
 
-adb -s "$serial" logcat -d -t 1600 > "$output_dir/logcat.txt" 2>&1 || true
+adb -s "$serial" logcat -d -t 1600 2>/dev/null | redact_credentials > "$output_dir/logcat.txt" || true
 adb -s "$serial" dumpsys notification > "$output_dir/notification-state.txt" 2>&1 || true
-adb -s "$serial" dumpsys wifi p2p 2>/dev/null |
-    sed -E 's/(passphrase|password):[[:space:]]*[^,[:space:]]+/\1: [REDACTED]/Ig' \
+adb -s "$serial" dumpsys wifi p2p 2>/dev/null | redact_credentials \
     > "$output_dir/wifi-direct-state.txt" || true
 
 start_result="NOT_RECORDED"
@@ -401,6 +433,10 @@ if grep -Fq "INTERNET_SHARE_START result=PASS" "$output_dir/logcat.txt" \
     start_result="PASS"
     start_outcome="$(grep -Eo 'INTERNET_SHARE_START result=PASS mode=[A-Z_]+' \
         "$output_dir/logcat.txt" "$output_dir/instrumentation.log" | tail -n 1 | cut -d= -f3 || true)"
+fi
+if grep -Fq "INTERNET_SHARE_CREDENTIAL_HANDOFF result=PASS" "$output_dir/logcat.txt" \
+    "$output_dir/instrumentation.log"; then
+    credential_handoff="APP_HANDOFF"
 fi
 if grep -Fq "INTERNET_SHARE_START result=PASS mode=" "$output_dir/logcat.txt" \
     "$output_dir/instrumentation.log"; then
@@ -419,6 +455,7 @@ fi
 
 if [[ "$instrumentation_status" -eq 0 && "$start_result" == "PASS" &&
     "$stop_result" == "PASS" && "$nearby_wifi_permission" == "PASS" &&
+    "$credential_handoff" != "UNAVAILABLE" &&
     "$proxy_advertisement" == "PASS" && "$client_connection" == "PASS" &&
     "$proxy_configuration" == "PASS" && "$proxy_https_response" == "PASS" &&
     "$client_proxy_cleanup" == "PASS" && "$client_wifi_cleanup" == "PASS" ]]; then
@@ -429,7 +466,11 @@ if [[ "$instrumentation_status" -eq 0 && "$start_result" == "PASS" &&
 else
     result="FAIL"
     failure_class="APPLICATION"
-    failure_category="INTERNET_SHARE_PROXY"
+    if [[ "$credential_handoff" == "UNAVAILABLE" ]]; then
+        failure_category="CLIENT_CREDENTIAL_HANDOFF"
+    else
+        failure_category="INTERNET_SHARE_PROXY"
+    fi
     physical_evidence="FAIL"
 fi
 
@@ -450,6 +491,7 @@ fi
         "$wifi_direct_group_cleanup" "$physical_evidence"
     printf 'client_target=%s\nclient_connection=%s\n' \
         "$client_serial" "$client_connection"
+    printf 'credential_handoff=%s\n' "$credential_handoff"
     printf 'proxy_advertisement=%s\nproxy_configuration=%s\n' \
         "$proxy_advertisement" "$proxy_configuration"
     printf 'proxy_response=%s\nproxy_https_response=%s\nproxy_http_diagnostic=%s\n' \

@@ -19,6 +19,8 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
   assert.match(instrumentation, /NEARBY_WIFI_DEVICES/);
   assert.match(instrumentation, /INTERNET_SHARE_START result=PASS mode=/);
   assert.match(instrumentation, /INTERNET_SHARE_READY result=PASS proxy=ADVERTISED/);
+  assert.match(instrumentation, /INTERNET_SHARE_CREDENTIAL_HANDOFF result=PASS/);
+  assert.match(instrumentation, /passphrase64=/);
   assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY result=PASS response=/);
   assert.match(instrumentation, /argument\("proxy-url", "https:\/\/example\.com\/"\)/);
   assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS notification=REMOVED group=NULL/);
@@ -34,6 +36,9 @@ test("physical Internet Share evidence is bound to the signed APK and device pro
   assert.match(deviceScript, /INTERNET_SHARE_STOP result=PASS/);
   assert.match(deviceScript, /wifi_direct_group_cleanup=/);
   assert.match(deviceScript, /client_connection=/);
+  assert.match(deviceScript, /credential_handoff=/);
+  assert.match(deviceScript, /APP_HANDOFF/);
+  assert.match(deviceScript, /redact_credentials/);
   assert.match(deviceScript, /proxy_configuration=/);
   assert.match(deviceScript, /proxy_response=/);
   assert.match(deviceScript, /proxy_https_response=/);
@@ -79,6 +84,7 @@ test("proxy evidence does not persist the client network secret or request conte
   assert.match(deviceScript, /passphrase/);
   assert.match(deviceScript, /REDACTED/);
   assert.doesNotMatch(deviceScript, /printf .*passphrase/);
+  assert.doesNotMatch(deviceScript, /printf .*passphrase64/);
   const clientMethod = instrumentation.match(
     /public void internetShareClientUsesAdvertisedProxy\(\)[\s\S]*?\n    \}\n\n    @Test/,
   )?.[0] ?? "";

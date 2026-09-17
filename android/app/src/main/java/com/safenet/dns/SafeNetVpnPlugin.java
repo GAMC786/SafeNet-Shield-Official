@@ -350,6 +350,7 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("starting", snapshot.starting);
         result.put("networkName", snapshot.networkName);
         result.put("passphrase", snapshot.passphrase);
+        result.put("credentialSource", snapshot.credentialSource);
         result.put("proxyHost", snapshot.proxyHost);
         result.put("proxyPort", snapshot.proxyPort);
         result.put("groupOwner", snapshot.groupOwner);

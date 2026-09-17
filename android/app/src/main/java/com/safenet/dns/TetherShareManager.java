@@ -5,6 +5,7 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.p2p.WifiP2pDevice;
+import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
@@ -23,6 +24,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -57,6 +59,7 @@ final class TetherShareManager {
         final boolean starting;
         final String networkName;
         final String passphrase;
+        final String credentialSource;
         final String proxyHost;
         final int proxyPort;
         final boolean groupOwner;
@@ -68,6 +71,7 @@ final class TetherShareManager {
             boolean starting,
             String networkName,
             String passphrase,
+            String credentialSource,
             String proxyHost,
             int proxyPort,
             boolean groupOwner,
@@ -78,6 +82,7 @@ final class TetherShareManager {
             this.starting = starting;
             this.networkName = networkName;
             this.passphrase = passphrase;
+            this.credentialSource = credentialSource;
             this.proxyHost = proxyHost;
             this.proxyPort = proxyPort;
             this.groupOwner = groupOwner;
@@ -87,6 +92,11 @@ final class TetherShareManager {
     }
 
     private static TetherShareManager instance;
+    private static final String CREDENTIAL_SOURCE_APP_DEFINED = "APP_DEFINED";
+    private static final String CREDENTIAL_SOURCE_ANDROID_API = "ANDROID_API";
+    private static final String CREDENTIAL_SOURCE_ANDROID_SETTINGS = "ANDROID_SETTINGS";
+    private static final char[] CREDENTIAL_ALPHABET =
+        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789".toCharArray();
 
     static synchronized TetherShareManager get(Context context) {
         if (instance == null) {
@@ -106,6 +116,8 @@ final class TetherShareManager {
     private volatile boolean starting;
     private volatile String networkName;
     private volatile String passphrase;
+    private volatile String appDefinedNetworkName;
+    private volatile String credentialSource;
     private volatile boolean groupOwner;
     private volatile String lastError;
     private volatile List<DeviceSnapshot> devices = Collections.emptyList();
@@ -118,6 +130,10 @@ final class TetherShareManager {
         if (running || starting) return;
         lastError = null;
         starting = true;
+        networkName = null;
+        passphrase = null;
+        appDefinedNetworkName = null;
+        credentialSource = null;
         try {
             wifiP2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
             if (wifiP2pManager == null) {
@@ -129,9 +145,7 @@ final class TetherShareManager {
                 fail("Android could not initialize Wi-Fi Direct.");
                 return;
             }
-            wifiP2pManager.createGroup(
-                wifiChannel,
-                new WifiP2pManager.ActionListener() {
+            WifiP2pManager.ActionListener listener = new WifiP2pManager.ActionListener() {
                     @Override
                     public void onSuccess() {
                         SafeNetVpnService.refreshUnderlyingNetwork();
@@ -142,8 +156,22 @@ final class TetherShareManager {
                     public void onFailure(int reason) {
                         fail(wifiFailureMessage(reason));
                     }
-                }
-            );
+                };
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                String requestedNetworkName = createNetworkName();
+                String requestedPassphrase = createPassphrase();
+                WifiP2pConfig config = new WifiP2pConfig.Builder()
+                    .setNetworkName(requestedNetworkName)
+                    .setPassphrase(requestedPassphrase)
+                    .build();
+                networkName = requestedNetworkName;
+                passphrase = requestedPassphrase;
+                appDefinedNetworkName = requestedNetworkName;
+                credentialSource = CREDENTIAL_SOURCE_APP_DEFINED;
+                wifiP2pManager.createGroup(wifiChannel, config, listener);
+            } else {
+                wifiP2pManager.createGroup(wifiChannel, listener);
+            }
         } catch (SecurityException error) {
             fail("Nearby Wi-Fi permission is required to create the sharing network.");
         } catch (RuntimeException error) {
@@ -158,6 +186,8 @@ final class TetherShareManager {
         devices = Collections.emptyList();
         networkName = null;
         passphrase = null;
+        appDefinedNetworkName = null;
+        credentialSource = null;
         groupOwner = false;
         if (wifiP2pManager != null && wifiChannel != null) {
             try {
@@ -178,6 +208,7 @@ final class TetherShareManager {
             starting,
             networkName,
             passphrase,
+            credentialSource,
             PROXY_HOST,
             PROXY_PORT,
             groupOwner,
@@ -203,9 +234,15 @@ final class TetherShareManager {
                     running = true;
                     groupOwner = group.isGroupOwner();
                     networkName = group.getNetworkName();
-                    passphrase = Build.VERSION.SDK_INT >= 29 ? group.getPassphrase() : null;
-                    if (passphrase == null || passphrase.trim().isEmpty()) {
-                        passphrase = "Use the password shown by Android";
+                    String androidPassphrase =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? group.getPassphrase() : null;
+                    if (androidPassphrase != null && !androidPassphrase.trim().isEmpty()) {
+                        passphrase = androidPassphrase;
+                        credentialSource = CREDENTIAL_SOURCE_ANDROID_API;
+                    } else if (!CREDENTIAL_SOURCE_APP_DEFINED.equals(credentialSource) ||
+                        networkName == null || !networkName.equals(appDefinedNetworkName)) {
+                        passphrase = null;
+                        credentialSource = CREDENTIAL_SOURCE_ANDROID_SETTINGS;
                     }
                     List<DeviceSnapshot> nextDevices = new ArrayList<>();
                     for (WifiP2pDevice device : group.getClientList()) {
@@ -482,6 +519,12 @@ final class TetherShareManager {
     synchronized void fail(String message) {
         starting = false;
         running = false;
+        devices = Collections.emptyList();
+        networkName = null;
+        passphrase = null;
+        appDefinedNetworkName = null;
+        credentialSource = null;
+        groupOwner = false;
         lastError = message;
         closeProxy();
     }
@@ -493,6 +536,23 @@ final class TetherShareManager {
             case WifiP2pManager.P2P_UNSUPPORTED: return "This device does not support Wi-Fi Direct.";
             default: return "Android could not create the SafeNet sharing network.";
         }
+    }
+
+    private String createNetworkName() {
+        return "DIRECT-SN" + randomCredentialCharacters(6);
+    }
+
+    private String createPassphrase() {
+        return randomCredentialCharacters(16);
+    }
+
+    private String randomCredentialCharacters(int length) {
+        SecureRandom random = new SecureRandom();
+        StringBuilder value = new StringBuilder(length);
+        for (int index = 0; index < length; index++) {
+            value.append(CREDENTIAL_ALPHABET[random.nextInt(CREDENTIAL_ALPHABET.length)]);
+        }
+        return value.toString();
     }
 
     private static final class HostPort {
