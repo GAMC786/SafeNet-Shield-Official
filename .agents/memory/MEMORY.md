@@ -70,4 +70,5 @@
 - [Android RevenueCat billing proof](android-revenuecat-billing-proof.md) — real purchase validation needs a Play-enabled runner and license tester; google_apis emulator smoke is not sufficient.
 - [RevenueCat Google Play readiness](revenuecat-google-play-readiness.md) — an active RevenueCat product still needs Play credentials and a successful store-state read before release.
 - [WireGuard-only VPN path](wireguard-only-vpn-path.md) — expose only WireGuard in the UI; legacy DNS VPN code may remain only for safe shutdown compatibility.
+- [Android Internet Share failure boundary](android-internet-share-failure-boundary.md) — native Wi-Fi Direct and foreground-service failures must become visible errors instead of crashing the APK.
 - [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.

@@ -30,6 +30,10 @@ const tetherSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/TetherShareManager.java", import.meta.url),
   "utf8",
 );
+const tetherServiceSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/TetherShareService.java", import.meta.url),
+  "utf8",
+);
 const tileSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
   "utf8",
@@ -136,6 +140,13 @@ test("Internet Share refreshes SafeNet and pins proxy traffic to validated inter
   assert.match(tetherSource, /upstreamNetwork\.bindSocket\(upstream\)/);
   assert.match(tetherSource, /NET_CAPABILITY_VALIDATED/);
   assert.match(tetherSource, /upstreamNetwork\.getAllByName\(host\)/);
+});
+
+test("Internet Share converts native start failures into app-visible errors", () => {
+  assert.match(tetherSource, /catch \(RuntimeException error\) \{\s*fail\("Android could not start the SafeNet sharing network\."\)/);
+  assert.match(tetherSource, /catch \(RuntimeException error\) \{\s*fail\("Android could not read the SafeNet sharing network\."\)/);
+  assert.match(pluginSource, /"TETHER_START_FAILED"/);
+  assert.match(tetherServiceSource, /manager\.fail\("Android could not start Internet Share\."\)/);
 });
 
 test("call-screening setup exposes a working Android settings fallback", () => {

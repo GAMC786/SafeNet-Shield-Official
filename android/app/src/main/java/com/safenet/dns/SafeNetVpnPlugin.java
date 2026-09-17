@@ -278,8 +278,16 @@ public class SafeNetVpnPlugin extends Plugin {
             }
             return;
         }
-        startTetherService();
-        call.resolve(tetherStatus());
+        try {
+            startTetherService();
+            call.resolve(tetherStatus());
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android could not start Internet Share.",
+                "TETHER_START_FAILED",
+                error
+            );
+        }
     }
 
     @PermissionCallback
@@ -289,8 +297,16 @@ public class SafeNetVpnPlugin extends Plugin {
             call.reject("Nearby Wi-Fi permission was denied.", "TETHER_PERMISSION_DENIED");
             return;
         }
-        startTetherService();
-        call.resolve(tetherStatus());
+        try {
+            startTetherService();
+            call.resolve(tetherStatus());
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android could not start Internet Share.",
+                "TETHER_START_FAILED",
+                error
+            );
+        }
     }
 
     @PluginMethod

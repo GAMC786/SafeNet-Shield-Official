@@ -118,17 +118,17 @@ final class TetherShareManager {
         if (running || starting) return;
         lastError = null;
         starting = true;
-        wifiP2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
-        if (wifiP2pManager == null) {
-            fail("Wi-Fi Direct is not available on this device.");
-            return;
-        }
-        wifiChannel = wifiP2pManager.initialize(context, context.getMainLooper(), null);
-        if (wifiChannel == null) {
-            fail("Android could not initialize Wi-Fi Direct.");
-            return;
-        }
         try {
+            wifiP2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
+            if (wifiP2pManager == null) {
+                fail("Wi-Fi Direct is not available on this device.");
+                return;
+            }
+            wifiChannel = wifiP2pManager.initialize(context, context.getMainLooper(), null);
+            if (wifiChannel == null) {
+                fail("Android could not initialize Wi-Fi Direct.");
+                return;
+            }
             wifiP2pManager.createGroup(
                 wifiChannel,
                 new WifiP2pManager.ActionListener() {
@@ -146,6 +146,8 @@ final class TetherShareManager {
             );
         } catch (SecurityException error) {
             fail("Nearby Wi-Fi permission is required to create the sharing network.");
+        } catch (RuntimeException error) {
+            fail("Android could not start the SafeNet sharing network.");
         }
     }
 
@@ -163,7 +165,7 @@ final class TetherShareManager {
                     @Override public void onSuccess() {}
                     @Override public void onFailure(int reason) {}
                 });
-            } catch (SecurityException ignored) {
+            } catch (SecurityException | RuntimeException ignored) {
                 // The local proxy is already stopped; Android can clean up the group.
             }
         }
@@ -216,6 +218,8 @@ final class TetherShareManager {
             });
         } catch (SecurityException error) {
             fail("Nearby Wi-Fi permission is required to read the sharing network.");
+        } catch (RuntimeException error) {
+            fail("Android could not read the SafeNet sharing network.");
         }
     }
 
@@ -236,6 +240,8 @@ final class TetherShareManager {
             });
         } catch (IOException error) {
             lastError = "SafeNet could not open the local proxy port " + PROXY_PORT + ".";
+        } catch (RuntimeException error) {
+            lastError = "SafeNet could not start the local sharing proxy.";
         }
     }
 
@@ -473,7 +479,7 @@ final class TetherShareManager {
         try { socket.close(); } catch (IOException ignored) {}
     }
 
-    private synchronized void fail(String message) {
+    synchronized void fail(String message) {
         starting = false;
         running = false;
         lastError = message;
