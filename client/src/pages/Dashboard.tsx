@@ -49,6 +49,16 @@ export default function Dashboard() {
   const isProtected = dnsProtection.supported
     ? dnsProtection.status?.running === true
     : isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
+  const appLockStateLabel = !appLock.supported
+    ? "ANDROID ONLY"
+    : appLock.status.enabled
+      ? "ACTIVE"
+      : "STANDBY";
+  const appLockStateClass = !appLock.supported
+    ? "border-primary/30 bg-primary/10 text-primary"
+    : appLock.status.enabled
+      ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+      : "border-white/15 bg-white/5 text-muted-foreground";
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
@@ -250,51 +260,82 @@ export default function Dashboard() {
         </div>
       </CyberCard>
 
-      <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
-        <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
-          <div className="flex items-center gap-2 text-left">
-            <LockKeyhole className="h-4 w-4 text-primary" />
-             <div>
-              <p className="text-sm font-medium text-foreground">Secure App Locker by LockLock API</p>
-              <p className="text-xs text-muted-foreground">
-                 Offline passcode protection with app locking, brute-force cooldowns, recovery, and anti-uninstall support
-              </p>
+      <CyberCard className="col-span-1 sm:col-span-2">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_rgba(59,130,246,0.12)]">
+                <LockKeyhole className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-display text-lg font-bold text-white">App Lock Protection</h3>
+                  <Badge variant="outline" className={`text-[10px] font-bold tracking-wider ${appLockStateClass}`}>
+                    {appLockStateLabel}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Offline access protection for SafeNet with LockLock API
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-3 self-end rounded-lg border border-white/10 bg-background/30 px-3 py-2 sm:self-start">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Protection</span>
+              <Switch
+                checked={appLock.status.enabled}
+                onCheckedChange={(enabled) => {
+                  void appLock.setEnabled(enabled).catch(() => undefined);
+                }}
+                disabled={!appLock.supported || appLock.isBusy}
+                aria-label={`App Lock Protection ${appLock.status.enabled ? "On" : "Off"}`}
+                data-testid="switch-app-lock"
+              />
             </div>
           </div>
-          <Switch
-            checked={appLock.status.enabled}
-            onCheckedChange={(enabled) => {
-              void appLock.setEnabled(enabled).catch(() => undefined);
-            }}
-             disabled={!appLock.supported || appLock.isBusy}
-             aria-label={`Secure App Locker by LockLock API ${appLock.status.enabled ? "On" : "Off"}`}
-            data-testid="switch-app-lock"
-          />
-        </div>
-        <div className="flex w-full items-center justify-between gap-3 text-left">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">{appLock.status.message}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground/80">
-               SafeNet stores only salted local hashes. LockLock Accessibility and Device Administrator are opt-in Android permissions.
-            </p>
-            {!appLock.supported && (
-              <p className="mt-1 text-[11px] uppercase tracking-wider text-primary/80">
-                Android app only
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Access method</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Offline passcode</p>
+              <p className="mt-1 text-xs text-muted-foreground">Stored locally on this device</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Accessibility</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {appLock.status.accessibilityEnabled === true ? "Connected" : "Setup required"}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">Monitors protected launches</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {appLock.status.antiUninstall === true ? "Enabled" : "Optional"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Device Administrator protection</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground/80">
+                SafeNet stores only salted local hashes. LockLock permissions are opt-in Android controls.
+              </p>
+            </div>
+            {appLock.status.enabled && appLock.supported && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void appLock.lockNow()}
+                disabled={appLock.isBusy}
+                data-testid="button-lock-app-now"
+                className="shrink-0 border-primary/30 text-primary hover:border-primary hover:bg-primary/10"
+              >
+                <LockKeyhole className="mr-2 h-4 w-4" />
+                Lock app now
+              </Button>
             )}
           </div>
-          {appLock.status.enabled && appLock.supported && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void appLock.lockNow()}
-              disabled={appLock.isBusy}
-              data-testid="button-lock-app-now"
-            >
-              <LockKeyhole className="mr-2 h-4 w-4" />
-              Enter credentials
-            </Button>
-          )}
         </div>
       </CyberCard>
 
