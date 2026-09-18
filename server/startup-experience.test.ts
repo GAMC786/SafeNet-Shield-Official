@@ -88,6 +88,10 @@ const settingsSource = readFileSync(
   path.join(clientRoot, "src/pages/Settings.tsx"),
   "utf8",
 );
+const billingSource = readFileSync(
+  path.join(clientRoot, "src/pages/Billing.tsx"),
+  "utf8",
+);
 const firewallSource = readFileSync(
   path.join(clientRoot, "src/pages/Firewall.tsx"),
   "utf8",
@@ -344,6 +348,30 @@ test("Settings use the current package version and expose only current controls"
      new RegExp(`SafeNet Shield DNS v${packageVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
    );
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
+});
+
+test("Billing recovers from Clerk loading stalls without skipping signed-out access", () => {
+  assert.match(billingSource, /const CLERK_LOAD_TIMEOUT_MS = 12_000/);
+  assert.match(
+    billingSource,
+    /if \(isLoaded\) \{\s*setClerkLoadTimedOut\(false\);\s*return;\s*\}/,
+  );
+  assert.match(
+    billingSource,
+    /window\.setTimeout\(\s*\(\) => setClerkLoadTimedOut\(true\),\s*CLERK_LOAD_TIMEOUT_MS,\s*\)/,
+  );
+  assert.match(
+    billingSource,
+    /!isLoaded && !clerkLoadTimedOut[\s\S]*?Loading your account…/,
+  );
+  assert.match(
+    billingSource,
+    /!isLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !isLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{\(\) => window\.location\.reload\(\)\}[\s\S]*?>\s*Retry/,
+  );
+  assert.match(
+    billingSource,
+    /!isSignedIn[\s\S]*?Sign in to manage billing[\s\S]*?onClick=\{openSignIn\}[\s\S]*?>\s*Sign in to continue/,
+  );
 });
 
 test("the Dashboard exposes only the Android DNS VPN control", () => {
