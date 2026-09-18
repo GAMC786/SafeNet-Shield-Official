@@ -281,6 +281,9 @@ public class SafeNetVpnPlugin extends Plugin {
     private void tetherPermissionResult(PluginCall call) {
         if (call == null) return;
         if (!tetherPermissionGranted()) {
+            TetherShareManager.get(getContext()).fail(
+                "Nearby Wi-Fi permission is required. Allow Nearby devices in Android app settings, then return to SafeNet."
+            );
             call.reject("Nearby Wi-Fi permission was denied.", "TETHER_PERMISSION_DENIED");
             return;
         }
@@ -353,6 +356,7 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("proxyHost", snapshot.proxyHost);
         result.put("proxyPort", snapshot.proxyPort);
         result.put("groupOwner", snapshot.groupOwner);
+        result.put("permissionGranted", tetherPermissionGranted());
         result.put("lastError", snapshot.lastError);
         result.put("requiresManualProxy", true);
         JSArray connectedDevices = new JSArray();

@@ -11,6 +11,14 @@ const tetherManager = readFileSync(
   new URL("../android/app/src/main/java/com/safenet/dns/TetherShareManager.java", import.meta.url),
   "utf8",
 );
+const plugin = readFileSync(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java", import.meta.url),
+  "utf8",
+);
+const tetherHook = readFileSync(
+  new URL("../client/src/hooks/use-tether-share.ts", import.meta.url),
+  "utf8",
+);
 const deviceScript = readFileSync(new URL("./android-internet-share-device-test.sh", import.meta.url), "utf8");
 
 test("Internet Share instrumentation covers permission, start, and stop cleanup", () => {
@@ -22,6 +30,15 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
   assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY_CONFIG result=PASS/);
   assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS/);
   assert.match(instrumentation, /getTetherStatus/);
+});
+
+test("permission recovery retries a pending share start after Android Settings", () => {
+  assert.match(plugin, /permissionGranted/);
+  assert.match(plugin, /Allow Nearby devices in Android app settings/);
+  assert.match(tetherHook, /pendingStartRef/);
+  assert.match(tetherHook, /document\.addEventListener\("visibilitychange"/);
+  assert.match(tetherHook, /nextStatus\?\.permissionGranted === true/);
+  assert.match(tetherHook, /await start\(\)\.catch\(\(\) => null\)/);
 });
 
 test("physical Internet Share evidence is bound to the signed APK and device profile", () => {
