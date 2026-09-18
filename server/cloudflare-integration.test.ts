@@ -166,7 +166,7 @@ test("Cloudflare API token requests use direct Cloudflare authorization", async 
   }
 });
 
-test("SafeNet DDNS routes the current public IP through the Cloudflare A record", async () => {
+test("Cloudflare DDNS routes the current public IP through the Cloudflare A record", async () => {
   const originalFetch = globalThis.fetch;
   const originalIdentity = process.env.REPL_IDENTITY;
   const originalToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -206,7 +206,7 @@ test("SafeNet DDNS routes the current public IP through the Cloudflare A record"
     const updater = {
       id: 21,
       hostname: "home.example.com",
-      provider: "safenet" as const,
+      provider: "cloudflare" as const,
       apiKey: "",
       customUrl: null,
       lastIpAddress: "198.51.100.19",
