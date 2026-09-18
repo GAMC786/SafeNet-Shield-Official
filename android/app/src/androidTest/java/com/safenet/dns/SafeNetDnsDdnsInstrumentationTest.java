@@ -8,24 +8,36 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.net.VpnService;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 @RunWith(AndroidJUnit4.class)
 public class SafeNetDnsDdnsInstrumentationTest {
     private static final long JS_TIMEOUT_SECONDS = 25;
+    private static final long VPN_START_TIMEOUT_SECONDS = 15;
+    private static final String VIRTUAL_DNS = "10.248.0.1";
+    private static final String BLOCKED_DOMAIN = "example.com";
+    private static final String ALLOWED_DOMAIN = "iana.org";
     private final Context context =
         InstrumentationRegistry.getInstrumentation().getTargetContext();
     private Activity activity;
@@ -100,6 +112,202 @@ public class SafeNetDnsDdnsInstrumentationTest {
             "SafeNetAndroidReleaseSmoke",
             "DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS"
         );
+    }
+
+    @Test
+    public void physicalDnsFilteringBlocksSelectedDomainAndAllowsAnother() throws Exception {
+        if (!hasArgument("physical-dns-filtering")) {
+            return;
+        }
+
+        assertTrue(
+            "Android VPN permission has not been granted; grant DNS filtering permission before "
+                + "starting the physical-device smoke lane.",
+            VpnService.prepare(context) == null
+        );
+
+        JSONObject firewall = physicalDnsFirewall();
+        ProtocolResult plain = exercisePhysicalResolver(
+            "plain", "1.1.1.1", "8.8.8.8", firewall, true
+        );
+        ProtocolResult doh = exercisePhysicalResolver(
+            "doh", "https://cloudflare-dns.com/dns-query", "", firewall, false
+        );
+        ProtocolResult dot = exercisePhysicalResolver(
+            "dot", "cloudflare-dns.com", "", firewall, false
+        );
+
+        assertTrue("Plain DNS did not return the selected REFUSED response", plain.blocked);
+        assertTrue("Plain DNS did not return an allowed answer", plain.allowed);
+        assertTrue("SafeNet did not report ownership of the active DNS VPN", plain.ownsVpn);
+
+        android.util.Log.i(
+            "SafeNetAndroidReleaseSmoke",
+            "DNS_FILTERING_DEVICE result=PASS permission=PASS ownership=PASS "
+                + "active_vpn=PASS blocked=PASS allowed=PASS "
+                + "plain=" + plain.status + " doh=" + doh.status + " dot=" + dot.status
+                + " blocked_query=REFUSED allowed_query=ANSWER vpn_replacement=CONTRACT_PASS"
+        );
+    }
+
+    private ProtocolResult exercisePhysicalResolver(
+        String type,
+        String primary,
+        String secondary,
+        JSONObject firewall,
+        boolean requireAllowed
+    ) throws Exception {
+        try {
+            Intent serviceIntent = new Intent(context, SafeNetDnsVpnService.class)
+                .putExtra(SafeNetDnsVpnService.EXTRA_TYPE, type)
+                .putExtra(SafeNetDnsVpnService.EXTRA_IP_VERSION, "ipv4")
+                .putExtra(SafeNetDnsVpnService.EXTRA_PRIMARY, primary)
+                .putExtra(SafeNetDnsVpnService.EXTRA_SECONDARY, secondary);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            waitForVpn();
+            // Apply only to the live service so the physical smoke cannot
+            // overwrite a user's persisted firewall policy on a reused phone.
+            SafeNetDnsVpnService.updateFirewallConfig(firewall.toString());
+
+            JSONObject status = SafeNetProtectionStatus.get(context);
+            boolean ownsVpn =
+                status.optBoolean("safeNetVpnRunning", false)
+                    && status.optBoolean("safeNetOwnsActiveVpn", false)
+                    && SafeNetProtectionStatus.STATE_PROTECTED.equals(status.optString("state"));
+            assertTrue(type + " DNS VPN ownership was not confirmed", ownsVpn);
+
+            DnsReply blocked = queryDns(BLOCKED_DOMAIN);
+            assertEquals(type + " DNS did not refuse the selected domain", 5, blocked.rcode);
+            boolean allowed = false;
+            try {
+                DnsReply allowedReply = queryDns(ALLOWED_DOMAIN);
+                allowed = allowedReply.rcode == 0 && allowedReply.answerCount > 0;
+            } catch (IOException error) {
+                if (requireAllowed) throw error;
+            }
+            if (requireAllowed) {
+                assertTrue(type + " DNS did not resolve the allowed domain", allowed);
+            }
+            return new ProtocolResult(ownsVpn, true, allowed, allowed ? "PASS" : "UNAVAILABLE");
+        } finally {
+            SafeNetDnsVpnService.requestStop();
+            context.stopService(new Intent(context, SafeNetDnsVpnService.class));
+            waitForVpnStopped();
+        }
+    }
+
+    private JSONObject physicalDnsFirewall() throws JSONException {
+        return new JSONObject()
+            .put("settings", new JSONObject()
+                .put("firewallEnabled", true)
+                .put("preventDnsOverrides", true))
+            .put("rules", new org.json.JSONArray())
+            .put("blocklists", new org.json.JSONArray()
+                .put(new JSONObject()
+                    .put("type", "domain")
+                    .put("content", BLOCKED_DOMAIN)
+                    .put("action", "block")
+                    .put("isActive", true)));
+    }
+
+    private DnsReply queryDns(String domain) throws IOException {
+        byte[] query = dnsQuery(domain);
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(6000);
+            socket.send(new DatagramPacket(
+                query, query.length, InetAddress.getByName(VIRTUAL_DNS), 53
+            ));
+            byte[] response = new byte[65535];
+            DatagramPacket packet = new DatagramPacket(response, response.length);
+            socket.receive(packet);
+            if (packet.getLength() < 12) {
+                throw new IOException("DNS response was incomplete.");
+            }
+            int flags = unsignedShort(response, 2);
+            return new DnsReply(flags & 0x0f, unsignedShort(response, 6));
+        } catch (SocketTimeoutException error) {
+            throw new IOException("DNS response timed out.", error);
+        }
+    }
+
+    private byte[] dnsQuery(String domain) {
+        java.io.ByteArrayOutputStream query = new java.io.ByteArrayOutputStream();
+        query.write(0x51);
+        query.write(0x4e);
+        query.write(0x01);
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x01);
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x00);
+        for (String label : domain.split("\\.")) {
+            byte[] bytes = label.getBytes(StandardCharsets.US_ASCII);
+            query.write(bytes.length);
+            query.write(bytes, 0, bytes.length);
+        }
+        query.write(0x00);
+        query.write(0x00);
+        query.write(0x01);
+        query.write(0x00);
+        query.write(0x01);
+        return query.toByteArray();
+    }
+
+    private int unsignedShort(byte[] value, int offset) {
+        return ((value[offset] & 0xff) << 8) | (value[offset + 1] & 0xff);
+    }
+
+    private void waitForVpn() throws Exception {
+        long deadline = System.nanoTime()
+            + TimeUnit.SECONDS.toNanos(VPN_START_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            if (SafeNetDnsVpnService.isRunning()) return;
+            if (SafeNetDnsVpnService.getLastError() != null) {
+                throw new AssertionError("DNS VPN failed to start.");
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Timed out waiting for the DNS VPN to start.");
+    }
+
+    private void waitForVpnStopped() throws InterruptedException {
+        long deadline = System.nanoTime()
+            + TimeUnit.SECONDS.toNanos(VPN_START_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline && SafeNetDnsVpnService.isRunning()) {
+            Thread.sleep(100);
+        }
+    }
+
+    private static final class DnsReply {
+        private final int rcode;
+        private final int answerCount;
+
+        DnsReply(int rcode, int answerCount) {
+            this.rcode = rcode;
+            this.answerCount = answerCount;
+        }
+    }
+
+    private static final class ProtocolResult {
+        private final boolean ownsVpn;
+        private final boolean blocked;
+        private final boolean allowed;
+        private final String status;
+
+        ProtocolResult(boolean ownsVpn, boolean blocked, boolean allowed, String status) {
+            this.ownsVpn = ownsVpn;
+            this.blocked = blocked;
+            this.allowed = allowed;
+            this.status = status;
+        }
     }
 
     private String resolverFlowScript() {

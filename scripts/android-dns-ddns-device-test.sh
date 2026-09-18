@@ -84,6 +84,7 @@ write_blocked_result() {
         printf 'failure_class=INFRASTRUCTURE\n'
         printf 'failure_category=%s\n' "$category"
         printf 'dns_resolver_ui=BLOCKED\n'
+        printf 'dns_filtering=BLOCKED\n'
         printf 'ddns_ui=BLOCKED\n'
         printf 'internet_share_start=BLOCKED\n'
         printf 'internet_share_stop=BLOCKED\n'
@@ -196,6 +197,7 @@ set +e
     --test-apk "$test_apk_path" \
     --serial "$serial" \
     --resolver-mode public \
+    --dns-filtering-validation \
     --output "$output_dir"
 smoke_status=$?
 set -e
@@ -206,6 +208,12 @@ if [[ -s "$output_dir/result.txt" ]]; then
         printf 'failure_class=NONE\nresult=PASS\n' >> "$output_dir/result.txt"
     else
         printf 'failure_class=APPLICATION\nresult=FAIL\n' >> "$output_dir/result.txt"
+    fi
+fi
+if [[ -s "$output_dir/result.txt" ]]; then
+    dns_filtering_status="$(sed -n 's/^dns_filtering=//p' "$output_dir/result.txt" | head -n 1)"
+    if [[ -z "$dns_filtering_status" ]]; then
+        printf 'dns_filtering=FAIL\n' >> "$output_dir/result.txt"
     fi
 fi
 exit "$smoke_status"

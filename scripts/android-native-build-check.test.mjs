@@ -130,11 +130,22 @@ test("the signed smoke lane proves DNS, DDNS, Internet Share, and DNS-VPN packag
   assert.match(resolverDdnsInstrumentationSource, /dnsResolverCreateEditAndActivateFlow/);
   assert.match(resolverDdnsInstrumentationSource, /ddnsManagementFlow/);
   assert.match(resolverDdnsInstrumentationSource, /signedPackageContainsDnsFilteringVpnOnly/);
+  assert.match(
+    resolverDdnsInstrumentationSource,
+    /physicalDnsFilteringBlocksSelectedDomainAndAllowsAnother/,
+  );
+  assert.match(resolverDdnsInstrumentationSource, /DNS_FILTERING_DEVICE result=PASS/);
+  assert.match(resolverDdnsInstrumentationSource, /BLOCKED_DOMAIN = "example\.com"/);
+  assert.match(resolverDdnsInstrumentationSource, /ALLOWED_DOMAIN = "iana\.org"/);
   assert.match(releaseSmokeSource, /DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS/);
   assert.match(releaseSmokeSource, /DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS/);
   assert.match(releaseSmokeSource, /DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
+  assert.match(releaseSmokeSource, /--dns-filtering-validation/);
+  assert.match(releaseSmokeSource, /dns_filtering_status/);
+  assert.match(releaseSmokeSource, /dns_filtering=%s/);
+  assert.match(mainWorkflow, /DNS filtering device proof/);
 });
 
 test("signed APK install failures preserve sanitized package-manager evidence", () => {

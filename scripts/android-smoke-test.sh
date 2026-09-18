@@ -32,6 +32,7 @@ startup_only=false
 compact_startup=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
 resolver_failure_validation="${ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION:-false}"
+dns_filtering_validation="${ANDROID_SMOKE_DNS_FILTERING_VALIDATION:-false}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
 fixture_host="${ANDROID_SMOKE_FIXTURE_HOST:-10.0.2.2}"
@@ -122,6 +123,8 @@ Options:
   --startup-only   Install the signed app APK and verify startup plus packaged media
   --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
+  --dns-filtering-validation
+                       Exercise real DNS blocking on a permissioned target
   --help           Show this help
 
 The full smoke lane also requires AUTH_SMOKE_STORAGE_STATE and
@@ -177,6 +180,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { echo "ERROR: --resolver-mode requires fixture or public." >&2; exit 2; }
             resolver_mode="$2"
             shift 2
+            ;;
+        --dns-filtering-validation)
+            dns_filtering_validation=true
+            shift
             ;;
         --help|-h)
             usage
@@ -271,6 +278,9 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     printf 'call_screening=required\n'
     printf 'connectivity_recovery=required\n'
     printf 'resolver_recovery=required\ndoh_recovery=required\ndot_recovery=required\n'
+    if [[ "$dns_filtering_validation" == "true" ]]; then
+        printf 'dns_filtering=required\n'
+    fi
 } > "$output_dir/coverage.txt"
 
 if [[ -n "$serial" ]]; then
@@ -1212,6 +1222,10 @@ capture network-ip-route adb "${adb_args[@]}" shell sh -c 'ip addr; echo "--- ro
 capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 
 echo "Running SafeNet Android instrumentation..."
+dns_filtering_args=()
+if [[ "$dns_filtering_validation" == "true" ]]; then
+    dns_filtering_args=(-e physical-dns-filtering true)
+fi
 set +e
 adb_run shell am instrument -w -r \
     -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest" \
@@ -1223,6 +1237,7 @@ adb_run shell am instrument -w -r \
     -e dot-secondary "$dot_secondary" \
     -e ordinary-url "$ordinary_url" \
     -e resolver-mode "$resolver_mode" \
+    "${dns_filtering_args[@]}" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
 set -e
@@ -1293,6 +1308,7 @@ ddns_ui_status="PASS"
 vpn_package_surface_status="PASS"
 internet_share_start_status="PASS"
 internet_share_stop_status="PASS"
+dns_filtering_status="NOT_APPLICABLE"
 if ! grep -Fq 'DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS' \
     "$output_dir/instrumentation.log"; then
     dns_resolver_ui_status="FAIL"
@@ -1317,6 +1333,15 @@ if ! grep -Fq 'INTERNET_SHARE_STOP result=PASS' \
     "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
     internet_share_stop_status="FAIL"
     test_failed=1
+fi
+if [[ "$dns_filtering_validation" == "true" ]]; then
+    dns_filtering_status="FAIL"
+    if grep -Fq 'DNS_FILTERING_DEVICE result=PASS' \
+        "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+        dns_filtering_status="PASS"
+    else
+        test_failed=1
+    fi
 fi
 
 resolver_recovery_status="NOT_APPLICABLE"
@@ -1343,6 +1368,7 @@ dot_recovery_failure_elapsed_ms="NOT_RECORDED"
     printf 'dot_recovery_failure_category=%s\n' "$dot_recovery_failure_category"
     printf 'dot_recovery_failure_phase=%s\n' "$dot_recovery_failure_phase"
     printf 'dot_recovery_failure_elapsed_ms=%s\n' "$dot_recovery_failure_elapsed_ms"
+    printf 'dns_filtering=%s\n' "$dns_filtering_status"
 } | tee "$output_dir/resolver-recovery-result.txt"
 
 capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
@@ -1403,8 +1429,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$dns_resolver_ui_status" "$ddns_ui_status" "$vpn_package_surface_status" "$internet_share_start_status" "$internet_share_stop_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\ndns_filtering=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$dns_resolver_ui_status" "$ddns_ui_status" "$vpn_package_surface_status" "$internet_share_start_status" "$internet_share_stop_status" "$dns_filtering_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

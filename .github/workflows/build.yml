@@ -2887,6 +2887,7 @@ jobs:
             echo "- **Failure classification:** \`$failure_class\` / \`$failure_category\`"
             echo "- **Smoke step:** \`$SMOKE_OUTCOME\`"
             echo "- **DNS resolver UI:** \`$(sed -n 's/^dns_resolver_ui=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **DNS filtering device proof:** \`$(sed -n 's/^dns_filtering=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
             echo "- **DDNS UI:** \`$(sed -n 's/^ddns_ui=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
             echo "- **Internet Share start:** \`$(sed -n 's/^internet_share_start=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
             echo "- **Internet Share stop:** \`$(sed -n 's/^internet_share_stop=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
