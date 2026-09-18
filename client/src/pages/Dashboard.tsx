@@ -120,14 +120,6 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <Power className="h-4 w-4 shrink-0 text-primary" />
                 <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
-                <Badge
-                  variant="outline"
-                  className={dnsProtection.status?.running
-                    ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
-                    : "border-primary/30 text-xs text-primary"}
-                >
-                  {dnsProtection.status?.running ? "ON" : "OFF"}
-                </Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {dnsProtection.status?.error
