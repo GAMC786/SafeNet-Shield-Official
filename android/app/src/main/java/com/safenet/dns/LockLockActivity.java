@@ -315,7 +315,7 @@ public final class LockLockActivity extends Activity {
     private EditText field(String hint, int inputType) {
         EditText input = new EditText(this);
         input.setHint(hint);
-        input.setHintTextColor(Color.rgb(156, 163, 175));
+        input.setHintTextColor(Color.rgb(203, 213, 225));
         input.setTextColor(Color.WHITE);
         input.setSingleLine(true);
         input.setInputType(inputType);
@@ -334,7 +334,7 @@ public final class LockLockActivity extends Activity {
         button.setText(label);
         button.setTextColor(Color.WHITE);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.rgb(14, 116, 144));
+        background.setColor(Color.rgb(2, 132, 199));
         background.setCornerRadius(dp(10));
         button.setBackground(background);
         return button;

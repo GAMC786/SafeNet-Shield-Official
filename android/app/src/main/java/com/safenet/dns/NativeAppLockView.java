@@ -59,7 +59,7 @@ public final class NativeAppLockView extends FrameLayout {
                 "Offline LockLock protection for SafeNet. Your passcode and recovery " +
                 "answer stay on this device."
         );
-        messageView.setTextColor(Color.rgb(156, 163, 175));
+        messageView.setTextColor(Color.rgb(203, 213, 225));
         messageView.setTextSize(14);
         messageView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
@@ -75,7 +75,7 @@ public final class NativeAppLockView extends FrameLayout {
         unlockButton.setTextColor(Color.WHITE);
         unlockButton.setTextSize(14);
         GradientDrawable buttonBackground = new GradientDrawable();
-        buttonBackground.setColor(Color.rgb(14, 116, 144));
+        buttonBackground.setColor(Color.rgb(2, 132, 199));
         buttonBackground.setCornerRadius(dp(8));
         unlockButton.setBackground(buttonBackground);
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
