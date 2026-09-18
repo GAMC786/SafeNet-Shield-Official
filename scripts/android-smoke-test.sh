@@ -1228,7 +1228,7 @@ if [[ "$dns_filtering_validation" == "true" ]]; then
 fi
 set +e
 adb_run shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest" \
+    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest,com.safenet.dns.DnsVpnEulaInstrumentationTest" \
     -e preserve-auth-session true \
     -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \

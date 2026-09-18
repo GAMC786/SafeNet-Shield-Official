@@ -386,7 +386,7 @@ test("the Dashboard exposes only the Android DNS VPN control", () => {
     /const isProtected = dnsProtection\.supported[\s\S]*status\?\.running === true/,
   );
   assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
-  assert.doesNotMatch(dashboardSource, /WireGuard|EULA|VpnService/);
+  assert.doesNotMatch(dashboardSource, /WireGuard|VpnService/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
 
