@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -93,6 +94,39 @@ function createRunnerFixture() {
   mkdirSync(bin);
   mkdirSync(evidence);
   return { root, bin, evidence };
+}
+
+function resolveCommand(command) {
+  for (const directory of (process.env.PATH || "").split(":")) {
+    if (!directory) continue;
+    const candidate = join(directory, command);
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Continue through the PATH entries.
+    }
+  }
+  throw new Error(`Could not resolve required test command: ${command}`);
+}
+
+function createAdbFreePath(bin) {
+  for (const command of [
+    "awk",
+    "bash",
+    "cat",
+    "head",
+    "hostname",
+    "mkdir",
+    "rm",
+    "sed",
+    "tee",
+    "tr",
+    "uname",
+    "wc",
+  ]) {
+    symlinkSync(resolveCommand(command), join(bin, command));
+  }
+  return bin;
 }
 
 function installMockAdb(bin, { devices, devicesStatus = 0 }) {
@@ -327,7 +361,7 @@ test("physical LockLock preflight classifies every runner blocker with bounded e
     const result = runWorkflowScript(physicalCheckScript, fixture, {
       PATH:
         scenario.devices === undefined
-          ? scenario.environment.PATH
+          ? createAdbFreePath(fixture.bin)
           : `${fixture.bin}:/usr/bin:/bin`,
       ...adbEnvironment,
     });
