@@ -84,17 +84,7 @@ export class DatabaseStorage implements IStorage {
     if (!server) {
       throw new Error("DNS resolver not found");
     }
-    const existing = await this.getDnsServers();
-    if (existing.length === 1) {
-      throw new Error("At least one DNS resolver must remain configured");
-    }
     await db.delete(dnsServers).where(eq(dnsServers.id, id));
-    if (server.isActive) {
-      const fallback = existing.find((candidate) => candidate.id !== id);
-      if (fallback) {
-        await this.activateDnsServer(fallback.id);
-      }
-    }
   }
 
   async activateDnsServer(id: number): Promise<DnsServer> {

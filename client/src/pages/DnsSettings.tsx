@@ -219,14 +219,11 @@ export default function DnsSettings() {
           await dnsProtection.start(updated);
         }
       } else {
-        const created = await createServer.mutateAsync({
+        await createServer.mutateAsync({
           ...data,
-          isActive: !servers?.length,
+          isActive: false,
           isCustom: true,
         });
-        if (dnsProtection.supported && created.isActive) {
-          await dnsProtection.start(created);
-        }
       }
       setIsOpen(false);
       resetForm();
@@ -252,18 +249,15 @@ export default function DnsSettings() {
       return;
     }
     try {
-      const created = await createServer.mutateAsync({
+      await createServer.mutateAsync({
         name: preset.name,
         type: preset.type,
         ipVersion: preset.ipVersion,
         primaryAddress: preset.primaryAddress,
         secondaryAddress: preset.secondaryAddress,
-        isActive: !servers?.length,
+        isActive: false,
         isCustom: false,
       });
-      if (dnsProtection.supported && created.isActive) {
-        await dnsProtection.start(created);
-      }
       toast({
         title: "Resolver added",
         description: `${preset.name} is ready to use.`,
@@ -280,6 +274,9 @@ export default function DnsSettings() {
   const handleRemove = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from SafeNet DNS resolvers?`)) return;
     try {
+      if (server.isActive && dnsProtection.status?.running) {
+        await dnsProtection.stop();
+      }
       await deleteServer.mutateAsync(server.id);
       toast({ title: "Resolver removed", description: `${server.name} was removed.` });
     } catch (error) {
@@ -307,7 +304,7 @@ export default function DnsSettings() {
             <div>
               <h2 className="font-display text-lg font-bold text-white">Resolver management</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Choose the active DNS path or maintain your own trusted resolver list.
+                Maintain your trusted resolver list and activate a resolver only when you want to use it.
               </p>
             </div>
           </div>
@@ -479,8 +476,8 @@ export default function DnsSettings() {
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {dnsProtection.status?.running
-                      ? "SafeNet is routing device DNS requests through the active resolver."
-                      : "Resolver selection alone does not change Android traffic. Enable filtering to apply it to this device."}
+                      ? "SafeNet is routing device DNS requests through the selected resolver."
+                      : "Resolver selection alone does not change Android traffic. Choose a resolver and enable filtering when you are ready."}
                   </p>
                 </div>
                 {dnsProtection.status?.running ? (

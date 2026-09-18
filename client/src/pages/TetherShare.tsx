@@ -39,6 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { DnsServer } from "@shared/schema";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { useDnsProtection } from "@/hooks/use-vpn";
 
 type ResolverForm = {
   name: string;
@@ -124,6 +125,7 @@ export default function TetherShare() {
   const { supported, status, isBusy, start, stop, openWifiSettings, openAppSettings } = useTetherShare();
   const { data: dnsServers } = useDnsServers();
   const { toast } = useToast();
+  const dnsProtection = useDnsProtection();
   const running = status?.running === true;
   const starting = status?.starting === true || isBusy;
   const createResolver = useCreateDnsServer();
@@ -229,7 +231,7 @@ export default function TetherShare() {
       } else {
         await createResolver.mutateAsync({
           ...data,
-          isActive: !dnsServers?.length,
+          isActive: false,
           isCustom: true,
         });
       }
@@ -254,6 +256,9 @@ export default function TetherShare() {
   const handleRemoveResolver = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from Internet Share DNS resolvers?`)) return;
     try {
+      if (server.isActive && dnsProtection.status?.running) {
+        await dnsProtection.stop();
+      }
       await deleteResolver.mutateAsync(server.id);
       toast({ title: "Resolver removed", description: `${server.name} was removed.` });
     } catch (error) {
@@ -403,7 +408,7 @@ export default function TetherShare() {
                   </span>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Configure Plain DNS, DoH, and DoT options. One resolver is active at a time for SafeNet protection.
+                  Configure Plain DNS, DoH, and DoT options. Select one resolver when you want SafeNet protection to use it.
                 </p>
               </div>
               <Button type="button" size="sm" onClick={openCreateResolver} disabled={isResolverMutating} className="w-full sm:w-auto">
@@ -514,7 +519,7 @@ export default function TetherShare() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-sky-200">
-                 Choose one active resolver above. Switching it changes the resolver used the next time SafeNet protection starts.
+                No resolver is selected automatically. Activate one only when you want SafeNet protection to use it.
               </p>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
                 <Link href="/dns">

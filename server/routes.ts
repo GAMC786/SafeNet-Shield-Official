@@ -20,7 +20,6 @@ import {
   DDNS_MIN_INTERVAL_SECONDS,
   DDNS_MIN_INTERVAL_MS,
 } from "@shared/schema";
-import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 import {
@@ -831,11 +830,6 @@ export async function registerRoutes(
 }
 
 async function seedDatabase(storage: IStorage) {
-  const existingServers = await storage.getDnsServers();
-  if (existingServers.length === 0) {
-    await storage.createDnsServer(DEFAULT_DNS_RESOLVER);
-  }
-
   const existingBlocklists = await storage.getBlocklists();
   if (existingBlocklists.length === 0) {
     await storage.createBlocklist({

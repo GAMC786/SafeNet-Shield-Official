@@ -96,12 +96,7 @@ function createTestStorage(): IStorage {
     deleteDnsServer: async (id) => {
       const server = servers.get(id);
       if (!server) throw new Error("DNS resolver not found");
-      if (servers.size === 1) throw new Error("At least one DNS resolver must remain configured");
       servers.delete(id);
-      if (server.isActive) {
-        const fallback = servers.values().next().value as TestDnsServer;
-        fallback.isActive = true;
-      }
     },
     activateDnsServer: async (id) => {
       const server = servers.get(id);
@@ -196,6 +191,16 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
       const remaining = await afterDelete.json() as TestDnsServer[];
       assert.equal(remaining.length, 2);
       assert.ok(!remaining.some((server) => server.id === created.id));
+      assert.ok(remaining.every((server) => !server.isActive));
+
+      if (origin === "https://desktop.safenet.dns") {
+        for (const server of remaining) {
+          const finalDeleteResponse = await request(`/api/dns/${server.id}`, { method: "DELETE" });
+          assert.equal(finalDeleteResponse.status, 204);
+        }
+        const emptyResponse = await request("/api/dns");
+        assert.deepEqual(await emptyResponse.json(), []);
+      }
     }
   } finally {
     await new Promise<void>((resolve, reject) => {
