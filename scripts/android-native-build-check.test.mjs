@@ -96,9 +96,12 @@ test("hosted Android SDK setup publishes bounded infrastructure evidence", () =>
   assert.match(mainWorkflow, /name: Upload Android SDK setup evidence/);
 });
 
-test("the native plugin keeps shared non-VPN features", () => {
+test("the native plugin keeps DNS filtering and shared features", () => {
   for (const method of [
     "getProtectionStatus",
+    "getDnsProtectionStatus",
+    "startDnsProtection",
+    "stopDnsProtection",
     "syncFirewallConfig",
     "getApkScanStatus",
     "getAiShieldStatus",
@@ -107,14 +110,18 @@ test("the native plugin keeps shared non-VPN features", () => {
   ]) {
     assert.match(pluginSource, new RegExp(`void ${method}\\(`));
   }
-  assert.doesNotMatch(pluginSource, /SafeNetVpnService|SafeNetWireGuard|startWireGuard|stopWireGuard/);
+  assert.match(pluginSource, /SafeNetDnsVpnService/);
+  assert.doesNotMatch(pluginSource, /SafeNetWireGuard|startWireGuard|stopWireGuard/);
 });
 
-test("the Android manifest has no VPN service or VPN permission", () => {
-  assert.doesNotMatch(manifestSource, /android\.net\.VpnService|BIND_VPN_SERVICE|SafeNetVpnService|SafeNetVpnTileService/);
+test("the Android manifest has the DNS-only VPN service and permission", () => {
+  assert.match(manifestSource, /android\.net\.VpnService/);
+  assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
+  assert.match(manifestSource, /SafeNetDnsVpnService/);
+  assert.doesNotMatch(manifestSource, /SafeNetVpnTileService|SafeNetWireGuard/);
 });
 
-test("the signed smoke lane proves DNS, DDNS, Internet Share, and no-VPN package state", () => {
+test("the signed smoke lane proves DNS, DDNS, Internet Share, and DNS-VPN package state", () => {
   assert.match(
     releaseSmokeSource,
     /SafeNetDnsDdnsInstrumentationTest/,
@@ -122,10 +129,10 @@ test("the signed smoke lane proves DNS, DDNS, Internet Share, and no-VPN package
   );
   assert.match(resolverDdnsInstrumentationSource, /dnsResolverCreateEditAndActivateFlow/);
   assert.match(resolverDdnsInstrumentationSource, /ddnsManagementFlow/);
-  assert.match(resolverDdnsInstrumentationSource, /signedPackageRequestsNoVpnServiceOrPermission/);
+  assert.match(resolverDdnsInstrumentationSource, /signedPackageContainsDnsFilteringVpnOnly/);
   assert.match(releaseSmokeSource, /DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS/);
   assert.match(releaseSmokeSource, /DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS/);
-  assert.match(releaseSmokeSource, /VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT/);
+  assert.match(releaseSmokeSource, /DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
 });

@@ -1,10 +1,10 @@
 ---
-name: Android VPN removal boundary
-description: Durable cleanup rule for retiring Android VPN functionality from SafeNet.
+name: Android VPN scope
+description: Durable boundary between SafeNet DNS filtering and removed full-traffic VPN features.
 ---
 
-When SafeNet no longer provides an Android VPN, remove the capability from the native implementation, manifest, UI, instrumentation, smoke scripts, release evidence jobs, asset verifiers, and contract tests together. Keep only neutral compatibility names needed by unrelated Capacitor features, and make their behavior explicitly non-VPN.
+SafeNet's Android DNS filtering may use a DNS-only VpnService so an active resolver and SafeNet blocklists can affect device DNS requests. This path must remain distinct from the removed WireGuard/full-traffic VPN surface: do not claim HTTPS payload inspection, private-proxy inspection, or arbitrary application traffic routing.
 
-**Why:** Removing the service and hiding its controls is not sufficient; stale release jobs and test fixtures can still require deleted WireGuard configuration, physical connectivity scripts, or VPN evidence and break otherwise valid releases.
+**Why:** Resolver selection without a device routing path only changes server-side state and cannot filter the phone. Reintroducing the narrow DNS path fixes that user-visible gap without restoring unrelated tunnel features.
 
-**How to apply:** During future VPN-related cleanup, search source, workflows, scripts, docs, and test fixtures as one dependency surface. Preserve DNS/DDNS and unrelated Android feature coverage while deleting VPN-only validation lanes.
+**How to apply:** Keep the DNS service, firewall snapshot sync, resolver bridge, manifest declaration, UI controls, and package smoke checks together. Treat WireGuard services, VPN tiles, arbitrary traffic forwarding, and private-proxy claims as separate removed features.

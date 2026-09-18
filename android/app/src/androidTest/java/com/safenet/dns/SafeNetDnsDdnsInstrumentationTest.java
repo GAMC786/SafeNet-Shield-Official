@@ -50,34 +50,31 @@ public class SafeNetDnsDdnsInstrumentationTest {
     }
 
     @Test
-    public void signedPackageRequestsNoVpnServiceOrPermission() throws Exception {
+    public void signedPackageContainsDnsFilteringVpnOnly() throws Exception {
         PackageManager packageManager = context.getPackageManager();
         PackageInfo packageInfo = packageManager.getPackageInfo(
             context.getPackageName(),
             PackageManager.GET_SERVICES | PackageManager.GET_PERMISSIONS
         );
 
+        boolean dnsVpnServicePresent = false;
+        boolean removedVpnSurfacePresent = false;
+        boolean dnsVpnPermissionPresent = false;
         if (packageInfo.services != null) {
             for (android.content.pm.ServiceInfo service : packageInfo.services) {
-                assertTrue(
-                    "Installed package still declares a VPN service: " + service.name,
-                    !service.name.contains("VpnService") &&
-                        !service.name.contains("WireGuard") &&
-                        !service.name.contains("VpnTile")
-                );
+                dnsVpnServicePresent |= service.name.contains("SafeNetDnsVpnService");
+                dnsVpnPermissionPresent |= "android.permission.BIND_VPN_SERVICE".equals(service.permission);
+                removedVpnSurfacePresent |= service.name.contains("WireGuard") ||
+                    service.name.contains("VpnTile");
             }
         }
-        if (packageInfo.requestedPermissions != null) {
-            for (String permission : packageInfo.requestedPermissions) {
-                assertTrue(
-                    "Installed package still requests VPN permission: " + permission,
-                    !"android.permission.BIND_VPN_SERVICE".equals(permission)
-                );
-            }
-        }
+        assertTrue("Installed package is missing SafeNetDnsVpnService", dnsVpnServicePresent);
+        assertTrue("Installed package still contains removed VPN services", !removedVpnSurfacePresent);
+
+        assertTrue("DNS VPN service is missing BIND_VPN_SERVICE", dnsVpnPermissionPresent);
         android.util.Log.i(
             "SafeNetAndroidReleaseSmoke",
-            "VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT"
+            "DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT"
         );
     }
 

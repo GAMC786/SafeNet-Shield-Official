@@ -357,6 +357,9 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
+  assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
+  assert.match(dnsSettingsSource, /Android DNS filtering/);
+  assert.match(dnsSettingsSource, /Enable filtering/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Active Cloudflare zone required/);

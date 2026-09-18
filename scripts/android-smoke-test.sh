@@ -1303,7 +1303,7 @@ if ! grep -Fq 'DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS
     ddns_ui_status="FAIL"
     test_failed=1
 fi
-if ! grep -Fq 'VPN_PACKAGE_SURFACE result=PASS service=ABSENT permission=ABSENT' \
+if ! grep -Fq 'DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT' \
     "$output_dir/instrumentation.log"; then
     vpn_package_surface_status="FAIL"
     test_failed=1

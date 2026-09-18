@@ -28,24 +28,25 @@ public final class SafeNetProtectionStatus {
 
     public static JSONObject get(Context context) {
         ConnectivitySnapshot snapshot = readConnectivity(context);
+        boolean serviceRunning = SafeNetDnsVpnService.isRunning();
         String state = resolveState(
-            false,
-            false,
+            serviceRunning,
+            serviceRunning && snapshot.ownsSafeNetVpn,
             snapshot.otherVpnActive,
             snapshot.activeNetwork,
-            false
+            !serviceRunning && snapshot.otherVpnActive
         );
 
         JSONObject result = new JSONObject();
         try {
             result.put("state", state);
             result.put("timestamp", System.currentTimeMillis());
-            result.put("safeNetVpnRunning", false);
-            result.put("safeNetOwnsActiveVpn", false);
+            result.put("safeNetVpnRunning", serviceRunning);
+            result.put("safeNetOwnsActiveVpn", serviceRunning && snapshot.ownsSafeNetVpn);
             result.put("otherVpnActive", snapshot.otherVpnActive);
             result.put("activeNetwork", snapshot.activeNetwork);
             result.put("vpnRevoked", false);
-            result.put("scope", "SafeNet manages DNS resolver settings and does not provide an Android VPN.");
+            result.put("scope", "SafeNet routes DNS requests through its Android DNS filtering VPN.");
             result.put(
                 "message",
                 messageFor(
@@ -68,9 +69,9 @@ public final class SafeNetProtectionStatus {
                     + "HTTPS content, or another VPN."
             );
             JSONArray limitations = new JSONArray();
-            limitations.put("SafeNet does not provide an Android VPN or route device traffic.");
+            limitations.put("SafeNet filters DNS requests only; it does not inspect HTTPS content or arbitrary application traffic.");
             limitations.put("A private proxy browser can hide its destination from SafeNet.");
-            limitations.put("Use Android Private DNS or a separate VPN provider for device-level protection.");
+            limitations.put("Apps using their own encrypted DNS or another VPN can bypass SafeNet DNS filtering.");
             limitations.put("Screen content requires separate, explicit MediaProjection consent.");
             result.put("limitations", limitations);
         } catch (Exception ignored) {

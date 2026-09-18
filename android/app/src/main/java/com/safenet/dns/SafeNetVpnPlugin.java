@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
+import android.net.VpnService;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -376,6 +377,62 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getDnsProtectionStatus(PluginCall call) {
+        call.resolve(dnsProtectionStatus());
+    }
+
+    @PluginMethod
+    public void startDnsProtection(PluginCall call) {
+        String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
+        String primary = call.getString("primaryAddress", "");
+        String secondary = call.getString("secondaryAddress", "");
+        if (primary == null || primary.trim().isEmpty()) {
+            call.reject("Select an active DNS resolver before starting filtering.", "DNS_REQUIRED");
+            return;
+        }
+        Intent serviceIntent = new Intent(getContext(), SafeNetDnsVpnService.class)
+            .putExtra(SafeNetDnsVpnService.EXTRA_TYPE, type)
+            .putExtra(SafeNetDnsVpnService.EXTRA_IP_VERSION, ipVersion)
+            .putExtra(SafeNetDnsVpnService.EXTRA_PRIMARY, primary)
+            .putExtra(SafeNetDnsVpnService.EXTRA_SECONDARY, secondary == null ? "" : secondary);
+        Intent permissionIntent = VpnService.prepare(getContext());
+        if (permissionIntent != null) {
+            startActivityForResult(call, permissionIntent, "dnsVpnPermissionResult");
+            return;
+        }
+        startDnsService(serviceIntent);
+        call.resolve(dnsProtectionStatus());
+    }
+
+    @ActivityCallback
+    private void dnsVpnPermissionResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result == null || result.getResultCode() != Activity.RESULT_OK) {
+            call.reject("Android VPN permission was not granted.", "PERMISSION_DENIED");
+            return;
+        }
+        String type = call.getString("type", "plain");
+        String ipVersion = call.getString("ipVersion", "ipv4");
+        String primary = call.getString("primaryAddress", "");
+        String secondary = call.getString("secondaryAddress", "");
+        Intent serviceIntent = new Intent(getContext(), SafeNetDnsVpnService.class)
+            .putExtra(SafeNetDnsVpnService.EXTRA_TYPE, type)
+            .putExtra(SafeNetDnsVpnService.EXTRA_IP_VERSION, ipVersion)
+            .putExtra(SafeNetDnsVpnService.EXTRA_PRIMARY, primary)
+            .putExtra(SafeNetDnsVpnService.EXTRA_SECONDARY, secondary == null ? "" : secondary);
+        startDnsService(serviceIntent);
+        call.resolve(dnsProtectionStatus());
+    }
+
+    @PluginMethod
+    public void stopDnsProtection(PluginCall call) {
+        SafeNetDnsVpnService.requestStop();
+        getContext().stopService(new Intent(getContext(), SafeNetDnsVpnService.class));
+        call.resolve(dnsProtectionStatus());
+    }
+
+    @PluginMethod
     public void syncFirewallConfig(PluginCall call) {
         JSObject config = call.getObject("config");
         if (config == null) {
@@ -385,6 +442,7 @@ public class SafeNetVpnPlugin extends Plugin {
         try {
             String serialized = config.toString();
             FirewallConfigStore.save(getContext(), serialized);
+            SafeNetDnsVpnService.updateFirewallConfig(serialized);
             JSObject result = new JSObject();
             result.put("synced", true);
             result.put("firewallEnabled", config.optBoolean("firewallEnabled", false));
@@ -394,6 +452,23 @@ public class SafeNetVpnPlugin extends Plugin {
         } catch (IllegalStateException error) {
             call.reject(error.getMessage(), "FIREWALL_CONFIG_NOT_SAVED");
         }
+    }
+
+    private void startDnsService(Intent intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getContext().startForegroundService(intent);
+        } else {
+            getContext().startService(intent);
+        }
+    }
+
+    private JSObject dnsProtectionStatus() {
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        result.put("running", SafeNetDnsVpnService.isRunning());
+        result.put("firewallEnabled", SafeNetDnsVpnService.isFirewallEnabled());
+        result.put("error", SafeNetDnsVpnService.getLastError());
+        return result;
     }
 
     @PluginMethod
