@@ -29,6 +29,9 @@ test("billing proof only accepts signed release artifacts and a Play-enabled run
   assert.match(script, /purchase dialog was not launched/);
   assert.match(script, /configuration_preflight=FAIL/);
   assert.match(script, /billing-action/);
+  assert.match(script, /signedOutBillingRecoversFromClerkStartupStall/);
+  assert.match(script, /account_recovery=PASS/);
+  assert.match(script, /REVENUECAT_BILLING_RECOVERY_PROOF result=PASS/);
   assert.match(script, /server_status=PASS/);
 });
 
@@ -41,6 +44,16 @@ test("billing proof exercises the native bridge and authenticated status", () =>
   assert.match(instrumentation, /api\/billing\/preflight/);
   assert.match(instrumentation, /monthlyAvailable/);
   assert.match(instrumentation, /REVENUECAT_BILLING_PROOF result=PASS/);
+});
+
+test("packaged Billing proves signed-out Clerk recovery and preserves redirects", () => {
+  assert.match(instrumentation, /billing-signed-out/);
+  assert.match(instrumentation, /billing-clerk-recovery/);
+  assert.match(instrumentation, /billing-clerk-retry/);
+  assert.match(instrumentation, /redirect_context=PASS/);
+  assert.match(billing, /billing_clerk_stall/);
+  assert.match(billing, /data-testid="billing-sign-in"/);
+  assert.match(billing, /retryUrl\.searchParams\.delete/);
 });
 
 test("release builds inject a public RevenueCat Android key and gate billing validation", () => {

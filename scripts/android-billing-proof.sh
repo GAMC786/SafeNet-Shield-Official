@@ -142,6 +142,26 @@ redact_billing_output() {
 set +e
 adb shell am instrument -w -r \
     -e clerk-origin "$clerk_origin" \
+    -e billing-output-dir "$output_dir" \
+    -e class com.safenet.dns.RevenueCatBillingInstrumentationTest#signedOutBillingRecoversFromClerkStartupStall \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | redact_billing_output | tee "$output_dir/recovery-instrumentation.log"
+recovery_instrumentation_status="${PIPESTATUS[0]}"
+set -e
+
+if [[ "$recovery_instrumentation_status" -ne 0 ]] ||
+    ! grep -Fq "REVENUECAT_BILLING_RECOVERY_PROOF result=PASS" "$output_dir/recovery-instrumentation.log"; then
+    {
+        printf 'apk=%s\nvalidation_mode=dedicated-play-runner\ndevice_kind=play-enabled-device\n' "$apk_path"
+        printf 'configuration_preflight=%s\naccount_recovery=FAIL\npurchase_action=%s\nresult=FAIL\n' \
+            "$configuration_preflight" "$action"
+    } | tee "$output_dir/result.txt" >&2
+    echo "RevenueCat Android Billing account recovery proof failed." >&2
+    exit "${recovery_instrumentation_status:-1}"
+fi
+
+set +e
+adb shell am instrument -w -r \
+    -e clerk-origin "$clerk_origin" \
     -e clerk-cookie-base64 "$clerk_cookie_payload" \
     -e billing-action "$action" \
     -e billing-purchase-confirm-text "$purchase_confirm_text" \
@@ -156,7 +176,8 @@ if [[ "$instrumentation_status" -ne 0 ]] ||
     ! grep -Fq "REVENUECAT_BILLING_PROOF result=PASS" "$output_dir/instrumentation.log"; then
     {
         printf 'apk=%s\nvalidation_mode=dedicated-play-runner\ndevice_kind=play-enabled-device\n' "$apk_path"
-        printf 'configuration_preflight=%s\npurchase_action=%s\nresult=FAIL\n' "$configuration_preflight" "$action"
+        printf 'configuration_preflight=%s\naccount_recovery=PASS\npurchase_action=%s\nresult=FAIL\n' \
+            "$configuration_preflight" "$action"
     } | tee "$output_dir/result.txt" >&2
     echo "RevenueCat Android purchase/restore proof failed." >&2
     exit "${instrumentation_status:-1}"
@@ -164,7 +185,8 @@ fi
 
 {
     printf 'apk=%s\nvalidation_mode=dedicated-play-runner\ndevice_kind=play-enabled-device\n' "$apk_path"
-    printf 'configuration_preflight=%s\npurchase_action=%s\nclerk_session=PASS\npurchase_or_restore=PASS\n' \
+    printf 'configuration_preflight=%s\naccount_recovery=PASS\npurchase_action=%s\n' \
         "$configuration_preflight" "$action"
+    printf 'clerk_session=PASS\npurchase_or_restore=PASS\n'
     printf 'server_status=PASS\nresult=PASS\n'
 } | tee "$output_dir/result.txt"

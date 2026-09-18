@@ -150,6 +150,75 @@ public class RevenueCatBillingInstrumentationTest {
         );
     }
 
+    @Test
+    public void signedOutBillingRecoversFromClerkStartupStall() throws Exception {
+        String origin = requiredArgument("clerk-origin");
+        clearClerkSessionCookies();
+
+        String billingUrl = origin + "/billing";
+        callWebView("window.location.assign(" + JSONObject.quote(billingUrl) + "); true");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-signed-out\"]'))");
+        assertEquals(
+            "Signed-out Billing must stay on the Billing route",
+            "/billing",
+            requireValue(callWebView("({pathname:location.pathname})"))
+                .optString("pathname")
+        );
+
+        String stalledUrl = billingUrl +
+            "?billing_clerk_stall=1&redirect_url=%2Fbilling";
+        callWebView("window.location.assign(" + JSONObject.quote(stalledUrl) + "); true");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-clerk-recovery\"]'))");
+        assertTrue(
+            "Clerk recovery message must explain that the account could not be loaded",
+            callWebView(
+                "document.querySelector('[data-testid=\"billing-clerk-recovery\"]').innerText" +
+                    ".includes('account could not be loaded')"
+            ).optBoolean("value", false)
+        );
+
+        requireValue(callWebView(
+            "document.querySelector('[data-testid=\"billing-clerk-retry\"]').click(); true"
+        ));
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-signed-out\"]'))");
+        JSONObject retryLocation = requireValue(callWebView(
+            "({pathname:location.pathname," +
+                "stall:new URLSearchParams(location.search).get('billing_clerk_stall')," +
+                "redirect:new URLSearchParams(location.search).get('redirect_url')})"
+        ));
+        assertEquals("Retry must preserve the Billing route", "/billing",
+            retryLocation.optString("pathname"));
+        assertEquals("Retry must remove the controlled stall flag", JSONObject.NULL,
+            retryLocation.opt("stall"));
+        assertEquals("Retry must preserve the redirect context", "/billing",
+            retryLocation.optString("redirect"));
+
+        requireValue(callWebView(
+            "document.querySelector('[data-testid=\"billing-sign-in\"]').click(); true"
+        ));
+        waitForWebView("location.pathname.endsWith('/sign-in')");
+        JSONObject signInLocation = requireValue(callWebView(
+            "({pathname:location.pathname," +
+                "redirect:new URLSearchParams(location.search).get('redirect_url')})"
+        ));
+        assertTrue(
+            "Billing sign-in prompt must navigate to the sign-in route",
+            signInLocation.optString("pathname").endsWith("/sign-in")
+        );
+        assertEquals("Sign-in must preserve the Billing redirect context", "/billing",
+            signInLocation.optString("redirect"));
+
+        Log.i(
+            PROOF_TAG,
+            "REVENUECAT_BILLING_RECOVERY_PROOF result=PASS signed_out=PASS " +
+                "stall_recovery=PASS redirect_context=PASS"
+        );
+        System.out.println(
+            "REVENUECAT_BILLING_RECOVERY_PROOF result=PASS signed_out=PASS " +
+                "stall_recovery=PASS redirect_context=PASS"
+        );
+    }
+
     private JSONObject waitForActiveServerStatus() throws Exception {
         long deadline = System.nanoTime() +
             TimeUnit.SECONDS.toNanos(ENTITLEMENT_TIMEOUT_SECONDS);
@@ -233,6 +302,19 @@ public class RevenueCatBillingInstrumentationTest {
             "document.body.innerText.includes('Command Center') || " +
                 "document.body.innerText.includes('SafeNet Premium')"
         );
+    }
+
+    private void clearClerkSessionCookies() throws Exception {
+        CountDownLatch completed = new CountDownLatch(1);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.removeAllCookies(value -> completed.countDown());
+            cookieManager.flush();
+        });
+        if (!completed.await(WEBVIEW_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out clearing Clerk session cookies");
+        }
+        Thread.sleep(500);
     }
 
     private String requiredArgument(String name) {

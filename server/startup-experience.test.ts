@@ -354,7 +354,11 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   assert.match(billingSource, /const CLERK_LOAD_TIMEOUT_MS = 12_000/);
   assert.match(
     billingSource,
-    /if \(isLoaded\) \{\s*setClerkLoadTimedOut\(false\);\s*return;\s*\}/,
+    /const clerkIsLoaded = isLoaded && !clerkStartupStallRequested/,
+  );
+  assert.match(
+    billingSource,
+    /if \(clerkIsLoaded\) \{\s*setClerkLoadTimedOut\(false\);\s*return;\s*\}/,
   );
   assert.match(
     billingSource,
@@ -362,11 +366,11 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
   assert.match(
     billingSource,
-    /!isLoaded && !clerkLoadTimedOut[\s\S]*?Loading your account…/,
+    /!clerkIsLoaded && !clerkLoadTimedOut[\s\S]*?Loading your account…/,
   );
   assert.match(
     billingSource,
-    /!isLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !isLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{\(\) => window\.location\.reload\(\)\}[\s\S]*?>\s*Retry/,
+    /!clerkIsLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !clerkIsLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{retryClerkLoading\}[\s\S]*?>\s*Retry/,
   );
   assert.match(
     billingSource,

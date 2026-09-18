@@ -1506,11 +1506,14 @@ jobs:
           result="${result:-NOT_RECORDED}"
           preflight="$(awk -F= '$1 == "configuration_preflight" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           preflight="${preflight:-NOT_RECORDED}"
+          recovery="$(awk -F= '$1 == "account_recovery" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          recovery="${recovery:-NOT_RECORDED}"
           {
             echo "## Android RevenueCat billing proof"
             echo
             echo "- **Runner:** \`dedicated Play-enabled runner\`"
             echo "- **Configuration preflight:** \`$preflight\`"
+            echo "- **Billing account recovery:** \`$recovery\`"
             echo "- **Signed APK proof:** \`$result\`"
             echo "- **Purchase/restore instrumentation:** \`${PROOF_OUTCOME:-NOT_RECORDED}\`"
             echo "- **Authenticated server entitlement:** \`$result\`"

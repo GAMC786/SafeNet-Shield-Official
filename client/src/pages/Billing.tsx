@@ -20,6 +20,7 @@ type BillingStatus = {
 
 const BILLING_REQUEST_TIMEOUT_MS = 12_000;
 const CLERK_LOAD_TIMEOUT_MS = 12_000;
+const CLERK_STALL_QUERY_PARAM = "billing_clerk_stall";
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -67,9 +68,13 @@ export default function Billing() {
   const { toast } = useToast();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const isAndroid = Capacitor.getPlatform() === "android";
+  const clerkStartupStallRequested =
+    isAndroid &&
+    new URLSearchParams(window.location.search).get(CLERK_STALL_QUERY_PARAM) === "1";
+  const clerkIsLoaded = isLoaded && !clerkStartupStallRequested;
 
   useEffect(() => {
-    if (isLoaded) {
+    if (clerkIsLoaded) {
       setClerkLoadTimedOut(false);
       return;
     }
@@ -79,10 +84,10 @@ export default function Billing() {
       CLERK_LOAD_TIMEOUT_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, [isLoaded]);
+  }, [clerkIsLoaded]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !isAndroid || !user?.id) {
+    if (!clerkIsLoaded || !isSignedIn || !isAndroid || !user?.id) {
       setNativePackage(null);
       setNativeBillingError(null);
       return;
@@ -148,10 +153,10 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [isAndroid, isLoaded, isSignedIn, user?.id]);
+  }, [clerkIsLoaded, isAndroid, isSignedIn, user?.id]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
+    if (!clerkIsLoaded || !isSignedIn) {
       setBillingStatus(null);
       setBillingStatusError(null);
       return;
@@ -192,7 +197,7 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, statusAttempt, toast]);
+  }, [clerkIsLoaded, isSignedIn, statusAttempt, toast]);
 
   const openManagementPortal = async () => {
     setIsOpeningPortal(true);
@@ -263,6 +268,12 @@ export default function Billing() {
     window.location.assign(`${basePath}/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
   };
 
+  const retryClerkLoading = () => {
+    const retryUrl = new URL(window.location.href);
+    retryUrl.searchParams.delete(CLERK_STALL_QUERY_PARAM);
+    window.location.assign(`${retryUrl.pathname}${retryUrl.search}${retryUrl.hash}`);
+  };
+
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
@@ -313,24 +324,31 @@ export default function Billing() {
               Billing access is tied to your signed-in SafeNet account.
             </p>
           </div>
-          {!isLoaded && !clerkLoadTimedOut ? (
+          {!clerkIsLoaded && !clerkLoadTimedOut ? (
             <p className="text-sm text-muted-foreground">Loading your account…</p>
-          ) : !isLoaded ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          ) : !clerkIsLoaded ? (
+            <div
+              data-testid="billing-clerk-recovery"
+              className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
               <p className="text-sm text-red-200">
                 Your account could not be loaded. Check your connection and try again.
               </p>
               <Button
+                data-testid="billing-clerk-retry"
                 type="button"
                 variant="outline"
                 className="w-full shrink-0 sm:w-auto"
-                onClick={() => window.location.reload()}
+                onClick={retryClerkLoading}
               >
                 Retry
               </Button>
             </div>
           ) : !isSignedIn ? (
-            <div className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              data-testid="billing-signed-out"
+              className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/10">
                   <UserRound className="h-5 w-5 text-primary" />
@@ -342,7 +360,12 @@ export default function Billing() {
                   </p>
                 </div>
               </div>
-              <Button type="button" className="w-full shrink-0 sm:w-auto" onClick={openSignIn}>
+              <Button
+                data-testid="billing-sign-in"
+                type="button"
+                className="w-full shrink-0 sm:w-auto"
+                onClick={openSignIn}
+              >
                 Sign in to continue
               </Button>
             </div>
