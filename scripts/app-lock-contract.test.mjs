@@ -9,6 +9,9 @@ const [
   manager,
   activity,
   service,
+  instrumentation,
+  deviceScript,
+  workflow,
   manifest,
   nativeView,
   plugin,
@@ -17,6 +20,11 @@ const [
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockActivity.java"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockAccessibilityService.java"),
+  readSource(
+    "android/app/src/androidTest/java/com/safenet/dns/AppLockInstrumentationTest.java",
+  ),
+  readSource("scripts/android-app-lock-device-test.sh"),
+  readSource(".github/workflows/build.yml"),
   readSource("android/app/src/main/AndroidManifest.xml"),
   readSource("android/app/src/main/java/com/safenet/dns/NativeAppLockView.java"),
   readSource("android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java"),
@@ -63,4 +71,51 @@ test("the lock surface and dashboard use the LockLock product label", () => {
   assert.match(dashboard, /brute-force cooldowns/);
   assert.match(dashboard, /salted local hashes/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
+});
+
+test("instrumentation covers lifecycle, permissions, and duplicate activity protection", () => {
+  for (const marker of [
+    "setupRecoveryCooldownResetAndDisabledAdminStatus",
+    "accessibilityLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
+    "settings put secure enabled_accessibility_services",
+    "dpm remove-active-admin",
+    "com.android.settings",
+    "dumpsys activity activities",
+    "countActivityRecords(activities, \"com.safenet.dns/.LockLockActivity\")",
+    "LOCKLOCK_LIFECYCLE result=PASS",
+    "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1",
+  ]) {
+    assert.match(instrumentation, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("the dedicated runner publishes bounded LockLock evidence", () => {
+  for (const marker of [
+    'readonly DEFAULT_APK="artifacts/android/app-release.apk"',
+    'readonly DEFAULT_TEST_APK="artifacts/android-test/app-release-androidTest.apk"',
+    'TEST_CLASS="${PACKAGE_NAME}.AppLockInstrumentationTest"',
+    "logcat -d -t 800",
+    "dumpsys activity activities",
+    "dumpsys accessibility",
+    "shell getprop",
+    "result.txt",
+  ]) {
+    assert.match(
+      deviceScript,
+      new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  }
+  assert.match(
+    workflow,
+    /android-app-lock:\n\s+needs: build-android[\s\S]+android-writable-system/,
+  );
+  assert.match(
+    workflow,
+    /android-app-lock-device-test\.sh[\s\S]+app-release-androidTest\.apk/,
+  );
+  assert.match(
+    workflow,
+    /name: SafeNet-DNS-Android-app-lock-evidence[\s\S]+android-app-lock\/latest/,
+  );
+  assert.match(workflow, /## LockLock Android instrumentation/);
 });
