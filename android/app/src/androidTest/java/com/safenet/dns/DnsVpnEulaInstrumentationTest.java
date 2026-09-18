@@ -78,9 +78,10 @@ public class DnsVpnEulaInstrumentationTest {
         resetAgreementAndVpnState();
         waitForWebView(
             "(() => {" +
-                "const button = document.querySelector('[data-testid=\"button-android-dns-vpn\"]');" +
-                "return Boolean(button && !button.disabled && " +
-                    "button.getAttribute('aria-label') === 'Android DNS VPN Off');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-android-dns-vpn\"]');" +
+                "return Boolean(toggle && toggle.getAttribute('role') === 'switch' && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-label') === 'Android DNS VPN Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false');" +
             "})()"
         );
         assertTrue(
@@ -199,9 +200,9 @@ public class DnsVpnEulaInstrumentationTest {
     private void clickVpnControl() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
-                "const button = document.querySelector('[data-testid=\"button-android-dns-vpn\"]');" +
-                "if (!button || button.disabled) return false;" +
-                "button.click();" +
+                "const toggle = document.querySelector('[data-testid=\"switch-android-dns-vpn\"]');" +
+                "if (!toggle || toggle.disabled || toggle.getAttribute('role') !== 'switch') return false;" +
+                "toggle.click();" +
                 "return true;" +
             "})()"
         );
@@ -212,9 +213,10 @@ public class DnsVpnEulaInstrumentationTest {
     private void waitForVpnButtonReady() throws Exception {
         waitForWebView(
             "(() => {" +
-                "const button = document.querySelector('[data-testid=\"button-android-dns-vpn\"]');" +
-                "return Boolean(button && !button.disabled && " +
-                    "button.getAttribute('aria-label') === 'Android DNS VPN Off');" +
+                "const toggle = document.querySelector('[data-testid=\"switch-android-dns-vpn\"]');" +
+                "return Boolean(toggle && toggle.getAttribute('role') === 'switch' && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-label') === 'Android DNS VPN Off' && " +
+                    "toggle.getAttribute('aria-checked') === 'false');" +
             "})()"
         );
     }

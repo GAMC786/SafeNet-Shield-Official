@@ -380,7 +380,8 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
 
 test("the Dashboard exposes only the Android DNS VPN control", () => {
   assert.match(dashboardSource, /Android DNS VPN/);
-  assert.match(dashboardSource, /button-android-dns-vpn/);
+  assert.match(dashboardSource, /switch-android-dns-vpn/);
+  assert.match(dashboardSource, /<Switch[\s\S]*?switch-android-dns-vpn/);
   assert.match(
     dashboardSource,
     /const isProtected = dnsProtection\.supported[\s\S]*status\?\.running === true/,
@@ -394,7 +395,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dashboardSource, /DNS Resolver Active/);
   assert.match(dashboardSource, /text-emerald-300/);
   assert.match(dashboardSource, /Android DNS VPN/);
-  assert.match(dashboardSource, /button-android-dns-vpn/);
+  assert.match(dashboardSource, /switch-android-dns-vpn/);
   assert.match(dashboardSource, /handleDnsVpnToggle/);
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
