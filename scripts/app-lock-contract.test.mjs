@@ -73,15 +73,20 @@ test("the lock surface and dashboard use the LockLock product label", () => {
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
 
-test("instrumentation covers lifecycle, permissions, and duplicate activity protection", () => {
+test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {
   for (const marker of [
     "setupRecoveryCooldownResetAndDisabledAdminStatus",
     "accessibilityLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
+    "physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities",
     "settings put secure enabled_accessibility_services",
     "dpm remove-active-admin",
     "com.android.settings",
     "dumpsys activity activities",
     "countActivityRecords(activities, \"com.safenet.dns/.LockLockActivity\")",
+    "unlockCurrentLockScreen(PIN)",
+    "isForegroundPackage(targetPackage)",
+    "LOCKLOCK_PHYSICAL_RETURN result=PASS",
+    "LOCKLOCK_PHYSICAL_OTHER_APP result=PASS",
     "LOCKLOCK_LIFECYCLE result=PASS",
     "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1",
   ]) {
@@ -112,7 +117,11 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     "logcat -d -t 800",
     "dumpsys activity activities",
     "dumpsys accessibility",
+    "dumpsys package",
     "shell getprop",
+    "package-state.txt",
+    "selected_app_resumed=",
+    "temporary_unlock_isolated=",
     "result.txt",
   ]) {
     assert.match(

@@ -345,11 +345,44 @@ public class AppLockInstrumentationTest {
                 1,
                 countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
         );
+
+        AppLockManager.clearSession();
+        unlockCurrentLockScreen(PIN);
+        waitFor(
+                "the selected app to resume after entering the LockLock passcode",
+                () -> isForegroundPackage(targetPackage)
+        );
+        assertFalse(
+                "The LockLock screen must finish after the selected app is unlocked.",
+                isLockActivityForeground()
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL_RETURN result=PASS target_package=" + targetPackage +
+                        " resumed_package=" + targetPackage +
+                        " temporary_unlock_target=true"
+        );
+
+        launchSafeNet();
+        waitForLockActivity();
+        waitForButton("Unlock SafeNet");
+        assertTrue(
+                "Launching unrelated protected SafeNet must show LockLock after the selected "
+                        + "app was temporarily unlocked.",
+                isLockActivityForeground()
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL_OTHER_APP result=PASS protected_package=" +
+                        context.getPackageName() + " temporary_unlock_isolated=true"
+        );
+
         Log.i(
                 TAG,
                 "LOCKLOCK_PHYSICAL result=PASS device_model=" + deviceModel() +
                         " target_package=" + targetPackage +
-                        " accessibility=true device_admin=true activity_records=1"
+                        " accessibility=true device_admin=true activity_records=1" +
+                        " selected_app_resumed=true temporary_unlock_isolated=true"
         );
     }
 
@@ -574,6 +607,43 @@ public class AppLockInstrumentationTest {
                 () -> shell("dumpsys activity activities")
                         .contains("com.safenet.dns/.LockLockActivity")
         );
+    }
+
+    private void unlockCurrentLockScreen(String pin) throws Exception {
+        List<UiObject2> fields = waitForFields(1);
+        fill(fields.get(0), pin);
+        waitForButton("Unlock SafeNet").click();
+        waitFor(
+                "LockLockActivity to finish after a valid passcode",
+                () -> !shell("dumpsys activity activities")
+                        .contains("com.safenet.dns/.LockLockActivity")
+        );
+    }
+
+    private boolean isForegroundPackage(String packageName) throws Exception {
+        String activities = shell("dumpsys activity activities");
+        for (String line : activities.split("\\R")) {
+            if ((line.contains("mResumedActivity")
+                    || line.contains("mCurrentFocus")
+                    || line.contains("mFocusedApp"))
+                    && line.contains(packageName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isLockActivityForeground() throws Exception {
+        String activities = shell("dumpsys activity activities");
+        for (String line : activities.split("\\R")) {
+            if ((line.contains("mResumedActivity")
+                    || line.contains("mCurrentFocus")
+                    || line.contains("mFocusedApp"))
+                    && line.contains("com.safenet.dns/.LockLockActivity")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void waitFor(String description, Condition condition) throws Exception {

@@ -2546,6 +2546,10 @@ jobs:
           accessibility="${accessibility:-NOT_RECORDED}"
           device_admin="$(sed -n 's/^device_admin_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
           device_admin="${device_admin:-NOT_RECORDED}"
+          selected_app_resumed="$(sed -n 's/^selected_app_resumed=//p' "$result_file" 2>/dev/null | head -n 1)"
+          selected_app_resumed="${selected_app_resumed:-NOT_RECORDED}"
+          temporary_unlock_isolated="$(sed -n 's/^temporary_unlock_isolated=//p' "$result_file" 2>/dev/null | head -n 1)"
+          temporary_unlock_isolated="${temporary_unlock_isolated:-NOT_RECORDED}"
           {
             echo "## LockLock physical-device verification"
             echo
@@ -2561,7 +2565,9 @@ jobs:
             echo "- **Accessibility enabled:** \`$accessibility\`"
             echo "- **Device Administrator enabled:** \`$device_admin\`"
             echo "- **Permission boundary:** Both permissions are enabled through Android Settings on the phone before the check."
-            echo "- **Coverage:** three launches of the selected app, LockLock screen visibility, and one-activity duplicate prevention"
+            echo "- **Selected app resumed after passcode:** \`$selected_app_resumed\`"
+            echo "- **Unrelated protected launch remained locked:** \`$temporary_unlock_isolated\`"
+            echo "- **Coverage:** three launches of the selected app, one-activity duplicate prevention, valid passcode return, and isolation of the temporary unlock"
             echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence:** download the physical-device artifact from this run"

@@ -470,6 +470,12 @@ if [[ "$physical_device" == true ]]; then
         sed -n 's/.*LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS.*device_admin=\([^ ]*\).*/\1/p' \
             "$output_dir/logcat.txt" | tail -n 1
     )"
+    {
+        adb_run shell dumpsys package "$PACKAGE_NAME"
+        if [[ -n "$target_package" && "$target_package" != "$PACKAGE_NAME" ]]; then
+            adb_run shell dumpsys package "$target_package"
+        fi
+    } 2>&1 | head -c 200000 > "$output_dir/package-state.txt" || true
 fi
 
 if [[ "$physical_device" == true ]]; then
@@ -480,7 +486,9 @@ if [[ "$physical_device" == true ]]; then
         grep -Fq 'LOCKLOCK_PHYSICAL result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=1' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=2' "$output_dir/logcat.txt" &&
-        grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=3' "$output_dir/logcat.txt"; then
+        grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=3' "$output_dir/logcat.txt" &&
+        grep -Fq 'LOCKLOCK_PHYSICAL_RETURN result=PASS' "$output_dir/logcat.txt" &&
+        grep -Fq 'LOCKLOCK_PHYSICAL_OTHER_APP result=PASS' "$output_dir/logcat.txt"; then
         result="PASS"
     else
         result="FAIL"
@@ -508,11 +516,21 @@ fi
     if [[ "$physical_device" == true ]]; then
         printf 'accessibility_enabled=%s\ndevice_admin_enabled=%s\n' \
             "${accessibility_state:-NOT_RECORDED}" "${device_admin_state:-NOT_RECORDED}"
+        if grep -Fq 'LOCKLOCK_PHYSICAL_RETURN result=PASS' "$output_dir/logcat.txt"; then
+            printf 'selected_app_resumed=true\n'
+        else
+            printf 'selected_app_resumed=false\n'
+        fi
+        if grep -Fq 'LOCKLOCK_PHYSICAL_OTHER_APP result=PASS' "$output_dir/logcat.txt"; then
+            printf 'temporary_unlock_isolated=true\n'
+        else
+            printf 'temporary_unlock_isolated=false\n'
+        fi
     fi
     printf 'instrumentation_status=%s\nresult=%s\n' "$instrumentation_status" "$result"
     printf 'diagnostics=logcat.txt,activity-stack.txt,accessibility.txt,device-properties.txt'
     if [[ "$physical_device" == true ]]; then
-        printf ',device-policy.txt,permission-state.txt'
+        printf ',device-policy.txt,permission-state.txt,package-state.txt'
     fi
     printf '\n'
     printf 'ui_diagnostics=locklock-ui-failure.png,locklock-ui-failure.xml\n'
