@@ -15,6 +15,20 @@ import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
 import { useToast } from "@/hooks/use-toast";
+import { DnsVpnEulaDialog } from "@/components/DnsVpnEulaDialog";
+import { SAFE_NET_VPN_EULA_VERSION } from "@/hooks/use-vpn";
+import type { DnsServer } from "@shared/schema";
+
+const DNS_VPN_EULA_STORAGE_KEY = "safenet-dns-vpn-eula-version";
+
+function hasAcceptedDnsVpnEula() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DNS_VPN_EULA_STORAGE_KEY) === SAFE_NET_VPN_EULA_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -28,6 +42,9 @@ export default function Dashboard() {
   const appLock = useAppLock();
   const dnsProtection = useDnsProtection();
   const { toast } = useToast();
+  const [dnsVpnEulaOpen, setDnsVpnEulaOpen] = useState(false);
+  const [dnsVpnEulaAccepted, setDnsVpnEulaAccepted] = useState(hasAcceptedDnsVpnEula);
+  const [pendingDnsVpnServer, setPendingDnsVpnServer] = useState<DnsServer | null>(null);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected = dnsProtection.supported
     ? dnsProtection.status?.running === true
@@ -35,12 +52,9 @@ export default function Dashboard() {
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
-  const handleDnsVpnToggle = async () => {
-    if (!activeDns || !dnsProtection.supported || dnsProtection.isBusy) return;
+  const startDnsVpn = async (server: DnsServer) => {
     try {
-      const nextStatus = dnsProtection.status?.running
-        ? await dnsProtection.stop()
-        : await dnsProtection.start(activeDns);
+      const nextStatus = await dnsProtection.start(server);
       if (nextStatus?.error) {
         toast({
           title: "Android DNS VPN could not be changed",
@@ -57,6 +71,53 @@ export default function Dashboard() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDnsVpnToggle = async () => {
+    if (!activeDns || !dnsProtection.supported || dnsProtection.isBusy) return;
+    if (dnsProtection.status?.running) {
+      try {
+        const nextStatus = await dnsProtection.stop();
+        if (nextStatus?.error) {
+          toast({
+            title: "Android DNS VPN could not be changed",
+            description: nextStatus.error,
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Android DNS VPN could not be changed",
+          description: error instanceof Error
+            ? error.message
+            : "Android DNS filtering could not be stopped.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    if (!dnsVpnEulaAccepted) {
+      setPendingDnsVpnServer(activeDns);
+      setDnsVpnEulaOpen(true);
+      return;
+    }
+
+    await startDnsVpn(activeDns);
+  };
+
+  const handleDnsVpnEulaAccept = () => {
+    const server = pendingDnsVpnServer;
+    if (!server) return;
+    try {
+      window.localStorage.setItem(DNS_VPN_EULA_STORAGE_KEY, SAFE_NET_VPN_EULA_VERSION);
+    } catch {
+      // Acceptance still applies for this session if local storage is unavailable.
+    }
+    setDnsVpnEulaAccepted(true);
+    setDnsVpnEulaOpen(false);
+    setPendingDnsVpnServer(null);
+    void startDnsVpn(server);
   };
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
@@ -93,6 +154,13 @@ export default function Dashboard() {
         title="Command Center" 
         subtitle={isServerAvailable ? "System Status: Online" : "Server connection unavailable"}
         status={isProtected ? "active" : "unprotected"}
+      />
+
+      <DnsVpnEulaDialog
+        open={dnsVpnEulaOpen}
+        onOpenChange={setDnsVpnEulaOpen}
+        onAccept={handleDnsVpnEulaAccept}
+        onCancel={() => setPendingDnsVpnServer(null)}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
