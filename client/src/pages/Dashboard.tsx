@@ -123,10 +123,10 @@ export default function Dashboard() {
         <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
           <div className="flex items-center gap-2 text-left">
             <LockKeyhole className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">AndroidX Secure App Lock</p>
+             <div>
+              <p className="text-sm font-medium text-foreground">Secure App Lock by LockLock API</p>
               <p className="text-xs text-muted-foreground">
-                Protect SafeNet with Android's secure biometric or device-credential prompt
+                 Offline passcode protection with app locking, brute-force cooldowns, recovery, and anti-uninstall support
               </p>
             </div>
           </div>
@@ -135,8 +135,8 @@ export default function Dashboard() {
             onCheckedChange={(enabled) => {
               void appLock.setEnabled(enabled).catch(() => undefined);
             }}
-            disabled={!appLock.supported || !appLock.status.available || appLock.isBusy}
-            aria-label={`AndroidX Secure App Lock ${appLock.status.enabled ? "On" : "Off"}`}
+             disabled={!appLock.supported || appLock.isBusy}
+             aria-label={`Secure App Lock by LockLock API ${appLock.status.enabled ? "On" : "Off"}`}
             data-testid="switch-app-lock"
           />
         </div>
@@ -144,7 +144,7 @@ export default function Dashboard() {
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{appLock.status.message}</p>
             <p className="mt-1 text-[11px] text-muted-foreground/80">
-              SafeNet only — Android handles credentials; SafeNet never stores them or locks your phone.
+               SafeNet stores only salted local hashes. LockLock Accessibility and Device Administrator are opt-in Android permissions.
             </p>
             {!appLock.supported && (
               <p className="mt-1 text-[11px] uppercase tracking-wider text-primary/80">

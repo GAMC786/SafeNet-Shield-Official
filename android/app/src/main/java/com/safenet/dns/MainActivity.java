@@ -27,12 +27,14 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
+    private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
     private NativeStartupFallbackView startupFallback;
     private NativeAppLockView appLockView;
     private WebView appLockWebView;
     private boolean appLockHasResumed;
     private boolean appLockNeedsUnlockOnResume;
+    private boolean appLockActivityActive;
     private Runnable startupCheck;
     private long startupDeadline;
 
@@ -168,8 +170,7 @@ public class MainActivity extends BridgeActivity {
             appLockWebView.setVisibility(View.INVISIBLE);
             appLockView.setVisibility(View.VISIBLE);
             appLockView.setMessage(
-                    "SafeNet only. Enter a biometric or device credential through AndroidX. " +
-                    "This does not lock your phone or other apps."
+                    AppLockManager.availabilityMessage(this)
             );
         }
     }
@@ -183,55 +184,41 @@ public class MainActivity extends BridgeActivity {
             appLockView.setVisibility(View.GONE);
             return;
         }
-        if (AppLockManager.isPromptActive()) {
-            appLockView.setMessage("The Android credential prompt is already open.");
+        if (appLockActivityActive) {
+            appLockView.setMessage("The LockLock passcode screen is already open.");
             return;
         }
 
         appLockWebView.setVisibility(View.INVISIBLE);
         appLockView.setVisibility(View.VISIBLE);
-        if (!AppLockManager.isAuthenticationAvailable(this)) {
-            appLockView.setMessage(
-                    "No Android credential is available. Tap Open Android security settings " +
-                    "to set a PIN, pattern, password, or biometric."
-            );
-            return;
-        }
-        appLockView.setMessage("Tap Enter credentials to continue with AndroidX Secure App Lock.");
-        AppLockManager.authenticate(
-                this,
-                "Enter credentials for SafeNet",
-                new AppLockManager.AuthenticationCallback() {
-                    @Override
-                    public void onSuccess() {
-                        AppLockManager.markAuthenticated();
-                        appLockNeedsUnlockOnResume = false;
-                        appLockView.setVisibility(View.GONE);
-                        appLockWebView.setVisibility(View.VISIBLE);
-                        beginStartupCheck(appLockWebView);
-                    }
-
-                    @Override
-                    public void onFailure(String message) {
-                        appLockView.setMessage(
-                                message + " Tap Enter credentials to try again."
-                        );
-                    }
-                }
+        appLockActivityActive = true;
+        String mode = AppLockManager.hasPin(this)
+                ? AppLockManager.MODE_UNLOCK
+                : AppLockManager.MODE_SETUP;
+        appLockView.setMessage(
+                AppLockManager.hasPin(this)
+                        ? "Enter your offline LockLock passcode to continue."
+                        : "Set up your offline LockLock passcode and Android permissions."
+        );
+        startActivityForResult(
+                new Intent(this, LockLockActivity.class)
+                        .putExtra(AppLockManager.EXTRA_MODE, mode)
+                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
+                APP_LOCK_ACTIVITY_REQUEST
         );
     }
 
     private void openAndroidSecuritySettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
-        } catch (RuntimeException error) {
-            if (appLockView != null) {
-                appLockView.setMessage(
-                        "Android security settings could not be opened. " +
-                        "Use your phone's Settings app to set a device credential."
-                );
-            }
+        if (appLockActivityActive) {
+            return;
         }
+        appLockActivityActive = true;
+        startActivityForResult(
+                new Intent(this, LockLockActivity.class)
+                        .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_SETUP)
+                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
+                APP_LOCK_ACTIVITY_REQUEST
+        );
     }
 
     public void lockAppNow() {
@@ -241,6 +228,29 @@ public class MainActivity extends BridgeActivity {
         appLockWebView.setVisibility(View.INVISIBLE);
         appLockView.setVisibility(View.VISIBLE);
         requestAppUnlock();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != APP_LOCK_ACTIVITY_REQUEST) {
+            return;
+        }
+        appLockActivityActive = false;
+        if (resultCode == RESULT_OK) {
+            AppLockManager.markAuthenticated();
+            appLockNeedsUnlockOnResume = false;
+            if (appLockView != null) {
+                appLockView.setVisibility(View.GONE);
+            }
+            if (appLockWebView != null) {
+                appLockWebView.setVisibility(View.VISIBLE);
+                beginStartupCheck(appLockWebView);
+            }
+        } else if (appLockView != null && AppLockManager.isEnabled(this)) {
+            appLockView.setVisibility(View.VISIBLE);
+            appLockView.setMessage("Enter your LockLock passcode to continue.");
+        }
     }
 
     private void beginStartupCheck(WebView webView) {
@@ -310,7 +320,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         stopSoundtrack();
-        if (AppLockManager.isEnabled(this) && !AppLockManager.isPromptActive()) {
+        if (AppLockManager.isEnabled(this) && !appLockActivityActive) {
             AppLockManager.clearSession();
             if (appLockHasResumed) {
                 appLockNeedsUnlockOnResume = true;

@@ -9,6 +9,11 @@ export interface AppLockStatus {
   available: boolean;
   locked: boolean;
   message: string;
+  configured?: boolean;
+  accessibilityEnabled?: boolean;
+  deviceAdminEnabled?: boolean;
+  antiUninstall?: boolean;
+  bruteForceProtected?: boolean;
 }
 
 const browserStatus: AppLockStatus = {
@@ -16,7 +21,7 @@ const browserStatus: AppLockStatus = {
   enabled: false,
   available: false,
   locked: false,
-  message: "AndroidX Secure App Lock is available in the SafeNet Android app.",
+  message: "Secure App Lock by LockLock API is available in the SafeNet Android app.",
 };
 
 export function useAppLock() {
@@ -28,7 +33,7 @@ export function useAppLock() {
           enabled: false,
           available: false,
           locked: false,
-          message: "Checking Android authentication support…",
+           message: "Checking LockLock protection support…",
         }
       : browserStatus,
   );
@@ -44,12 +49,12 @@ export function useAppLock() {
       setStatus(nextStatus);
       return nextStatus;
     } catch {
-      const unavailable: AppLockStatus = {
+       const unavailable: AppLockStatus = {
         supported: true,
         enabled: false,
         available: false,
         locked: false,
-        message: "AndroidX Secure App Lock status is unavailable.",
+        message: "Secure App Lock by LockLock API status is unavailable.",
       };
       setStatus(unavailable);
       return unavailable;
@@ -58,6 +63,15 @@ export function useAppLock() {
 
   useEffect(() => {
     void refresh();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [refresh]);
 
   const setEnabled = useCallback(

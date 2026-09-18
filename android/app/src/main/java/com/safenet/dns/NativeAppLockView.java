@@ -42,7 +42,7 @@ public final class NativeAppLockView extends FrameLayout {
         ));
 
         TextView title = new TextView(context);
-        title.setText("AndroidX Secure App Lock");
+        title.setText("Secure App Lock by LockLock API");
         title.setTextColor(Color.WHITE);
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -56,8 +56,8 @@ public final class NativeAppLockView extends FrameLayout {
 
         messageView = new TextView(context);
         messageView.setText(
-                "SafeNet only. Android handles your biometric or device credential; " +
-                "SafeNet never sees or stores it."
+                "Offline LockLock protection for SafeNet. Your passcode and recovery " +
+                "answer stay on this device."
         );
         messageView.setTextColor(Color.rgb(156, 163, 175));
         messageView.setTextSize(14);
@@ -70,8 +70,8 @@ public final class NativeAppLockView extends FrameLayout {
         content.addView(messageView, messageParams);
 
         unlockButton = new Button(context);
-        unlockButton.setText("Enter credentials");
-        unlockButton.setContentDescription("Enter credentials to open SafeNet");
+        unlockButton.setText("Enter passcode");
+        unlockButton.setContentDescription("Enter your LockLock passcode to open SafeNet");
         unlockButton.setTextColor(Color.WHITE);
         unlockButton.setTextSize(14);
         GradientDrawable buttonBackground = new GradientDrawable();
@@ -86,8 +86,8 @@ public final class NativeAppLockView extends FrameLayout {
         content.addView(unlockButton, buttonParams);
 
         settingsButton = new Button(context);
-        settingsButton.setText("Open Android security settings");
-        settingsButton.setContentDescription("Open Android security settings to set a device credential");
+        settingsButton.setText("Open LockLock setup");
+        settingsButton.setContentDescription("Open LockLock setup and Android permission settings");
         settingsButton.setTextColor(Color.rgb(125, 211, 252));
         settingsButton.setTextSize(13);
         settingsButton.setBackgroundColor(Color.TRANSPARENT);

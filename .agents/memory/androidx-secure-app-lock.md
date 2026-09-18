@@ -1,10 +1,10 @@
 ---
-name: AndroidX secure app lock boundary
-description: Safety rules for the SafeNet-only Android credential safeguard.
+name: LockLock app protection boundary
+description: Safety and permission rules for the offline LockLock-based app protection flow.
 ---
 
-Use AndroidX BiometricPrompt for SafeNet access and let Android handle biometric or device-credential entry. SafeNet must not capture, store, or proxy those credentials, and the feature must not lock the phone or other applications.
+Use the offline LockLock-based passcode flow only with explicit user opt-in to Accessibility and Device Administrator permissions. Store salted local hashes, keep recovery local, and protect only the user-selected launchable apps; never capture Android credentials or use a system-wide overlay.
 
-**Why:** The intended use is for a trusted sibling, friend, coworker, or service to complete the Android prompt on the user's behalf without giving SafeNet access to the credential itself. A native recovery path to Android security settings prevents a missing device credential from becoming an app dead end.
+**Why:** The product requirement changed from a SafeNet-only Android credential prompt to LockLock features: selected-app locking, anti-uninstall protection, brute-force cooldowns, and offline recovery. Accessibility and Device Admin are materially broader permissions and must remain visible and user-controlled.
 
-**How to apply:** Keep the lock surface native and opaque while authentication is pending, expose an explicit Enter credentials button, block duplicate prompts, and provide a Settings recovery action when Android reports no usable credential. Verify the prompt on a real Android device before release.
+**How to apply:** Keep the native lock surface opaque, de-duplicate foreground events, require a passcode before enable/disable/unlock, keep anti-uninstall opt-in, and verify the permission handoff and recovery flow on a real Android device before release.
