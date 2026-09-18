@@ -19,6 +19,7 @@ type BillingStatus = {
 };
 
 const BILLING_REQUEST_TIMEOUT_MS = 12_000;
+const CLERK_LOAD_TIMEOUT_MS = 12_000;
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -55,6 +56,7 @@ export default function Billing() {
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
   const [billingStatusError, setBillingStatusError] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [clerkLoadTimedOut, setClerkLoadTimedOut] = useState(false);
   const [statusAttempt, setStatusAttempt] = useState(0);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -65,6 +67,19 @@ export default function Billing() {
   const { toast } = useToast();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const isAndroid = Capacitor.getPlatform() === "android";
+
+  useEffect(() => {
+    if (isLoaded) {
+      setClerkLoadTimedOut(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => setClerkLoadTimedOut(true),
+      CLERK_LOAD_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoaded]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !isAndroid || !user?.id) {
@@ -298,8 +313,22 @@ export default function Billing() {
               Billing access is tied to your signed-in SafeNet account.
             </p>
           </div>
-          {!isLoaded ? (
+          {!isLoaded && !clerkLoadTimedOut ? (
             <p className="text-sm text-muted-foreground">Loading your account…</p>
+          ) : !isLoaded ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-red-200">
+                Your account could not be loaded. Check your connection and try again.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full shrink-0 sm:w-auto"
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </Button>
+            </div>
           ) : !isSignedIn ? (
             <div className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
