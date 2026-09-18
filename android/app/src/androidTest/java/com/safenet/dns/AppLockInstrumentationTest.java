@@ -397,6 +397,11 @@ public class AppLockInstrumentationTest {
                 : AppLockManager.MODE_DISABLE.equals(mode)
                     ? "Disable protection"
                     : "Unlock SafeNet");
+        assertVisibleText(
+                AppLockManager.MODE_DISABLE.equals(mode)
+                        ? "Disable SafeNet App Lock"
+                        : "SafeNet App Lock"
+        );
         return activity;
     }
 

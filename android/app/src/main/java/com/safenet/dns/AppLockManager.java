@@ -164,10 +164,10 @@ public final class AppLockManager {
 
     public static String availabilityMessage(Context context) {
         if (!isSupported(context)) {
-            return "Secure App Lock by LockLock API requires Android 7.0 or newer.";
+            return "SafeNet App Lock requires Android 7.0 or newer.";
         }
         if (!hasPin(context)) {
-            return "Create an offline passcode to enable Secure App Lock by LockLock API.";
+            return "Create an offline passcode to enable SafeNet App Lock.";
         }
         if (!isAccessibilityEnabled(context)) {
             return "Enable LockLock Accessibility in Android Settings to monitor protected app launches.";
@@ -175,7 +175,7 @@ public final class AppLockManager {
         if (isAntiUninstallEnabled(context) && !isDeviceAdminEnabled(context)) {
             return "Enable LockLock Device Administrator in Android Settings for anti-uninstall protection.";
         }
-        return "Secure App Lock by LockLock API is ready.";
+        return "SafeNet App Lock is ready.";
     }
 
     public static JSObject status(Context context) {
@@ -201,8 +201,8 @@ public final class AppLockManager {
                 ? (accessibilityEnabled
                     ? (antiUninstall && !deviceAdminEnabled
                         ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
-                        : "Secure App Lock by LockLock API is active. Passcode required when SafeNet returns.")
-                    : "Secure App Lock is enabled. Enable LockLock Accessibility to monitor protected app launches.")
+                        : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
+                    : "SafeNet App Lock is enabled. Enable LockLock Accessibility to monitor protected app launches.")
                 : availabilityMessage(context));
         return result;
     }

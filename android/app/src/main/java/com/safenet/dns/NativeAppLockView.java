@@ -1,9 +1,6 @@
 package com.safenet.dns;
 
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -21,7 +18,7 @@ public final class NativeAppLockView extends FrameLayout {
 
     public NativeAppLockView(Context context) {
         super(context);
-        setBackgroundColor(Color.rgb(9, 11, 20));
+        setBackgroundColor(SafeNetLockBrand.BACKGROUND);
         setClickable(true);
         setFocusable(true);
 
@@ -31,36 +28,43 @@ public final class NativeAppLockView extends FrameLayout {
         int horizontalPadding = dp(28);
         content.setPadding(horizontalPadding, dp(24), horizontalPadding, dp(24));
 
-        TextView mark = new TextView(context);
-        mark.setText("◆");
-        mark.setTextColor(Color.rgb(56, 189, 248));
-        mark.setTextSize(34);
-        mark.setGravity(Gravity.CENTER);
-        content.addView(mark, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+        content.addView(SafeNetLockBrand.shieldBadge(context, 72), new LinearLayout.LayoutParams(
+                dp(72),
+                dp(72)
         ));
 
+        TextView eyebrow = SafeNetLockBrand.eyebrow(context, "SAFENET  /  PROTECTION ACTIVE");
+        eyebrow.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams eyebrowParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        eyebrowParams.topMargin = dp(18);
+        content.addView(eyebrow, eyebrowParams);
+
         TextView title = new TextView(context);
-        title.setText("Secure App Lock by LockLock API");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(22);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setText("SafeNet App Lock");
+        title.setTextColor(SafeNetLockBrand.TEXT);
+        title.setTextSize(24);
+        title.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
+        title.setLetterSpacing(0.02f);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        titleParams.topMargin = dp(10);
+        titleParams.topMargin = dp(6);
         content.addView(title, titleParams);
 
         messageView = new TextView(context);
         messageView.setText(
-                "Offline LockLock protection for SafeNet. Your passcode and recovery " +
-                "answer stay on this device."
+                "Offline protection for SafeNet. Your passcode and recovery answer " +
+                "stay on this device."
         );
-        messageView.setTextColor(Color.rgb(203, 213, 225));
+        messageView.setTextColor(SafeNetLockBrand.BODY);
         messageView.setTextSize(14);
+        messageView.setTypeface(SafeNetLockBrand.bodyTypeface());
+        messageView.setLineSpacing(0, 1.08f);
         messageView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -72,14 +76,9 @@ public final class NativeAppLockView extends FrameLayout {
         unlockButton = new Button(context);
         unlockButton.setText("Enter passcode");
         unlockButton.setContentDescription("Enter your LockLock passcode to open SafeNet");
-        unlockButton.setTextColor(Color.WHITE);
-        unlockButton.setTextSize(14);
-        GradientDrawable buttonBackground = new GradientDrawable();
-        buttonBackground.setColor(Color.rgb(2, 132, 199));
-        buttonBackground.setCornerRadius(dp(8));
-        unlockButton.setBackground(buttonBackground);
+        SafeNetLockBrand.stylePrimaryButton(unlockButton, context);
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(48)
         );
         buttonParams.topMargin = dp(24);
@@ -88,11 +87,9 @@ public final class NativeAppLockView extends FrameLayout {
         settingsButton = new Button(context);
         settingsButton.setText("Open LockLock setup");
         settingsButton.setContentDescription("Open LockLock setup and Android permission settings");
-        settingsButton.setTextColor(Color.rgb(125, 211, 252));
-        settingsButton.setTextSize(13);
-        settingsButton.setBackgroundColor(Color.TRANSPARENT);
+        SafeNetLockBrand.styleSecondaryButton(settingsButton, context);
         LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(44)
         );
         settingsParams.topMargin = dp(4);

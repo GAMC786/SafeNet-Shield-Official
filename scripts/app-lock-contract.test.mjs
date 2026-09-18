@@ -187,11 +187,11 @@ test("enabling, disabling, and recovery use the native LockLock activity", () =>
   assert.match(activity, /Open Device Administrator Settings/);
 });
 
-test("the lock surface and dashboard use the LockLock product label", () => {
-  assert.match(nativeView, /Secure App Lock by LockLock API/);
-  assert.match(nativeView, /Offline LockLock protection/);
-  assert.match(dashboard, /Secure App Locker by LockLock API/);
-  assert.match(dashboard, /brute-force cooldowns/);
+test("the lock surface and dashboard use the SafeNet product label", () => {
+  assert.match(nativeView, /SafeNet App Lock/);
+  assert.match(nativeView, /Offline protection for SafeNet/);
+  assert.match(dashboard, /App Lock Protection/);
+  assert.match(dashboard, /Offline access protection for SafeNet with LockLock API/);
   assert.match(dashboard, /salted local hashes/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });

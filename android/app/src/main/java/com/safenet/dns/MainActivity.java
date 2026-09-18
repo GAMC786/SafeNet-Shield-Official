@@ -185,7 +185,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         if (appLockActivityActive) {
-            appLockView.setMessage("The LockLock passcode screen is already open.");
+            appLockView.setMessage("The SafeNet passcode screen is already open.");
             return;
         }
 
@@ -197,8 +197,8 @@ public class MainActivity extends BridgeActivity {
                 : AppLockManager.MODE_SETUP;
         appLockView.setMessage(
                 AppLockManager.hasPin(this)
-                        ? "Enter your offline LockLock passcode to continue."
-                        : "Set up your offline LockLock passcode and Android permissions."
+                        ? "Enter your offline SafeNet passcode to continue."
+                        : "Set up your offline SafeNet passcode and Android permissions."
         );
         startActivityForResult(
                 new Intent(this, LockLockActivity.class)

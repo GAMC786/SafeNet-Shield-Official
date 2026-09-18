@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -47,8 +46,8 @@ public final class LockLockActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Window window = getWindow();
-        window.setStatusBarColor(Color.rgb(9, 11, 20));
-        window.setNavigationBarColor(Color.rgb(9, 11, 20));
+        window.setStatusBarColor(SafeNetLockBrand.BACKGROUND);
+        window.setNavigationBarColor(SafeNetLockBrand.BACKGROUND);
         mode = getIntent().getStringExtra(AppLockManager.EXTRA_MODE);
         lockedPackage = getIntent().getStringExtra(AppLockManager.EXTRA_LOCKED_PACKAGE);
         if (mode == null) {
@@ -72,7 +71,7 @@ public final class LockLockActivity extends Activity {
 
     private void showSetup() {
         content = baseContent(
-                "Secure App Lock by LockLock API",
+                "SafeNet App Lock",
                 "Create an offline passcode for SafeNet. LockLock never sends your passcode or recovery answer anywhere."
         );
 
@@ -82,12 +81,11 @@ public final class LockLockActivity extends Activity {
         EditText answer = field("Recovery answer", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         antiUninstallCheck = new CheckBox(this);
         antiUninstallCheck.setText("Enable anti-uninstall protection");
-        antiUninstallCheck.setTextColor(Color.WHITE);
+        SafeNetLockBrand.styleCheckBox(antiUninstallCheck);
         antiUninstallCheck.setChecked(true);
         content.addView(antiUninstallCheck, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
 
-        TextView protectedAppsLabel = bodyText("Protected apps");
-        protectedAppsLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        TextView protectedAppsLabel = SafeNetLockBrand.eyebrow(this, "PROTECTED APPS");
         content.addView(protectedAppsLabel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
         TextView protectedAppsHelp = bodyText(
                 "SafeNet is always protected. Select any other launchable apps that should use the same offline passcode."
@@ -95,6 +93,13 @@ public final class LockLockActivity extends Activity {
         content.addView(protectedAppsHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 4));
         appList = new LinearLayout(this);
         appList.setOrientation(LinearLayout.VERTICAL);
+        appList.setPadding(dp(10), dp(4), dp(10), dp(4));
+        appList.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.SURFACE,
+                SafeNetLockBrand.BORDER,
+                10,
+                this
+        ));
         content.addView(appList, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 6));
         loadProtectedApps();
 
@@ -165,8 +170,7 @@ public final class LockLockActivity extends Activity {
             }
             CheckBox appCheck = new CheckBox(this);
             appCheck.setText(applicationInfo.loadLabel(getPackageManager()));
-            appCheck.setTextColor(Color.WHITE);
-            appCheck.setTextSize(14);
+            SafeNetLockBrand.styleCheckBox(appCheck);
             appCheck.setTag(applicationInfo.packageName);
             appCheck.setChecked(selected.contains(applicationInfo.packageName));
             appList.addView(appCheck, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 44, 0));
@@ -209,8 +213,8 @@ public final class LockLockActivity extends Activity {
 
     private void showUnlock() {
         String title = AppLockManager.MODE_DISABLE.equals(mode)
-                ? "Disable Secure App Lock"
-                : "Secure App Lock by LockLock API";
+                ? "Disable SafeNet App Lock"
+                : "SafeNet App Lock";
         String description = AppLockManager.MODE_DISABLE.equals(mode)
                 ? "Enter your offline passcode to disable SafeNet protection."
                 : "Enter your offline passcode to continue. Repeated failures trigger a cooldown.";
@@ -220,7 +224,7 @@ public final class LockLockActivity extends Activity {
                 AppLockManager.MODE_DISABLE.equals(mode) ? "Disable protection" : "Unlock SafeNet"
         );
         content.addView(unlock, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
-        statusView = bodyText("");
+        statusView = statusText();
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
         Button forgot = secondaryButton("Forgot passcode");
         forgot.setOnClickListener(view -> showRecovery());
@@ -254,14 +258,14 @@ public final class LockLockActivity extends Activity {
         content.removeAllViews();
         addHeading(content, "Recover your passcode", "Answer your offline recovery question and choose a new passcode.");
         TextView question = bodyText(AppLockManager.recoveryQuestion(this));
-        question.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        question.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
         content.addView(question, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
         EditText answer = field("Recovery answer", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         EditText confirm = field("Confirm new passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         Button reset = primaryButton("Reset passcode");
         content.addView(reset, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
-        statusView = bodyText("");
+        statusView = statusText();
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
         Button back = secondaryButton("Back to passcode");
         back.setOnClickListener(view -> showUnlock());
@@ -297,68 +301,132 @@ public final class LockLockActivity extends Activity {
     private LinearLayout baseContent(String title, String description) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(PADDING_DP), dp(20), dp(PADDING_DP), dp(20));
+        root.setPadding(
+                dp(PADDING_DP),
+                dp(24),
+                dp(PADDING_DP),
+                dp(28)
+        );
         addHeading(root, title, description);
         return root;
     }
 
     private void addHeading(LinearLayout root, String title, String description) {
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.setPadding(dp(14), dp(14), dp(14), dp(14));
+        heading.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.SURFACE,
+                Color.rgb(37, 99, 235),
+                14,
+                this
+        ));
+
+        heading.addView(
+                SafeNetLockBrand.shieldBadge(this, 56),
+                new LinearLayout.LayoutParams(dp(56), dp(56))
+        );
+
+        LinearLayout headingText = new LinearLayout(this);
+        headingText.setOrientation(LinearLayout.VERTICAL);
+        headingText.setPadding(dp(14), 0, 0, 0);
+        headingText.addView(
+                SafeNetLockBrand.eyebrow(this, "SAFENET  /  APP LOCK"),
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+        );
+
         TextView titleView = bodyText(title);
-        titleView.setTextSize(24);
-        titleView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        titleView.setTextColor(Color.WHITE);
-        root.addView(titleView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
+        titleView.setTextSize(23);
+        titleView.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
+        titleView.setTextColor(SafeNetLockBrand.TEXT);
+        titleView.setLetterSpacing(0.02f);
+        headingText.addView(titleView, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                4
+        ));
+
         TextView descriptionView = bodyText(description);
-        root.addView(descriptionView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 20));
+        descriptionView.setTextColor(SafeNetLockBrand.BODY);
+        headingText.addView(descriptionView, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                6
+        ));
+        heading.addView(headingText, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+        ));
+        root.addView(heading, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                0
+        ));
     }
 
     private EditText field(String hint, int inputType) {
         EditText input = new EditText(this);
         input.setHint(hint);
-        input.setHintTextColor(Color.rgb(203, 213, 225));
-        input.setTextColor(Color.WHITE);
         input.setSingleLine(true);
         input.setInputType(inputType);
         input.setPadding(dp(14), 0, dp(14), 0);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.rgb(20, 26, 43));
-        background.setStroke(dp(1), Color.rgb(55, 65, 81));
-        background.setCornerRadius(dp(10));
-        input.setBackground(background);
-        content.addView(input, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
+        SafeNetLockBrand.styleInput(input, this);
+        content.addView(input, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                54,
+                8
+        ));
         return input;
     }
 
     private Button primaryButton(String label) {
         Button button = new Button(this);
         button.setText(label);
-        button.setTextColor(Color.WHITE);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.rgb(2, 132, 199));
-        background.setCornerRadius(dp(10));
-        button.setBackground(background);
+        SafeNetLockBrand.stylePrimaryButton(button, this);
         return button;
     }
 
     private Button secondaryButton(String label) {
         Button button = new Button(this);
         button.setText(label);
-        button.setTextColor(Color.rgb(125, 211, 252));
-        button.setBackgroundColor(Color.TRANSPARENT);
+        SafeNetLockBrand.styleSecondaryButton(button, this);
         return button;
     }
 
     private TextView bodyText(String text) {
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextColor(Color.rgb(203, 213, 225));
+        view.setTextColor(SafeNetLockBrand.BODY);
         view.setTextSize(14);
+        view.setTypeface(SafeNetLockBrand.bodyTypeface());
+        view.setLineSpacing(0, 1.08f);
+        return view;
+    }
+
+    private TextView statusText() {
+        TextView view = bodyText("");
+        view.setTextColor(SafeNetLockBrand.ACCENT);
+        view.setTextSize(12);
+        view.setTypeface(SafeNetLockBrand.monoTypeface());
+        view.setPadding(dp(12), dp(10), dp(12), dp(10));
+        view.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.SURFACE,
+                SafeNetLockBrand.BORDER,
+                8,
+                this
+        ));
         return view;
     }
 
     private ScrollView scrollRoot(View child) {
         ScrollView scrollView = new ScrollView(this);
-        scrollView.setBackgroundColor(Color.rgb(9, 11, 20));
+        scrollView.setBackgroundColor(SafeNetLockBrand.BACKGROUND);
+        scrollView.setClipToPadding(false);
         scrollView.addView(child);
         return scrollView;
     }
