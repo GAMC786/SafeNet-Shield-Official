@@ -59,7 +59,7 @@ test("enabling, disabling, and recovery use the native LockLock activity", () =>
 test("the lock surface and dashboard use the LockLock product label", () => {
   assert.match(nativeView, /Secure App Lock by LockLock API/);
   assert.match(nativeView, /Offline LockLock protection/);
-  assert.match(dashboard, /Secure App Lock by LockLock API/);
+  assert.match(dashboard, /Secure App Locker by LockLock API/);
   assert.match(dashboard, /brute-force cooldowns/);
   assert.match(dashboard, /salted local hashes/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);

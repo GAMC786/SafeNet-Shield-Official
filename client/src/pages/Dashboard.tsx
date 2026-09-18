@@ -124,7 +124,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 text-left">
             <LockKeyhole className="h-4 w-4 text-primary" />
              <div>
-              <p className="text-sm font-medium text-foreground">Secure App Lock by LockLock API</p>
+              <p className="text-sm font-medium text-foreground">Secure App Locker by LockLock API</p>
               <p className="text-xs text-muted-foreground">
                  Offline passcode protection with app locking, brute-force cooldowns, recovery, and anti-uninstall support
               </p>
@@ -136,7 +136,7 @@ export default function Dashboard() {
               void appLock.setEnabled(enabled).catch(() => undefined);
             }}
              disabled={!appLock.supported || appLock.isBusy}
-             aria-label={`Secure App Lock by LockLock API ${appLock.status.enabled ? "On" : "Off"}`}
+             aria-label={`Secure App Locker by LockLock API ${appLock.status.enabled ? "On" : "Off"}`}
             data-testid="switch-app-lock"
           />
         </div>
