@@ -6,7 +6,7 @@ import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power, Loader2 } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -198,28 +198,18 @@ export default function Dashboard() {
                       : "Select an active DNS resolver first.")}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void handleDnsVpnToggle()}
+            <Switch
+              checked={dnsProtection.status?.running === true}
+              onCheckedChange={() => void handleDnsVpnToggle()}
               disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
               aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
-              aria-pressed={dnsProtection.status?.running === true}
               title={dnsProtection.supported ? "Toggle Android DNS VPN" : "Available in the Android app"}
-              data-testid="button-android-dns-vpn"
-              className={`h-20 w-20 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider shadow-[0_0_18px_rgba(59,130,246,0.18)] transition-colors disabled:opacity-100 ${
-                dnsProtection.status?.running
-                  ? "border-emerald-300 bg-emerald-400/25 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.24)] hover:bg-emerald-400/35"
-                  : "border-primary bg-primary/20 text-primary shadow-[0_0_18px_rgba(59,130,246,0.28)] hover:bg-primary/30"
-              }`}
-            >
-              <span className="flex flex-col items-center gap-1">
-                {dnsProtection.isBusy
-                  ? <Loader2 className="h-5 w-5 animate-spin" />
-                  : <Power className="h-5 w-5" />}
-                <span className="text-[11px]">{dnsProtection.status?.running ? "ON" : "OFF"}</span>
-              </span>
-            </Button>
+              data-testid="switch-android-dns-vpn"
+              className={dnsProtection.status?.running
+                ? "border-emerald-300 bg-emerald-400/25 shadow-[0_0_18px_rgba(52,211,153,0.24)] data-[state=checked]:border-emerald-300 data-[state=checked]:bg-emerald-400/40"
+                : "border-primary bg-primary/20 shadow-[0_0_18px_rgba(59,130,246,0.28)]"
+              }
+            />
           </div>
         </CyberCard>
       </div>
