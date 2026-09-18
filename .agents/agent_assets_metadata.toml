@@ -70,3 +70,17 @@ mtime_ms = 1789669234153
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/c218b8f0-8299-4a6a-8b02-986a4c4f97fa/f484fc33-5766-46e5-8114-2b63f6da8c01"
 storage_version_token = "1789669258672762"
 content_type = "text/plain"
+
+[[outputs]]
+id = "uW2AFYnj4CPxOIjMqmUs_"
+uri = "file://android/app/build/reports/android-locklock-physical/latest/result.txt"
+type = "text"
+title = "LockLock physical-device verification report"
+description = "Bounded evidence from the attempted dedicated-phone run. The result is BLOCKED because no Android device or online physical runner was available; the report includes the APK digest and ADB diagnostics."
+logical_id = "a69721a7-e088-446d-9ccc-859253e2147f"
+content_hash = "sha256:471aea05f93b89ed0a864b98fcb23be51c70e4d20c189ca7912378a462330ec4"
+size = 1184
+mtime_ms = 1789706515477
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/a69721a7-e088-446d-9ccc-859253e2147f/6a1cad7b-d228-4a7c-9ea4-07505749f66f"
+storage_version_token = "1789706532252675"
+content_type = "text/plain"
