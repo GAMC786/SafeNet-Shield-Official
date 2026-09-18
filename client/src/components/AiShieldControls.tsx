@@ -137,7 +137,7 @@ export function AiShieldControls() {
         {shield.status?.state === "capture_unavailable" && (
           <Badge
             variant="outline"
-            className="border-primary/30 bg-primary/10 text-primary-foreground"
+            className="border-yellow-500/40 bg-yellow-500/10 text-yellow-200"
             data-testid="ai-shield-coming-soon"
           >
             Coming Soon
