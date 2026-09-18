@@ -134,6 +134,15 @@ export function AiShieldControls() {
           <span className="mr-1.5">{presentation.icon}</span>
           {presentation.label}
         </Badge>
+        {shield.status?.state === "capture_unavailable" && (
+          <Badge
+            variant="outline"
+            className="border-primary/30 bg-primary/10 text-primary-foreground"
+            data-testid="ai-shield-coming-soon"
+          >
+            Coming Soon
+          </Badge>
+        )}
       </div>
 
       {!shield.supported ? (
