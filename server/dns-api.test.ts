@@ -194,10 +194,12 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
       assert.ok(remaining.every((server) => !server.isActive));
 
       if (origin === "https://desktop.safenet.dns") {
-        for (const server of remaining) {
-          const finalDeleteResponse = await request(`/api/dns/${server.id}`, { method: "DELETE" });
-          assert.equal(finalDeleteResponse.status, 204);
-        }
+        const activateFinalResolverResponse = await request(`/api/dns/${remaining[0].id}/activate`, { method: "POST" });
+        assert.equal(activateFinalResolverResponse.status, 200);
+        const deleteInactiveResolverResponse = await request(`/api/dns/${remaining[1].id}`, { method: "DELETE" });
+        assert.equal(deleteInactiveResolverResponse.status, 204);
+        const deleteFinalActiveResolverResponse = await request(`/api/dns/${remaining[0].id}`, { method: "DELETE" });
+        assert.equal(deleteFinalActiveResolverResponse.status, 204);
         const emptyResponse = await request("/api/dns");
         assert.deepEqual(await emptyResponse.json(), []);
       }

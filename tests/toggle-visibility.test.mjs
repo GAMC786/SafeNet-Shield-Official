@@ -91,6 +91,7 @@ function mockApi(
     cloudflareProbeFailures = 0,
     settingsDelayMs = 0,
     dnsDelayMs = 0,
+    singleDnsResolver = false,
     blocklistUpdateDelayMs = 0,
     firewallRuleUpdateDelayMs = 0,
   } = {},
@@ -124,6 +125,9 @@ function mockApi(
       isCustom: true,
     },
   ];
+  if (singleDnsResolver) {
+    dnsServers = [dnsServers[0]];
+  }
   let antivirusSettings = {
     id: 1,
     isEnabled: true,
@@ -773,6 +777,30 @@ test("DNS resolver management supports activation and CRUD controls", async () =
   page.once("dialog", (dialog) => dialog.accept());
   await updatedFamilyCard.getByRole("button", { name: "Remove Updated Family Resolver" }).click();
   await updatedFamilyCard.waitFor({ state: "detached" });
+  await page.close();
+});
+
+test("DNS Settings can remove the final active resolver and show the empty state", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page, { singleDnsResolver: true });
+  await page.goto(`${baseUrl}/dns`);
+  await page.getByRole("heading", { name: "DNS Servers" }).waitFor();
+
+  const resolverCard = page.getByRole("heading", { name: "SafeNet Default" }).locator("xpath=ancestor::div[contains(@class, 'glass-panel')][1]");
+  const removeButton = resolverCard.getByRole("button", { name: "Remove SafeNet Default" });
+  assert.equal(await removeButton.isDisabled(), false, "the final resolver must remain removable");
+  const deleteResponse = page.waitForResponse((response) =>
+    response.request().method() === "DELETE" && response.url().endsWith("/api/dns/1"),
+  );
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await removeButton.click();
+  assert.equal((await deleteResponse).status(), 204, "removing the final resolver must succeed");
+  await page.getByText("No resolvers configured yet.", { exact: true }).waitFor();
+
+  assert.equal(await page.getByRole("heading", { name: "SafeNet Default" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Active" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Use This" }).count(), 0);
   await page.close();
 });
 
