@@ -296,7 +296,7 @@ export default function DnsSettings() {
 
   return (
     <div className="space-y-6">
-      <Header title="DNS Servers" subtitle="Manage Resolver" />
+      <Header title="DNS Servers" subtitle="Manage Resolvers" />
 
       <CyberCard className="border-primary/20">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

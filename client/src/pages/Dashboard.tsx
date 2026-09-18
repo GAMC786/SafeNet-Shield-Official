@@ -322,7 +322,7 @@ export default function Dashboard() {
               <CheckCircle2 className="h-4 w-4" />
             </div>
             <p className="mt-2 text-2xl font-display font-bold text-white">{allowedQueries.toLocaleString()}</p>
-            <p className="text-[11px] text-muted-foreground">Passed protection</p>
+            <p className="text-[11px] text-muted-foreground">Passed through protection</p>
           </div>
           <div className="rounded-lg border border-sky-400/20 bg-sky-400/5 p-3">
             <div className="flex items-center justify-between text-sky-300">

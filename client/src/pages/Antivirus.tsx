@@ -404,7 +404,7 @@ export default function Antivirus() {
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-yellow-100/80">
-                  No successful clean-file and EICAR threat proof has been recorded. Remote scan results stay unavailable until this passes.
+                  No successful clean-file scan or EICAR threat proof has been recorded. Remote scan results stay unavailable until this passes.
                 </p>
               )}
               {!clamAv.data?.verified && (

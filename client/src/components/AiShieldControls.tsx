@@ -84,7 +84,7 @@ export function AiShieldControls() {
     { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
     { key: "livestreams", label: "Livestreams", description: "Analyze live frames", icon: Radio },
     { key: "texts", label: "Texts", description: "Enable text detection", icon: Type },
-    { key: "audios", label: "Audios", description: "Enable audio detection", icon: AudioLines },
+    { key: "audios", label: "Audio", description: "Enable audio detection", icon: AudioLines },
   ] as const;
 
   const run = async (action: () => Promise<AiShieldResult>) => {
@@ -100,7 +100,7 @@ export function AiShieldControls() {
       }
     } catch (actionError) {
       toast({
-        title: "AI Shield action could not complete",
+        title: "AI Shield action could not be completed.",
         description: actionError instanceof Error ? actionError.message : "Please try again.",
         variant: "destructive",
       });

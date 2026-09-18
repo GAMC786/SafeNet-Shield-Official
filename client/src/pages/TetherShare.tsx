@@ -514,7 +514,7 @@ export default function TetherShare() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-sky-200">
-                Choose one active resolver above. Switching it changes the resolver used when SafeNet protection starts next.
+                 Choose one active resolver above. Switching it changes the resolver used the next time SafeNet protection starts.
               </p>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
                 <Link href="/dns">

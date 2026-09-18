@@ -313,8 +313,8 @@ export default function DdnsUpdater() {
               {activeDnsServer?.name || "No resolver selected"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              DDNS status is read-only and live. Provider updates use the authenticated
-              SafeNet API, and custom IP Link endpoints require HTTPS.
+              DDNS status is live and read-only. Provider updates use the authenticated
+              SafeNet API, and custom IP Link endpoints must use HTTPS.
             </p>
           </div>
         </div>
@@ -465,7 +465,7 @@ export default function DdnsUpdater() {
                   className="bg-background border-border"
                 />
                  <p className="text-xs text-muted-foreground">
-                    Provider writes are limited to this interval. Existing secrets are kept when the key or custom URL is blank.
+                     Provider updates are limited to this interval. Existing secrets are kept when the key or custom URL is left blank.
                  </p>
               </div>
 

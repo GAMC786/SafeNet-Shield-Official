@@ -365,7 +365,7 @@ export default function Billing() {
               ) : billingStatus?.hasEntitlement ? (
                 <p data-testid="billing-status-active" className="text-sm text-emerald-400">
                   SafeNet Shield DNS Server+ is active
-                  {billingStatus.cancelAtPeriodEnd ? " and will end at the current period." : "."}
+                   {billingStatus.cancelAtPeriodEnd ? " and will end at the end of the current billing period." : "."}
                 </p>
               ) : (
                   <p data-testid="billing-status-inactive" className="text-sm text-muted-foreground">
