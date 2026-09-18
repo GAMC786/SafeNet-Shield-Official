@@ -359,6 +359,8 @@ test("physical LockLock preflight classifies every runner blocker with bounded e
             devicesStatus: scenario.devicesStatus,
           });
     const result = runWorkflowScript(physicalCheckScript, fixture, {
+      ANDROID_HOME: fixture.root,
+      ANDROID_SDK_ROOT: fixture.root,
       PATH:
         scenario.devices === undefined
           ? createAdbFreePath(fixture.bin)
