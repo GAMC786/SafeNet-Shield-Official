@@ -102,6 +102,12 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     "release_ref=",
     "release_sha=",
     "artifact_verification=",
+    "write_blocked_result",
+    "result=BLOCKED",
+    "blocker_class=DEVICE_ACCESS",
+    "blocker_category=",
+    "adb devices -l",
+    "runner-metadata.txt",
     "apk_sha256=",
     "logcat -d -t 800",
     "dumpsys activity activities",
@@ -138,5 +144,12 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     workflow,
     /name: SafeNet-DNS-Android-app-lock-evidence[\s\S]+android-app-lock\/latest/,
   );
+  assert.match(workflow, /android-locklock-physical\/latest/);
+  assert.match(
+    workflow,
+    /Record blocked LockLock evidence when the physical runner is unavailable[\s\S]+if: always\(\)/,
+  );
+  assert.match(workflow, /--blocker "\$blocker"[\s\S]+--message "\$message"/);
+  assert.match(workflow, /NO_READY_PHYSICAL_PHONE|NO_PHYSICAL_PHONE/);
   assert.match(workflow, /## LockLock Android instrumentation/);
 });

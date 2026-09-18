@@ -26,6 +26,9 @@ apk_sha256=""
 package_version_name=""
 package_version_code=""
 artifact_verification="NOT_RUN"
+blocked_mode=false
+blocked_category=""
+blocked_message=""
 
 fail() {
     local message="$*"
@@ -115,8 +118,25 @@ Options:
   --target-package Third-party launcher package to protect (optional; auto-detected on phones).
   --release-ref REF  Expected Git ref recorded by the build-android artifact.
   --release-sha SHA  Expected commit recorded by the build-android artifact.
+  --blocked         Write bounded BLOCKED evidence without requiring a device or SDK.
+  --blocker CODE    Exact infrastructure blocker classification for --blocked.
+  --message TEXT    Human-readable blocker message for --blocked.
 EOF
             exit 0
+            ;;
+        --blocked)
+            blocked_mode=true
+            shift
+            ;;
+        --blocker)
+            [[ $# -ge 2 ]] || fail "--blocker requires a classification."
+            blocked_category="$2"
+            shift 2
+            ;;
+        --message)
+            [[ $# -ge 2 ]] || fail "--message requires text."
+            blocked_message="$2"
+            shift 2
             ;;
         *)
             fail "Unknown argument: $1"
@@ -140,6 +160,110 @@ if [[ -z "$apk_metadata_path" ]]; then
 fi
 mkdir -p "$output_dir"
 rm -f "$output_dir"/*
+
+write_bounded_command() {
+    local destination="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 30s "$@" 2>&1 | head -c 200000 > "$destination" || true
+    else
+        "$@" 2>&1 | head -c 200000 > "$destination" || true
+    fi
+}
+
+write_blocked_result() {
+    local category="$1"
+    local message="$2"
+    local safe_message
+    local blocked_release_ref="${release_ref:-}"
+    local blocked_release_sha="${release_sha:-}"
+    local blocked_package_name="$PACKAGE_NAME"
+    local blocked_version_name="NOT_RECORDED"
+    local blocked_version_code="NOT_RECORDED"
+    local blocked_metadata_sha="NOT_RECORDED"
+    local test_apk_sha256="NOT_RECORDED"
+
+    [[ "$category" =~ ^[A-Z0-9_]+$ ]] ||
+        fail "Blocked evidence classification must contain only uppercase letters, digits, and underscores."
+    safe_message="$(printf '%s' "$message" | tr '\r\n' ' ')"
+
+    metadata_value() {
+        local key="$1"
+        awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+            "$apk_metadata_path" 2>/dev/null || true
+    }
+    if [[ -s "$apk_metadata_path" ]]; then
+        blocked_release_ref="${blocked_release_ref:-$(metadata_value release_ref)}"
+        blocked_release_sha="${blocked_release_sha:-$(metadata_value release_sha)}"
+        blocked_package_name="$(metadata_value package_name)"
+        blocked_version_name="$(metadata_value version_name)"
+        blocked_version_code="$(metadata_value version_code)"
+        blocked_metadata_sha="$(metadata_value apk_sha256)"
+    fi
+    blocked_release_ref="${blocked_release_ref:-NOT_RECORDED}"
+    blocked_release_sha="${blocked_release_sha:-NOT_RECORDED}"
+    blocked_package_name="${blocked_package_name:-NOT_RECORDED}"
+    blocked_version_name="${blocked_version_name:-NOT_RECORDED}"
+    blocked_version_code="${blocked_version_code:-NOT_RECORDED}"
+    blocked_metadata_sha="${blocked_metadata_sha:-NOT_RECORDED}"
+
+    if [[ -s "$apk_path" ]] && command -v sha256sum >/dev/null 2>&1; then
+        apk_sha256="$(sha256sum "$apk_path" | awk '{print $1}')"
+    fi
+    if [[ -s "$test_apk_path" ]] && command -v sha256sum >/dev/null 2>&1; then
+        test_apk_sha256="$(sha256sum "$test_apk_path" | awk '{print $1}')"
+    fi
+
+    {
+        printf 'evidence_schema_version=1\n'
+        printf 'validation_mode=physical-device\n'
+        printf 'device_kind=physical-device\n'
+        printf 'target=%s\n' "${serial:-unavailable}"
+        printf 'device_model=NOT_RECORDED\nandroid_version=NOT_RECORDED\n'
+        printf 'release_ref=%s\nrelease_sha=%s\n' "$blocked_release_ref" "$blocked_release_sha"
+        printf 'package_name=%s\nversion_name=%s\nversion_code=%s\n' \
+            "$blocked_package_name" "$blocked_version_name" "$blocked_version_code"
+        printf 'apk=%s\ntest_apk=%s\n' "$apk_path" "$test_apk_path"
+        printf 'apk_sha256=%s\ntest_apk_sha256=%s\n' "$apk_sha256" "$test_apk_sha256"
+        printf 'metadata_apk_sha256=%s\nartifact_verification=NOT_RUN\n' "$blocked_metadata_sha"
+        printf 'blocker_class=DEVICE_ACCESS\nblocker_category=%s\n' "$category"
+        printf 'failure_class=DEVICE_ACCESS\nfailure_category=%s\n' "$category"
+        printf 'result=BLOCKED\nmessage=%s\n' "$safe_message"
+        printf 'diagnostics=adb-devices.txt,adb-version.txt,device-properties.txt,runner-metadata.txt\n'
+    } | tee "$output_dir/result.txt" "$output_dir/infrastructure-blocker.txt" >&2
+
+    {
+        printf 'hostname=%s\n' "$(hostname 2>/dev/null || printf 'NOT_RECORDED')"
+        printf 'uname=%s\n' "$(uname -a 2>/dev/null || printf 'NOT_RECORDED')"
+        printf 'adb_available=%s\n' \
+            "$([[ -n "$(command -v adb 2>/dev/null || true)" ]] && echo true || echo false)"
+    } | head -c 200000 > "$output_dir/runner-metadata.txt"
+    if command -v adb >/dev/null 2>&1; then
+        write_bounded_command "$output_dir/adb-version.txt" adb version
+        write_bounded_command "$output_dir/adb-devices.txt" adb devices -l
+        if [[ -n "$serial" ]]; then
+            write_bounded_command "$output_dir/device-properties.txt" \
+                adb -s "$serial" shell getprop
+        else
+            printf 'No ADB serial was selected during device discovery.\n' \
+                > "$output_dir/device-properties.txt"
+        fi
+    else
+        printf 'adb is unavailable on the runner.\n' > "$output_dir/adb-version.txt"
+        printf 'adb is unavailable on the runner.\n' > "$output_dir/adb-devices.txt"
+        printf 'Device properties were unavailable because adb is not installed.\n' \
+            > "$output_dir/device-properties.txt"
+    fi
+}
+
+if [[ "$blocked_mode" == true ]]; then
+    [[ -n "$blocked_category" ]] ||
+        fail "--blocked requires --blocker."
+    [[ -n "$blocked_message" ]] ||
+        fail "--blocked requires --message."
+    write_blocked_result "$blocked_category" "$blocked_message"
+    exit 78
+fi
 
 [[ "$(basename "$apk_path")" == "app-release.apk" ]] ||
     fail "LockLock validation requires the explicitly named app-release.apk."

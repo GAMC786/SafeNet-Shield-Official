@@ -2346,33 +2346,39 @@ jobs:
     permissions:
       contents: read
     env:
-      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-app-lock-physical
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-locklock-physical/latest
     steps:
       - name: Checkout code
+        id: checkout
         uses: actions/checkout@v4
 
       - name: Setup Java
+        id: setup_java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
       - name: Setup Android platform tools
+        id: setup_android_platform_tools
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
 
       - name: Install and verify pinned Android SDK
+        id: setup_android_sdk
         shell: bash
         run: ./scripts/setup-android-sdk.sh
 
       - name: Download signed release APK from this workflow run
+        id: download_android_apk
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
       - name: Download signed instrumentation APK from this workflow run
+        id: download_android_test_apk
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android-instrumentation
@@ -2386,31 +2392,55 @@ jobs:
           set +e
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
           export PATH="$sdk_root/platform-tools:$PATH"
-          adb start-server
-          serial="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')"
+          mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          if ! command -v adb >/dev/null 2>&1; then
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker ADB_UNAVAILABLE \
+              --message "adb is unavailable on the physical LockLock runner." \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
+          fi
+          timeout 30s adb start-server >/dev/null 2>&1 || true
+          device_listing="$(timeout 30s adb devices 2>&1)"
+          device_listing_status=$?
+          if [[ "$device_listing_status" -ne 0 ]]; then
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker ADB_DEVICE_DISCOVERY_FAILED \
+              --message "ADB device discovery failed on the physical LockLock runner (exit $device_listing_status)." \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
+          fi
+          serial="$(printf '%s\n' "$device_listing" |
+            awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')"
           if [[ -z "$serial" ]]; then
-            mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
-            metadata_file="$GITHUB_WORKSPACE/artifacts/android/app-release.apk.metadata"
-            apk_file="$GITHUB_WORKSPACE/artifacts/android/app-release.apk"
-            metadata_value() {
-              awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
-                "$metadata_file" 2>/dev/null
-            }
-            {
-              echo "release_ref=$(metadata_value release_ref)"
-              echo "release_sha=$(metadata_value release_sha)"
-              echo "package_name=$(metadata_value package_name)"
-              echo "version_name=$(metadata_value version_name)"
-              echo "version_code=$(metadata_value version_code)"
-              echo "apk_sha256=$(sha256sum "$apk_file" 2>/dev/null | awk '{print $1}')"
-              echo "artifact_verification=NOT_RUN"
-              echo "result=BLOCKED"
-              echo "failure_class=DEVICE_ACCESS"
-              echo "failure_category=NO_PHYSICAL_PHONE"
-              echo "message=No ready physical Android phone was attached to the LockLock runner."
-            } > "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/result.txt"
-            adb devices > "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/adb-devices.txt" 2>&1 || true
-            exit 0
+            if printf '%s\n' "$device_listing" |
+              awk 'NR > 1 && $2 == "device" { found=1 } END { exit(found ? 0 : 1) }'; then
+              blocker="NO_PHYSICAL_PHONE"
+              message="Only emulator or non-physical Android targets were available on the LockLock runner."
+            else
+              blocker="NO_READY_PHYSICAL_PHONE"
+              message="No ready physical Android phone was attached to the LockLock runner."
+            fi
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker "$blocker" \
+              --message "$message" \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
           fi
           bash ./scripts/android-app-lock-device-test.sh \
             --physical \
@@ -2424,6 +2454,62 @@ jobs:
           printf 'workflow_exit_status=%s\n' "$status" \
             >> "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/workflow-result.txt"
           exit "$status"
+
+      - name: Record blocked LockLock evidence when the physical runner is unavailable
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          JAVA_OUTCOME: ${{ steps.setup_java.outcome }}
+          PLATFORM_TOOLS_OUTCOME: ${{ steps.setup_android_platform_tools.outcome }}
+          SDK_OUTCOME: ${{ steps.setup_android_sdk.outcome }}
+          APK_DOWNLOAD_OUTCOME: ${{ steps.download_android_apk.outcome }}
+          TEST_APK_DOWNLOAD_OUTCOME: ${{ steps.download_android_test_apk.outcome }}
+          CHECK_OUTCOME: ${{ steps.android-app-lock-physical-check.outcome }}
+        run: |
+          set +e
+          evidence_dir="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          result_file="$evidence_dir/result.txt"
+          if [[ -s "$result_file" ]] &&
+            grep -Eq '^result=(PASS|FAIL|BLOCKED)$' "$result_file"; then
+            exit 0
+          fi
+          blocker="RUNNER_PREFLIGHT_FAILED"
+          message="The physical LockLock runner was unavailable before device discovery."
+          for outcome in \
+            "${CHECKOUT_OUTCOME:-success}" \
+            "${JAVA_OUTCOME:-success}" \
+            "${PLATFORM_TOOLS_OUTCOME:-success}" \
+            "${SDK_OUTCOME:-success}" \
+            "${APK_DOWNLOAD_OUTCOME:-success}" \
+            "${TEST_APK_DOWNLOAD_OUTCOME:-success}"; do
+            if [[ "$outcome" != "success" ]]; then
+              message="The physical LockLock runner preflight did not complete (step outcome: $outcome)."
+              break
+            fi
+          done
+          if [[ "$message" == "The physical LockLock runner was unavailable before device discovery." ]]; then
+            blocker="DEVICE_DISCOVERY_FAILED"
+            message="The physical LockLock device check did not produce a result during device discovery."
+          fi
+          bash ./scripts/android-app-lock-device-test.sh \
+            --physical --blocked \
+            --blocker "$blocker" \
+            --message "$message" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$evidence_dir" >/dev/null 2>&1 || true
+          {
+            printf 'workflow_checkout_outcome=%s\n' "${CHECKOUT_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_java_outcome=%s\n' "${JAVA_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_platform_tools_outcome=%s\n' "${PLATFORM_TOOLS_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_sdk_outcome=%s\n' "${SDK_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_apk_download_outcome=%s\n' "${APK_DOWNLOAD_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_test_apk_download_outcome=%s\n' "${TEST_APK_DOWNLOAD_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_check_outcome=%s\n' "${CHECK_OUTCOME:-NOT_RECORDED}"
+          } >> "$result_file"
 
       - name: Publish physical LockLock summary
         if: always()
@@ -2444,6 +2530,8 @@ jobs:
           release_ref="${release_ref:-NOT_RECORDED}"
           release_sha="$(sed -n 's/^release_sha=//p' "$result_file" 2>/dev/null | head -n 1)"
           release_sha="${release_sha:-NOT_RECORDED}"
+          blocker_category="$(sed -n 's/^blocker_category=//p' "$result_file" 2>/dev/null | head -n 1)"
+          blocker_category="${blocker_category:-NONE}"
           package_name="$(sed -n 's/^package_name=//p' "$result_file" 2>/dev/null | head -n 1)"
           package_name="${package_name:-NOT_RECORDED}"
           version_name="$(sed -n 's/^version_name=//p' "$result_file" 2>/dev/null | head -n 1)"
@@ -2462,6 +2550,7 @@ jobs:
             echo "## LockLock physical-device verification"
             echo
             echo "- **Result:** \`$result\`"
+            echo "- **Blocker classification:** \`$blocker_category\`"
             echo "- **Release ref:** \`$release_ref\`"
             echo "- **Release commit:** \`$release_sha\`"
             echo "- **Package/version:** \`$package_name\` \`${version_name} (${version_code})\`"
@@ -2489,8 +2578,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-DNS-Android-app-lock-physical-evidence
-          path: android/app/build/reports/android-app-lock-physical
-          if-no-files-found: warn
+          path: android/app/build/reports/android-locklock-physical/latest
+          if-no-files-found: error
 
   android-ai-shield-physical:
     needs: build-android
