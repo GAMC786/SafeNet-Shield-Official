@@ -1029,6 +1029,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         working-directory: android
         run: ./gradlew :app:writeReleaseArtifactMetadata
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload signed release APK
         id: upload-signed-release-apk
