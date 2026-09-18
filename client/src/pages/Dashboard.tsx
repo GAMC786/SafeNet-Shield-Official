@@ -143,18 +143,19 @@ export default function Dashboard() {
               disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
               aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
               aria-pressed={dnsProtection.status?.running === true}
+              title={dnsProtection.supported ? "Toggle Android DNS VPN" : "Available in the Android app"}
               data-testid="button-android-dns-vpn"
-              className={`h-16 w-16 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider transition-colors ${
+              className={`h-20 w-20 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider shadow-[0_0_18px_rgba(59,130,246,0.18)] transition-colors disabled:opacity-100 ${
                 dnsProtection.status?.running
-                  ? "border-emerald-400 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
-                  : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/15"
+                  ? "border-emerald-300 bg-emerald-400/25 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.24)] hover:bg-emerald-400/35"
+                  : "border-primary bg-primary/20 text-primary shadow-[0_0_18px_rgba(59,130,246,0.28)] hover:bg-primary/30"
               }`}
             >
               <span className="flex flex-col items-center gap-1">
                 {dnsProtection.isBusy
                   ? <Loader2 className="h-5 w-5 animate-spin" />
                   : <Power className="h-5 w-5" />}
-                <span>{dnsProtection.status?.running ? "ON" : "OFF"}</span>
+                <span className="text-[11px]">{dnsProtection.status?.running ? "ON" : "OFF"}</span>
               </span>
             </Button>
           </div>
