@@ -7,18 +7,42 @@ readonly TEST_RUNNER="androidx.test.runner.AndroidJUnitRunner"
 readonly TEST_CLASS="${PACKAGE_NAME}.AppLockInstrumentationTest"
 readonly DEFAULT_APK="artifacts/android/app-release.apk"
 readonly DEFAULT_TEST_APK="artifacts/android-test/app-release-androidTest.apk"
+readonly DEFAULT_APK_CHECKSUM="${DEFAULT_APK}.sha256"
+readonly DEFAULT_APK_METADATA="${DEFAULT_APK}.metadata"
 readonly UI_FAILURE_SCREENSHOT="/data/local/tmp/safenet-locklock-ui-failure.png"
 readonly UI_FAILURE_HIERARCHY="/data/local/tmp/safenet-locklock-ui-failure.xml"
 
 apk_path="${ANDROID_APP_LOCK_APK:-$DEFAULT_APK}"
 test_apk_path="${ANDROID_APP_LOCK_TEST_APK:-$DEFAULT_TEST_APK}"
+apk_checksum_path="${ANDROID_APP_LOCK_APK_CHECKSUM:-}"
+apk_metadata_path="${ANDROID_APP_LOCK_APK_METADATA:-}"
 output_dir="${ANDROID_APP_LOCK_OUTPUT_DIR:-android/app/build/reports/android-app-lock/latest}"
 serial="${ANDROID_SERIAL:-}"
 physical_device=false
 target_package="${ANDROID_APP_LOCK_TARGET_PACKAGE:-}"
+release_ref="${ANDROID_APP_LOCK_RELEASE_REF:-}"
+release_sha="${ANDROID_APP_LOCK_RELEASE_SHA:-}"
+apk_sha256=""
+package_version_name=""
+package_version_code=""
+artifact_verification="NOT_RUN"
 
 fail() {
-    echo "ERROR: $*" >&2
+    local message="$*"
+    echo "ERROR: $message" >&2
+    if [[ -n "${output_dir:-}" ]]; then
+        mkdir -p "$output_dir"
+        {
+            printf 'release_ref=%s\nrelease_sha=%s\n' \
+                "${release_ref:-NOT_RECORDED}" "${release_sha:-NOT_RECORDED}"
+            printf 'package_name=%s\nversion_name=%s\nversion_code=%s\n' \
+                "$PACKAGE_NAME" "${package_version_name:-NOT_RECORDED}" \
+                "${package_version_code:-NOT_RECORDED}"
+            printf 'apk=%s\napk_sha256=%s\nartifact_verification=FAIL\n' \
+                "$apk_path" "${apk_sha256:-NOT_RECORDED}"
+            printf 'result=FAIL\nfailure=%s\n' "$message"
+        } > "$output_dir/result.txt"
+    fi
     exit 2
 }
 
@@ -32,6 +56,16 @@ while [[ $# -gt 0 ]]; do
         --test-apk)
             [[ $# -ge 2 ]] || fail "--test-apk requires a path."
             test_apk_path="$2"
+            shift 2
+            ;;
+        --apk-checksum)
+            [[ $# -ge 2 ]] || fail "--apk-checksum requires a path."
+            apk_checksum_path="$2"
+            shift 2
+            ;;
+        --apk-metadata)
+            [[ $# -ge 2 ]] || fail "--apk-metadata requires a path."
+            apk_metadata_path="$2"
             shift 2
             ;;
         --output)
@@ -53,6 +87,16 @@ while [[ $# -gt 0 ]]; do
             target_package="$2"
             shift 2
             ;;
+        --release-ref)
+            [[ $# -ge 2 ]] || fail "--release-ref requires a ref."
+            release_ref="$2"
+            shift 2
+            ;;
+        --release-sha)
+            [[ $# -ge 2 ]] || fail "--release-sha requires a commit SHA."
+            release_sha="$2"
+            shift 2
+            ;;
         --help|-h)
             cat <<'EOF'
 Usage: scripts/android-app-lock-device-test.sh [options]
@@ -63,10 +107,14 @@ instrumentation checks on an Android runner.
 Options:
   --apk PATH       Must be app-release.apk.
   --test-apk PATH  Must be app-release-androidTest.apk.
+  --apk-checksum PATH  Build-produced SHA-256 file for app-release.apk.
+  --apk-metadata PATH  Build-produced release identity metadata for the APK.
   --output DIR     Evidence directory.
   --serial ID      adb device or emulator serial.
   --physical       Require a connected physical phone and run the selected-app proof.
   --target-package Third-party launcher package to protect (optional; auto-detected on phones).
+  --release-ref REF  Expected Git ref recorded by the build-android artifact.
+  --release-sha SHA  Expected commit recorded by the build-android artifact.
 EOF
             exit 0
             ;;
@@ -76,16 +124,126 @@ EOF
     esac
 done
 
+if [[ -z "$apk_checksum_path" ]]; then
+    if [[ "$apk_path" == "$DEFAULT_APK" ]]; then
+        apk_checksum_path="$DEFAULT_APK_CHECKSUM"
+    else
+        apk_checksum_path="${apk_path}.sha256"
+    fi
+fi
+if [[ -z "$apk_metadata_path" ]]; then
+    if [[ "$apk_path" == "$DEFAULT_APK" ]]; then
+        apk_metadata_path="$DEFAULT_APK_METADATA"
+    else
+        apk_metadata_path="${apk_path}.metadata"
+    fi
+fi
+mkdir -p "$output_dir"
+rm -f "$output_dir"/*
+
 [[ "$(basename "$apk_path")" == "app-release.apk" ]] ||
     fail "LockLock validation requires the explicitly named app-release.apk."
 [[ "$(basename "$test_apk_path")" == "app-release-androidTest.apk" ]] ||
     fail "LockLock validation requires the explicitly named app-release-androidTest.apk."
 [[ -s "$apk_path" ]] || fail "Signed release APK was not found: $apk_path"
 [[ -s "$test_apk_path" ]] || fail "Release instrumentation APK was not found: $test_apk_path"
-command -v adb >/dev/null 2>&1 || fail "adb is required on the dedicated Android runner."
+[[ -s "$apk_checksum_path" ]] ||
+    fail "Build-produced APK checksum was not found: $apk_checksum_path"
+[[ -s "$apk_metadata_path" ]] ||
+    fail "Build-produced APK metadata was not found: $apk_metadata_path"
+command -v sha256sum >/dev/null 2>&1 ||
+    fail "sha256sum is required to verify the release artifact."
 
-mkdir -p "$output_dir"
-rm -f "$output_dir"/*
+read_metadata_value() {
+    local key="$1"
+    local value
+    value="$(
+        awk -F= -v key="$key" '
+            $1 == key { print substr($0, index($0, "=") + 1) }
+        ' "$apk_metadata_path"
+    )"
+    [[ "$(printf '%s\n' "$value" | sed '/^$/d' | wc -l)" -eq 1 ]] ||
+        fail "APK metadata must contain exactly one non-empty $key value."
+    printf '%s' "$value"
+}
+
+metadata_schema_version="$(read_metadata_value schema_version)"
+[[ "$metadata_schema_version" == "1" ]] ||
+    fail "Unsupported APK metadata schema: $metadata_schema_version"
+metadata_release_ref="$(read_metadata_value release_ref)"
+metadata_release_sha="$(read_metadata_value release_sha)"
+metadata_package_name="$(read_metadata_value package_name)"
+package_version_code="$(read_metadata_value version_code)"
+package_version_name="$(read_metadata_value version_name)"
+metadata_apk_file="$(read_metadata_value apk_file)"
+metadata_apk_sha256="$(read_metadata_value apk_sha256)"
+
+[[ "$metadata_apk_file" == "app-release.apk" ]] ||
+    fail "APK metadata names an unexpected release file: $metadata_apk_file"
+[[ "$metadata_package_name" == "$PACKAGE_NAME" ]] ||
+    fail "APK metadata package mismatch: $metadata_package_name"
+[[ "$metadata_release_ref" == "$release_ref" || -z "$release_ref" ]] ||
+    fail "APK release ref does not match the expected ref: $metadata_release_ref != $release_ref"
+[[ "$metadata_release_sha" == "$release_sha" || -z "$release_sha" ]] ||
+    fail "APK release commit does not match the expected commit: $metadata_release_sha != $release_sha"
+if [[ "$physical_device" == true ]]; then
+    [[ -n "$release_ref" ]] ||
+        fail "Physical LockLock validation requires the expected release ref."
+    [[ -n "$release_sha" ]] ||
+        fail "Physical LockLock validation requires the expected release commit."
+fi
+
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+gradle_file="$project_root/android/app/build.gradle"
+[[ -s "$gradle_file" ]] || fail "Android release metadata source was not found: $gradle_file"
+gradle_version_name="$(
+    sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*$/\1/p' \
+        "$gradle_file" | head -n 1
+)"
+gradle_version_code="$(
+    sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*$/\1/p' \
+        "$gradle_file" | head -n 1
+)"
+[[ "$package_version_name" == "$gradle_version_name" ]] ||
+    fail "APK metadata versionName is stale: $package_version_name != $gradle_version_name"
+[[ "$package_version_code" == "$gradle_version_code" ]] ||
+    fail "APK metadata versionCode is stale: $package_version_code != $gradle_version_code"
+
+checksum_dir="$(dirname "$apk_checksum_path")"
+checksum_name="$(basename "$apk_checksum_path")"
+(cd "$checksum_dir" && sha256sum --check --status "$checksum_name") ||
+    fail "Release APK does not match the build-produced SHA-256 checksum."
+apk_sha256="$(sha256sum "$apk_path" | awk '{print $1}')"
+[[ "$apk_sha256" == "$metadata_apk_sha256" ]] ||
+    fail "Release APK digest does not match build metadata: $apk_sha256 != $metadata_apk_sha256"
+
+sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+[[ -n "$sdk_root" ]] || fail "Android SDK is required to verify the signed release APK."
+apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+aapt="$(find "$sdk_root/build-tools" -type f -name aapt -perm -u+x | sort -V | tail -n 1)"
+[[ -n "$apksigner" ]] || fail "Android apksigner was not found in $sdk_root/build-tools."
+[[ -n "$aapt" ]] || fail "Android aapt was not found in $sdk_root/build-tools."
+if ! "$apksigner" verify --verbose "$apk_path" > "$output_dir/apk-signature.txt" 2>&1; then
+    fail "Release APK signature verification failed."
+fi
+if ! "$apksigner" verify --verbose "$test_apk_path" > "$output_dir/test-apk-signature.txt" 2>&1; then
+    fail "Release instrumentation APK signature verification failed."
+fi
+badging="$("$aapt" dump badging "$apk_path" 2> "$output_dir/apk-badging-error.txt")" ||
+    fail "Could not read release APK package metadata."
+printf '%s\n' "$badging" > "$output_dir/apk-badging.txt"
+grep -Fq \
+    "package: name='$PACKAGE_NAME' versionCode='$package_version_code' versionName='$package_version_name'" \
+    <<< "$badging" ||
+    fail "Release APK package/version metadata does not match the build artifact manifest."
+test_badging="$("$aapt" dump badging "$test_apk_path" 2> "$output_dir/test-apk-badging-error.txt")" ||
+    fail "Could not read release instrumentation APK package metadata."
+printf '%s\n' "$test_badging" > "$output_dir/test-apk-badging.txt"
+grep -Fq "package: name='${TEST_PACKAGE_NAME}'" <<< "$test_badging" ||
+    fail "Release instrumentation APK package metadata is incorrect."
+artifact_verification="PASS"
+
+command -v adb >/dev/null 2>&1 || fail "adb is required on the dedicated Android runner."
 
 adb_args=()
 if [[ -n "$serial" ]]; then
@@ -215,6 +373,10 @@ else
 fi
 
 {
+    printf 'release_ref=%s\nrelease_sha=%s\npackage_name=%s\nversion_name=%s\nversion_code=%s\n' \
+        "$metadata_release_ref" "$metadata_release_sha" "$metadata_package_name" \
+        "$package_version_name" "$package_version_code"
+    printf 'apk_sha256=%s\nartifact_verification=%s\n' "$apk_sha256" "$artifact_verification"
     printf 'target=%s\nphysical_device=%s\ndevice_model=%s\nandroid_version=%s\n' \
         "${serial:-default}" "$physical_device" "$device_model" "$android_version"
     printf 'apk=%s\ntest_apk=%s\ntarget_package=%s\n' \

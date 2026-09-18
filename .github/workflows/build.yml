@@ -1025,6 +1025,11 @@ jobs:
             sha256sum app-release-androidTest.apk > app-release-androidTest.apk.sha256
           )
 
+      - name: Write signed release APK metadata
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        working-directory: android
+        run: ./gradlew :app:writeReleaseArtifactMetadata
+
       - name: Upload signed release APK
         id: upload-signed-release-apk
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
@@ -1034,6 +1039,7 @@ jobs:
           path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/apk/release/app-release.apk.sha256
+            android/app/build/outputs/apk/release/app-release.apk.metadata
 
       - name: Upload release instrumentation APK
         id: upload-release-instrumentation-apk
@@ -2283,6 +2289,8 @@ jobs:
           ./scripts/android-app-lock-device-test.sh \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
             --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
             --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR" \
             --serial emulator-5554
 
@@ -2382,7 +2390,20 @@ jobs:
           serial="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')"
           if [[ -z "$serial" ]]; then
             mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            metadata_file="$GITHUB_WORKSPACE/artifacts/android/app-release.apk.metadata"
+            apk_file="$GITHUB_WORKSPACE/artifacts/android/app-release.apk"
+            metadata_value() {
+              awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+                "$metadata_file" 2>/dev/null
+            }
             {
+              echo "release_ref=$(metadata_value release_ref)"
+              echo "release_sha=$(metadata_value release_sha)"
+              echo "package_name=$(metadata_value package_name)"
+              echo "version_name=$(metadata_value version_name)"
+              echo "version_code=$(metadata_value version_code)"
+              echo "apk_sha256=$(sha256sum "$apk_file" 2>/dev/null | awk '{print $1}')"
+              echo "artifact_verification=NOT_RUN"
               echo "result=BLOCKED"
               echo "failure_class=DEVICE_ACCESS"
               echo "failure_category=NO_PHYSICAL_PHONE"
@@ -2396,6 +2417,8 @@ jobs:
             --serial "$serial" \
             --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
             --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
             --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
           status=$?
           printf 'workflow_exit_status=%s\n' "$status" \
@@ -2417,6 +2440,20 @@ jobs:
           model="${model:-NOT_RECORDED}"
           target="$(sed -n 's/^target_package=//p' "$result_file" 2>/dev/null | head -n 1)"
           target="${target:-NOT_RECORDED}"
+          release_ref="$(sed -n 's/^release_ref=//p' "$result_file" 2>/dev/null | head -n 1)"
+          release_ref="${release_ref:-NOT_RECORDED}"
+          release_sha="$(sed -n 's/^release_sha=//p' "$result_file" 2>/dev/null | head -n 1)"
+          release_sha="${release_sha:-NOT_RECORDED}"
+          package_name="$(sed -n 's/^package_name=//p' "$result_file" 2>/dev/null | head -n 1)"
+          package_name="${package_name:-NOT_RECORDED}"
+          version_name="$(sed -n 's/^version_name=//p' "$result_file" 2>/dev/null | head -n 1)"
+          version_name="${version_name:-NOT_RECORDED}"
+          version_code="$(sed -n 's/^version_code=//p' "$result_file" 2>/dev/null | head -n 1)"
+          version_code="${version_code:-NOT_RECORDED}"
+          apk_sha256="$(sed -n 's/^apk_sha256=//p' "$result_file" 2>/dev/null | head -n 1)"
+          apk_sha256="${apk_sha256:-NOT_RECORDED}"
+          artifact_verification="$(sed -n 's/^artifact_verification=//p' "$result_file" 2>/dev/null | head -n 1)"
+          artifact_verification="${artifact_verification:-NOT_RECORDED}"
           accessibility="$(sed -n 's/^accessibility_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
           accessibility="${accessibility:-NOT_RECORDED}"
           device_admin="$(sed -n 's/^device_admin_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
@@ -2425,6 +2462,11 @@ jobs:
             echo "## LockLock physical-device verification"
             echo
             echo "- **Result:** \`$result\`"
+            echo "- **Release ref:** \`$release_ref\`"
+            echo "- **Release commit:** \`$release_sha\`"
+            echo "- **Package/version:** \`$package_name\` \`${version_name} (${version_code})\`"
+            echo "- **Signed APK artifact verification:** \`$artifact_verification\`"
+            echo "- **Signed APK SHA-256:** \`$apk_sha256\`"
             echo "- **Device model:** \`$model\`"
             echo "- **Selected third-party package:** \`$target\`"
             echo "- **Accessibility enabled:** \`$accessibility\`"

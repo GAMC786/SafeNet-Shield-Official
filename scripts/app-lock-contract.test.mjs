@@ -93,7 +93,16 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
   for (const marker of [
     'readonly DEFAULT_APK="artifacts/android/app-release.apk"',
     'readonly DEFAULT_TEST_APK="artifacts/android-test/app-release-androidTest.apk"',
+    'readonly DEFAULT_APK_CHECKSUM="${DEFAULT_APK}.sha256"',
+    'readonly DEFAULT_APK_METADATA="${DEFAULT_APK}.metadata"',
     'TEST_CLASS="${PACKAGE_NAME}.AppLockInstrumentationTest"',
+    "sha256sum --check --status",
+    'apksigner" verify --verbose "$apk_path"',
+    'aapt" dump badging "$apk_path"',
+    "release_ref=",
+    "release_sha=",
+    "artifact_verification=",
+    "apk_sha256=",
     "logcat -d -t 800",
     "dumpsys activity activities",
     "dumpsys accessibility",
@@ -112,6 +121,18 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
   assert.match(
     workflow,
     /android-app-lock-device-test\.sh[\s\S]+app-release-androidTest\.apk/,
+  );
+  assert.match(
+    workflow,
+    /writeReleaseArtifactMetadata[\s\S]+app-release\.apk\.metadata/,
+  );
+  assert.match(
+    workflow,
+    /--release-ref "\$GITHUB_REF"[\s\S]+--release-sha "\$GITHUB_SHA"/,
+  );
+  assert.match(
+    workflow,
+    /Signed APK SHA-256/,
   );
   assert.match(
     workflow,

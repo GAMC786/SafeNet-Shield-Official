@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 apply plugin: 'com.android.application'
 
 def releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
@@ -98,6 +100,49 @@ tasks.register("verifyReleaseSigning") {
         if (!file(releaseKeystorePath).isFile()) {
             throw new GradleException("Release keystore was not found: ${releaseKeystorePath}")
         }
+    }
+}
+
+tasks.register("writeReleaseArtifactMetadata") {
+    dependsOn "assembleRelease"
+    doLast {
+        def releaseApk = file("$buildDir/outputs/apk/release/app-release.apk")
+        if (!releaseApk.isFile()) {
+            throw new GradleException("Signed release APK was not found: ${releaseApk}")
+        }
+
+        def releaseRef = System.getenv("GITHUB_REF")
+        def releaseSha = System.getenv("GITHUB_SHA")
+        if (releaseRef == null || releaseRef.trim().isEmpty() ||
+            releaseSha == null || releaseSha.trim().isEmpty()) {
+            throw new GradleException(
+                "Release artifact metadata requires GITHUB_REF and GITHUB_SHA."
+            )
+        }
+
+        def digest = MessageDigest.getInstance("SHA-256")
+        releaseApk.withInputStream { input ->
+            byte[] buffer = new byte[8192]
+            int read
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read)
+            }
+        }
+        def apkSha256 = digest.digest().collect { byte value ->
+            String.format("%02x", value & 0xff)
+        }.join()
+
+        def metadataFile = file("$buildDir/outputs/apk/release/app-release.apk.metadata")
+        metadataFile.text = [
+            "schema_version=1",
+            "release_ref=${releaseRef}",
+            "release_sha=${releaseSha}",
+            "package_name=${android.defaultConfig.applicationId}",
+            "version_code=${android.defaultConfig.versionCode}",
+            "version_name=${android.defaultConfig.versionName}",
+            "apk_file=app-release.apk",
+            "apk_sha256=${apkSha256}"
+        ].join(System.lineSeparator()) + System.lineSeparator()
     }
 }
 
