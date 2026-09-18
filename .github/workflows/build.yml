@@ -3403,6 +3403,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.android_release_metadata.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: SafeNet Android ${{ steps.android_release_metadata.outputs.release_tag }}
           files: |
             artifacts/android/app-release.apk
             artifacts/android/app-release.apk.sha256

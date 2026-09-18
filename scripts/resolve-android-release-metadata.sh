@@ -12,9 +12,9 @@
 #     synchronized.
 #   - When --expected-version is provided, compare it with versionName and
 #     fail with the configured mismatch prefix when they differ.
-#   - With --output FILE, append version_name, version_code, and the
-#     compatibility version alias to FILE (normally GITHUB_OUTPUT). Without
-#     --output, print those records to stdout.
+#   - With --output FILE, append version_name, version_code, the release tag,
+#     and the compatibility version alias to FILE (normally GITHUB_OUTPUT).
+#     Without --output, print those records to stdout.
 #
 # The version alias is kept because the standalone APK workflow has published
 # artifact names based on its existing `version` step output.
@@ -199,6 +199,7 @@ output_records=$(
     cat <<EOF
 version_name=$android_version_name
 version_code=$android_version_code
+release_tag=v$android_version_name
 version=$android_version_name
 EOF
 )

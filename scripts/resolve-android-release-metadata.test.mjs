@@ -78,7 +78,7 @@ test("resolves the shared metadata contract and writes GitHub outputs", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(
     readFileSync(outputFile, "utf8"),
-    "version_name=1.0.60\nversion_code=52\nversion=1.0.60\n",
+    "version_name=1.0.60\nversion_code=52\nrelease_tag=v1.0.60\nversion=1.0.60\n",
   );
 });
 
@@ -293,6 +293,11 @@ test("both release workflows consume the shared metadata contract", async () => 
 
   for (const workflow of [apkOnlyWorkflow, releaseWorkflow]) {
     assert.match(workflow, /bash scripts\/resolve-android-release-metadata\.sh/);
+    assert.match(
+      workflow,
+      /outputs\.release_tag/,
+      "release workflows must use the resolver's canonical release tag",
+    );
     assert.doesNotMatch(
       workflow,
       /sed -nE 's\/\^\[\[:space:\]\]\*version(Name|Code)/,

@@ -192,3 +192,35 @@ test("release summaries expose native compile outcomes", () => {
   assert.match(apkOnlyWorkflow, /NATIVE_COMPILE_OUTCOME:/);
   assert.match(apkOnlyWorkflow, /Native Android compile:/);
 });
+
+test("APK-only signed builds publish and verify a version-matched formal release", () => {
+  assert.match(apkOnlyWorkflow, /permissions:\n  contents: write/);
+  assert.match(
+    apkOnlyWorkflow,
+    /Create or update formal GitHub Release[\s\S]*uses: softprops\/action-gh-release@v2/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /tag_name: \$\{\{ steps\.app_version\.outputs\.release_tag \}\}/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /SafeNet-Android-APK-\$\{RELEASE_TAG\}\.apk/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Verify formal GitHub Release assets[\s\S]*gh api "repos\/\$GITHUB_REPOSITORY\/releases\/tags\/\$RELEASE_TAG"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /sha256sum --check "\$CHECKSUM_ASSET"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /versionCode='\$ANDROID_VERSION_CODE' versionName='\$ANDROID_VERSION_NAME'/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Formal GitHub Release:\*\*.*\$release_publish_outcome/,
+  );
+});
