@@ -423,7 +423,8 @@ public final class SafeNetDnsVpnService extends VpnService {
             if (!service.protect(raw)) throw new IOException("Could not bypass the DNS VPN for upstream traffic.");
             raw.connect(new InetSocketAddress(host, port), TIMEOUT_MS);
             raw.setSoTimeout(TIMEOUT_MS);
-            SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket(raw, host, port, true);
+            SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+            SSLSocket socket = (SSLSocket) factory.createSocket(raw, host, port, true);
             try {
                 if (!service.protect(socket)) throw new IOException("Could not protect the encrypted DNS socket.");
                 socket.startHandshake();
