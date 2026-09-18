@@ -21,7 +21,7 @@ const browserStatus: AppLockStatus = {
   enabled: false,
   available: false,
   locked: false,
-  message: "Secure App Lock by LockLock API is available in the SafeNet Android app.",
+  message: "Secure App Locker by LockLock API is available in the SafeNet Android app.",
 };
 
 export function useAppLock() {
