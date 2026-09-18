@@ -237,6 +237,7 @@ public final class LockLockActivity extends Activity {
             if (AppLockManager.MODE_DISABLE.equals(mode)) {
                 AppLockManager.setEnabled(this, false);
                 AppLockManager.setAntiUninstallEnabled(this, false);
+                Toast.makeText(this, "LockLock protection disabled.", Toast.LENGTH_SHORT).show();
             } else if ("enable".equals(mode)) {
                 AppLockManager.setEnabled(this, true);
                 AppLockManager.markAuthenticated();

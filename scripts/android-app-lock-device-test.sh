@@ -7,6 +7,8 @@ readonly TEST_RUNNER="androidx.test.runner.AndroidJUnitRunner"
 readonly TEST_CLASS="${PACKAGE_NAME}.AppLockInstrumentationTest"
 readonly DEFAULT_APK="artifacts/android/app-release.apk"
 readonly DEFAULT_TEST_APK="artifacts/android-test/app-release-androidTest.apk"
+readonly UI_FAILURE_SCREENSHOT="/data/local/tmp/safenet-locklock-ui-failure.png"
+readonly UI_FAILURE_HIERARCHY="/data/local/tmp/safenet-locklock-ui-failure.xml"
 
 apk_path="${ANDROID_APP_LOCK_APK:-$DEFAULT_APK}"
 test_apk_path="${ANDROID_APP_LOCK_TEST_APK:-$DEFAULT_TEST_APK}"
@@ -87,6 +89,7 @@ cleanup() {
     set +e
     adb_run shell am force-stop "$PACKAGE_NAME" >/dev/null 2>&1
     adb_run shell am force-stop com.android.settings >/dev/null 2>&1
+    adb_run shell rm -f "$UI_FAILURE_SCREENSHOT" "$UI_FAILURE_HIERARCHY" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -114,12 +117,26 @@ capture_bounded "$output_dir/logcat.txt" logcat -d -t 800
 capture_bounded "$output_dir/activity-stack.txt" shell dumpsys activity activities
 capture_bounded "$output_dir/accessibility.txt" shell dumpsys accessibility
 capture_bounded "$output_dir/device-properties.txt" shell getprop
+if adb_run shell test -s "$UI_FAILURE_SCREENSHOT" >/dev/null 2>&1; then
+    screenshot_size="$(adb_run shell stat -c %s "$UI_FAILURE_SCREENSHOT" 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$screenshot_size" =~ ^[0-9]+$ ]] && (( screenshot_size <= 5000000 )); then
+        adb_run pull "$UI_FAILURE_SCREENSHOT" "$output_dir/locklock-ui-failure.png" \
+            > "$output_dir/locklock-ui-screenshot-pull.log" 2>&1 || true
+    else
+        printf 'Skipped UI failure screenshot larger than 5000000 bytes (size=%s).\n' \
+            "${screenshot_size:-unknown}" > "$output_dir/locklock-ui-screenshot-pull.log"
+    fi
+fi
+if adb_run shell test -s "$UI_FAILURE_HIERARCHY" >/dev/null 2>&1; then
+    capture_bounded "$output_dir/locklock-ui-failure.xml" shell cat "$UI_FAILURE_HIERARCHY"
+fi
 
 if [[ "$instrumentation_status" -eq 0 ]] &&
     ! grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
         "$output_dir/instrumentation.log" &&
     grep -Fq 'LOCKLOCK_LIFECYCLE result=PASS' "$output_dir/logcat.txt" &&
-    grep -Fq 'LOCKLOCK_ACCESSIBILITY result=PASS' "$output_dir/logcat.txt"; then
+    grep -Fq 'LOCKLOCK_ACCESSIBILITY result=PASS' "$output_dir/logcat.txt" &&
+    grep -Fq 'LOCKLOCK_UI result=PASS' "$output_dir/logcat.txt"; then
     result="PASS"
 else
     result="FAIL"
@@ -130,6 +147,7 @@ fi
         "${serial:-default}" "$apk_path" "$test_apk_path"
     printf 'instrumentation_status=%s\nresult=%s\n' "$instrumentation_status" "$result"
     printf 'diagnostics=logcat.txt,activity-stack.txt,accessibility.txt,device-properties.txt\n'
+    printf 'ui_diagnostics=locklock-ui-failure.png,locklock-ui-failure.xml\n'
 } | tee "$output_dir/result.txt"
 
 if [[ "$result" != "PASS" ]]; then

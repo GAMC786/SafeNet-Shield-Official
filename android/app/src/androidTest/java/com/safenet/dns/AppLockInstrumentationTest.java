@@ -5,28 +5,39 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import android.app.Activity;
 import android.app.UiAutomation;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.Until;
 
 import com.getcapacitor.JSObject;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @RunWith(AndroidJUnit4.class)
 public class AppLockInstrumentationTest {
@@ -35,18 +46,34 @@ public class AppLockInstrumentationTest {
     private static final String PIN = "2468";
     private static final String RESET_PIN = "1357";
     private static final long WAIT_TIMEOUT_MS = 15_000L;
+    private static final long UI_TIMEOUT_MS = 10_000L;
+    private static final String UI_FAILURE_SCREENSHOT =
+            "/data/local/tmp/safenet-locklock-ui-failure.png";
+    private static final String UI_FAILURE_HIERARCHY =
+            "/data/local/tmp/safenet-locklock-ui-failure.xml";
 
     private final Context context =
             InstrumentationRegistry.getInstrumentation().getTargetContext();
     private final UiAutomation automation =
             InstrumentationRegistry.getInstrumentation().getUiAutomation();
+    private final UiDevice device =
+            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
     private String originalAccessibilityServices;
     private String originalAccessibilityEnabled;
+
+    @Rule
+    public final TestWatcher uiDiagnostics = new TestWatcher() {
+        @Override
+        protected void failed(Throwable error, Description description) {
+            captureUiDiagnostics(description.getMethodName());
+        }
+    };
 
     @Before
     public void resetLockLockState() throws Exception {
         originalAccessibilityServices = secureSetting("enabled_accessibility_services");
         originalAccessibilityEnabled = secureSetting("accessibility_enabled");
+        disableLockLockAccessibilityService();
         disableDeviceAdminIfPresent();
         context.getSharedPreferences("safenet_locklock", Context.MODE_PRIVATE)
                 .edit()
@@ -74,6 +101,74 @@ public class AppLockInstrumentationTest {
         );
         shell("am force-stop " + context.getPackageName());
         shell("am force-stop " + SETTINGS_PACKAGE);
+    }
+
+    @Test
+    public void lockLockActivityDrivesSetupRecoveryAndDisableUi() throws Exception {
+        Activity setupActivity = launchLockLock(AppLockManager.MODE_SETUP);
+        List<UiObject2> setupFields = waitForFields(4);
+        fill(setupFields.get(0), PIN);
+        fill(setupFields.get(1), "0000");
+        scrollToText("Save passcode and enable LockLock").click();
+        assertVisibleText("The passcodes do not match.");
+
+        scrollToTop();
+        fill(setupFields.get(1), PIN);
+        scrollToText("Save passcode and enable LockLock").click();
+        assertVisibleText("A recovery question and answer are required.");
+
+        scrollToTop();
+        fill(setupFields.get(2), "What is the recovery answer?");
+        fill(setupFields.get(3), "offline answer");
+        scrollToText("Save passcode and enable LockLock").click();
+        assertVisibleText(
+                "Passcode saved. Enable LockLock Accessibility to monitor SafeNet launches."
+        );
+        assertTrue("Setup must enable LockLock protection.", AppLockManager.isEnabled(context));
+
+        scrollToText("Open Accessibility Settings").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        device.pressBack();
+        assertVisibleText("Open Accessibility Settings");
+        scrollToText("Open Device Administrator Settings").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        device.pressBack();
+        assertVisibleText("Open Device Administrator Settings");
+        finishActivity(setupActivity);
+
+        Activity unlockActivity = launchLockLock(AppLockManager.MODE_UNLOCK);
+        scrollToText("Forgot passcode").click();
+        assertVisibleText("Recover your passcode");
+        assertVisibleText("What is the recovery answer?");
+
+        List<UiObject2> recoveryFields = waitForFields(3);
+        fill(recoveryFields.get(0), "wrong answer");
+        fill(recoveryFields.get(1), RESET_PIN);
+        fill(recoveryFields.get(2), RESET_PIN);
+        scrollToText("Reset passcode").click();
+        assertVisibleText("Recovery answer is incorrect.");
+
+        scrollToTop();
+        fill(recoveryFields.get(0), "offline answer");
+        scrollToText("Reset passcode").click();
+        assertVisibleText("Passcode reset successfully.");
+        assertTrue("The reset PIN must be accepted after the visible success state.",
+                AppLockManager.verifyPin(context, RESET_PIN).success);
+        finishActivity(unlockActivity);
+
+        Activity disableActivity = launchLockLock(AppLockManager.MODE_DISABLE);
+        List<UiObject2> disableFields = waitForFields(1);
+        fill(disableFields.get(0), RESET_PIN);
+        scrollToText("Disable protection").click();
+        assertVisibleText("LockLock protection disabled.");
+        waitForActivityToFinish(disableActivity);
+        assertFalse("Disable flow must turn off LockLock protection.",
+                AppLockManager.isEnabled(context));
+        Log.i(
+                TAG,
+                "LOCKLOCK_UI result=PASS setup=PASS recovery_incorrect=PASS " +
+                        "recovery_reset=PASS disable=PASS"
+        );
     }
 
     @Test
@@ -162,6 +257,148 @@ public class AppLockInstrumentationTest {
                 countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
         );
         Log.i(TAG, "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1");
+    }
+
+    private Activity launchLockLock(String mode) throws Exception {
+        Intent intent = new Intent(context, LockLockActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                .putExtra(AppLockManager.EXTRA_MODE, mode)
+                .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, context.getPackageName());
+        Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
+        waitForButton(AppLockManager.MODE_SETUP.equals(mode)
+                ? "Save passcode and enable LockLock"
+                : AppLockManager.MODE_DISABLE.equals(mode)
+                    ? "Disable protection"
+                    : "Unlock SafeNet");
+        return activity;
+    }
+
+    private List<UiObject2> waitForFields(int minimum) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + UI_TIMEOUT_MS;
+        List<UiObject2> fields;
+        do {
+            fields = device.findObjects(By.clazz("android.widget.EditText"));
+            if (fields.size() >= minimum) {
+                return fields;
+            }
+            SystemClock.sleep(100L);
+        } while (SystemClock.uptimeMillis() < deadline);
+        throw new AssertionError(
+                "Expected at least " + minimum + " LockLock fields, found " + fields.size()
+        );
+    }
+
+    private void fill(UiObject2 field, String value) {
+        field.setText(value);
+    }
+
+    private UiObject2 waitForButton(String text) throws Exception {
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(text) + "$", Pattern.CASE_INSENSITIVE);
+        UiObject2 button = device.wait(
+                Until.findObject(By.text(pattern)),
+                UI_TIMEOUT_MS
+        );
+        if (button == null) {
+            throw new AssertionError("LockLock button did not appear: " + text);
+        }
+        return button;
+    }
+
+    private UiObject2 assertVisibleText(String text) throws Exception {
+        UiObject2 object = scrollToText(text);
+        assertNotNull("Expected visible LockLock text: " + text, object);
+        return object;
+    }
+
+    private UiObject2 scrollToText(String text) throws Exception {
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(text) + "$", Pattern.CASE_INSENSITIVE);
+        long deadline = SystemClock.uptimeMillis() + UI_TIMEOUT_MS;
+        while (SystemClock.uptimeMillis() < deadline) {
+            UiObject2 object = device.findObject(By.text(pattern));
+            if (object != null && !object.getVisibleBounds().isEmpty()) {
+                return object;
+            }
+            device.swipe(
+                    device.getDisplayWidth() / 2,
+                    (int) (device.getDisplayHeight() * 0.78),
+                    device.getDisplayWidth() / 2,
+                    (int) (device.getDisplayHeight() * 0.28),
+                    12
+            );
+            SystemClock.sleep(100L);
+        }
+        throw new AssertionError("LockLock text did not become visible: " + text);
+    }
+
+    private void scrollToTop() {
+        for (int attempt = 0; attempt < 8; attempt++) {
+            device.swipe(
+                    device.getDisplayWidth() / 2,
+                    (int) (device.getDisplayHeight() * 0.25),
+                    device.getDisplayWidth() / 2,
+                    (int) (device.getDisplayHeight() * 0.82),
+                    12
+            );
+            SystemClock.sleep(75L);
+        }
+    }
+
+    private void waitForPackage(String packageName) throws Exception {
+        waitFor(
+                packageName + " to become foreground",
+                () -> packageName.equals(device.getCurrentPackageName())
+        );
+    }
+
+    private void finishActivity(Activity activity) throws Exception {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
+        waitForActivityToFinish(activity);
+    }
+
+    private void waitForActivityToFinish(Activity activity) throws Exception {
+        waitFor("LockLock activity to finish", activity::isFinishing);
+    }
+
+    private void disableLockLockAccessibilityService() throws Exception {
+        String service = new ComponentName(
+                context,
+                LockLockAccessibilityService.class
+        ).flattenToString();
+        String configured = originalAccessibilityServices;
+        if (configured == null || configured.isEmpty() || "null".equals(configured)) {
+            return;
+        }
+        StringBuilder remaining = new StringBuilder();
+        for (String entry : configured.split(":")) {
+            if (!service.equalsIgnoreCase(entry)) {
+                if (remaining.length() > 0) {
+                    remaining.append(':');
+                }
+                remaining.append(entry);
+            }
+        }
+        if (remaining.length() == 0) {
+            shell("settings delete secure enabled_accessibility_services");
+            shell("settings put secure accessibility_enabled 0");
+        } else {
+            shell("settings put secure enabled_accessibility_services " + remaining);
+        }
+    }
+
+    private void captureUiDiagnostics(String methodName) {
+        try {
+            shell("rm -f " + UI_FAILURE_SCREENSHOT + " " + UI_FAILURE_HIERARCHY);
+            shell("screencap -p " + UI_FAILURE_SCREENSHOT);
+            shell("uiautomator dump --compressed " + UI_FAILURE_HIERARCHY);
+            Log.e(
+                    TAG,
+                    "LOCKLOCK_UI_DIAGNOSTICS method=" + methodName +
+                            " screenshot=" + UI_FAILURE_SCREENSHOT +
+                            " hierarchy=" + UI_FAILURE_HIERARCHY
+            );
+        } catch (Exception diagnosticError) {
+            Log.e(TAG, "LOCKLOCK_UI_DIAGNOSTICS capture_failed", diagnosticError);
+        }
     }
 
     private void enableAccessibilityService() throws Exception {
