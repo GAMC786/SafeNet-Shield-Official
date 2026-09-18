@@ -356,6 +356,10 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("credentialSource", snapshot.credentialSource);
         result.put("proxyHost", snapshot.proxyHost);
         result.put("proxyPort", snapshot.proxyPort);
+        result.put("httpProxyPort", snapshot.httpProxyPort);
+        result.put("socksProxyPort", snapshot.socksProxyPort);
+        result.put("httpProxySupported", snapshot.httpProxyPort > 0);
+        result.put("socksProxySupported", snapshot.socksProxyPort > 0);
         result.put("groupOwner", snapshot.groupOwner);
         result.put("permissionGranted", tetherPermissionGranted());
         result.put("lastError", snapshot.lastError);
