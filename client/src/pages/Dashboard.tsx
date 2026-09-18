@@ -1,11 +1,12 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
+import { useDnsProtection } from "@/hooks/use-vpn";
 import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -24,10 +26,36 @@ export default function Dashboard() {
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
+  const dnsProtection = useDnsProtection();
+  const { toast } = useToast();
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected = isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
   
   const activeDns = dnsServers?.find(s => s.isActive);
+
+  const handleDnsVpnToggle = async () => {
+    if (!activeDns || !dnsProtection.supported || dnsProtection.isBusy) return;
+    try {
+      const nextStatus = dnsProtection.status?.running
+        ? await dnsProtection.stop()
+        : await dnsProtection.start(activeDns);
+      if (nextStatus?.error) {
+        toast({
+          title: "Android DNS VPN could not be changed",
+          description: nextStatus.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Android DNS VPN could not be changed",
+        description: error instanceof Error
+          ? error.message
+          : "Android did not grant DNS filtering access.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -116,6 +144,54 @@ export default function Dashboard() {
               {activeDns?.type || "N/A"}
             </Badge>
           </div>
+        </div>
+      </CyberCard>
+
+      <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Power className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
+              <Badge
+                variant="outline"
+                className={dnsProtection.status?.running
+                  ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
+                  : "border-primary/30 text-xs text-primary"}
+              >
+                {dnsProtection.status?.running ? "ON" : "OFF"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {dnsProtection.status?.error
+                || (!dnsProtection.supported
+                  ? "Android app only"
+                  : activeDns
+                    ? "Filter device DNS requests through the selected resolver."
+                    : "Select an active DNS resolver before enabling the VPN.")}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleDnsVpnToggle()}
+            disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
+            aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
+            aria-pressed={dnsProtection.status?.running === true}
+            data-testid="button-android-dns-vpn"
+            className={`h-16 w-16 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider transition-colors ${
+              dnsProtection.status?.running
+                ? "border-emerald-400 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
+                : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/15"
+            }`}
+          >
+            <span className="flex flex-col items-center gap-1">
+              {dnsProtection.isBusy
+                ? <Loader2 className="h-5 w-5 animate-spin" />
+                : <Power className="h-5 w-5" />}
+              <span>{dnsProtection.status?.running ? "ON" : "OFF"}</span>
+            </span>
+          </Button>
         </div>
       </CyberCard>
 

@@ -346,14 +346,19 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("the Dashboard does not expose an Android VPN control", () => {
-  assert.doesNotMatch(dashboardSource, /WireGuard|VPN|EULA|VpnService/);
+test("the Dashboard exposes only the Android DNS VPN control", () => {
+  assert.match(dashboardSource, /Android DNS VPN/);
+  assert.match(dashboardSource, /button-android-dns-vpn/);
+  assert.doesNotMatch(dashboardSource, /WireGuard|EULA|VpnService/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
 
 test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dashboardSource, /DNS Resolver Active/);
   assert.match(dashboardSource, /text-emerald-300/);
+  assert.match(dashboardSource, /Android DNS VPN/);
+  assert.match(dashboardSource, /button-android-dns-vpn/);
+  assert.match(dashboardSource, /handleDnsVpnToggle/);
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
