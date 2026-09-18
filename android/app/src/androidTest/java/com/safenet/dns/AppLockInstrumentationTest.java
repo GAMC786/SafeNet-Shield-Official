@@ -10,6 +10,10 @@ import android.app.UiAutomation;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
@@ -34,6 +38,8 @@ import org.junit.runner.RunWith;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -43,6 +49,7 @@ import java.util.regex.Pattern;
 public class AppLockInstrumentationTest {
     private static final String TAG = "SafeNetLockLockTest";
     private static final String SETTINGS_PACKAGE = "com.android.settings";
+    private static final String TEST_PACKAGE_NAME = "com.safenet.dns.test";
     private static final String PIN = "2468";
     private static final String RESET_PIN = "1357";
     private static final long WAIT_TIMEOUT_MS = 15_000L;
@@ -73,8 +80,10 @@ public class AppLockInstrumentationTest {
     public void resetLockLockState() throws Exception {
         originalAccessibilityServices = secureSetting("enabled_accessibility_services");
         originalAccessibilityEnabled = secureSetting("accessibility_enabled");
-        disableLockLockAccessibilityService();
-        disableDeviceAdminIfPresent();
+        if (!isPhysicalDeviceRun()) {
+            disableLockLockAccessibilityService();
+            disableDeviceAdminIfPresent();
+        }
         context.getSharedPreferences("safenet_locklock", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
@@ -91,14 +100,16 @@ public class AppLockInstrumentationTest {
                 .edit()
                 .clear()
                 .commit();
-        restoreSecureSetting(
-                "enabled_accessibility_services",
-                originalAccessibilityServices
-        );
-        restoreSecureSetting(
-                "accessibility_enabled",
-                originalAccessibilityEnabled
-        );
+        if (!isPhysicalDeviceRun()) {
+            restoreSecureSetting(
+                    "enabled_accessibility_services",
+                    originalAccessibilityServices
+            );
+            restoreSecureSetting(
+                    "accessibility_enabled",
+                    originalAccessibilityEnabled
+            );
+        }
         shell("am force-stop " + context.getPackageName());
         shell("am force-stop " + SETTINGS_PACKAGE);
     }
@@ -259,6 +270,89 @@ public class AppLockInstrumentationTest {
         Log.i(TAG, "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1");
     }
 
+    @Test
+    public void physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities()
+            throws Exception {
+        assertTrue(
+                "The physical-device test must be invoked with physical_device=true.",
+                isPhysicalDeviceRun()
+        );
+
+        String targetPackage = resolvePhysicalTargetPackage();
+        ApplicationInfo targetInfo = context.getPackageManager()
+                .getApplicationInfo(targetPackage, PackageManager.GET_META_DATA);
+        assertFalse(
+                "The selected LockLock target must be a third-party app: " + targetPackage,
+                (targetInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0
+        );
+        Intent launchIntent = context.getPackageManager()
+                .getLaunchIntentForPackage(targetPackage);
+        assertNotNull(
+                "The selected third-party app must have a launcher activity: " + targetPackage,
+                launchIntent
+        );
+        ComponentName launchComponent = launchIntent.getComponent();
+        assertNotNull("The selected app launcher component must be resolvable.", launchComponent);
+
+        AppLockManager.configure(
+                context,
+                PIN,
+                "What is the recovery answer?",
+                "offline answer"
+        );
+        AppLockManager.setAntiUninstallEnabled(context, true);
+        Set<String> lockedPackages = new HashSet<>();
+        lockedPackages.add(context.getPackageName());
+        lockedPackages.add(targetPackage);
+        AppLockManager.setLockedPackages(context, lockedPackages);
+        AppLockManager.setEnabled(context, true);
+        AppLockManager.clearSession();
+
+        boolean accessibilityEnabled = AppLockManager.isAccessibilityEnabled(context);
+        boolean deviceAdminEnabled = AppLockManager.isDeviceAdminEnabled(context);
+        assertTrue(
+                "Enable LockLock Accessibility in Android Settings before this physical check.",
+                accessibilityEnabled
+        );
+        assertTrue(
+                "Enable LockLock Device Administrator in Android Settings before this physical check.",
+                deviceAdminEnabled
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS accessibility=" +
+                        accessibilityEnabled + " device_admin=" + deviceAdminEnabled +
+                        " device_model=" + deviceModel() + " target_package=" + targetPackage
+        );
+
+        for (int cycle = 0; cycle < 3; cycle++) {
+            AppLockManager.clearSession();
+            shell("am force-stop " + targetPackage);
+            shell("am start -W -n " + launchComponent.flattenToShortString());
+            waitForLockActivity();
+            waitForButton("Unlock SafeNet");
+            Log.i(
+                    TAG,
+                    "LOCKLOCK_PHYSICAL_APP cycle=" + (cycle + 1) +
+                            " target_package=" + targetPackage + " result=PASS"
+            );
+        }
+
+        String activities = shell("dumpsys activity activities");
+        assertEquals(
+                "Repeated physical-app foreground events must keep one LockLockActivity record.\n"
+                        + activities,
+                1,
+                countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL result=PASS device_model=" + deviceModel() +
+                        " target_package=" + targetPackage +
+                        " accessibility=true device_admin=true activity_records=1"
+        );
+    }
+
     private Activity launchLockLock(String mode) throws Exception {
         Intent intent = new Intent(context, LockLockActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -302,6 +396,54 @@ public class AppLockInstrumentationTest {
             throw new AssertionError("LockLock button did not appear: " + text);
         }
         return button;
+    }
+
+    private boolean isPhysicalDeviceRun() {
+        return "true".equalsIgnoreCase(instrumentationArgument("physical_device"));
+    }
+
+    private String resolvePhysicalTargetPackage() throws Exception {
+        String configured = instrumentationArgument("target_package");
+        if (configured != null && !configured.isEmpty()) {
+            assertFalse(
+                    "The selected physical app cannot be SafeNet or the instrumentation package.",
+                    context.getPackageName().equals(configured)
+                            || TEST_PACKAGE_NAME.equals(configured)
+                            || SETTINGS_PACKAGE.equals(configured)
+            );
+            return configured;
+        }
+
+        List<String> candidates = new ArrayList<>();
+        PackageManager packageManager = context.getPackageManager();
+        for (ApplicationInfo applicationInfo :
+                packageManager.getInstalledApplications(PackageManager.GET_META_DATA)) {
+            if (context.getPackageName().equals(applicationInfo.packageName)
+                    || TEST_PACKAGE_NAME.equals(applicationInfo.packageName)
+                    || SETTINGS_PACKAGE.equals(applicationInfo.packageName)
+                    || (applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0
+                    || packageManager.getLaunchIntentForPackage(applicationInfo.packageName) == null) {
+                continue;
+            }
+            candidates.add(applicationInfo.packageName);
+        }
+        Collections.sort(candidates);
+        assertFalse(
+                "The physical phone must have an installed third-party launcher app, or pass "
+                        + "-e target_package PACKAGE.",
+                candidates.isEmpty()
+        );
+        return candidates.get(0);
+    }
+
+    private String instrumentationArgument(String key) {
+        Bundle arguments = InstrumentationRegistry.getInstrumentation().getArguments();
+        return arguments == null ? null : arguments.getString(key);
+    }
+
+    private String deviceModel() {
+        return (Build.MANUFACTURER + "_" + Build.MODEL + "_android_" + Build.VERSION.RELEASE)
+                .replaceAll("[^A-Za-z0-9_.-]", "_");
     }
 
     private UiObject2 assertVisibleText(String text) throws Exception {

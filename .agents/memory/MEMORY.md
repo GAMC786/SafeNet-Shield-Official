@@ -43,6 +43,7 @@
 - [Replit analytics cold-load delivery](replit-analytics-cold-load.md) — async tracker injection can drop return events fired during the first Settings mount; queue them before relying on published analytics.
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
+- [Workflow dispatch input budget](workflow-dispatch-input-budget.md) — GitHub workflow_dispatch allows at most ten inputs; reuse an existing gate or move settings before adding another.
 - [Android physical connectivity recovery](android-physical-connectivity-recovery.md) — physical phones must use public resolvers; classify missing or emulated targets as access blocks.
  - [Android call-screening role fallback](android-call-screening-role-fallback.md) — role requests need a default-app settings fallback and must return the post-settings role state.
  - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.

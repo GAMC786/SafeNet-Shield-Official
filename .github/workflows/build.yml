@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       android_startup_validation:
-        description: "Run the signed APK startup handoff check on the dedicated Android runner"
+        description: "Run signed APK startup and physical LockLock selected-app checks"
         required: true
         default: false
         type: boolean
@@ -2326,6 +2326,128 @@ jobs:
         with:
           name: SafeNet-DNS-Android-app-lock-evidence
           path: android/app/build/reports/android-app-lock/latest
+          if-no-files-found: warn
+
+  android-app-lock-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_startup_validation == true
+    runs-on: [self-hosted, linux, x64, android-physical-device]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-app-lock-physical
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android platform tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install and verify pinned Android SDK
+        shell: bash
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Download signed release APK from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download signed instrumentation APK from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run LockLock selected-app proof on physical phone
+        id: android-app-lock-physical-check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$PATH"
+          adb start-server
+          serial="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')"
+          if [[ -z "$serial" ]]; then
+            mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            {
+              echo "result=BLOCKED"
+              echo "failure_class=DEVICE_ACCESS"
+              echo "failure_category=NO_PHYSICAL_PHONE"
+              echo "message=No ready physical Android phone was attached to the LockLock runner."
+            } > "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/result.txt"
+            adb devices > "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/adb-devices.txt" 2>&1 || true
+            exit 0
+          fi
+          bash ./scripts/android-app-lock-device-test.sh \
+            --physical \
+            --serial "$serial" \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          status=$?
+          printf 'workflow_exit_status=%s\n' "$status" \
+            >> "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/workflow-result.txt"
+          exit "$status"
+
+      - name: Publish physical LockLock summary
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.android-app-lock-physical-check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          result_file="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/result.txt"
+          result="$(sed -n 's/^result=//p' "$result_file" 2>/dev/null | head -n 1)"
+          result="${result:-NOT_RECORDED}"
+          model="$(sed -n 's/^device_model=//p' "$result_file" 2>/dev/null | head -n 1)"
+          model="${model:-NOT_RECORDED}"
+          target="$(sed -n 's/^target_package=//p' "$result_file" 2>/dev/null | head -n 1)"
+          target="${target:-NOT_RECORDED}"
+          accessibility="$(sed -n 's/^accessibility_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+          accessibility="${accessibility:-NOT_RECORDED}"
+          device_admin="$(sed -n 's/^device_admin_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+          device_admin="${device_admin:-NOT_RECORDED}"
+          {
+            echo "## LockLock physical-device verification"
+            echo
+            echo "- **Result:** \`$result\`"
+            echo "- **Device model:** \`$model\`"
+            echo "- **Selected third-party package:** \`$target\`"
+            echo "- **Accessibility enabled:** \`$accessibility\`"
+            echo "- **Device Administrator enabled:** \`$device_admin\`"
+            echo "- **Permission boundary:** Both permissions are enabled through Android Settings on the phone before the check."
+            echo "- **Coverage:** three launches of the selected app, LockLock screen visibility, and one-activity duplicate prevention"
+            echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence:** download the physical-device artifact from this run"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$result" == "FAIL" ]]; then
+            echo "::error::Physical LockLock selected-app verification failed."
+            exit 1
+          elif [[ "$result" == "BLOCKED" ]]; then
+            echo "::warning::Physical LockLock verification was blocked because the phone runner was unavailable."
+          fi
+
+      - name: Upload physical LockLock evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-app-lock-physical-evidence
+          path: android/app/build/reports/android-app-lock-physical
           if-no-files-found: warn
 
   android-ai-shield-physical:
