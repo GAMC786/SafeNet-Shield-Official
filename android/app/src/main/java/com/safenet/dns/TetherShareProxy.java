@@ -496,6 +496,13 @@ final class TetherShareProxy {
         } catch (UnknownHostException ignored) {
             // Resolve below using the selected backhaul.
         }
+        // When SafeNet's DNS-only VPN is active, resolve through the system
+        // resolver first so its DNS policy can reject blocked hostnames. The
+        // resulting socket is still bound to the physical backhaul below;
+        // the DNS VPN is not used as a second full-tunnel proxy.
+        if (SafeNetDnsVpnService.isRunning()) {
+            return InetAddress.getAllByName(host);
+        }
         if (network != null) {
             try {
                 return network.getAllByName(host);

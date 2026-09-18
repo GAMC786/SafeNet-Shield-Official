@@ -12,26 +12,11 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Provides the no-root Wi-Fi Direct and HTTP proxy portion of Internet Share.
@@ -41,8 +26,9 @@ import java.util.concurrent.Executors;
  * is also the model used by TetherFuseNet.
  */
 final class TetherShareManager {
-    static final int PROXY_PORT = 8080;
-    static final String PROXY_HOST = "192.168.49.1";
+    static final int PROXY_PORT = TetherShareProxy.HTTP_PORT;
+    static final int SOCKS_PROXY_PORT = TetherShareProxy.SOCKS_PORT;
+    static final String PROXY_HOST = TetherShareProxy.PROXY_HOST;
 
     static final class DeviceSnapshot {
         final String name;
@@ -62,6 +48,8 @@ final class TetherShareManager {
         final String credentialSource;
         final String proxyHost;
         final int proxyPort;
+        final int httpProxyPort;
+        final int socksProxyPort;
         final boolean groupOwner;
         final String lastError;
         final List<DeviceSnapshot> devices;
@@ -74,6 +62,8 @@ final class TetherShareManager {
             String credentialSource,
             String proxyHost,
             int proxyPort,
+            int httpProxyPort,
+            int socksProxyPort,
             boolean groupOwner,
             String lastError,
             List<DeviceSnapshot> devices
@@ -85,6 +75,8 @@ final class TetherShareManager {
             this.credentialSource = credentialSource;
             this.proxyHost = proxyHost;
             this.proxyPort = proxyPort;
+            this.httpProxyPort = httpProxyPort;
+            this.socksProxyPort = socksProxyPort;
             this.groupOwner = groupOwner;
             this.lastError = lastError;
             this.devices = devices;
@@ -97,6 +89,10 @@ final class TetherShareManager {
     private static final String CREDENTIAL_SOURCE_ANDROID_SETTINGS = "ANDROID_SETTINGS";
     private static final char[] CREDENTIAL_ALPHABET =
         "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789".toCharArray();
+    private static final int MAX_BUSY_RETRIES = 3;
+    private static final long BUSY_RETRY_DELAY_MS = 500L;
+    private static final long GROUP_INFO_RETRY_DELAY_MS = 400L;
+    private static final long STATUS_REFRESH_DELAY_MS = 1_500L;
 
     static synchronized TetherShareManager get(Context context) {
         if (instance == null) {
@@ -107,13 +103,12 @@ final class TetherShareManager {
 
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService proxyExecutor = Executors.newCachedThreadPool();
-    private final Set<Socket> clientSockets = ConcurrentHashMap.newKeySet();
+    private final TetherShareProxy proxy;
     private WifiP2pManager wifiP2pManager;
     private WifiP2pManager.Channel wifiChannel;
-    private ServerSocket proxyServer;
     private volatile boolean running;
     private volatile boolean starting;
+    private volatile int lifecycleGeneration;
     private volatile String networkName;
     private volatile String passphrase;
     private volatile String appDefinedNetworkName;
@@ -124,6 +119,7 @@ final class TetherShareManager {
 
     private TetherShareManager(Context context) {
         this.context = context;
+        this.proxy = new TetherShareProxy(context, message -> lastError = message);
     }
 
     synchronized void start() {
