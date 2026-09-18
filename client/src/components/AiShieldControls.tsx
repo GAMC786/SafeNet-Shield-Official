@@ -130,10 +130,12 @@ export function AiShieldControls() {
             </p>
           </div>
         </div>
-        <Badge variant="outline" className={presentation.className}>
-          <span className="mr-1.5">{presentation.icon}</span>
-          {presentation.label}
-        </Badge>
+        {shield.status?.state !== "capture_unavailable" && (
+          <Badge variant="outline" className={presentation.className}>
+            <span className="mr-1.5">{presentation.icon}</span>
+            {presentation.label}
+          </Badge>
+        )}
         {shield.status?.state === "capture_unavailable" && (
           <Badge
             variant="outline"
