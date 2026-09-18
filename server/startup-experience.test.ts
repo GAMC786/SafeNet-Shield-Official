@@ -349,6 +349,11 @@ test("Settings use the current package version and expose only current controls"
 test("the Dashboard exposes only the Android DNS VPN control", () => {
   assert.match(dashboardSource, /Android DNS VPN/);
   assert.match(dashboardSource, /button-android-dns-vpn/);
+  assert.match(
+    dashboardSource,
+    /const isProtected = dnsProtection\.supported[\s\S]*status\?\.running === true/,
+  );
+  assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
   assert.doesNotMatch(dashboardSource, /WireGuard|EULA|VpnService/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });

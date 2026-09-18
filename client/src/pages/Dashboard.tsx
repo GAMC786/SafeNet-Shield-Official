@@ -29,7 +29,9 @@ export default function Dashboard() {
   const dnsProtection = useDnsProtection();
   const { toast } = useToast();
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
-  const isProtected = isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
+  const isProtected = dnsProtection.supported
+    ? dnsProtection.status?.running === true
+    : isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
   
   const activeDns = dnsServers?.find(s => s.isActive);
 
