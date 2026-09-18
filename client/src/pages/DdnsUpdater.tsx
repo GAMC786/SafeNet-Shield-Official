@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
+import { useEffect, useRef, useState } from "react";
+import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater, useUpdateDdnsUpdaterWithIp } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -32,6 +32,7 @@ export default function DdnsUpdater() {
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
   const testUpdater = useTestDdnsUpdater();
+  const updateDdnsUpdaterWithIp = useUpdateDdnsUpdaterWithIp();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = usePersistentState("safenet-ddns-dialog-open", false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
@@ -46,6 +47,23 @@ export default function DdnsUpdater() {
     testedAt: number;
   }>>({});
   const activeDnsServer = dnsServers?.find((server) => server.isActive);
+  const lastPushedClientIp = useRef<Record<number, string>>({});
+
+  useEffect(() => {
+    const clientIp = publicIpData?.ip;
+    if (!clientIp || !updaters?.length) return;
+
+    const deviceManagedUpdaters = updaters.filter(
+      (updater) => updater.provider === "safenet" && updater.isEnabled !== false,
+    );
+    for (const updater of deviceManagedUpdaters) {
+      if (lastPushedClientIp.current[updater.id] === clientIp) continue;
+      lastPushedClientIp.current[updater.id] = clientIp;
+      void updateDdnsUpdaterWithIp.mutateAsync({ id: updater.id, clientIp }).catch(() => {
+        delete lastPushedClientIp.current[updater.id];
+      });
+    }
+  }, [publicIpData?.ip, updateDdnsUpdaterWithIp.mutateAsync, updaters]);
 
   const isAutoMode = Boolean(updaters?.length && updaters.every((updater) => updater.isEnabled !== false));
   const [isSwitchingToAuto, setIsSwitchingToAuto] = useState(false);
@@ -66,7 +84,7 @@ export default function DdnsUpdater() {
       toast({
         title: nextAutoMode ? "Automatic updates enabled" : "Automatic updates paused",
         description: nextAutoMode
-          ? "All configured DDNS resolvers will update automatically."
+          ? "SafeNet DDNS follows this device's public IP while this page is open; other resolvers use the hosted scheduler."
           : "DDNS provider updates are paused until auto mode is enabled again.",
       });
     } catch (error) {

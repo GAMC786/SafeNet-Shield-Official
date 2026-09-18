@@ -366,6 +366,14 @@ export async function checkAndUpdateDdns(
   for (const updater of updaters) {
     if (!updater.isEnabled || (targetUpdaterId !== undefined && updater.id !== targetUpdaterId)) continue;
 
+    // SafeNet DDNS represents the public IP of the device using the app.
+    // The hosted scheduler only knows the Replit server's public IP, so it
+    // must never overwrite a device-managed SafeNet record. SafeNet records
+    // are updated through the client-IP routes instead.
+    if (updater.provider.toLowerCase() === "safenet") {
+      continue;
+    }
+
     // Check if update is needed
     const lastUpdateSeconds = updater.lastUpdateTime
       ? Math.floor(new Date(updater.lastUpdateTime).getTime() / 1000)

@@ -494,8 +494,10 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       const { clientIp } = req.body;
-      const { checkAndUpdateDdns } = await import("./ddns-service");
-      const results = await checkAndUpdateDdns(clientIp, storage, id);
+      const { checkAndUpdateDdns, forceUpdateDdns } = await import("./ddns-service");
+      const results = typeof clientIp === "string" && clientIp.trim()
+        ? [await forceUpdateDdns(id, clientIp.trim(), storage)]
+        : await checkAndUpdateDdns(undefined, storage, id);
       const failures = results.filter((result) => !result.success);
       if (failures.length > 0) {
         return res.status(502).json({

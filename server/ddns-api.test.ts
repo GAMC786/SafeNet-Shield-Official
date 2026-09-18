@@ -283,6 +283,45 @@ test("DDNS scheduler writes to an elapsed provider interval independently of sta
   }
 });
 
+test("DDNS scheduler does not overwrite device-managed SafeNet records with the server IP", async () => {
+  const { checkAndUpdateDdns } = await import("./ddns-service");
+  const updater: DdnsUpdater = {
+    id: 9,
+    hostname: "ddns.example.test",
+    provider: "safenet",
+    apiKey: "",
+    customUrl: null,
+    lastIpAddress: "99.237.6.81",
+    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
+    lastFailureMessage: null,
+    lastFailureTime: null,
+    isEnabled: true,
+    updateInterval: 60000,
+  };
+  let providerRequests = 0;
+  let storageWrites = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerRequests += 1;
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    const results = await checkAndUpdateDdns("136.65.106.124", {
+      getDdnsUpdaters: async () => [updater],
+      updateDdnsIpInfo: async () => {
+        storageWrites += 1;
+        return updater;
+      },
+    });
+    assert.deepEqual(results, []);
+    assert.equal(providerRequests, 0);
+    assert.equal(storageWrites, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("DDNS updates skip an updater while its provider request is in flight", async () => {
   const { checkAndUpdateDdns } = await import("./ddns-service");
   const currentIp = "198.51.100.21";

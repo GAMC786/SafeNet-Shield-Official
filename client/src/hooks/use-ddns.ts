@@ -159,6 +159,26 @@ export function usePublicIp() {
       return getPublicIp();
     },
     staleTime: 60000,
+    refetchInterval: 60000,
+  });
+}
+
+export function useUpdateDdnsUpdaterWithIp() {
+  const reactQueryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, clientIp }: { id: number; clientIp: string }) => {
+      try {
+        return await apiRequest("POST", `/api/ddns/${id}/update`, { clientIp });
+      } catch (error) {
+        throw getDdnsUpdateError(error);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      void reactQueryClient.invalidateQueries({ queryKey: ["/api/ddns"] });
+      if (variables) {
+        void reactQueryClient.invalidateQueries({ queryKey: ["/api/ddns", variables.id] });
+      }
+    },
   });
 }
 
