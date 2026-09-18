@@ -415,13 +415,9 @@ public class SafeNetDnsDdnsInstrumentationTest {
             "updaters=await fetch('/api/ddns',{cache:'no-store'}).then(r=>r.json());" +
             "updater=updaters.find(u=>u.hostname===edited);" +
             "if(!updater)throw new Error('edited DDNS updater missing');" +
-            "const toggle=document.querySelector('[aria-label=\"'+edited+' On\"]');" +
-            "if(!toggle)throw new Error('DDNS toggle missing');" +
-            "toggle.click();" +
-            "await sleep(700);" +
-            "updaters=await fetch('/api/ddns',{cache:'no-store'}).then(r=>r.json());" +
-            "updater=updaters.find(u=>u.hostname===edited);" +
-            "if(!updater||updater.isEnabled!==false)throw new Error('DDNS toggle did not persist');" +
+            "const toggle=document.querySelector('[data-testid=\"switch-ddns-auto-mode\"]');" +
+            "if(!toggle||toggle.getAttribute('role')!=='switch'||!toggle.hasAttribute('aria-checked'))throw new Error('DDNS auto mode switch missing');" +
+            "if(document.querySelector('[aria-label=\"'+edited+' On\"]')||document.querySelector('[aria-label=\"'+edited+' Off\"]'))throw new Error('per-updater DDNS toggle should not be rendered');" +
             "const remove=document.querySelector('[aria-label=\"Delete '+edited+'\"]');" +
             "if(!remove)throw new Error('DDNS delete control missing');" +
             "window.confirm=()=>true;" +

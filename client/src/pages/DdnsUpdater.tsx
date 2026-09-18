@@ -245,24 +245,6 @@ export default function DdnsUpdater() {
     }
   };
 
-  const handleUpdaterToggle = async (updater: PublicDdnsUpdater) => {
-    const nextEnabled = updater.isEnabled === false;
-    try {
-      await updateUpdater.mutateAsync({
-        id: updater.id,
-        data: { isEnabled: nextEnabled },
-      });
-      toast({
-        title: `${updater.hostname} ${nextEnabled ? "enabled" : "disabled"}`,
-        description: nextEnabled
-          ? "This updater will run on its configured schedule."
-          : "This updater is paused until you enable it again.",
-      });
-    } catch {
-      // The mutation hook restores the previous state and reports the error.
-    }
-  };
-
   const handleDeleteUpdater = async (updater: PublicDdnsUpdater) => {
     if (!window.confirm(`Delete the DDNS updater for ${updater.hostname}?`)) return;
     try {
@@ -321,15 +303,13 @@ export default function DdnsUpdater() {
       </CyberCard>
 
       <div className="flex gap-2 justify-end mb-6">
-        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2">
-          <Switch
-            checked={isAutoMode}
-            onCheckedChange={() => void handleAutoModeToggle()}
-            disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
-            aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
-            data-testid="switch-ddns-auto-mode"
-          />
-        </div>
+        <Switch
+          checked={isAutoMode}
+          onCheckedChange={() => void handleAutoModeToggle()}
+          disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
+          aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
+          data-testid="switch-ddns-auto-mode"
+        />
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) resetForm();
@@ -607,23 +587,6 @@ export default function DdnsUpdater() {
                    {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
                    Test
                  </Button>
-                 <div
-                   className={cn(
-                     "flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border-2 px-2 font-semibold transition-all",
-                     updater.isEnabled
-                       ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
-                       : "border-primary/60 bg-primary/15 text-primary"
-                   )}
-                 >
-                   <Switch
-                     checked={updater.isEnabled ?? false}
-                     onCheckedChange={() => void handleUpdaterToggle(updater)}
-                     disabled={updateUpdater.isPending}
-                     aria-label={`${updater.hostname} ${updater.isEnabled ? "On" : "Off"}`}
-                     data-testid={`switch-ddns-${updater.id}`}
-                     className="h-10 w-16"
-                   />
-                 </div>
                 <Button
                   variant="outline"
                   size="sm"

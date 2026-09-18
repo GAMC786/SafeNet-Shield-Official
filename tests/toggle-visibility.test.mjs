@@ -662,56 +662,34 @@ for (const viewport of viewports) {
     await page.close();
   });
 
-  test(`DDNS toggle visibility and states at ${viewport.name} width`, async () => {
+  test(`DDNS auto mode switch visibility and state at ${viewport.name} width`, async () => {
     const page = await browser.newPage({ viewport });
     await mockApi(page);
     await page.goto(`${baseUrl}/ddns`);
     await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const activeToggle = page.getByRole("switch", { name: "home.example.com On" });
-    const inactiveToggle = page.getByRole("switch", { name: "backup.example.com Off" });
+    const switches = page.getByRole("switch");
+    assert.equal(await switches.count(), 1, "DDNS page should expose only the auto mode switch");
+    assert.equal(await page.getByRole("switch", { name: "home.example.com On" }).count(), 0);
+    assert.equal(await page.getByRole("switch", { name: "backup.example.com Off" }).count(), 0);
     const homeTestButton = page.getByTestId("button-test-ddns-1");
-    assert.equal(await activeToggle.getAttribute("aria-checked"), "true");
-    assert.equal(await inactiveToggle.getAttribute("aria-checked"), "false");
-
-    await activeToggle.click();
-    const enableHome = page.getByRole("switch", { name: "home.example.com Off" });
-    await enableHome.waitFor();
-    assert.equal(await enableHome.getAttribute("aria-checked"), "false");
-    assert.equal(await homeTestButton.isDisabled(), false, "manual DDNS verification remains available when auto updates are off");
-    assert.match(await homeTestButton.getAttribute("class"), /text-muted-foreground/);
-    await enableHome.click();
-    await page.getByRole("switch", { name: "home.example.com On" }).waitFor();
-    assert.match(await homeTestButton.getAttribute("class"), /text-sky-300/);
-
-    for (const [name, toggle] of [
-      ["active DDNS toggle", page.getByRole("switch", { name: "home.example.com On" })],
-      ["inactive DDNS toggle", page.getByRole("switch", { name: "backup.example.com Off" })],
-    ]) {
-      const box = await toggle.boundingBox();
-      assert.ok(box && box.width >= 44 && box.height >= 40, `${name} is too small to be visible`);
-      assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, `${name} is clipped`);
-      assert.notEqual(
-        await toggle.evaluate((element) => getComputedStyle(element).borderColor),
-        "rgba(0, 0, 0, 0)",
-        `${name} needs a visible border`,
-      );
-    }
 
     const autoMode = page.getByRole("switch", { name: "DDNS auto mode Off" });
     assert.equal(await autoMode.getAttribute("aria-checked"), "false");
+    const autoBox = await autoMode.boundingBox();
+    assert.ok(autoBox && autoBox.width >= 64 && autoBox.height >= 40, "auto mode switch is too small to be visible");
+    assert.ok(autoBox.x >= 0 && autoBox.x + autoBox.width <= viewport.width, "auto mode switch is clipped");
+    assert.equal(await homeTestButton.isDisabled(), false, "manual DDNS verification remains available");
     await autoMode.click();
     await page.getByRole("switch", { name: "DDNS auto mode On" }).waitFor();
     assert.equal(await page.getByRole("switch", { name: "DDNS auto mode On" }).getAttribute("aria-checked"), "true");
-    const enabledBackupToggle = page.getByRole("switch", { name: "backup.example.com On" });
-    await enabledBackupToggle.waitFor();
-    await focusWithKeyboard(page, enabledBackupToggle);
-    assert.equal(await enabledBackupToggle.evaluate((element) => element === document.activeElement), true);
+    await focusWithKeyboard(page, page.getByRole("switch", { name: "DDNS auto mode On" }));
+    assert.equal(await page.getByRole("switch", { name: "DDNS auto mode On" }).evaluate((element) => element === document.activeElement), true);
     assert.notEqual(
-      await enabledBackupToggle.evaluate((element) => getComputedStyle(element).boxShadow),
+      await page.getByRole("switch", { name: "DDNS auto mode On" }).evaluate((element) => getComputedStyle(element).boxShadow),
       "none",
-      "keyboard-focused DDNS toggles need a visible focus ring",
+      "keyboard-focused DDNS auto mode switch needs a visible focus ring",
     );
 
     await page.getByRole("button", { name: "Add DDNS" }).click();
