@@ -93,23 +93,73 @@ export default function Dashboard() {
         status={isProtected ? "active" : "unprotected"}
       />
 
-      <CyberCard className="col-span-1 flex flex-col items-center justify-center space-y-4 text-center sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-xl">
-        <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
-          <div className="flex items-center gap-2">
-            <Music className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Soundtrack</p>
-              <p className="text-xs text-muted-foreground">Keep the SafeNet soundtrack enabled</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Music className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Soundtrack</p>
+                <p className="text-xs text-muted-foreground">Keep SafeNet soundtrack enabled</p>
+              </div>
             </div>
+            <Switch
+              checked={soundtrack.enabled}
+              onCheckedChange={soundtrack.setEnabled}
+              aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
+              data-testid="switch-soundtrack"
+            />
           </div>
-          <Switch
-            checked={soundtrack.enabled}
-            onCheckedChange={soundtrack.setEnabled}
-            aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
-            data-testid="switch-soundtrack"
-          />
-        </div>
-      </CyberCard>
+        </CyberCard>
+
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Power className="h-4 w-4 shrink-0 text-primary" />
+                <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
+                <Badge
+                  variant="outline"
+                  className={dnsProtection.status?.running
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
+                    : "border-primary/30 text-xs text-primary"}
+                >
+                  {dnsProtection.status?.running ? "ON" : "OFF"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {dnsProtection.status?.error
+                  || (!dnsProtection.supported
+                    ? "Android app only"
+                    : activeDns
+                      ? "Filter device DNS requests through the selected resolver."
+                      : "Select an active DNS resolver first.")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleDnsVpnToggle()}
+              disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
+              aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
+              aria-pressed={dnsProtection.status?.running === true}
+              data-testid="button-android-dns-vpn"
+              className={`h-16 w-16 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider transition-colors ${
+                dnsProtection.status?.running
+                  ? "border-emerald-400 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
+                  : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/15"
+              }`}
+            >
+              <span className="flex flex-col items-center gap-1">
+                {dnsProtection.isBusy
+                  ? <Loader2 className="h-5 w-5 animate-spin" />
+                  : <Power className="h-5 w-5" />}
+                <span>{dnsProtection.status?.running ? "ON" : "OFF"}</span>
+              </span>
+            </Button>
+          </div>
+        </CyberCard>
+      </div>
 
       {/* Connection Status Bar */}
       <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
@@ -144,54 +194,6 @@ export default function Dashboard() {
               {activeDns?.type || "N/A"}
             </Badge>
           </div>
-        </div>
-      </CyberCard>
-
-      <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Power className="h-4 w-4 text-primary" />
-              <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
-              <Badge
-                variant="outline"
-                className={dnsProtection.status?.running
-                  ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
-                  : "border-primary/30 text-xs text-primary"}
-              >
-                {dnsProtection.status?.running ? "ON" : "OFF"}
-              </Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {dnsProtection.status?.error
-                || (!dnsProtection.supported
-                  ? "Android app only"
-                  : activeDns
-                    ? "Filter device DNS requests through the selected resolver."
-                    : "Select an active DNS resolver before enabling the VPN.")}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleDnsVpnToggle()}
-            disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
-            aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
-            aria-pressed={dnsProtection.status?.running === true}
-            data-testid="button-android-dns-vpn"
-            className={`h-16 w-16 shrink-0 rounded-full border-2 p-0 text-xs font-bold tracking-wider transition-colors ${
-              dnsProtection.status?.running
-                ? "border-emerald-400 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25"
-                : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/15"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              {dnsProtection.isBusy
-                ? <Loader2 className="h-5 w-5 animate-spin" />
-                : <Power className="h-5 w-5" />}
-              <span>{dnsProtection.status?.running ? "ON" : "OFF"}</span>
-            </span>
-          </Button>
         </div>
       </CyberCard>
 
