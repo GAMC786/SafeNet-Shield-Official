@@ -4,7 +4,7 @@ import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2, ExternalLink } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -321,16 +321,15 @@ export default function DdnsUpdater() {
       </CyberCard>
 
       <div className="flex gap-2 justify-end mb-6">
-        <Button
-          variant={isAutoMode ? "default" : "outline"}
-          onClick={() => void handleAutoModeToggle()}
-          disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
-          aria-pressed={isAutoMode}
-          className="flex items-center gap-2"
-        >
-          <Zap className="w-4 h-4" />
-          {isSwitchingToAuto ? "Switching..." : isAutoMode ? "Auto Mode On" : "Switch to Auto"}
-        </Button>
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2">
+          <Switch
+            checked={isAutoMode}
+            onCheckedChange={() => void handleAutoModeToggle()}
+            disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
+            aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
+            data-testid="switch-ddns-auto-mode"
+          />
+        </div>
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) resetForm();
@@ -608,22 +607,23 @@ export default function DdnsUpdater() {
                    {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
                    Test
                  </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleUpdaterToggle(updater)}
-                  disabled={updateUpdater.isPending}
-                   aria-label={`${updater.isEnabled ? "Turn Off" : "Turn On"} ${updater.hostname}`}
-                  aria-pressed={updater.isEnabled ?? false}
-                  className={cn(
-                    "min-h-10 flex-1 border-2 font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                    updater.isEnabled
-                      ? "border-amber-400/60 bg-amber-500/15 text-amber-200 hover:border-amber-300 hover:bg-amber-500/25"
-                      : "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/25"
-                  )}
-                >
-                   {updater.isEnabled ? "On" : "Off"}
-                </Button>
+                 <div
+                   className={cn(
+                     "flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border-2 px-2 font-semibold transition-all",
+                     updater.isEnabled
+                       ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                       : "border-primary/60 bg-primary/15 text-primary"
+                   )}
+                 >
+                   <Switch
+                     checked={updater.isEnabled ?? false}
+                     onCheckedChange={() => void handleUpdaterToggle(updater)}
+                     disabled={updateUpdater.isPending}
+                     aria-label={`${updater.hostname} ${updater.isEnabled ? "On" : "Off"}`}
+                     data-testid={`switch-ddns-${updater.id}`}
+                     className="h-10 w-16"
+                   />
+                 </div>
                 <Button
                   variant="outline"
                   size="sm"

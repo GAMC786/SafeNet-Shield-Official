@@ -639,7 +639,7 @@ for (const viewport of viewports) {
     await page.goto(`${baseUrl}/firewall`);
     await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
 
-    const ruleToggle = page.getByRole("button", { name: "Disable Block external DNS" });
+    const ruleToggle = page.getByRole("switch", { name: "Block external DNS On" });
     const ruleUpdate = page.waitForRequest((request) =>
       request.method() === "PATCH" && request.url().endsWith("/api/firewall/rules/1"),
     );
@@ -647,17 +647,17 @@ for (const viewport of viewports) {
     await ruleUpdate;
     await waitForDisabled(ruleToggle);
     assert.equal(await ruleToggle.isDisabled(), true, "firewall rule toggle should lock while saving");
-    await page.getByRole("button", { name: "Enable Block external DNS" }).waitFor();
+    await page.getByRole("switch", { name: "Block external DNS Off" }).waitFor();
 
     await page.getByRole("tab", { name: "Allow/Block URLs" }).click();
-    const domainToggle = page.getByRole("button", { name: "Disable ads.example.com" });
+    const domainToggle = page.getByRole("switch", { name: "ads.example.com On" });
     const blocklistUpdate = page.waitForRequest((request) =>
       request.method() === "PATCH" && request.url().endsWith("/api/blocklists/1"),
     );
     await domainToggle.click();
     await blocklistUpdate;
     await waitForDisabled(domainToggle);
-    await page.getByRole("button", { name: "Enable ads.example.com" }).waitFor();
+    await page.getByRole("switch", { name: "ads.example.com Off" }).waitFor();
 
     await page.close();
   });
@@ -669,25 +669,25 @@ for (const viewport of viewports) {
     await page.getByRole("heading", { name: "Dynamic DNS" }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const activeToggle = page.getByRole("button", { name: "Turn Off home.example.com" });
-    const inactiveToggle = page.getByRole("button", { name: "Turn On backup.example.com" });
+    const activeToggle = page.getByRole("switch", { name: "home.example.com On" });
+    const inactiveToggle = page.getByRole("switch", { name: "backup.example.com Off" });
     const homeTestButton = page.getByTestId("button-test-ddns-1");
-    assert.equal(await activeToggle.getAttribute("aria-pressed"), "true");
-    assert.equal(await inactiveToggle.getAttribute("aria-pressed"), "false");
+    assert.equal(await activeToggle.getAttribute("aria-checked"), "true");
+    assert.equal(await inactiveToggle.getAttribute("aria-checked"), "false");
 
     await activeToggle.click();
-    const enableHome = page.getByRole("button", { name: "Turn On home.example.com" });
+    const enableHome = page.getByRole("switch", { name: "home.example.com Off" });
     await enableHome.waitFor();
-    assert.equal(await enableHome.getAttribute("aria-pressed"), "false");
+    assert.equal(await enableHome.getAttribute("aria-checked"), "false");
     assert.equal(await homeTestButton.isDisabled(), false, "manual DDNS verification remains available when auto updates are off");
     assert.match(await homeTestButton.getAttribute("class"), /text-muted-foreground/);
     await enableHome.click();
-    await page.getByRole("button", { name: "Turn Off home.example.com" }).waitFor();
+    await page.getByRole("switch", { name: "home.example.com On" }).waitFor();
     assert.match(await homeTestButton.getAttribute("class"), /text-sky-300/);
 
     for (const [name, toggle] of [
-      ["active DDNS toggle", page.getByRole("button", { name: "Turn Off home.example.com" })],
-      ["inactive DDNS toggle", page.getByRole("button", { name: "Turn On backup.example.com" })],
+      ["active DDNS toggle", page.getByRole("switch", { name: "home.example.com On" })],
+      ["inactive DDNS toggle", page.getByRole("switch", { name: "backup.example.com Off" })],
     ]) {
       const box = await toggle.boundingBox();
       assert.ok(box && box.width >= 44 && box.height >= 40, `${name} is too small to be visible`);
@@ -699,12 +699,12 @@ for (const viewport of viewports) {
       );
     }
 
-    const autoMode = page.getByRole("button", { name: "Switch to Auto" });
-    assert.equal(await autoMode.getAttribute("aria-pressed"), "false");
+    const autoMode = page.getByRole("switch", { name: "DDNS auto mode Off" });
+    assert.equal(await autoMode.getAttribute("aria-checked"), "false");
     await autoMode.click();
-    await page.getByRole("button", { name: "Auto Mode On" }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "Auto Mode On" }).getAttribute("aria-pressed"), "true");
-    const enabledBackupToggle = page.getByRole("button", { name: "Turn Off backup.example.com" });
+    await page.getByRole("switch", { name: "DDNS auto mode On" }).waitFor();
+    assert.equal(await page.getByRole("switch", { name: "DDNS auto mode On" }).getAttribute("aria-checked"), "true");
+    const enabledBackupToggle = page.getByRole("switch", { name: "backup.example.com On" });
     await enabledBackupToggle.waitFor();
     await focusWithKeyboard(page, enabledBackupToggle);
     assert.equal(await enabledBackupToggle.evaluate((element) => element === document.activeElement), true);

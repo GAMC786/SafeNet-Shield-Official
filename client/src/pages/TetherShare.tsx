@@ -377,7 +377,7 @@ export default function TetherShare() {
           <div className="flex items-center justify-center gap-3 self-center rounded-xl border border-white/10 bg-black/20 px-3 py-2">
             <div className="text-right">
               <p className="text-sm font-semibold text-white">
-                {starting ? "Updating…" : running ? "Sharing on" : "Sharing off"}
+                {starting ? "Updating…" : "Connection sharing"}
               </p>
               <p id="tether-share-toggle-help" className="text-xs text-muted-foreground">
                 {starting ? "Applying change" : running ? "Tap to stop" : "Tap to start"}
@@ -387,7 +387,7 @@ export default function TetherShare() {
               checked={running}
               disabled={!supported || starting}
               onCheckedChange={(checked) => void handleToggle(checked)}
-              aria-label="Share this connection"
+              aria-label={`Share this connection ${running ? "On" : "Off"}`}
               aria-describedby="tether-share-toggle-help"
               data-testid="toggle-tether-sharing"
             />

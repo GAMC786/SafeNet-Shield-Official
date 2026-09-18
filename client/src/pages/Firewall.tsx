@@ -372,9 +372,6 @@ export default function Firewall() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {firewallEnabled ? "On" : "Off"}
-            </span>
             <Switch
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
@@ -632,16 +629,14 @@ export default function Firewall() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleRule(rule)}
+                      <Switch
+                        checked={rule.isEnabled !== false}
+                        onCheckedChange={() => handleToggleRule(rule)}
                         disabled={updateRule.isPending}
-                        className={rule.isEnabled === false ? "text-muted-foreground hover:text-primary" : "text-primary hover:text-primary hover:bg-primary/10"}
-                        aria-label={`${rule.isEnabled === false ? "Enable" : "Disable"} ${rule.name}`}
-                      >
-                        {rule.isEnabled === false ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                      </Button>
+                        aria-label={`${rule.name} ${rule.isEnabled === false ? "Off" : "On"}`}
+                        data-testid={`switch-firewall-rule-${rule.id}`}
+                        className="h-8 w-14"
+                      />
                       <Button
                         variant="ghost"
                         size="icon"
@@ -773,17 +768,14 @@ export default function Firewall() {
                   </Badge>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
-                    onClick={() => handleToggleBlocklist(item)}
+                  <Switch
+                    checked={item.isActive === true}
+                    onCheckedChange={() => handleToggleBlocklist(item)}
                     disabled={updateBlock.isPending}
-                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
-                    data-testid={`button-toggle-rule-${item.id}`}
-                  >
-                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                  </Button>
+                    aria-label={`${item.content} ${item.isActive ? "On" : "Off"}`}
+                    data-testid={`switch-toggle-rule-${item.id}`}
+                    className="h-8 w-14"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
@@ -838,16 +830,14 @@ export default function Firewall() {
                   <span className="font-mono text-sm">{item.content}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
-                    onClick={() => handleToggleBlocklist(item)}
+                  <Switch
+                    checked={item.isActive === true}
+                    onCheckedChange={() => handleToggleBlocklist(item)}
                     disabled={updateBlock.isPending}
-                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
-                  >
-                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                  </Button>
+                    aria-label={`${item.content} ${item.isActive ? "On" : "Off"}`}
+                    data-testid={`switch-toggle-keyword-${item.id}`}
+                    className="h-8 w-14"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

@@ -415,7 +415,7 @@ public class SafeNetDnsDdnsInstrumentationTest {
             "updaters=await fetch('/api/ddns',{cache:'no-store'}).then(r=>r.json());" +
             "updater=updaters.find(u=>u.hostname===edited);" +
             "if(!updater)throw new Error('edited DDNS updater missing');" +
-            "const toggle=document.querySelector('[aria-label=\"Turn Off '+edited+'\"]');" +
+            "const toggle=document.querySelector('[aria-label=\"'+edited+' On\"]');" +
             "if(!toggle)throw new Error('DDNS toggle missing');" +
             "toggle.click();" +
             "await sleep(700);" +

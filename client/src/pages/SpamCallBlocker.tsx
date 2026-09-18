@@ -191,9 +191,6 @@ export default function SpamCallBlocker() {
         subtitle="Caller protection and screening controls"
         action={(
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {protectionEnabled ? "On" : "Off"}
-            </span>
             <Switch
               checked={protectionEnabled}
               onCheckedChange={(nextEnabled) => {

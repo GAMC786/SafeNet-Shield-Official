@@ -171,9 +171,6 @@ export function AiShieldControls() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {cameraEnabled ? "On" : "Off"}
-              </span>
               <Switch
                 checked={cameraEnabled}
                 onCheckedChange={(checked) => void toggleSource("camera", checked)}
@@ -192,9 +189,6 @@ export function AiShieldControls() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {screenEnabled ? "On" : "Off"}
-              </span>
               <Switch
                 checked={screenEnabled}
                 onCheckedChange={(checked) => void toggleSource("screen", checked)}
@@ -222,9 +216,6 @@ export function AiShieldControls() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {enabled ? "On" : "Off"}
-                  </span>
                   <Switch
                     checked={enabled}
                     onCheckedChange={(checked) => shield.setMediaPreference(key, checked)}
