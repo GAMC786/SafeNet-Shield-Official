@@ -28,6 +28,7 @@ public final class AppLockManager {
     public static final String ACTION_APP_UNLOCKED = "com.safenet.dns.APP_UNLOCKED";
     public static final String EXTRA_PACKAGE_NAME = "packageName";
     public static final String EXTRA_LOCKED_PACKAGE = "locked_package";
+    public static final String EXTRA_AFTER_UNLOCK_PRIVATE_DNS = "after_unlock_private_dns";
     public static final String EXTRA_MODE = "mode";
     public static final String MODE_SETUP = "setup";
     public static final String MODE_UNLOCK = "unlock";

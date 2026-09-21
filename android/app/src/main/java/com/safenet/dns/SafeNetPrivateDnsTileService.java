@@ -36,6 +36,19 @@ public class SafeNetPrivateDnsTileService extends TileService {
     @Override
     public void onClick() {
         super.onClick();
+        if (AppLockManager.hasPin(this)) {
+            Intent unlockIntent = new Intent(this, LockLockActivity.class)
+                .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_UNLOCK)
+                .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName())
+                .putExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivityAndCollapse(unlockIntent);
+            return;
+        }
+        openPrivateDnsSettings();
+    }
+
+    private void openPrivateDnsSettings() {
         Intent settingsIntent = new Intent("android.settings.PRIVATE_DNS_SETTINGS")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {

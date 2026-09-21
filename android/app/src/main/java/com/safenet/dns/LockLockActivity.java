@@ -249,6 +249,16 @@ public final class LockLockActivity extends Activity {
                 AppLockManager.markAuthenticated();
                 sendUnlockedBroadcast();
             }
+            if (getIntent().getBooleanExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, false)) {
+                try {
+                    startActivity(
+                        new Intent("android.settings.PRIVATE_DNS_SETTINGS")
+                    );
+                } catch (RuntimeException ignored) {
+                    // The tile's settings fallback is handled by the system
+                    // when Private DNS settings are unavailable.
+                }
+            }
             finishSuccess();
         });
         setContentView(scrollRoot(content));
