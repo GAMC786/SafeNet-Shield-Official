@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.content.Context;
+import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
