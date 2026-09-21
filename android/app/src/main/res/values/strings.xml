@@ -8,4 +8,7 @@
     <string name="locklock_service_label">LockLock App Protection</string>
     <string name="locklock_accessibility_description">Monitors SafeNet launches to show its offline LockLock passcode screen.</string>
     <string name="locklock_device_admin_description">Protects SafeNet from unauthorized removal when anti-uninstall protection is enabled.</string>
+    <string name="private_dns_tile_label">SafeNet Private DNS</string>
+    <string name="private_dns_tile_active">Active</string>
+    <string name="private_dns_tile_inactive">Tap to configure</string>
 </resources>

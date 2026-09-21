@@ -104,6 +104,13 @@ public final class SafeNetProtectionStatus {
             && normalizedExpected.equals(normalizedHostname);
     }
 
+    static boolean isPrivateDnsActive(Context context, String expectedHostname) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return false;
+        }
+        return readPrivateDns(context, expectedHostname).active;
+    }
+
     static String resolveState(
         boolean serviceRunning,
         boolean ownsSafeNetVpn,

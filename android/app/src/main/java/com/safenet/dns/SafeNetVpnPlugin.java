@@ -444,6 +444,7 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private JSObject privateDnsStatus(String expectedHostname) {
+        SafeNetPrivateDnsTileService.rememberExpectedHostname(getContext(), expectedHostname);
         JSObject result = new JSObject();
         String expected = normalizePrivateDnsHostname(expectedHostname);
         result.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P);
