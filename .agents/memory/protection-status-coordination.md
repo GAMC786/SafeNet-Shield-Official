@@ -7,4 +7,4 @@ Protection indicators must be derived from verified dependencies: browser protec
 
 **Why:** A configured setting or arbitrary Private DNS hostname can look active while the actual protection path is unavailable or bypassable.
 
-**How to apply:** Keep the high-level predicate shared between Dashboard and feature status consumers, and pass the expected resolver hostname into native protection-status reads.
+**How to apply:** Keep the high-level predicate shared between Dashboard, feature status consumers, and the Quick Settings tile; pass and persist the expected resolver hostname so every surface uses the same exact match.
