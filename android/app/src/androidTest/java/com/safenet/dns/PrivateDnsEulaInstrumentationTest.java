@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
+import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.content.Intent;
 import android.webkit.JavascriptInterface;
@@ -97,7 +98,7 @@ public class PrivateDnsEulaInstrumentationTest {
         // Android owns the settings activity after acceptance. Return to
         // SafeNet before checking the post-consent state.
         InstrumentationRegistry.getInstrumentation().getUiAutomation().performGlobalAction(
-            android.app.UiAutomation.GLOBAL_ACTION_BACK
+            AccessibilityService.GLOBAL_ACTION_BACK
         );
         waitForWebView(
             "!Boolean(document.querySelector('[data-testid=\"dialog-private-dns-eula\"]'))"
