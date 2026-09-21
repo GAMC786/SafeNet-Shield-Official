@@ -28,25 +28,28 @@ public final class SafeNetProtectionStatus {
 
     public static JSONObject get(Context context) {
         ConnectivitySnapshot snapshot = readConnectivity(context);
-        boolean serviceRunning = SafeNetDnsVpnService.isRunning();
+        PrivateDnsSnapshot privateDns = readPrivateDns(context);
         String state = resolveState(
-            serviceRunning,
-            serviceRunning && snapshot.ownsSafeNetVpn,
+            privateDns.active,
+            false,
             snapshot.otherVpnActive,
             snapshot.activeNetwork,
-            !serviceRunning && snapshot.otherVpnActive
+            false
         );
 
         JSONObject result = new JSONObject();
         try {
             result.put("state", state);
             result.put("timestamp", System.currentTimeMillis());
-            result.put("safeNetVpnRunning", serviceRunning);
-            result.put("safeNetOwnsActiveVpn", serviceRunning && snapshot.ownsSafeNetVpn);
+            result.put("safeNetVpnRunning", false);
+            result.put("safeNetOwnsActiveVpn", false);
+            result.put("safeNetPrivateDnsActive", privateDns.active);
+            result.put("privateDnsMode", privateDns.mode);
+            result.put("privateDnsHostname", privateDns.hostname == null ? JSONObject.NULL : privateDns.hostname);
             result.put("otherVpnActive", snapshot.otherVpnActive);
             result.put("activeNetwork", snapshot.activeNetwork);
             result.put("vpnRevoked", false);
-            result.put("scope", "SafeNet routes DNS requests through its Android DNS filtering VPN.");
+            result.put("scope", "SafeNet uses Android Private DNS for encrypted DNS-over-TLS resolution.");
             result.put(
                 "message",
                 messageFor(
@@ -65,13 +68,13 @@ public final class SafeNetProtectionStatus {
             result.put("states", states);
             result.put(
                 "proxyMessage",
-                "SafeNet does not inspect traffic through private browser proxies, encrypted DNS, "
-                    + "HTTPS content, or another VPN."
+                "SafeNet does not inspect traffic through private browser proxies, HTTPS content, "
+                    + "or another VPN."
             );
             JSONArray limitations = new JSONArray();
-            limitations.put("SafeNet filters DNS requests only; it does not inspect HTTPS content or arbitrary application traffic.");
+            limitations.put("SafeNet Private DNS encrypts DNS resolution only; it does not inspect HTTPS content or arbitrary application traffic.");
             limitations.put("A private proxy browser can hide its destination from SafeNet.");
-            limitations.put("Apps using their own encrypted DNS or another VPN can bypass SafeNet DNS filtering.");
+            limitations.put("Apps using their own encrypted DNS or another VPN can bypass Android Private DNS.");
             limitations.put("Screen content requires separate, explicit MediaProjection consent.");
             result.put("limitations", limitations);
         } catch (Exception ignored) {
@@ -175,10 +178,41 @@ public final class SafeNetProtectionStatus {
         return snapshot;
     }
 
+    private static PrivateDnsSnapshot readPrivateDns(Context context) {
+        PrivateDnsSnapshot snapshot = new PrivateDnsSnapshot();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            snapshot.mode = "unsupported";
+            return snapshot;
+        }
+        try {
+            String mode = android.provider.Settings.Global.getString(
+                context.getContentResolver(),
+                android.provider.Settings.Global.PRIVATE_DNS_MODE
+            );
+            snapshot.mode = mode == null ? "unknown" : mode;
+            snapshot.hostname = android.provider.Settings.Global.getString(
+                context.getContentResolver(),
+                android.provider.Settings.Global.PRIVATE_DNS_SPECIFIER
+            );
+            snapshot.active = "hostname".equals(mode)
+                && snapshot.hostname != null
+                && !snapshot.hostname.trim().isEmpty();
+        } catch (SecurityException ignored) {
+            snapshot.mode = "unknown";
+        }
+        return snapshot;
+    }
+
     private static final class ConnectivitySnapshot {
         private boolean activeNetwork;
         private boolean ownsSafeNetVpn;
         private boolean otherVpnActive;
         private boolean ownerIdentityKnown;
+    }
+
+    private static final class PrivateDnsSnapshot {
+        private boolean active;
+        private String mode = "unknown";
+        private String hostname;
     }
 }

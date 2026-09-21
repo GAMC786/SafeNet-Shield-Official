@@ -1,6 +1,5 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
-import { useDnsProtection } from "@/hooks/use-vpn";
 import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
@@ -15,16 +14,18 @@ import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
 import { useToast } from "@/hooks/use-toast";
-import { DnsVpnEulaDialog } from "@/components/DnsVpnEulaDialog";
-import { SAFE_NET_VPN_EULA_VERSION } from "@/hooks/use-vpn";
-import type { DnsServer } from "@shared/schema";
+import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
+import {
+  SAFE_NET_PRIVATE_DNS_EULA_VERSION,
+  usePrivateDns,
+} from "@/hooks/use-private-dns";
 
-const DNS_VPN_EULA_STORAGE_KEY = "safenet-dns-vpn-eula-version";
+const PRIVATE_DNS_EULA_STORAGE_KEY = "safenet-private-dns-eula-version";
 
-function hasAcceptedDnsVpnEula() {
+function hasAcceptedPrivateDnsEula() {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(DNS_VPN_EULA_STORAGE_KEY) === SAFE_NET_VPN_EULA_VERSION;
+    return window.localStorage.getItem(PRIVATE_DNS_EULA_STORAGE_KEY) === SAFE_NET_PRIVATE_DNS_EULA_VERSION;
   } catch {
     return false;
   }
@@ -40,14 +41,14 @@ export default function Dashboard() {
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
-  const dnsProtection = useDnsProtection();
   const { toast } = useToast();
-  const [dnsVpnEulaOpen, setDnsVpnEulaOpen] = useState(false);
-  const [dnsVpnEulaAccepted, setDnsVpnEulaAccepted] = useState(hasAcceptedDnsVpnEula);
-  const [pendingDnsVpnServer, setPendingDnsVpnServer] = useState<DnsServer | null>(null);
+  const activeDns = dnsServers?.find(s => s.isActive);
+  const privateDns = usePrivateDns(activeDns);
+  const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
+  const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
-  const isProtected = dnsProtection.supported
-    ? dnsProtection.status?.running === true
+  const isProtected = privateDns.supported
+    ? privateDns.status?.running === true
     : isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
   const appLockStateLabel = !appLock.supported
     ? "ANDROID ONLY"
@@ -60,74 +61,38 @@ export default function Dashboard() {
       ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
   
-  const activeDns = dnsServers?.find(s => s.isActive);
-
-  const startDnsVpn = async (server: DnsServer) => {
+  const openPrivateDnsSettings = async () => {
+    if (!activeDns || !privateDns.supported || privateDns.isBusy || !privateDns.expectedHostname) return;
+    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
+      setPrivateDnsEulaOpen(true);
+      return;
+    }
     try {
-      const nextStatus = await dnsProtection.start(server);
-      if (nextStatus?.error) {
-        toast({
-          title: "Android DNS VPN could not be changed",
-          description: nextStatus.error,
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      const nextStatus = await privateDns.openSettings();
       toast({
-        title: "Android DNS VPN could not be changed",
-        description: error instanceof Error
-          ? error.message
-          : "Android did not grant DNS filtering access.",
+        title: "Android Private DNS settings opened",
+        description: nextStatus?.expectedHostname
+          ? `Select ${nextStatus.expectedHostname} as the Private DNS provider, then return to SafeNet.`
+          : "Select the SafeNet Private DNS provider, then return to SafeNet.",
+      });
+    } catch {
+      toast({
+        title: "Private DNS settings could not be opened",
+        description: "Android did not expose the system Private DNS settings.",
         variant: "destructive",
       });
     }
   };
 
-  const handleDnsVpnToggle = async () => {
-    if (!activeDns || !dnsProtection.supported || dnsProtection.isBusy) return;
-    if (dnsProtection.status?.running) {
-      try {
-        const nextStatus = await dnsProtection.stop();
-        if (nextStatus?.error) {
-          toast({
-            title: "Android DNS VPN could not be changed",
-            description: nextStatus.error,
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        toast({
-          title: "Android DNS VPN could not be changed",
-          description: error instanceof Error
-            ? error.message
-            : "Android DNS filtering could not be stopped.",
-          variant: "destructive",
-        });
-      }
-      return;
-    }
-
-    if (!dnsVpnEulaAccepted) {
-      setPendingDnsVpnServer(activeDns);
-      setDnsVpnEulaOpen(true);
-      return;
-    }
-
-    await startDnsVpn(activeDns);
-  };
-
-  const handleDnsVpnEulaAccept = () => {
-    const server = pendingDnsVpnServer;
-    if (!server) return;
+  const handlePrivateDnsEulaAccept = () => {
     try {
-      window.localStorage.setItem(DNS_VPN_EULA_STORAGE_KEY, SAFE_NET_VPN_EULA_VERSION);
+      window.localStorage.setItem(PRIVATE_DNS_EULA_STORAGE_KEY, SAFE_NET_PRIVATE_DNS_EULA_VERSION);
     } catch {
       // Acceptance still applies for this session if local storage is unavailable.
     }
-    setDnsVpnEulaAccepted(true);
-    setDnsVpnEulaOpen(false);
-    setPendingDnsVpnServer(null);
-    void startDnsVpn(server);
+    setPrivateDnsEulaAccepted(true);
+    setPrivateDnsEulaOpen(false);
+    void openPrivateDnsSettings();
   };
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
@@ -166,11 +131,11 @@ export default function Dashboard() {
         status={isProtected ? "active" : "unprotected"}
       />
 
-      <DnsVpnEulaDialog
-        open={dnsVpnEulaOpen}
-        onOpenChange={setDnsVpnEulaOpen}
-        onAccept={handleDnsVpnEulaAccept}
-        onCancel={() => setPendingDnsVpnServer(null)}
+      <PrivateDnsEulaDialog
+        open={privateDnsEulaOpen}
+        onOpenChange={setPrivateDnsEulaOpen}
+        onAccept={handlePrivateDnsEulaAccept}
+        onCancel={() => setPrivateDnsEulaOpen(false)}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -197,25 +162,27 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Power className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
+                <p className="text-sm font-medium text-foreground">SafeNet Private DNS</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {dnsProtection.status?.error
-                  || (!dnsProtection.supported
+                {privateDns.status?.error
+                  || (!privateDns.supported
                     ? "Android app only"
-                    : activeDns
-                      ? "Filter device DNS requests through the selected resolver."
-                      : "Select an active DNS resolver first.")}
+                    : !activeDns
+                      ? "Select an active DNS resolver first."
+                      : !privateDns.expectedHostname
+                        ? "Choose a DNS-over-TLS or DNS-over-HTTPS resolver with a hostname."
+                        : privateDns.status?.message || `Use ${privateDns.expectedHostname} in Android Private DNS settings.`)}
               </p>
             </div>
             <Switch
-              checked={dnsProtection.status?.running === true}
-              onCheckedChange={() => void handleDnsVpnToggle()}
-              disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
-              aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
-              title={dnsProtection.supported ? "Toggle Android DNS VPN" : "Available in the Android app"}
-              data-testid="switch-android-dns-vpn"
-              className={dnsProtection.status?.running
+              checked={privateDns.status?.running === true}
+              onCheckedChange={() => void openPrivateDnsSettings()}
+              disabled={!privateDns.supported || !activeDns || !privateDns.expectedHostname || privateDns.isBusy}
+              aria-label={`SafeNet Private DNS ${privateDns.status?.running ? "On" : "Off"}`}
+              title={privateDns.supported ? "Open Android Private DNS settings" : "Available in the Android app"}
+              data-testid="switch-safe-net-private-dns"
+              className={privateDns.status?.running
                 ? "border-emerald-300 bg-emerald-400/25 shadow-[0_0_18px_rgba(52,211,153,0.24)] data-[state=checked]:border-emerald-300 data-[state=checked]:bg-emerald-400/40"
                 : "border-primary bg-primary/20 shadow-[0_0_18px_rgba(59,130,246,0.28)]"
               }

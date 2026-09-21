@@ -203,7 +203,7 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Proxy host/);
   assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
   assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);
-  assert.match(tetherShareSource, /separate from SafeNet&apos;s VPN tunnel/);
+  assert.match(tetherShareSource, /separate from SafeNet&apos;s Private DNS setting/);
   assert.match(tetherShareProxySource, /PROXY_HOST = "192\.168\.49\.1"/);
   assert.match(tetherShareProxySource, /HTTP_PORT = 8228/);
   assert.match(tetherShareProxySource, /"CONNECT"\.equalsIgnoreCase\(method\)/);
@@ -385,31 +385,31 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
-test("the Dashboard exposes only the Android DNS VPN control", () => {
-  assert.match(dashboardSource, /Android DNS VPN/);
-  assert.match(dashboardSource, /switch-android-dns-vpn/);
-  assert.match(dashboardSource, /<Switch[\s\S]*?switch-android-dns-vpn/);
+test("the Dashboard exposes only the Android Private DNS control", () => {
+  assert.match(dashboardSource, /SafeNet Private DNS/);
+  assert.match(dashboardSource, /switch-safe-net-private-dns/);
+  assert.match(dashboardSource, /<Switch[\s\S]*?switch-safe-net-private-dns/);
   assert.match(
     dashboardSource,
-    /const isProtected = dnsProtection\.supported[\s\S]*status\?\.running === true/,
+    /const isProtected = privateDns\.supported[\s\S]*status\?\.running === true/,
   );
   assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
-  assert.doesNotMatch(dashboardSource, /WireGuard|VpnService/);
+  assert.doesNotMatch(dashboardSource, /WireGuard|VpnService|DNS VPN/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
 
 test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dashboardSource, /DNS Resolver Active/);
   assert.match(dashboardSource, /text-emerald-300/);
-  assert.match(dashboardSource, /Android DNS VPN/);
-  assert.match(dashboardSource, /switch-android-dns-vpn/);
-  assert.match(dashboardSource, /handleDnsVpnToggle/);
+  assert.match(dashboardSource, /SafeNet Private DNS/);
+  assert.match(dashboardSource, /switch-safe-net-private-dns/);
+  assert.match(dashboardSource, /openPrivateDnsSettings/);
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
-  assert.match(dnsSettingsSource, /Android DNS filtering/);
-  assert.match(dnsSettingsSource, /Enable filtering/);
+  assert.match(dnsSettingsSource, /SafeNet Private DNS/);
+  assert.match(dnsSettingsSource, /Open Android settings/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Active Cloudflare zone required/);

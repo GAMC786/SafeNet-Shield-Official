@@ -39,7 +39,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { DnsServer } from "@shared/schema";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { useDnsProtection } from "@/hooks/use-vpn";
 
 type ResolverForm = {
   name: string;
@@ -125,7 +124,6 @@ export default function TetherShare() {
   const { supported, status, isBusy, start, stop, openWifiSettings, openAppSettings } = useTetherShare();
   const { data: dnsServers } = useDnsServers();
   const { toast } = useToast();
-  const dnsProtection = useDnsProtection();
   const running = status?.running === true;
   const starting = status?.starting === true || isBusy;
   const createResolver = useCreateDnsServer();
@@ -256,9 +254,6 @@ export default function TetherShare() {
   const handleRemoveResolver = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from Internet Share DNS resolvers?`)) return;
     try {
-      if (server.isActive && dnsProtection.status?.running) {
-        await dnsProtection.stop();
-      }
       await deleteResolver.mutateAsync(server.id);
       toast({ title: "Resolver removed", description: `${server.name} was removed.` });
     } catch (error) {
@@ -666,8 +661,9 @@ export default function TetherShare() {
             </p>
             <p className="text-xs leading-5 text-amber-200/80">
               Internet Share is an explicit proxy, not a full-device VPN. Connected devices
-              must be configured to use one of these endpoints, and SafeNet’s DNS-only VPN
-              protects the phone rather than transparently routing every client app.
+              must be configured to use one of these endpoints. SafeNet Private DNS protects
+              the phone through Android&apos;s system DNS setting rather than transparently
+              routing every client app.
             </p>
           </CyberCard>
         </div>
@@ -711,7 +707,8 @@ export default function TetherShare() {
               This feature shares the phone&apos;s existing internet connection. Carrier data limits and hotspot policies still apply. Stop sharing when you are finished.
             </p>
             <p>
-              Internet Share is separate from SafeNet&apos;s VPN tunnel. Keep SafeNet protection enabled when you want DNS filtering on the phone itself.
+              Internet Share is separate from SafeNet&apos;s Private DNS setting. Keep SafeNet
+              Private DNS enabled when you want encrypted DNS on the phone itself.
             </p>
           </div>
         </div>

@@ -4,8 +4,6 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import type { FirewallConfig } from "@shared/schema";
 import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
-export const SAFE_NET_VPN_EULA_VERSION = "1.0";
-
 export type ApkScanVerdict = "safe" | "malicious" | "unsupported" | "scanner_unavailable";
 
 export interface ApkScanResult {
@@ -111,27 +109,22 @@ export interface CallScreeningStatus {
 }
 
 interface SafeNetVpnPlugin {
-  startDnsProtection(options: {
-    type: "plain" | "doh" | "dot";
-    ipVersion: "ipv4" | "ipv6";
-    primaryAddress: string;
-    secondaryAddress?: string;
-  }): Promise<{
+  getPrivateDnsStatus(options: { expectedHostname: string }): Promise<{
     supported: boolean;
     running: boolean;
-    firewallEnabled: boolean;
+    mode: "off" | "automatic" | "hostname" | "unknown";
+    hostname: string | null;
+    expectedHostname: string | null;
+    message: string;
     error?: string | null;
   }>;
-  stopDnsProtection(): Promise<{
+  openPrivateDnsSettings(options: { expectedHostname: string }): Promise<{
     supported: boolean;
     running: boolean;
-    firewallEnabled: boolean;
-    error?: string | null;
-  }>;
-  getDnsProtectionStatus(): Promise<{
-    supported: boolean;
-    running: boolean;
-    firewallEnabled: boolean;
+    mode: "off" | "automatic" | "hostname" | "unknown";
+    hostname: string | null;
+    expectedHostname: string | null;
+    message: string;
     error?: string | null;
   }>;
   syncFirewallConfig(options: { config: FirewallConfig }): Promise<{
@@ -175,80 +168,6 @@ interface SafeNetVpnPlugin {
 }
 
 export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
-
-export type DnsProtectionStatus = {
-  supported: boolean;
-  running: boolean;
-  firewallEnabled: boolean;
-  error?: string | null;
-};
-
-export function useDnsProtection() {
-  const supported = Capacitor.getPlatform() === "android";
-  const [status, setStatus] = useState<DnsProtectionStatus | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (!supported) return null;
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getDnsProtectionStatus());
-      setStatus(nextStatus);
-      return nextStatus;
-    } catch {
-      const unavailable = {
-        supported: true,
-        running: false,
-        firewallEnabled: false,
-        error: "Android DNS filtering status is unavailable.",
-      };
-      setStatus(unavailable);
-      return unavailable;
-    }
-  }, [supported]);
-
-  useEffect(() => {
-    if (!supported) return;
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 2000);
-    return () => window.clearInterval(interval);
-  }, [refresh, supported]);
-
-  const start = useCallback(async (server: {
-    type: "plain" | "doh" | "dot";
-    ipVersion: "ipv4" | "ipv6";
-    primaryAddress: string;
-    secondaryAddress?: string | null;
-  }) => {
-    if (!supported) return null;
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startDnsProtection({
-        type: server.type,
-        ipVersion: server.ipVersion,
-        primaryAddress: server.primaryAddress,
-        secondaryAddress: server.secondaryAddress ?? "",
-      }));
-      setStatus(nextStatus);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [supported]);
-
-  const stop = useCallback(async () => {
-    if (!supported) return null;
-    setIsBusy(true);
-    try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopDnsProtection());
-      setStatus(nextStatus);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [supported]);
-
-  return { supported, status, isBusy, refresh, start, stop };
-}
 
 export function useCallScreening() {
   const supported = Capacitor.getPlatform() === "android";

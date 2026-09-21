@@ -1,18 +1,18 @@
 # Android DNS service boundary
 
-SafeNet's Android app uses a DNS-only `VpnService` when the user enables DNS
-filtering. Android routes DNS requests to SafeNet's virtual resolver address;
-SafeNet evaluates the encrypted firewall snapshot and forwards allowed queries
-to the active plain DNS, DNS over HTTPS, or DNS over TLS resolver.
+SafeNet's Android app uses Android Private DNS when the user enables SafeNet
+Private DNS. Android applies the selected DNS-over-TLS hostname at the system
+level; SafeNet opens the Android setting and reports active only when the
+configured hostname matches the selected compatible resolver.
 
-SafeNet does not inspect traffic from private browser proxies, encrypted DNS,
-HTTPS content, or another VPN. The service filters DNS requests only and does
-not route arbitrary application payloads. Internet Share is an independent
-Wi-Fi Direct feature that exposes its own manual proxy.
+SafeNet does not inspect traffic from private browser proxies, HTTPS content, or
+another VPN. Private DNS encrypts DNS resolution only and does not route
+arbitrary application payloads. Internet Share is an independent Wi-Fi Direct
+feature that exposes its own manual proxy.
 
 ## Verification boundary
 
 Android instrumentation should verify that the app starts, the DNS resolver
 settings load, and the remaining native features continue to work. The signed
-package should contain the DNS-only service and `BIND_VPN_SERVICE`; it must not
-contain the removed WireGuard service or VPN tile.
+package must not contain a DNS VPN service, `BIND_VPN_SERVICE`, the removed
+WireGuard service, or a VPN tile.

@@ -1228,7 +1228,7 @@ if [[ "$dns_filtering_validation" == "true" ]]; then
 fi
 set +e
 adb_run shell am instrument -w -r \
-    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest,com.safenet.dns.DnsVpnEulaInstrumentationTest" \
+    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest,com.safenet.dns.PrivateDnsEulaInstrumentationTest" \
     -e preserve-auth-session true \
     -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \
@@ -1319,7 +1319,7 @@ if ! grep -Fq 'DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS
     ddns_ui_status="FAIL"
     test_failed=1
 fi
-if ! grep -Fq 'DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT' \
+if ! grep -Fq 'PRIVATE_DNS_PACKAGE_SURFACE result=PASS vpn_service=ABSENT permission=ABSENT' \
     "$output_dir/instrumentation.log"; then
     vpn_package_surface_status="FAIL"
     test_failed=1
@@ -1336,7 +1336,7 @@ if ! grep -Fq 'INTERNET_SHARE_STOP result=PASS' \
 fi
 if [[ "$dns_filtering_validation" == "true" ]]; then
     dns_filtering_status="FAIL"
-    if grep -Fq 'DNS_FILTERING_DEVICE result=PASS' \
+    if grep -Fq 'PRIVATE_DNS_DEVICE result=PASS' \
         "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
         dns_filtering_status="PASS"
     else

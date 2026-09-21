@@ -22,7 +22,11 @@ import {
   DNS_FAMILY_RESOLVER_PRESETS,
   DNS_NEXTDNS_RESOLVER_PRESET,
 } from "@shared/dns-resolvers";
-import { useDnsProtection } from "@/hooks/use-vpn";
+import {
+  SAFE_NET_PRIVATE_DNS_EULA_VERSION,
+  usePrivateDns,
+} from "@/hooks/use-private-dns";
+import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
 
 type ResolverForm = {
   name: string;
@@ -44,6 +48,13 @@ const emptyResolver: ResolverForm = {
   primaryAddress: "",
   secondaryAddress: "",
 };
+
+const PRIVATE_DNS_EULA_STORAGE_KEY = "safenet-private-dns-eula-version";
+
+function hasAcceptedPrivateDnsEula() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(PRIVATE_DNS_EULA_STORAGE_KEY) === SAFE_NET_PRIVATE_DNS_EULA_VERSION;
+}
 
 function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
@@ -86,7 +97,11 @@ export default function DnsSettings() {
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
   const { toast } = useToast();
-  const dnsProtection = useDnsProtection();
+  const activeDns = servers?.find((server) => server.isActive);
+  const privateDns = usePrivateDns(activeDns);
+  const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
+  const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
+  const [pendingPrivateDnsServer, setPendingPrivateDnsServer] = useState<DnsServer | null>(null);
   const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
   const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
@@ -136,14 +151,9 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
-      if (dnsProtection.supported) {
-        await dnsProtection.start(server);
-      }
       toast({
-        title: dnsProtection.supported ? "DNS filtering activated" : "DNS resolver activated",
-        description: dnsProtection.supported
-          ? `${server.name} is active and device DNS requests now pass through SafeNet filtering.`
-          : `${server.name} is now the active SafeNet resolver.`,
+        title: "DNS resolver activated",
+        description: `${server.name} is now the active resolver. Open SafeNet Private DNS to apply it on Android.`,
       });
     } catch (error) {
       toast({
@@ -155,20 +165,50 @@ export default function DnsSettings() {
   };
 
   const handleStartFiltering = async (server: DnsServer) => {
+    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
+      setPendingPrivateDnsServer(server);
+      setPrivateDnsEulaOpen(true);
+      return;
+    }
     try {
-      const status = await dnsProtection.start(server);
-      if (status?.running) {
-        toast({
-          title: "DNS filtering enabled",
-          description: `${server.name} is filtering device DNS requests.`,
-        });
-      }
+      await openPrivateDnsSettings();
     } catch (error) {
       toast({
-        title: "DNS filtering could not be enabled",
-        description: error instanceof Error ? error.message : "Android did not grant DNS filtering access.",
+        title: "Private DNS settings could not be opened",
+        description: error instanceof Error ? error.message : "Android did not expose the system Private DNS settings.",
         variant: "destructive",
       });
+    }
+  };
+
+  const openPrivateDnsSettings = async () => {
+    const hostname = privateDns.expectedHostname;
+    if (!hostname) {
+      toast({
+        title: "Private DNS hostname required",
+        description: "Use a DNS-over-TLS or DNS-over-HTTPS resolver with a hostname before opening Android settings.",
+        variant: "destructive",
+      });
+      return;
+    }
+    await privateDns.openSettings();
+    toast({
+      title: "Android Private DNS settings opened",
+      description: `Select ${hostname} as the Private DNS provider, then return to SafeNet.`,
+    });
+  };
+
+  const handlePrivateDnsEulaAccept = () => {
+    try {
+      window.localStorage.setItem(PRIVATE_DNS_EULA_STORAGE_KEY, SAFE_NET_PRIVATE_DNS_EULA_VERSION);
+    } catch {
+      // Acceptance still applies for this session if local storage is unavailable.
+    }
+    setPrivateDnsEulaAccepted(true);
+    setPrivateDnsEulaOpen(false);
+    if (pendingPrivateDnsServer) {
+      void openPrivateDnsSettings();
+      setPendingPrivateDnsServer(null);
     }
   };
 
@@ -215,9 +255,6 @@ export default function DnsSettings() {
     try {
       if (editingResolver) {
         const updated = await updateServer.mutateAsync({ id: editingResolver.id, ...data });
-        if (dnsProtection.supported && editingResolver.isActive && dnsProtection.status?.running) {
-          await dnsProtection.start(updated);
-        }
       } else {
         await createServer.mutateAsync({
           ...data,
@@ -274,9 +311,6 @@ export default function DnsSettings() {
   const handleRemove = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from SafeNet DNS resolvers?`)) return;
     try {
-      if (server.isActive && dnsProtection.status?.running) {
-        await dnsProtection.stop();
-      }
       await deleteServer.mutateAsync(server.id);
       toast({ title: "Resolver removed", description: `${server.name} was removed.` });
     } catch (error) {
@@ -293,6 +327,15 @@ export default function DnsSettings() {
 
   return (
     <div className="space-y-6">
+      <PrivateDnsEulaDialog
+        open={privateDnsEulaOpen}
+        onOpenChange={setPrivateDnsEulaOpen}
+        onAccept={handlePrivateDnsEulaAccept}
+        onCancel={() => {
+          setPendingPrivateDnsServer(null);
+          setPrivateDnsEulaOpen(false);
+        }}
+      />
       <Header title="DNS Servers" subtitle="Manage Resolvers" />
 
       <CyberCard className="border-primary/20">
@@ -467,43 +510,44 @@ export default function DnsSettings() {
         </CyberCard>
       ) : (
         <div className="space-y-4">
-          {dnsProtection.supported && (
-            <CyberCard className={dnsProtection.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
+          {privateDns.supported && (
+            <CyberCard className={privateDns.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
-                    Android DNS filtering
+                    SafeNet Private DNS
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {dnsProtection.status?.running
-                      ? "SafeNet is routing device DNS requests through the selected resolver."
-                      : "Resolver selection alone does not change Android traffic. Choose a resolver and enable filtering when you are ready."}
+                    {privateDns.status?.error
+                      || privateDns.status?.message
+                      || "Android Private DNS uses encrypted DNS-over-TLS without creating a VPN."}
                   </p>
                 </div>
-                {dnsProtection.status?.running ? (
+                {privateDns.status?.running ? (
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={dnsProtection.isBusy}
-                    onClick={() => void dnsProtection.stop()}
+                    disabled={privateDns.isBusy}
+                    onClick={() => void privateDns.openSettings()}
                   >
-                    Stop filtering
+                    Change Private DNS
                   </Button>
                 ) : (
                   <Button
                     type="button"
-                    disabled={dnsProtection.isBusy || !servers.find((server) => server.isActive)}
+                    disabled={privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
                     onClick={() => {
-                      const active = servers.find((server) => server.isActive);
-                      if (active) void handleStartFiltering(active);
+                      if (activeDns) void handleStartFiltering(activeDns);
                     }}
                   >
-                    Enable filtering
+                    Open Android settings
                   </Button>
                 )}
               </div>
-              {dnsProtection.status?.error && (
-                <p className="mt-2 text-xs text-destructive">{dnsProtection.status.error}</p>
+              {!privateDns.expectedHostname && (
+                <p className="mt-2 text-xs text-destructive">
+                  The selected resolver does not expose a hostname Android Private DNS can use. Choose a DNS-over-TLS or DNS-over-HTTPS resolver.
+                </p>
               )}
             </CyberCard>
           )}
@@ -551,15 +595,15 @@ export default function DnsSettings() {
                   {activateServer.isPending && !server.isActive ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                   {server.isActive ? "Active" : "Use This"}
                 </Button>
-                {dnsProtection.supported && server.isActive && !dnsProtection.status?.running && (
+                {privateDns.supported && server.isActive && !privateDns.status?.running && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => void handleStartFiltering(server)}
-                    disabled={dnsProtection.isBusy || isMutating}
+                    disabled={privateDns.isBusy || isMutating || !privateDns.expectedHostname}
                     className="text-primary"
                   >
-                    Enable filtering
+                    Open Private DNS
                   </Button>
                 )}
                 <Button

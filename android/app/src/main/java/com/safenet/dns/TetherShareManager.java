@@ -18,9 +18,8 @@ import java.util.List;
 /**
  * Owns the Wi-Fi Direct group and the explicit proxy used by Internet Share.
  *
- * <p>This is intentionally separate from SafeNetDnsVpnService. A DNS-only
- * VpnService protects the phone's DNS path; it is not a general packet router
- * for devices connected to a Wi-Fi Direct group.</p>
+ * <p>Internet Share does not depend on SafeNet Private DNS and is not a
+ * general packet router for devices connected to a Wi-Fi Direct group.</p>
  */
 final class TetherShareManager {
     static final int PROXY_PORT = TetherShareProxy.HTTP_PORT;

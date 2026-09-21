@@ -264,7 +264,7 @@ export function AiShieldControls() {
               {protection?.message || "Checking whether Android has assigned the device VPN path to SafeNet."}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {protection?.scope || "DNS-only coverage is being verified."}
+              {protection?.scope || "Private DNS coverage is being verified."}
             </p>
             <p className="mt-2 text-xs text-yellow-100/80">
               Private proxy browsers, encrypted DNS, HTTPS content, and another app&apos;s VPN tunnel remain outside SafeNet inspection. Reconnect SafeNet and use system DNS for the coverage above.

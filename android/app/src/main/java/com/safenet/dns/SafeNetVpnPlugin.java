@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
-import android.net.VpnService;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -381,59 +380,33 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void getDnsProtectionStatus(PluginCall call) {
-        call.resolve(dnsProtectionStatus());
+    public void getPrivateDnsStatus(PluginCall call) {
+        call.resolve(privateDnsStatus(call.getString("expectedHostname", "")));
     }
 
     @PluginMethod
-    public void startDnsProtection(PluginCall call) {
-        String type = call.getString("type", "plain");
-        String ipVersion = call.getString("ipVersion", "ipv4");
-        String primary = call.getString("primaryAddress", "");
-        String secondary = call.getString("secondaryAddress", "");
-        if (primary == null || primary.trim().isEmpty()) {
-            call.reject("Select an active DNS resolver before starting filtering.", "DNS_REQUIRED");
+    public void openPrivateDnsSettings(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            call.resolve(privateDnsStatus(call.getString("expectedHostname", "")));
             return;
         }
-        Intent serviceIntent = new Intent(getContext(), SafeNetDnsVpnService.class)
-            .putExtra(SafeNetDnsVpnService.EXTRA_TYPE, type)
-            .putExtra(SafeNetDnsVpnService.EXTRA_IP_VERSION, ipVersion)
-            .putExtra(SafeNetDnsVpnService.EXTRA_PRIMARY, primary)
-            .putExtra(SafeNetDnsVpnService.EXTRA_SECONDARY, secondary == null ? "" : secondary);
-        Intent permissionIntent = VpnService.prepare(getContext());
-        if (permissionIntent != null) {
-            startActivityForResult(call, permissionIntent, "dnsVpnPermissionResult");
-            return;
+        Intent settingsIntent = new Intent(Settings.ACTION_PRIVATE_DNS_SETTINGS);
+        try {
+            startActivityForResult(call, settingsIntent, "privateDnsSettingsResult");
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android Private DNS settings could not be opened.",
+                "PRIVATE_DNS_SETTINGS_UNAVAILABLE",
+                error
+            );
         }
-        startDnsService(serviceIntent);
-        call.resolve(dnsProtectionStatus());
     }
 
     @ActivityCallback
-    private void dnsVpnPermissionResult(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        if (result == null || result.getResultCode() != Activity.RESULT_OK) {
-            call.reject("Android VPN permission was not granted.", "PERMISSION_DENIED");
-            return;
+    private void privateDnsSettingsResult(PluginCall call, ActivityResult result) {
+        if (call != null) {
+            call.resolve(privateDnsStatus(call.getString("expectedHostname", "")));
         }
-        String type = call.getString("type", "plain");
-        String ipVersion = call.getString("ipVersion", "ipv4");
-        String primary = call.getString("primaryAddress", "");
-        String secondary = call.getString("secondaryAddress", "");
-        Intent serviceIntent = new Intent(getContext(), SafeNetDnsVpnService.class)
-            .putExtra(SafeNetDnsVpnService.EXTRA_TYPE, type)
-            .putExtra(SafeNetDnsVpnService.EXTRA_IP_VERSION, ipVersion)
-            .putExtra(SafeNetDnsVpnService.EXTRA_PRIMARY, primary)
-            .putExtra(SafeNetDnsVpnService.EXTRA_SECONDARY, secondary == null ? "" : secondary);
-        startDnsService(serviceIntent);
-        call.resolve(dnsProtectionStatus());
-    }
-
-    @PluginMethod
-    public void stopDnsProtection(PluginCall call) {
-        SafeNetDnsVpnService.requestStop();
-        getContext().stopService(new Intent(getContext(), SafeNetDnsVpnService.class));
-        call.resolve(dnsProtectionStatus());
     }
 
     @PluginMethod
@@ -446,7 +419,6 @@ public class SafeNetVpnPlugin extends Plugin {
         try {
             String serialized = config.toString();
             FirewallConfigStore.save(getContext(), serialized);
-            SafeNetDnsVpnService.updateFirewallConfig(serialized);
             JSObject result = new JSObject();
             result.put("synced", true);
             result.put("firewallEnabled", config.optBoolean("firewallEnabled", false));
@@ -458,21 +430,92 @@ public class SafeNetVpnPlugin extends Plugin {
         }
     }
 
-    private void startDnsService(Intent intent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getContext().startForegroundService(intent);
-        } else {
-            getContext().startService(intent);
+    private JSObject privateDnsStatus(String expectedHostname) {
+        JSObject result = new JSObject();
+        String expected = normalizePrivateDnsHostname(expectedHostname);
+        result.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P);
+        result.put("expectedHostname", expected == null ? JSONObject.NULL : expected);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            result.put("running", false);
+            result.put("mode", "unknown");
+            result.put("hostname", JSONObject.NULL);
+            result.put("message", "Android Private DNS requires Android 9 or newer.");
+            result.put("error", "Android Private DNS is unavailable on this Android version.");
+            return result;
+        }
+
+        try {
+            String modeValue = Settings.Global.getString(
+                getContext().getContentResolver(),
+                Settings.Global.PRIVATE_DNS_MODE
+            );
+            String hostname = Settings.Global.getString(
+                getContext().getContentResolver(),
+                Settings.Global.PRIVATE_DNS_SPECIFIER
+            );
+            String mode = "hostname".equals(modeValue)
+                ? "hostname"
+                : "opportunistic".equals(modeValue)
+                    ? "automatic"
+                    : "off".equals(modeValue)
+                        ? "off"
+                        : "unknown";
+            String normalizedHostname = normalizePrivateDnsHostname(hostname);
+            boolean running = "hostname".equals(mode)
+                && expected != null
+                && expected.equals(normalizedHostname);
+            result.put("running", running);
+            result.put("mode", mode);
+            result.put("hostname", normalizedHostname == null ? JSONObject.NULL : normalizedHostname);
+            result.put("message", privateDnsMessage(mode, normalizedHostname, expected, running));
+            return result;
+        } catch (SecurityException error) {
+            result.put("running", false);
+            result.put("mode", "unknown");
+            result.put("hostname", JSONObject.NULL);
+            result.put("message", "Android did not expose the current Private DNS setting.");
+            result.put("error", "Android Private DNS status is unavailable.");
+            return result;
         }
     }
 
-    private JSObject dnsProtectionStatus() {
-        JSObject result = new JSObject();
-        result.put("supported", true);
-        result.put("running", SafeNetDnsVpnService.isRunning());
-        result.put("firewallEnabled", SafeNetDnsVpnService.isFirewallEnabled());
-        result.put("error", SafeNetDnsVpnService.getLastError());
-        return result;
+    private static String privateDnsMessage(
+        String mode,
+        String hostname,
+        String expected,
+        boolean running
+    ) {
+        if (running) {
+            return "SafeNet Private DNS is active for " + expected + ".";
+        }
+        if ("hostname".equals(mode) && hostname != null) {
+            return "Another Private DNS hostname is active: " + hostname + ".";
+        }
+        if ("automatic".equals(mode)) {
+            return "Android is using automatic Private DNS. Select the SafeNet hostname to enable protection.";
+        }
+        if ("off".equals(mode)) {
+            return "Private DNS is off. Open Android settings to select the SafeNet hostname.";
+        }
+        return "Open Android Private DNS settings to select the SafeNet hostname.";
+    }
+
+    private static String normalizePrivateDnsHostname(String value) {
+        if (value == null) return null;
+        String normalized = value.trim().toLowerCase(java.util.Locale.US);
+        while (normalized.endsWith(".")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.isEmpty() || normalized.contains("/") || normalized.contains(" ")) {
+            return null;
+        }
+        if (normalized.matches("[^:]+:\\d{1,5}")) {
+            normalized = normalized.substring(0, normalized.lastIndexOf(':'));
+        }
+        if (normalized.contains(":") || !normalized.matches("[a-z0-9.-]+")) {
+            return null;
+        }
+        return normalized;
     }
 
     @PluginMethod
