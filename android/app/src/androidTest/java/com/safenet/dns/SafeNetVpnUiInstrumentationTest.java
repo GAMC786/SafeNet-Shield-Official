@@ -10,9 +10,9 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.Base64;
 import android.view.KeyEvent;
@@ -20,7 +20,6 @@ import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
@@ -41,17 +40,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * Accessibility checks for the VPN switch rendered by the Android WebView.
- *
- * This deliberately keeps resolver data out of the page so the switch must
- * remain visible, correctly labelled, and safely unavailable when there is no
- * active DNS resolver.
+ * Shared implementation for packaged UI, startup, media, Clerk, and AI Shield
+ * instrumentation checks. The public runner is SafeNetUiInstrumentationTest.
  */
-@RunWith(AndroidJUnit4.class)
-public class SafeNetVpnUiInstrumentationTest {
+abstract class SafeNetUiInstrumentationTestBase {
     private static final String PACKAGE_NAME = "com.safenet.dns";
     private static final String AI_SHIELD_DEVICE_SMOKE_TAG = "AiShieldDeviceSmoke";
-    private static final String VPN_SWITCH_LABEL = "SafeNet VPN On/Off";
     private static final String CLERK_AUTH_TAG = "SafeNetClerkAuth";
     private static final long JS_TIMEOUT_SECONDS = 20;
     private static final long UI_TIMEOUT_MILLIS = 20_000;
@@ -68,7 +62,6 @@ public class SafeNetVpnUiInstrumentationTest {
     @Before
     public void setUp() throws Exception {
         assertEquals(PACKAGE_NAME, context.getPackageName());
-        context.stopService(new Intent(context, SafeNetVpnService.class));
         clearTargetAppData();
 
         Intent launchIntent = new Intent(context, MainActivity.class)
@@ -94,90 +87,52 @@ public class SafeNetVpnUiInstrumentationTest {
         }
     }
 
+    /*
     @Test
-    public void vpnSwitchIsAccessibleAndUnavailableWithoutActiveResolver() throws Exception {
+    @Ignore("The dashboard no longer exposes a VPN control after VPN removal.")
+    public void onlyWireGuardSwitchIsExposedOnDashboard() throws Exception {
         openDashboardWithoutActiveResolver();
         waitForWebView(
             "Boolean(document.querySelector('[role=\"switch\"][aria-label=\"" +
-                VPN_SWITCH_LABEL +
+                WIREGUARD_SWITCH_LABEL +
                 "\"]'))"
         );
 
         JSONObject domState = callWebView(
             "(() => {" +
                 "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
+                    WIREGUARD_SWITCH_LABEL +
                     "\"]');" +
-                "const beforeClick = toggle.getAttribute('aria-checked');" +
-                "const count = document.querySelectorAll('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
-                    "\"]').length;" +
-                "toggle.focus();" +
-                "const focusedAfterProgrammaticFocus = document.activeElement === toggle;" +
-                "toggle.click();" +
                 "return {" +
-                    "count: count," +
+                    "wireguardCount: document.querySelectorAll('[role=\"switch\"][aria-label=\"" +
+                        WIREGUARD_SWITCH_LABEL +
+                        "\"]').length," +
+                    "legacyDnsCount: document.querySelectorAll('[role=\"switch\"][aria-label=\"SafeNet VPN On/Off\"]').length," +
                     "label: toggle.getAttribute('aria-label')," +
                     "role: toggle.getAttribute('role')," +
-                    "checked: toggle.getAttribute('aria-checked')," +
-                    "disabled: toggle.disabled," +
-                    "focusable: focusedAfterProgrammaticFocus," +
-                    "afterClick: toggle.getAttribute('aria-checked')," +
-                    "beforeClick: beforeClick" +
+                    "checked: toggle.getAttribute('aria-checked')" +
                 "};" +
             "})()"
         );
 
-        assertEquals("Dashboard must render exactly one VPN switch", 1, domState.getInt("count"));
-        assertEquals(VPN_SWITCH_LABEL, domState.getString("label"));
+        assertEquals("Dashboard must render exactly one WireGuard switch", 1, domState.getInt("wireguardCount"));
+        assertEquals("Dashboard must not render the legacy DNS VPN switch", 0, domState.getInt("legacyDnsCount"));
+        assertEquals(WIREGUARD_SWITCH_LABEL, domState.getString("label"));
         assertEquals("switch", domState.getString("role"));
         assertEquals("false", domState.getString("checked"));
-        assertTrue("No resolver must disable the VPN switch", domState.getBoolean("disabled"));
-        assertFalse(
-            "A disabled VPN switch must not receive programmatic focus",
-            domState.getBoolean("focusable")
-        );
-        assertEquals("false", domState.getString("beforeClick"));
-        assertEquals(
-            "A disabled VPN switch must not change state from a click",
-            "false",
-            domState.getString("afterClick")
-        );
-
-        JSONObject scrollResult = callWebView(
-            "(() => {" +
-                "document.querySelector('[role=\"switch\"][aria-label=\"" +
-                    VPN_SWITCH_LABEL +
-                    "\"]').scrollIntoView({block:'center'});" +
-                "return true;" +
-            "})()"
-        );
-        assertTrue(
-            "Could not bring the VPN switch into the WebView viewport",
-            scrollResult.getBoolean("ok")
-        );
 
         UiObject2 accessibleSwitch = device.wait(
-            Until.findObject(By.desc(VPN_SWITCH_LABEL)),
+            Until.findObject(By.desc(WIREGUARD_SWITCH_LABEL)),
             UI_TIMEOUT_MILLIS
         );
         assertNotNull(
-            "The Android accessibility tree must expose the VPN switch label",
+            "The Android accessibility tree must expose the WireGuard switch label",
             accessibleSwitch
         );
-        assertEquals(VPN_SWITCH_LABEL, accessibleSwitch.getContentDescription());
-        assertTrue("The VPN control must expose switch semantics", accessibleSwitch.isCheckable());
-        assertFalse("The VPN switch must initially be unchecked", accessibleSwitch.isChecked());
-        assertFalse("The VPN switch must be disabled without a resolver", accessibleSwitch.isEnabled());
-        assertFalse("A disabled VPN switch must not be clickable", accessibleSwitch.isClickable());
-        assertFalse("A disabled VPN switch must not be focusable", accessibleSwitch.isFocusable());
-
-        device.pressKeyCode(KeyEvent.KEYCODE_TAB);
-        assertFalse(
-            "Keyboard navigation must not focus the disabled VPN switch",
-            accessibleSwitch.isFocused()
-        );
+        assertEquals(WIREGUARD_SWITCH_LABEL, accessibleSwitch.getContentDescription());
+        assertTrue("The WireGuard control must expose switch semantics", accessibleSwitch.isCheckable());
     }
+    */
 
     @Test
     public void startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff() throws Exception {
@@ -936,7 +891,469 @@ public class SafeNetVpnUiInstrumentationTest {
         );
     }
 
+    /*
     @Test
+    @Ignore("The Android smoke lane now validates resolver and Internet Share flows without VPN recovery.")
+    public void packagedAppRecoversAfterNetworkLoss() throws Exception {
+        boolean airplaneModeEnabled = false;
+        try {
+            openDashboardForConnectivitySmoke();
+            waitForWebView(
+                "document.readyState === 'complete' && " +
+                    "document.body.innerText.includes('Command Center')"
+            );
+
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.acceptEula({version:'1.0'})"
+            ));
+            JSONObject firewall = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.syncFirewallConfig({" +
+                    "config:{" +
+                        "settings:{firewallEnabled:true,preventDnsOverrides:true}," +
+                        "rules:[]," +
+                        "blocklists:[{" +
+                            "type:'domain'," +
+                            "content:'offline.test'," +
+                            "action:'block'," +
+                            "isActive:true" +
+                        "}]" +
+                    "}" +
+                "})"
+            ));
+            assertTrue("The offline firewall snapshot must be saved",
+                firewall.getBoolean("synced"));
+
+            startVpnWithPermission(
+                "plain",
+                argument("plain-primary", "1.1.1.1"),
+                argument("plain-secondary", "8.8.8.8")
+            );
+            waitForVpnState(true);
+            JSONObject initialStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must be running before the outage",
+                initialStatus.getBoolean("running"));
+            assertTrue("The firewall snapshot must be active before the outage",
+                initialStatus.getBoolean("firewallEnabled"));
+
+            requireWebViewValue(callWebView(
+                "(() => {" +
+                    "window.__safeNetConnectivityRecoveryErrors = [];" +
+                    "window.addEventListener('error', event => " +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "String(event.message || event.error || 'unknown')));" +
+                    "window.addEventListener('unhandledrejection', event => " +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "String(event.reason || 'unknown')));" +
+                    "const originalConsoleError = console.error.bind(console);" +
+                    "console.error = (...args) => {" +
+                        "window.__safeNetConnectivityRecoveryErrors.push(" +
+                            "'console.error:' + args.map(String).join(' '));" +
+                        "originalConsoleError(...args);" +
+                    "};" +
+                    "return true;" +
+                "})()"
+            ));
+
+            airplaneModeEnabled = true;
+            setAirplaneMode(true);
+            waitForWebView(
+                "navigator.onLine === false && " +
+                    "Boolean(document.querySelector('[role=\"status\"]')) && " +
+                    "document.body.innerText.includes('No internet connection')"
+            );
+            JSONObject offlineStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must remain running while the Internet is unavailable",
+                offlineStatus.getBoolean("running"));
+            assertTrue("The offline firewall policy must remain active",
+                offlineStatus.getBoolean("firewallEnabled"));
+
+            byte[] blockedResponse = queryVirtualDns("offline.test");
+            assertEquals("Offline DNS filtering must refuse a blocked domain",
+                5, blockedResponse[3] & 0x0f);
+
+            setAirplaneMode(false);
+            airplaneModeEnabled = false;
+            waitForWebView(
+                "navigator.onLine === true && " +
+                    "!Boolean(document.querySelector('[role=\"status\"]'))"
+            );
+
+            String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+            boolean apiRecovered = true;
+            if (clerkOrigin != null && !clerkOrigin.trim().isEmpty()) {
+                requireWebViewValue(callWebView(
+                    "(() => {" +
+                        "window.__safeNetConnectivityRecoveryApi = {done:false,ok:false};" +
+                        "fetch(" + JSONObject.quote(clerkOrigin + "/api/auth/status") +
+                            ", {cache:'no-store',credentials:'include'})" +
+                            ".then(async response => {" +
+                                "const body = await response.json().catch(() => ({}));" +
+                                "window.__safeNetConnectivityRecoveryApi = {" +
+                                    "done:true,ok:response.ok,authenticated:body.authenticated === true" +
+                                "};" +
+                            "})" +
+                            ".catch(error => window.__safeNetConnectivityRecoveryApi = {" +
+                                "done:true,ok:false,message:String(error)" +
+                            "});" +
+                        "return true;" +
+                    "})()"
+                ));
+                waitForWebView(
+                    "Boolean(window.__safeNetConnectivityRecoveryApi && " +
+                        "window.__safeNetConnectivityRecoveryApi.done)"
+                );
+                JSONObject apiRecovery = callWebView(
+                    "window.__safeNetConnectivityRecoveryApi"
+                );
+                apiRecovered = apiRecovery.getBoolean("ok") &&
+                    apiRecovery.getBoolean("authenticated");
+                assertTrue("The authenticated API status must recover after reconnecting",
+                    apiRecovered);
+            }
+
+            byte[] recoveredResponse = queryVirtualDns("safenet.com");
+            assertTrue("DNS protection must forward queries again after reconnecting",
+                recoveredResponse.length >= 12);
+            JSONObject recoveredStatus = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            ));
+            assertTrue("DNS protection must still be running after reconnecting",
+                recoveredStatus.getBoolean("running"));
+            JSONObject browserErrors = requireWebViewValue(callWebView(
+                "({errors:window.__safeNetConnectivityRecoveryErrors || []})"
+            ));
+            assertEquals("Connectivity recovery must not emit browser errors",
+                0, browserErrors.getJSONArray("errors").length());
+
+            Log.i(
+                "SafeNetConnectivityRecovery",
+                "CONNECTIVITY_RECOVERY result=PASS network_loss=PASS " +
+                    "webview_offline=PASS dns_filter_offline=PASS " +
+                    "api_recovery=" + (apiRecovered ? "PASS" : "FAIL") +
+                    " browser_errors=0"
+            );
+        } finally {
+            if (airplaneModeEnabled) {
+                setAirplaneMode(false);
+            }
+            try {
+                callVpn("window.Capacitor.Plugins.SafeNetVpn.stop()");
+            } catch (Exception ignored) {
+                // The test teardown also stops the service when recovery fails.
+            }
+        }
+    }
+
+    @Test
+    @Ignore("The Android smoke lane now validates resolver and Internet Share flows without VPN recovery.")
+    public void dohAndDotRecoverAfterNetworkLoss() throws Exception {
+        try {
+            openDashboardWithoutActiveResolver();
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.acceptEula({version:'1.0'})"
+            ));
+            requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.syncFirewallConfig({" +
+                    "config:{" +
+                        "settings:{firewallEnabled:true,preventDnsOverrides:true}," +
+                        "rules:[]," +
+                        "blocklists:[{" +
+                            "type:'domain'," +
+                            "content:'offline.test'," +
+                            "action:'block'," +
+                            "isActive:true" +
+                        "}]" +
+                    "}" +
+                "})"
+            ));
+            requireWebViewValue(callWebView(
+                "(() => {" +
+                    "window.__safeNetDohDotRecoveryErrors = [];" +
+                    "window.addEventListener('error', event => " +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "String(event.message || event.error || 'unknown')));" +
+                    "window.addEventListener('unhandledrejection', event => " +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "String(event.reason || 'unknown')));" +
+                    "const originalConsoleError = console.error.bind(console);" +
+                    "console.error = (...args) => {" +
+                        "window.__safeNetDohDotRecoveryErrors.push(" +
+                            "'console.error:' + args.map(String).join(' '));" +
+                        "originalConsoleError(...args);" +
+                    "};" +
+                    "return true;" +
+                "})()"
+            ));
+
+            runResolverRecoveryPhase(
+                "doh",
+                "192.0.2.1",
+                resolverArgument("doh-secondary", "https://cloudflare-dns.com/dns-query")
+            );
+            runResolverRecoveryPhase(
+                "dot",
+                "192.0.2.1",
+                resolverArgument("dot-secondary", "cloudflare-dns.com")
+            );
+        } finally {
+            try {
+                setAirplaneMode(false);
+            } catch (Exception ignored) {
+                // The test result should retain the original failure.
+            }
+            try {
+                requireWebViewValue(callWebView("window.Capacitor.Plugins.SafeNetVpn.stop()"));
+            } catch (Exception ignored) {
+                // The shared teardown stops the service when recovery fails.
+            }
+        }
+    }
+
+    private void runResolverRecoveryPhase(
+        String protocol,
+        String primary,
+        String secondary
+    ) throws Exception {
+        long phaseStartedAt = SystemClock.elapsedRealtime();
+        try {
+            startVpnWithPermission(protocol, primary, secondary);
+            waitForVpnState(true);
+        } catch (Exception | AssertionError failure) {
+            logResolverRecoveryFailure(protocol, "start", failure, phaseStartedAt);
+            throw failure;
+        }
+
+        for (int cycle = 1; cycle <= RESOLVER_RECOVERY_CYCLES; cycle++) {
+            String cycleLabel = protocol + " cycle " + cycle;
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            try {
+                assertValidDnsResponse(
+                    queryVirtualDns("safenet.com"),
+                    cycleLabel + " response before outage"
+                );
+                assertNativeResolverHealthy(cycleLabel + " before outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-before-outage",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
+
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            boolean outageEnabled = false;
+            try {
+                setAirplaneMode(true);
+                outageEnabled = true;
+                byte[] blockedResponse = queryVirtualDns("offline.test");
+                assertEquals(
+                    cycleLabel + " offline filtering must refuse the blocked domain",
+                    5,
+                    blockedResponse[3] & 0x0f
+                );
+                assertNativeResolverHealthy(cycleLabel + " during outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-offline-filter",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            } finally {
+                if (outageEnabled) {
+                    setAirplaneMode(false);
+                }
+            }
+
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            try {
+                assertValidDnsResponse(
+                    queryVirtualDns("safenet.com"),
+                    cycleLabel + " response after outage"
+                );
+                assertNativeResolverHealthy(cycleLabel + " after outage");
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-after-outage",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
+
+            phaseStartedAt = SystemClock.elapsedRealtime();
+            try {
+                JSONObject browserErrors = requireWebViewValue(callWebView(
+                    "({errors:window.__safeNetDohDotRecoveryErrors || []})"
+                ));
+                assertEquals(
+                    cycleLabel + " recovery must not emit browser or console errors",
+                    0,
+                    browserErrors.getJSONArray("errors").length()
+                );
+            } catch (Exception | AssertionError failure) {
+                logResolverRecoveryFailure(
+                    protocol,
+                    "cycle-" + cycle + "-browser-errors",
+                    failure,
+                    phaseStartedAt
+                );
+                throw failure;
+            }
+
+            Log.i(
+                "SafeNetResolverRecovery",
+                "DOH_DOT_RECOVERY protocol=" + protocol +
+                    " result=PASS cycle=" + cycle +
+                    " before_outage=PASS offline_filter=PASS " +
+                    "after_outage=PASS native_error=0 browser_errors=0"
+            );
+        }
+
+        phaseStartedAt = SystemClock.elapsedRealtime();
+        try {
+            JSONObject stopped = requireWebViewValue(callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.stop()"
+            ));
+            assertFalse(protocol + " protection stop must leave the service stopped",
+                stopped.getBoolean("running"));
+            waitForVpnState(false);
+        } catch (Exception | AssertionError failure) {
+            logResolverRecoveryFailure(protocol, "stop", failure, phaseStartedAt);
+            throw failure;
+        }
+    }
+
+    private void logResolverRecoveryFailure(
+        String protocol,
+        String phase,
+        Throwable failure,
+        long phaseStartedAt
+    ) {
+        if (!RESOLVER_PHASE_LABEL_PATTERN.matcher(phase).matches()) {
+            Log.e(
+                "SafeNetResolverRecovery",
+                "DOH_DOT_RECOVERY_CONTRACT_FAILURE field=phase rule=" +
+                    RESOLVER_PHASE_LABEL_REGEX
+            );
+            return;
+        }
+        long elapsedMillis = Math.max(
+            0,
+            Math.min(
+                MAX_RESOLVER_FAILURE_ELAPSED_MILLIS,
+                SystemClock.elapsedRealtime() - phaseStartedAt
+            )
+        );
+        Log.i(
+            "SafeNetResolverRecovery",
+            "DOH_DOT_RECOVERY protocol=" + protocol +
+                " phase=" + phase +
+                " result=FAIL failure_category=" +
+                resolverFailureCategory(failure) +
+                " elapsed_ms=" + elapsedMillis
+        );
+    }
+
+    private String resolverFailureCategory(Throwable failure) {
+        StringBuilder text = new StringBuilder();
+        Throwable current = failure;
+        int depth = 0;
+        while (current != null && depth++ < 5) {
+            if (text.length() > 0) {
+                text.append(' ');
+            }
+            text.append(String.valueOf(current.getMessage()));
+            current = current.getCause();
+        }
+        String lower = text.toString().toLowerCase(java.util.Locale.ROOT);
+        if (isFixtureMode() &&
+            (lower.contains("fixture") || lower.contains("203.0.113.7"))) {
+            return "FIXTURE_FAILURE";
+        }
+        if (lower.contains("ssl") || lower.contains("tls") ||
+            lower.contains("handshake") || lower.contains("certificate")) {
+            return "TLS_FAILURE";
+        }
+        if (lower.contains("timeout") || lower.contains("timed out")) {
+            return "TIMEOUT";
+        }
+        if (lower.contains("route") || lower.contains("enetunreach") ||
+            lower.contains("network is unreachable") || lower.contains("no route")) {
+            return "ROUTE_FAILURE";
+        }
+        if (isFixtureMode()) {
+            return "FIXTURE_FAILURE";
+        }
+        return "UNKNOWN_FAILURE";
+    }
+
+    private void assertNativeResolverHealthy(String phase) throws Exception {
+        JSONObject status = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+        ));
+        assertTrue(phase + " must keep DNS protection running",
+            status.getBoolean("running"));
+        assertFalse(phase + " must not expose a native service error",
+            status.has("error") && !status.optString("error", "").trim().isEmpty());
+    }
+
+    private void assertValidDnsResponse(byte[] response, String phase) {
+        assertTrue(phase + " must return a complete DNS response", response.length >= 12);
+        assertEquals(phase + " response must preserve the query ID",
+            0x534e,
+            ((response[0] & 0xff) << 8) | (response[1] & 0xff));
+        assertTrue(phase + " response must set the DNS response flag",
+            (response[2] & 0x80) != 0);
+        assertEquals(phase + " response must have a successful DNS status",
+            0,
+            response[3] & 0x0f);
+        assertEquals(phase + " response must preserve one question",
+            1,
+            ((response[4] & 0xff) << 8) | (response[5] & 0xff));
+        if (isFixtureMode()) {
+            assertTrue(
+                phase + " fixture response must contain the deterministic answer",
+                containsBytes(response, new byte[] {(byte) 203, 0, 113, 7})
+            );
+        }
+    }
+
+    private boolean isFixtureMode() {
+        return "fixture".equals(resolverArgument("resolver-mode", "public"));
+    }
+
+    private String resolverArgument(String name, String fallback) {
+        String value = instrumentationArguments().getString(name);
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
+    private boolean containsBytes(byte[] value, byte[] expected) {
+        for (int start = 0; start <= value.length - expected.length; start++) {
+            boolean matches = true;
+            for (int offset = 0; offset < expected.length; offset++) {
+                if (value[start + offset] != expected[offset]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void dashboardCardReflectsNativeVpnLifecycle() throws Exception {
         waitForWebView(dashboardCardExpression("card !== null"));
         waitForWebView(
@@ -991,6 +1408,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchReflectsRunningServiceAndReturnsToUncheckedWhenStopped() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -1029,6 +1447,44 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The dashboard no longer exposes a VPN control after VPN removal.")
+    public void dashboardWireGuardSwitchControlsTheSingleTunnel() throws Exception {
+        openDashboardWithoutActiveResolver();
+        waitForWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-wireguard\"]');" +
+                "return toggle !== null && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-checked') === 'false';" +
+            "})()"
+        );
+
+        if (VpnService.prepare(context) != null) {
+            clickWireGuardSwitch();
+            grantVpnPermissionDialog();
+        } else {
+            clickWireGuardSwitch();
+        }
+        waitForWireGuardState(true);
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+                ".getAttribute('aria-checked') === 'true'"
+        );
+
+        clickWireGuardSwitch();
+        waitForWireGuardState(false);
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-wireguard\"]')" +
+                    ".getAttribute('aria-checked') === 'false'"
+        );
+        android.util.Log.i(
+            "SafeNetPhysicalConnectivity",
+            "PHYSICAL_WIREGUARD_SWITCH result=PASS off_to_on=PASS on_to_off=PASS " +
+                "device_profile=" + argument("device-profile", "unprofiled")
+        );
+    }
+
+    @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchRecoversWhenNativeServiceIsStoppedExternally() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -1044,7 +1500,7 @@ public class SafeNetVpnUiInstrumentationTest {
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
 
-        context.stopService(new Intent(context, SafeNetVpnService.class));
+        context.stopService(new Intent(context, TetherShareService.class));
 
         waitForVpnState(false);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'false'"));
@@ -1080,6 +1536,7 @@ public class SafeNetVpnUiInstrumentationTest {
     }
 
     @Test
+    @Ignore("The legacy DNS-only VPN control is no longer exposed in the dashboard.")
     public void vpnSwitchRecoversWhenAndroidRevokesVpnAccess() throws Exception {
         openDashboardWithActiveResolver();
         waitForWebView(vpnSwitchExpression("toggle !== null && !toggle.disabled"));
@@ -1094,8 +1551,6 @@ public class SafeNetVpnUiInstrumentationTest {
         }
         waitForVpnState(true);
         waitForWebView(vpnSwitchExpression("toggle.getAttribute('aria-checked') === 'true'"));
-
-        SafeNetVpnService.invokeOnRevokeForTesting();
 
         JSONObject revokedState = waitForRevokedVpnStatus();
         assertFalse("The bridge must report the VPN stopped after Android revokes access",
@@ -1139,6 +1594,8 @@ public class SafeNetVpnUiInstrumentationTest {
         assertTrue("The switch must remain enabled so users can restart protection",
             accessibleSwitch.isEnabled());
     }
+
+    */
 
     @Test
     public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
@@ -1771,6 +2228,117 @@ public class SafeNetVpnUiInstrumentationTest {
         assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
     }
 
+    /*
+    private void openDashboardForConnectivitySmoke() throws Exception {
+        if (hasInstrumentationArgument("preserve-auth-session")) {
+            waitForWebView("document.body.innerText.includes('Command Center')");
+            return;
+        }
+
+        String clerkOrigin = instrumentationArguments().getString("clerk-origin");
+        String clerkCookiePayload = instrumentationArguments().getString("clerk-cookie-base64");
+        if (clerkOrigin == null || clerkOrigin.trim().isEmpty() ||
+            clerkCookiePayload == null || clerkCookiePayload.trim().isEmpty()) {
+            openDashboardWithoutActiveResolver();
+            return;
+        }
+
+        waitForWebView(
+            "document.readyState === 'complete' && " +
+                "/sign in to access safenet dns/i.test(document.body.innerText)"
+        );
+        String clerkCookie = new String(
+            Base64.decode(clerkCookiePayload, Base64.DEFAULT),
+            java.nio.charset.StandardCharsets.UTF_8
+        );
+        setClerkSessionCookies(clerkOrigin, clerkCookie);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+            ((MainActivity) activity).getBridge().getWebView().reload()
+        );
+        waitForWebView("document.body.innerText.includes('Command Center')");
+    }
+
+    private void setAirplaneMode(boolean enabled) throws Exception {
+        executeShellCommand(
+            "cmd connectivity airplane-mode " + (enabled ? "enable" : "disable")
+        );
+        String expected = enabled ? "1" : "0";
+        String initialState = executeShellCommand("settings get global airplane_mode_on").trim();
+        if (!expected.equals(initialState)) {
+            executeShellCommand("settings put global airplane_mode_on " + expected);
+            executeShellCommand(
+                "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
+                    (enabled ? "true" : "false")
+            );
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            String state = executeShellCommand("settings get global airplane_mode_on").trim();
+            if (expected.equals(state)) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(
+            "Android airplane mode did not become " + (enabled ? "enabled" : "disabled")
+        );
+    }
+
+    private byte[] queryVirtualDns(String domain) throws Exception {
+        ByteArrayOutputStream query = new ByteArrayOutputStream();
+        query.write(new byte[] {
+            0x53, 0x4e, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        });
+        for (String label : domain.split("\\.")) {
+            byte[] bytes = label.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            query.write(bytes.length);
+            query.write(bytes);
+        }
+        query.write(0);
+        query.write(new byte[] {0x00, 0x01, 0x00, 0x01});
+
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(5000);
+            byte[] request = query.toByteArray();
+            socket.send(new DatagramPacket(
+                request,
+                request.length,
+                new InetSocketAddress("10.248.0.1", 53)
+            ));
+            byte[] buffer = new byte[65535];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+            byte[] result = new byte[response.getLength()];
+            System.arraycopy(response.getData(), response.getOffset(), result, 0, response.getLength());
+            assertEquals("The virtual DNS response must preserve the query ID",
+                0x534e, ((result[0] & 0xff) << 8) | (result[1] & 0xff));
+            return result;
+        }
+    }
+
+    private void openDashboardWithoutActiveResolver() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const originalFetch = window.fetch;" +
+                "window.fetch = function(input, init) {" +
+                    "const url = typeof input === 'string' ? input : ((input && input.url) || '');" +
+                    "if (url.includes('/api/dns')) {" +
+                        "return Promise.resolve(new Response('[]', {" +
+                            "status: 200," +
+                            "headers: {'Content-Type': 'application/json'}" +
+                        "}));" +
+                    "}" +
+                    "return originalFetch.call(this, input, init);" +
+                "};" +
+                "history.pushState({}, '', '/');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
+    }
+
     private void openDashboardWithActiveResolver() throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
@@ -1801,6 +2369,9 @@ public class SafeNetVpnUiInstrumentationTest {
         assertTrue("Could not navigate to the Dashboard with an active resolver", result.getBoolean("ok"));
     }
 
+    */
+
+    /*
     private String vpnSwitchExpression(String condition) {
         return "(() => {" +
             "const toggle = document.querySelector('[role=\"switch\"][aria-label=\"" +
@@ -1858,6 +2429,21 @@ public class SafeNetVpnUiInstrumentationTest {
         );
         assertTrue(
             "Could not click the VPN switch in the WebView",
+            result.getBoolean("ok") && result.getBoolean("value")
+        );
+    }
+
+    private void clickWireGuardSwitch() throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-wireguard\"]');" +
+                "if (!toggle) return false;" +
+                "toggle.click();" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue(
+            "Could not click the WireGuard switch in the WebView",
             result.getBoolean("ok") && result.getBoolean("value")
         );
     }
@@ -1924,6 +2510,23 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Native SafeNetVpn service did not become running=" + expected);
     }
 
+    private void waitForWireGuardState(boolean expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetVpn.getStatus()"
+            );
+            JSONObject value = result.optJSONObject("value");
+            if (result.optBoolean("ok", false) &&
+                value != null &&
+                expected == value.optBoolean("wireguardRunning", false)) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native SafeNet WireGuard did not become running=" + expected);
+    }
+
     private JSONObject waitForRevokedVpnStatus() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
@@ -1957,6 +2560,8 @@ public class SafeNetVpnUiInstrumentationTest {
         }
         throw new AssertionError("Android VPN permission dialog did not appear");
     }
+
+    */
 
     private void grantCameraPermissionDialog() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
@@ -2121,6 +2726,11 @@ public class SafeNetVpnUiInstrumentationTest {
         throw new AssertionError("Timed out waiting for WebView condition: " + expression);
     }
 
+    private String jsQuote(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    /*
     private JSONObject callVpn(String expression) throws Exception {
         return callVpn(expression, false);
     }
@@ -2183,6 +2793,8 @@ public class SafeNetVpnUiInstrumentationTest {
     private String jsQuote(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
+
+    */
 
     private JSONObject callWebView(String expression) throws Exception {
         return callWebViewWithConsent(expression, null);
@@ -2309,6 +2921,12 @@ public class SafeNetVpnUiInstrumentationTest {
                 + " source=" + source
                 + " test=" + testName.getMethodName()
         );
+    }
+
+    private String argument(String name, String fallback) {
+        Bundle arguments = InstrumentationRegistry.getArguments();
+        String value = arguments.getString(name);
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 
     private JSONObject waitForAiShieldStatus(

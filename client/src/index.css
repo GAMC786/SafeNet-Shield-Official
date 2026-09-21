@@ -10,6 +10,25 @@
   opacity: 1;
 }
 
+/* Keep Clerk's logo from expanding into the sign-in heading. */
+.cl-logoBox {
+  width: 4rem !important;
+  height: 4rem !important;
+  margin: 0 auto 1rem !important;
+  overflow: hidden !important;
+}
+
+.cl-logoImage {
+  width: 4rem !important;
+  height: 4rem !important;
+  object-fit: contain !important;
+}
+
+.cl-headerTitle {
+  margin-top: 0.5rem !important;
+  line-height: 1.25 !important;
+}
+
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
   --font-display: 'Space Grotesk', sans-serif;
@@ -33,7 +52,7 @@
   --secondary-foreground: 210 40% 98%;
 
   --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
+  --muted-foreground: 215 25% 74%;
 
   /* Accent - Neon Cyan/Blue for active states */
   --accent: 199 89% 48%;
@@ -45,9 +64,9 @@
   --card: 224 35% 14%;
   --card-foreground: 210 40% 98%;
 
-  --border: 217 33% 25%;
-  --input: 217 33% 17%;
-  --ring: 224 76% 48%;
+  --border: 217 35% 32%;
+  --input: 217 35% 23%;
+  --ring: 217 91% 68%;
 
   --radius: 0.5rem;
 }
@@ -59,6 +78,7 @@
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-touch-callout: none;
+    background: hsl(var(--background));
   }
   body {
     @apply bg-background text-foreground antialiased font-body;
@@ -69,8 +89,20 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     padding-top: env(safe-area-inset-top);
-    font-weight: 400;
+    font-weight: 500;
     letter-spacing: 0.01em;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
+  }
+  #root {
+    min-height: 100%;
+    background: hsl(var(--background));
   }
   
   /* Custom scrollbar for technical feel */
@@ -87,7 +119,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    @apply tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 font-semibold;
+    @apply tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white to-white/85 font-semibold;
     letter-spacing: 0.05em;
   }
 }
@@ -101,7 +133,7 @@
   }
   
   .glass-panel {
-    @apply bg-card/60 backdrop-blur-xl border border-white/10 shadow-xl;
+    @apply bg-card/75 backdrop-blur-xl border border-white/15 shadow-xl;
   }
   
   .cyber-border {

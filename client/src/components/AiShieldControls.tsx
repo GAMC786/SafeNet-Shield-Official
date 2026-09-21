@@ -2,7 +2,6 @@ import { useAiShield } from "@/hooks/use-ai-shield";
 import type { AiShieldResult } from "@/hooks/use-vpn";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import {
@@ -13,10 +12,8 @@ import {
   Eye,
   Image as ImageIcon,
   Monitor,
-  Play,
   Radio,
   ShieldAlert,
-  Square,
   Type,
   Video,
 } from "lucide-react";
@@ -82,12 +79,14 @@ export function AiShieldControls() {
   const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
+  const deepCleerAvailable = shield.deepCleer?.available === true;
+  const deepCleerCloudEnabled = deepCleerAvailable && shield.cloudEnabled;
   const mediaControls = [
     { key: "images", label: "Images", description: "Analyze image frames", icon: ImageIcon },
     { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
     { key: "livestreams", label: "Livestreams", description: "Analyze live frames", icon: Radio },
     { key: "texts", label: "Texts", description: "Enable text detection", icon: Type },
-    { key: "audios", label: "Audios", description: "Enable audio detection", icon: AudioLines },
+    { key: "audios", label: "Audio", description: "Enable audio detection", icon: AudioLines },
   ] as const;
 
   const run = async (action: () => Promise<AiShieldResult>) => {
@@ -103,7 +102,7 @@ export function AiShieldControls() {
       }
     } catch (actionError) {
       toast({
-        title: "AI Shield action could not complete",
+        title: "AI Shield action could not be completed.",
         description: actionError instanceof Error ? actionError.message : "Please try again.",
         variant: "destructive",
       });
@@ -133,10 +132,21 @@ export function AiShieldControls() {
             </p>
           </div>
         </div>
-        <Badge variant="outline" className={presentation.className}>
-          <span className="mr-1.5">{presentation.icon}</span>
-          {presentation.label}
-        </Badge>
+        {shield.status?.state !== "capture_unavailable" && (
+          <Badge variant="outline" className={presentation.className}>
+            <span className="mr-1.5">{presentation.icon}</span>
+            {presentation.label}
+          </Badge>
+        )}
+        {shield.status?.state === "capture_unavailable" && (
+          <Badge
+            variant="outline"
+            className="border-yellow-500/40 bg-yellow-500/10 text-yellow-200"
+            data-testid="ai-shield-coming-soon"
+          >
+            Coming Soon
+          </Badge>
+        )}
       </div>
 
       {!shield.supported ? (
@@ -163,9 +173,6 @@ export function AiShieldControls() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {cameraEnabled ? "On" : "Off"}
-              </span>
               <Switch
                 checked={cameraEnabled}
                 onCheckedChange={(checked) => void toggleSource("camera", checked)}
@@ -184,9 +191,6 @@ export function AiShieldControls() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {screenEnabled ? "On" : "Off"}
-              </span>
               <Switch
                 checked={screenEnabled}
                 onCheckedChange={(checked) => void toggleSource("screen", checked)}
@@ -214,14 +218,12 @@ export function AiShieldControls() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {enabled ? "On" : "Off"}
-                  </span>
                   <Switch
-                    checked={enabled}
+                    checked={deepCleerAvailable && enabled}
                     onCheckedChange={(checked) => shield.setMediaPreference(key, checked)}
+                    disabled={!deepCleerAvailable || !shield.supported}
                     data-testid={`switch-ai-${key}`}
-                    aria-label={`${label} detection ${enabled ? "On" : "Off"}`}
+                    aria-label={`${label} detection ${deepCleerAvailable && enabled ? "On" : "Off"}`}
                   />
                 </div>
               </div>
@@ -229,39 +231,6 @@ export function AiShieldControls() {
           })}
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Button
-            type="button"
-            size="sm"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.startCamera)}
-            disabled={!shield.supported || shield.isBusy}
-            data-testid="button-ai-start-camera"
-          >
-            <Play className="mr-2 h-4 w-4" /> Start Camera
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.startScreen)}
-            disabled={!shield.supported || shield.isBusy}
-            data-testid="button-ai-start-screen"
-          >
-            <Play className="mr-2 h-4 w-4" /> Start Screen
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="disabled:opacity-100"
-            onClick={() => void run(shield.stop)}
-            disabled={!shield.supported || shield.isBusy || !monitoring}
-            data-testid="button-ai-stop"
-          >
-            <Square className="mr-2 h-4 w-4" /> Stop Detector
-          </Button>
-        </div>
       </div>
 
       {shield.supported && (
@@ -339,11 +308,11 @@ export function AiShieldControls() {
               </p>
             </div>
             <Switch
-              checked={shield.cloudEnabled}
+              checked={deepCleerCloudEnabled}
               onCheckedChange={shield.setCloudEnabled}
-              disabled={!shield.deepCleer?.available || shield.isBusy}
+              disabled={!shield.deepCleer?.available || shield.isBusy || shield.isCloudBusy}
               data-testid="switch-deepcleer-cloud"
-              aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
+              aria-label={`DeepCleer cloud sharing ${deepCleerCloudEnabled ? "On" : "Off"}`}
             />
           </div>
 

@@ -14,6 +14,7 @@ import socketserver
 import ssl
 import sys
 import threading
+from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler
 
 
@@ -113,6 +114,40 @@ class PlainHttpHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/spam-call-blocker/reputation":
+            number = parse_qs(parsed.query).get("number", [""])[0]
+            if number.endswith("00006"):
+                body = b'{"available":true'
+                content_type = "application/json"
+            elif number.endswith("00007"):
+                # The Android client has a 2.2 second read timeout. Keep this
+                # response long enough to prove the decision fails open.
+                import time
+                time.sleep(3.5)
+                body = b'{"available":true,"action":"block"}'
+                content_type = "application/json"
+            elif number.endswith("00003"):
+                body = b'{"available":true,"action":"silence"}'
+                content_type = "application/json"
+            elif number.endswith("00004"):
+                body = b'{"available":true,"action":"block"}'
+                content_type = "application/json"
+            elif number.endswith("00005"):
+                body = b'{"available":false,"action":"block"}'
+                content_type = "application/json"
+            else:
+                body = b'{"available":true,"action":"allow"}'
+                content_type = "application/json"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+            self.close_connection = True
+            return
+
         body = b"SafeNet Android DNS fixture\n"
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")

@@ -136,7 +136,7 @@ test("dedicated startup job samples the loader at a compact emulator height", ()
   );
   assert.match(
     startupScript,
-    /SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff/,
+    /SafeNetUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff/,
     "compact startup sampling must run the existing startup sampling case",
   );
   assert.match(

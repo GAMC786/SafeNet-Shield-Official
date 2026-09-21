@@ -76,43 +76,6 @@ project. The URL must be a public HTTPS origin without a path or query. Do not
 use `localhost` or a private network address: on the phone, `localhost` refers
 to the phone itself.
 
-### Optional Step 1a: Configure the SafeNet WireGuard gateway
-
-WireGuard controls are included only when the APK build receives a complete
-SafeNet-operated gateway and peer configuration. The values are validated by
-the official WireGuard parser; an incomplete build keeps the controls hidden
-instead of starting an arbitrary or competing VPN. Supply these values through
-the environment or equivalent Gradle properties before running the Android
-build:
-
-```bash
-export SAFENET_WIREGUARD_GATEWAY_OWNER=SafeNet
-export SAFENET_WIREGUARD_GATEWAY_ENDPOINT=wireguard.example.com:51820
-export SAFENET_WIREGUARD_PEER_PUBLIC_KEY='<gateway-public-key>'
-export SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY='<client-private-key>'
-export SAFENET_WIREGUARD_CLIENT_ADDRESS=10.66.0.2/32
-export SAFENET_WIREGUARD_ALLOWED_IPS='0.0.0.0/0, ::/0'
-export SAFENET_WIREGUARD_DNS_SERVERS=10.66.0.1
-export SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE=25
-```
-
-Do not commit the client private key or put it in frontend assets. The WireGuard
-backend owns Android's single VPN permission while the tunnel is active, so
-SafeNet DNS and WireGuard start requests reject conflicting ownership. The
-Quick Settings tile follows whichever SafeNet tunnel is active.
-
-The release workflows read these same eight names from protected GitHub
-repository secrets: `SAFENET_WIREGUARD_GATEWAY_OWNER`,
-`SAFENET_WIREGUARD_GATEWAY_ENDPOINT`, `SAFENET_WIREGUARD_PEER_PUBLIC_KEY`,
-`SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY`, `SAFENET_WIREGUARD_CLIENT_ADDRESS`,
-`SAFENET_WIREGUARD_ALLOWED_IPS`, `SAFENET_WIREGUARD_DNS_SERVERS`, and
-`SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE`. The release job fails before
-packaging if any value is missing, and the private key is passed only to
-Gradle's native build configuration, never to the web build or frontend
-assets. A configured app status reports the SafeNet gateway owner, endpoint,
-peer public key, allowed IPs, and DNS servers; it never reports the client
-private key.
-
 ### Step 2: Open in Android Studio
 ```bash
 npx cap open android
@@ -141,10 +104,9 @@ npm run android:check
 ```
 
 This runs `assembleDebug` with the pinned Android SDK and forces Java
-compilation. It includes `SafeNetVpnPlugin.java` and `SafeNetVpnService.java`,
-so resolver address-family forwarding must compile before a release APK is
-built. The command reads the SDK path from `ANDROID_SDK_ROOT`, `ANDROID_HOME`,
-or `android/local.properties`; do not commit `android/local.properties`.
+compilation for the shared native plugin and the remaining Android features.
+The command reads the SDK path from `ANDROID_SDK_ROOT`, `ANDROID_HOME`, or
+`android/local.properties`; do not commit `android/local.properties`.
 
 ### For Release APK (signed):
 1. Generate a keystore:
@@ -178,13 +140,10 @@ the signed release APK:
 ```
 
 The script uninstalls the previous app, installs exactly `app-release.apk`,
-records device and network details, and runs
-`SafeNetVpnInstrumentationTest`. The instrumentation covers the EULA gate,
-the Android VPN permission flow, the DNS-only `/32` route, ordinary HTTPS
-connectivity, DoH fallback, DoT fallback, and clean VPN shutdown. Resolver
-and ordinary connectivity endpoints can be changed with the
-`ANDROID_SMOKE_*` environment variables. The default DoT fallback is
-`cloudflare-dns.com` so TLS certificate hostname validation is exercised.
+records device and network details, and runs the remaining Android
+instrumentation checks for startup and shared native features. DNS resolver
+records are managed by the SafeNet server; the Android app no longer creates
+or controls a VPN tunnel.
 
 Evidence is written to
 `android/app/build/reports/android-smoke/latest/`. A failed run is classified
@@ -210,7 +169,7 @@ job will wait for, and then require, this labeled runner; it will not substitute
 a hosted image for the real-device startup check. Manual and scheduled non-tag
 checks retain the hosted validation lane. A local run needs an Android SDK,
 `adb`, and an attached target; a host DNS lookup is not a substitute for these
-VPN or startup checks.
+startup checks.
 
 ---
 

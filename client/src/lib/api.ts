@@ -43,6 +43,9 @@ export async function apiFetch(
   path: string,
   { timeoutMs = 15000, signal, ...init }: ApiFetchOptions = {},
 ) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error("No internet connection is available. Reconnect and try again.");
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   const abortFromCaller = () => controller.abort();
@@ -55,10 +58,16 @@ export async function apiFetch(
       credentials: init.credentials ?? "include",
     });
   } catch (error) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new Error("No internet connection is available. Reconnect and try again.");
+    }
     if (controller.signal.aborted && !signal?.aborted) {
       throw new Error(
         `The SafeNet DNS server did not respond within ${Math.round(timeoutMs / 1000)} seconds.`,
       );
+    }
+    if (error instanceof TypeError) {
+      throw new Error("SafeNet could not reach the server. Check your internet connection and try again.");
     }
     throw error;
   } finally {

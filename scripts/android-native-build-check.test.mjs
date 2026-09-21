@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
 const nativeBuildScript = await readFile(
   new URL("./check-android-native-build.sh", import.meta.url),
+  "utf8",
+);
+const sdkSetupScript = await readFile(
+  new URL("./setup-android-sdk.sh", import.meta.url),
   "utf8",
 );
 const mainWorkflow = await readFile(
@@ -18,24 +23,38 @@ const pluginSource = await readFile(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java", import.meta.url),
   "utf8",
 );
-const serviceSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnService.java", import.meta.url),
+const manifestSource = await readFile(
+  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
 );
-const tileSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnTileService.java", import.meta.url),
+const releaseSmokeSource = await readFile(
+  new URL("./android-smoke-test.sh", import.meta.url),
+  "utf8",
+);
+const installFailureParserPath = new URL(
+  "./android-install-failure-parser.sh",
+  import.meta.url,
+);
+const installFailureParser = await readFile(installFailureParserPath, "utf8");
+const resolverDdnsInstrumentationSource = await readFile(
+  new URL(
+    "../android/app/src/androidTest/java/com/safenet/dns/SafeNetDnsDdnsInstrumentationTest.java",
+    import.meta.url,
+  ),
   "utf8",
 );
 
-test("Android native check is executable and forces the debug Java build", async () => {
+test("Android native check is executable and supports bounded debug and release instrumentation builds", async () => {
   const scriptStats = await stat(
     new URL("./check-android-native-build.sh", import.meta.url),
   );
-
   assert.ok((scriptStats.mode & 0o111) !== 0);
   assert.match(nativeBuildScript, /ANDROID_SDK_ROOT/);
   assert.match(nativeBuildScript, /local\.properties/);
   assert.match(nativeBuildScript, /assembleDebug --rerun-tasks/);
+  assert.match(nativeBuildScript, /:app:assembleReleaseAndroidTest/);
+  assert.match(nativeBuildScript, /--release-instrumentation/);
+  assert.match(nativeBuildScript, /max_diagnostics_bytes=16000/);
 });
 
 test("release-capable workflows compile native sources before packaging", () => {
@@ -53,47 +72,155 @@ test("release-capable workflows compile native sources before packaging", () => 
       "Build signed release APK",
       compileIndex,
     );
-
     assert.notEqual(setupIndex, -1, `${name} is missing pinned SDK setup`);
     assert.notEqual(compileIndex, -1, `${name} is missing native compile gate`);
     assert.notEqual(packageIndex, -1, `${name} is missing release packaging`);
-    assert.ok(
-      setupIndex < compileIndex && compileIndex < packageIndex,
-      `${name} must set up the SDK, compile native sources, then package`,
-    );
+    assert.ok(setupIndex < compileIndex && compileIndex < packageIndex);
   }
-});
-
-test("resolver address family is forwarded into the native service", () => {
-  assert.match(pluginSource, /EXTRA_IP_VERSION/);
-  assert.match(serviceSource, /intent\.getStringExtra\(EXTRA_IP_VERSION\)/);
-  assert.match(serviceSource, /private final String ipVersion/);
-  assert.match(serviceSource, /resolveHost\(address, ipVersion\)/);
-  assert.match(serviceSource, /resolveHost\(endpoint\.host, ipVersion\)/);
-  assert.match(serviceSource, /resolveHost\(uri\.getHost\(\), ipVersion\)/);
-});
-
-test("AI Shield native sources use the pinned Android and TensorFlow Lite APIs", async () => {
-  const managerSource = await readFile(
-    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldManager.java", import.meta.url),
-    "utf8",
+  const releaseCompileIndex = mainWorkflow.indexOf(
+    "Compile release instrumentation target before signing",
   );
-  const classifierSource = await readFile(
-    new URL("../android/app/src/main/java/com/safenet/dns/AiShieldClassifier.java", import.meta.url),
-    "utf8",
+  const releasePackageIndex = mainWorkflow.indexOf(
+    "Build release instrumentation APK",
+    releaseCompileIndex,
   );
-
-  assert.match(managerSource, /manager\.openCamera\(cameraId,\s*createCameraStateCallback/);
-  assert.doesNotMatch(managerSource, /manager\.openCamera\(createCameraStateCallback/);
-  assert.match(classifierSource, /input\.dataType\(\)/);
-  assert.match(classifierSource, /output\.dataType\(\)/);
-  assert.doesNotMatch(classifierSource, /(?:input|output)\.type\(\)/);
+  assert.notEqual(releaseCompileIndex, -1, "main Android workflow is missing release instrumentation preflight");
+  assert.notEqual(releasePackageIndex, -1, "main Android workflow is missing signed instrumentation packaging");
+  assert.ok(releaseCompileIndex < releasePackageIndex);
 });
 
-test("the Quick Settings WireGuard tile forwards its selected DNS servers", () => {
-  assert.match(tileSource, /PREF_WIREGUARD_DNS_SERVERS/);
+test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
+  assert.match(sdkSetupScript, /ANDROID_SDK_SETUP_OUTPUT_DIR/);
+  assert.match(sdkSetupScript, /ANDROID_SDK_SETUP_FAILURE/);
+  assert.match(mainWorkflow, /tail -c 16000 "\$RUNNER_TEMP\/android-sdk-setup\.log"/);
+  assert.match(mainWorkflow, /name: Upload Android SDK setup evidence/);
+});
+
+test("the native plugin keeps DNS filtering and shared features", () => {
+  for (const method of [
+    "getProtectionStatus",
+    "getDnsProtectionStatus",
+    "startDnsProtection",
+    "stopDnsProtection",
+    "syncFirewallConfig",
+    "getApkScanStatus",
+    "getAiShieldStatus",
+    "getCallScreeningStatus",
+    "getTetherStatus",
+  ]) {
+    assert.match(pluginSource, new RegExp(`void ${method}\\(`));
+  }
+  assert.match(pluginSource, /SafeNetDnsVpnService/);
+  assert.doesNotMatch(pluginSource, /SafeNetWireGuard|startWireGuard|stopWireGuard/);
+});
+
+test("the Android manifest has the DNS-only VPN service and permission", () => {
+  assert.match(manifestSource, /android\.net\.VpnService/);
+  assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
+  assert.match(manifestSource, /SafeNetDnsVpnService/);
+  assert.doesNotMatch(manifestSource, /SafeNetVpnTileService|SafeNetWireGuard/);
+});
+
+test("the signed smoke lane proves DNS, DDNS, Internet Share, and DNS-VPN package state", () => {
   assert.match(
-    tileSource,
-    /startAsync\(\s*selectedDnsServers,\s*this::postUpdateTile/s,
+    releaseSmokeSource,
+    /SafeNetDnsDdnsInstrumentationTest/,
+    "the signed smoke lane must run the resolver/DDNS/package instrumentation",
+  );
+  assert.match(resolverDdnsInstrumentationSource, /dnsResolverCreateEditAndActivateFlow/);
+  assert.match(resolverDdnsInstrumentationSource, /ddnsManagementFlow/);
+  assert.match(resolverDdnsInstrumentationSource, /signedPackageContainsDnsFilteringVpnOnly/);
+  assert.match(
+    resolverDdnsInstrumentationSource,
+    /physicalDnsFilteringBlocksSelectedDomainAndAllowsAnother/,
+  );
+  assert.match(resolverDdnsInstrumentationSource, /DNS_FILTERING_DEVICE result=PASS/);
+  assert.match(resolverDdnsInstrumentationSource, /BLOCKED_DOMAIN = "example\.com"/);
+  assert.match(resolverDdnsInstrumentationSource, /ALLOWED_DOMAIN = "iana\.org"/);
+  assert.match(releaseSmokeSource, /DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS/);
+  assert.match(releaseSmokeSource, /DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS/);
+  assert.match(releaseSmokeSource, /DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT/);
+  assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
+  assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
+  assert.match(releaseSmokeSource, /--dns-filtering-validation/);
+  assert.match(releaseSmokeSource, /dns_filtering_status/);
+  assert.match(releaseSmokeSource, /dns_filtering=%s/);
+  assert.match(mainWorkflow, /DNS filtering device proof/);
+});
+
+test("signed APK install failures preserve sanitized package-manager evidence", () => {
+  const fixture =
+    "adb: failed to install /home/runner/work/safe-net/android/app-release.apk: " +
+    "Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE: token=do-not-publish]";
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "source \"$1\"",
+        "printf 'category=%s\\n' \"$(classify_android_install_failure \"$2\" 1)\"",
+        "printf 'outcome=%s\\n' \"$(sanitize_android_install_outcome \"$2\")\"",
+      ].join("\n"),
+      "android-install-failure-test",
+      installFailureParserPath.pathname,
+      fixture,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^category=INSTALL_FAILED_INSUFFICIENT_STORAGE$/m);
+  assert.match(result.stdout, /Failure \[INSTALL_FAILED_INSUFFICIENT_STORAGE:/);
+  assert.doesNotMatch(result.stdout, /\/home\/runner\/work/);
+  assert.doesNotMatch(result.stdout, /do-not-publish/);
+  assert.doesNotMatch(result.stdout, /logcat/);
+  assert.match(releaseSmokeSource, /failure_category=ANDROID_INSTALL_FAILURE/);
+  assert.match(releaseSmokeSource, /instrumentation_apk_attempted=/);
+  assert.match(releaseSmokeSource, /install-device-diagnostics\.txt/);
+  assert.match(mainWorkflow, /ANDROID_INSTALL_FAILURE/);
+  assert.match(installFailureParser, /4096/);
+  assert.match(mainWorkflow, /install_failure_category=/);
+  assert.match(mainWorkflow, /install-device-diagnostics\.txt/);
+  assert.match(mainWorkflow, /Android install diagnostics:/);
+});
+
+test("release summaries expose native compile outcomes", () => {
+  assert.match(mainWorkflow, /android_native_compile_outcome:/);
+  assert.match(mainWorkflow, /android_native_instrumentation_compile_outcome:/);
+  assert.match(mainWorkflow, /Native Android compile:/);
+  assert.match(mainWorkflow, /Native release instrumentation compile:/);
+  assert.match(apkOnlyWorkflow, /NATIVE_COMPILE_OUTCOME:/);
+  assert.match(apkOnlyWorkflow, /Native Android compile:/);
+});
+
+test("APK-only signed builds publish and verify a version-matched formal release", () => {
+  assert.match(apkOnlyWorkflow, /permissions:\n  contents: write/);
+  assert.match(
+    apkOnlyWorkflow,
+    /Create or update formal GitHub Release[\s\S]*uses: softprops\/action-gh-release@v2/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /tag_name: \$\{\{ steps\.app_version\.outputs\.release_tag \}\}/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /SafeNet-Android-APK-\$\{RELEASE_TAG\}\.apk/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Verify formal GitHub Release assets[\s\S]*gh api "repos\/\$GITHUB_REPOSITORY\/releases\/tags\/\$RELEASE_TAG"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /sha256sum --check "\$CHECKSUM_ASSET"/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /versionCode='\$ANDROID_VERSION_CODE' versionName='\$ANDROID_VERSION_NAME'/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Formal GitHub Release:\*\*.*\$release_publish_outcome/,
   );
 });

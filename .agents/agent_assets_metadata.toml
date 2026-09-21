@@ -56,3 +56,45 @@ mtime_ms = 1788839746679
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/096e9d79-6a87-4896-84db-5a424e406ffd/e5cc3bb5-155b-4ff1-973d-6c2ff3a9d5a8"
 storage_version_token = "1788839755656525"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "EfNaXzZxK9yjwyD_pxpvS"
+uri = "file://.agents/outputs/task-420-android-validation.txt"
+type = "text"
+title = "Task 420 Android validation evidence"
+description = "Bounded evidence showing the local SDK/device blocker and the latest hosted smoke install failure; required PASS markers were not recorded."
+logical_id = "c218b8f0-8299-4a6a-8b02-986a4c4f97fa"
+content_hash = "sha256:a983f4a1d6c6802465169a2bcb3674fa3da4e688a7057a9435a313aac6f222e4"
+size = 2454
+mtime_ms = 1789669234153
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/c218b8f0-8299-4a6a-8b02-986a4c4f97fa/f484fc33-5766-46e5-8114-2b63f6da8c01"
+storage_version_token = "1789669258672762"
+content_type = "text/plain"
+
+[[outputs]]
+id = "uW2AFYnj4CPxOIjMqmUs_"
+uri = "file://android/app/build/reports/android-locklock-physical/latest/result.txt"
+type = "text"
+title = "LockLock physical-device verification report"
+description = "Bounded evidence from the attempted dedicated-phone run. The result is BLOCKED because no Android device or online physical runner was available; the report includes the APK digest and ADB diagnostics."
+logical_id = "a69721a7-e088-446d-9ccc-859253e2147f"
+content_hash = "sha256:471aea05f93b89ed0a864b98fcb23be51c70e4d20c189ca7912378a462330ec4"
+size = 1184
+mtime_ms = 1789706515477
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/a69721a7-e088-446d-9ccc-859253e2147f/6a1cad7b-d228-4a7c-9ea4-07505749f66f"
+storage_version_token = "1789706532252675"
+content_type = "text/plain"
+
+[[outputs]]
+id = "vWfmB8bQPqWoOK9v762PX"
+uri = "file://artifacts/SafeNet-Android-APK-v1.0.79.apk"
+type = "unspecified"
+title = "SafeNet Android APK v1.0.79"
+description = "Signed release APK built from commit 84272410666c85b78948ac22b065de32023f85a8. SHA-256: d1704790c07bdf7eaa0ac5cd61b947fd945777ad88bcc1ade9c5def3ac2443df"
+logical_id = "86d6c366-c326-42f0-ad4c-2e2957fa7ebf"
+content_hash = "sha256:d1704790c07bdf7eaa0ac5cd61b947fd945777ad88bcc1ade9c5def3ac2443df"
+size = 30287620
+mtime_ms = 1789715900686
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/86d6c366-c326-42f0-ad4c-2e2957fa7ebf/a91f2a2d-8963-4bfa-add0-844f4d7ebb79"
+storage_version_token = "1789715907144558"
+content_type = "application/octet-stream"
