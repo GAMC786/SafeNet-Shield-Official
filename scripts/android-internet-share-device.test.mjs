@@ -52,7 +52,18 @@ test("permission recovery retries a pending share start after Android Settings",
   assert.match(tetherHook, /pendingStartRef/);
   assert.match(tetherHook, /document\.addEventListener\("visibilitychange"/);
   assert.match(tetherHook, /nextStatus\?\.permissionGranted === true/);
-  assert.match(tetherHook, /await start\(\)\.catch\(\(\) => null\)/);
+  assert.match(tetherHook, /await start\(pendingStartModeRef\.current\)\.catch\(\(\) => null\)/);
+});
+
+test("existing-network sharing does not require Wi-Fi Direct permission", () => {
+  assert.match(plugin, /MODE_WIFI_DIRECT\.equals\(mode\) && !tetherPermissionGranted/);
+  assert.match(plugin, /startTetherService\(mode\)/);
+  assert.match(tetherManager, /MODE_LOCAL_NETWORK/);
+  assert.match(tetherManager, /NetworkInterface\.getNetworkInterfaces/);
+  assert.match(tetherManager, /rndis/);
+  assert.match(tetherManager, /Wireless Debugging/);
+  assert.match(tetherHook, /start = useCallback\(async \(mode: TetherShareMode = "wifi_direct"\)/);
+  assert.match(tetherHook, /startTetherShare\(\{ mode \}\)/);
 });
 
 test("physical Internet Share evidence is bound to the signed APK and device profile", () => {

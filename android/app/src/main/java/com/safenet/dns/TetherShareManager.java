@@ -10,21 +10,29 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Owns the Wi-Fi Direct group and the explicit proxy used by Internet Share.
+ * Owns the optional Wi-Fi Direct group and the explicit proxy used by Internet Share.
  *
  * <p>Internet Share does not depend on SafeNet Private DNS and is not a
- * general packet router for devices connected to a Wi-Fi Direct group.</p>
+ * general packet router for devices connected to a Wi-Fi Direct group or local network.</p>
  */
 final class TetherShareManager {
     static final int PROXY_PORT = TetherShareProxy.HTTP_PORT;
     static final int SOCKS_PROXY_PORT = TetherShareProxy.SOCKS_PORT;
     static final String PROXY_HOST = TetherShareProxy.PROXY_HOST;
+    static final String EXTRA_MODE = "safenet_tether_mode";
+    static final String MODE_WIFI_DIRECT = "wifi_direct";
+    static final String MODE_LOCAL_NETWORK = "local_network";
 
     static final class DeviceSnapshot {
         final String name;
@@ -47,6 +55,7 @@ final class TetherShareManager {
         final int httpProxyPort;
         final int socksProxyPort;
         final boolean groupOwner;
+        final String mode;
         final String lastError;
         final List<DeviceSnapshot> devices;
 
@@ -61,6 +70,7 @@ final class TetherShareManager {
             int httpProxyPort,
             int socksProxyPort,
             boolean groupOwner,
+            String mode,
             String lastError,
             List<DeviceSnapshot> devices
         ) {
@@ -74,6 +84,7 @@ final class TetherShareManager {
             this.httpProxyPort = httpProxyPort;
             this.socksProxyPort = socksProxyPort;
             this.groupOwner = groupOwner;
+            this.mode = mode;
             this.lastError = lastError;
             this.devices = devices;
         }
@@ -109,6 +120,8 @@ final class TetherShareManager {
     private volatile String passphrase;
     private volatile String appDefinedNetworkName;
     private volatile String credentialSource;
+    private volatile String mode;
+    private volatile String shareHost;
     private volatile boolean groupOwner;
     private volatile String lastError;
     private volatile List<DeviceSnapshot> devices = Collections.emptyList();
@@ -119,14 +132,23 @@ final class TetherShareManager {
     }
 
     synchronized void start() {
+        start(MODE_WIFI_DIRECT);
+    }
+
+    synchronized void start(String requestedMode) {
         if (running || starting) {
             return;
         }
         final int generation = ++lifecycleGeneration;
         clearConnectionState();
         lastError = null;
+        mode = MODE_LOCAL_NETWORK.equals(requestedMode) ? MODE_LOCAL_NETWORK : MODE_WIFI_DIRECT;
         starting = true;
         try {
+            if (MODE_LOCAL_NETWORK.equals(mode)) {
+                startLocalNetworkShare(generation);
+                return;
+            }
             wifiP2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
             if (wifiP2pManager == null) {
                 fail("Wi-Fi Direct is not available on this device.");
@@ -156,20 +178,53 @@ final class TetherShareManager {
     }
 
     Snapshot snapshot() {
+        if (MODE_LOCAL_NETWORK.equals(mode) && running) {
+            String currentHost = findLocalNetworkHost();
+            if (currentHost != null) {
+                shareHost = currentHost;
+            }
+        }
         return new Snapshot(
             running,
             starting,
             networkName,
             passphrase,
             credentialSource,
-            PROXY_HOST,
+            shareHost,
             PROXY_PORT,
             TetherShareProxy.HTTP_PORT,
             TetherShareProxy.SOCKS_PORT,
             groupOwner,
+            mode,
             lastError,
             new ArrayList<>(devices)
         );
+    }
+
+    private void startLocalNetworkShare(int generation) {
+        String localHost = findLocalNetworkHost();
+        if (localHost == null) {
+            fail(
+                "No usable local Wi-Fi or hotspot address was found. " +
+                "Enable Wi-Fi, Wi-Fi hotspot, USB tethering, or connect Wireless Debugging " +
+                "on the same network, then try again."
+            );
+            return;
+        }
+        try {
+            shareHost = localHost;
+            proxy.start();
+            if (!isCurrent(generation)) {
+                proxy.stop();
+                return;
+            }
+            starting = false;
+            running = true;
+            lastError = null;
+        } catch (IOException error) {
+            fail("SafeNet could not open the HTTP/SOCKS proxy ports " +
+                TetherShareProxy.HTTP_PORT + " and " + TetherShareProxy.SOCKS_PORT + ".");
+        }
     }
 
     private void prepareGroup(int generation, int attempt) {
@@ -322,6 +377,8 @@ final class TetherShareManager {
     }
 
     private synchronized void updateGroupSnapshot(WifiP2pGroup group) {
+        mode = MODE_WIFI_DIRECT;
+        shareHost = PROXY_HOST;
         groupOwner = group.isGroupOwner();
         networkName = group.getNetworkName();
         String androidPassphrase =
@@ -402,6 +459,8 @@ final class TetherShareManager {
         passphrase = null;
         appDefinedNetworkName = null;
         credentialSource = null;
+        mode = null;
+        shareHost = PROXY_HOST;
         groupOwner = false;
     }
 
@@ -435,6 +494,71 @@ final class TetherShareManager {
 
     private String createPassphrase() {
         return randomCredentialCharacters(16);
+    }
+
+    private String findLocalNetworkHost() {
+        try {
+            List<NetworkAddress> candidates = new ArrayList<>();
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces == null) {
+                return null;
+            }
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (!networkInterface.isUp() || networkInterface.isLoopback()) {
+                    continue;
+                }
+                String name = networkInterface.getName().toLowerCase(Locale.US);
+                if (name.contains("tun") || name.contains("ppp") || name.contains("wg")) {
+                    continue;
+                }
+                int priority = interfacePriority(name);
+                if (priority < 0) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (!(address instanceof Inet4Address) ||
+                        address.isLoopbackAddress() ||
+                        address.isLinkLocalAddress() ||
+                        !address.isSiteLocalAddress()) {
+                        continue;
+                    }
+                    candidates.add(new NetworkAddress(priority, address.getHostAddress()));
+                }
+            }
+            if (candidates.isEmpty()) {
+                return null;
+            }
+            Collections.sort(candidates, (left, right) -> Integer.compare(left.priority, right.priority));
+            return candidates.get(0).address;
+        } catch (IOException | RuntimeException error) {
+            return null;
+        }
+    }
+
+    private int interfacePriority(String name) {
+        if (name.startsWith("ap") || name.contains("softap") || name.contains("swlan")) {
+            return 0;
+        }
+        if (name.startsWith("wlan") || name.contains("wifi")) {
+            return 1;
+        }
+        if (name.startsWith("rndis") || name.startsWith("usb") || name.startsWith("eth")) {
+            return 2;
+        }
+        return -1;
+    }
+
+    private static final class NetworkAddress {
+        final int priority;
+        final String address;
+
+        NetworkAddress(int priority, String address) {
+            this.priority = priority;
+            this.address = address;
+        }
     }
 
     private String randomCredentialCharacters(int length) {

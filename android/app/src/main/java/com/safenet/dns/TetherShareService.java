@@ -30,7 +30,10 @@ public final class TetherShareService extends Service {
         try {
             createChannel();
             startForeground(NOTIFICATION_ID, notification());
-            manager.start();
+            String mode = intent == null
+                ? TetherShareManager.MODE_WIFI_DIRECT
+                : intent.getStringExtra(TetherShareManager.EXTRA_MODE);
+            manager.start(mode);
         } catch (RuntimeException error) {
             manager.fail("Android could not start Internet Share.");
             try {
@@ -64,7 +67,7 @@ public final class TetherShareService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(com.safenet.dns.R.mipmap.ic_launcher)
             .setContentTitle("SafeNet Internet Share")
-            .setContentText("Wi-Fi Direct network and proxy are running")
+            .setContentText("Network sharing and proxy are running")
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .build();

@@ -8,6 +8,8 @@ export interface TetherShareDevice {
   address: string;
 }
 
+export type TetherShareMode = "wifi_direct" | "local_network";
+
 export interface TetherShareStatus {
   supported: boolean;
   running: boolean;
@@ -22,6 +24,7 @@ export interface TetherShareStatus {
   socksProxySupported?: boolean;
   connectedDevices: TetherShareDevice[];
   groupOwner: boolean;
+  mode?: TetherShareMode | null;
   permissionGranted?: boolean;
   lastError?: string | null;
   requiresManualProxy: boolean;
@@ -40,6 +43,7 @@ const unsupportedStatus: TetherShareStatus = {
 export function useTetherShare() {
   const supported = Capacitor.getPlatform() === "android";
   const pendingStartRef = useRef(false);
+  const pendingStartModeRef = useRef<TetherShareMode>("wifi_direct");
   const [status, setStatus] = useState<TetherShareStatus | null>(
     supported ? null : unsupportedStatus,
   );
@@ -68,12 +72,13 @@ export function useTetherShare() {
     return () => window.clearInterval(interval);
   }, [refresh, supported]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (mode: TetherShareMode = "wifi_direct") => {
     if (!supported) return unsupportedStatus;
     pendingStartRef.current = true;
+    pendingStartModeRef.current = mode;
     setIsBusy(true);
     try {
-      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startTetherShare());
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startTetherShare({ mode }));
       pendingStartRef.current = false;
       setStatus(nextStatus);
       await refresh().catch(() => null);
@@ -114,7 +119,7 @@ export function useTetherShare() {
           nextStatus?.permissionGranted === true &&
           !nextStatus.running
         ) {
-          await start().catch(() => null);
+          await start(pendingStartModeRef.current).catch(() => null);
         }
       })();
     };

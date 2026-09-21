@@ -263,7 +263,13 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void startTetherShare(PluginCall call) {
-        if (!tetherPermissionGranted()) {
+        String mode = call.getString(
+            "mode",
+            TetherShareManager.MODE_WIFI_DIRECT
+        );
+        boolean requiresNearbyPermission =
+            TetherShareManager.MODE_WIFI_DIRECT.equals(mode) && !tetherPermissionGranted();
+        if (requiresNearbyPermission) {
             if (Build.VERSION.SDK_INT >= 33 && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
                 requestPermissionForAlias("nearbyWifi", call, "tetherPermissionResult");
             } else {
@@ -272,7 +278,7 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
         try {
-            startTetherService();
+            startTetherService(mode);
             call.resolve(tetherStatus());
         } catch (RuntimeException error) {
             call.reject(
@@ -294,7 +300,7 @@ public class SafeNetVpnPlugin extends Plugin {
             return;
         }
         try {
-            startTetherService();
+            startTetherService(call.getString("mode", TetherShareManager.MODE_WIFI_DIRECT));
             call.resolve(tetherStatus());
         } catch (RuntimeException error) {
             call.reject(
@@ -341,8 +347,13 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private void startTetherService() {
+        startTetherService(TetherShareManager.MODE_WIFI_DIRECT);
+    }
+
+    private void startTetherService(String mode) {
         Intent serviceIntent = new Intent(getContext(), TetherShareService.class)
-            .setAction(TetherShareService.ACTION_START);
+            .setAction(TetherShareService.ACTION_START)
+            .putExtra(TetherShareManager.EXTRA_MODE, mode);
         if (Build.VERSION.SDK_INT >= 26) {
             getContext().startForegroundService(serviceIntent);
         } else {
@@ -366,6 +377,7 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("httpProxySupported", snapshot.httpProxyPort > 0);
         result.put("socksProxySupported", snapshot.socksProxyPort > 0);
         result.put("groupOwner", snapshot.groupOwner);
+        result.put("mode", snapshot.mode);
         result.put("permissionGranted", tetherPermissionGranted());
         result.put("lastError", snapshot.lastError);
         result.put("requiresManualProxy", true);

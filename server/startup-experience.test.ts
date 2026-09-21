@@ -167,7 +167,10 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(navigationSource, /path: "\/tether", label: "Internet Share", icon: Share2/);
   assert.doesNotMatch(navigationSource, /label: "Activity"/);
   assert.match(appSource, /Route path="\/tether" component=\{TetherShare\}/);
-  assert.match(tetherShareSource, /No-root Wi-Fi Direct gateway/);
+  assert.match(tetherShareSource, /No-root Wi-Fi, hotspot, and Wi-Fi Direct gateway/);
+  assert.match(tetherShareSource, /Existing Wi-Fi \/ hotspot/);
+  assert.match(tetherShareSource, /Wireless Debugging/);
+  assert.match(tetherShareSource, /start\(shareMode\)/);
   assert.match(tetherShareSource, /Recommended family DNS setup/);
   assert.match(tetherShareSource, /No resolver is selected automatically/);
   assert.match(tetherShareSource, /useCreateDnsServer/);
@@ -199,9 +202,9 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /<Switch/);
   assert.match(tetherShareSource, /checked=\{running\}/);
   assert.match(tetherShareSource, /onCheckedChange=\{\(checked\) => void handleToggle\(checked\)\}/);
-  assert.match(tetherShareSource, /nextRunning \? start\(\) : stop\(\)/);
+  assert.match(tetherShareSource, /nextRunning \? start\(shareMode\) : stop\(\)/);
   assert.match(tetherShareSource, /Proxy host/);
-  assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
+  assert.match(tetherShareSource, /Open Android Wi-Fi &amp; hotspot settings/);
   assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);
   assert.match(tetherShareSource, /separate from SafeNet&apos;s Private DNS setting/);
   assert.match(tetherShareProxySource, /PROXY_HOST = "192\.168\.49\.1"/);

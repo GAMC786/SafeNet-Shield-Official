@@ -1,4 +1,4 @@
-import { useTetherShare } from "@/hooks/use-tether-share";
+import { useTetherShare, type TetherShareMode } from "@/hooks/use-tether-share";
 import {
   useCreateDnsServer,
   useDeleteDnsServer,
@@ -144,6 +144,7 @@ export default function TetherShare() {
     emptyResolver,
   );
   const [selectedResolverProtocol, setSelectedResolverProtocol] = useState<DnsServer["type"]>("plain");
+  const [shareMode, setShareMode] = useState<TetherShareMode>("local_network");
   const isResolverMutating = createResolver.isPending ||
     updateResolver.isPending ||
     deleteResolver.isPending ||
@@ -286,12 +287,12 @@ export default function TetherShare() {
     if (!supported) {
       toast({
         title: "Android device required",
-        description: "Internet Share uses Android Wi-Fi Direct and can be started from the SafeNet Android APK.",
+        description: "Internet Share uses Android network sharing and can be started from the SafeNet Android APK.",
       });
       return;
     }
     try {
-      await (nextRunning ? start() : stop());
+      await (nextRunning ? start(shareMode) : stop());
     } catch (error) {
       toast({
         title: "Internet Share could not be changed",
@@ -305,7 +306,7 @@ export default function TetherShare() {
     <div className="space-y-5 sm:space-y-6">
       <Header
         title="Internet Share"
-        subtitle="No-root Wi-Fi Direct gateway"
+        subtitle="No-root Wi-Fi, hotspot, and Wi-Fi Direct gateway"
         status={running ? "sharing" : "not-sharing"}
       />
 
@@ -316,7 +317,7 @@ export default function TetherShare() {
             <div>
               <h2 className="font-semibold text-white">Available in the SafeNet Android APK</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Internet Share uses Android Wi-Fi Direct and cannot be started from a desktop browser.
+                Internet Share uses Android networking and cannot be started from a desktop browser.
               </p>
             </div>
           </div>
@@ -333,7 +334,7 @@ export default function TetherShare() {
               </h2>
               <p className="mt-1 text-sm text-destructive" role="alert">
                 {nearbyWifiPermissionRequired
-                  ? "Turning on your phone hotspot does not grant SafeNet access to create a Wi-Fi Direct network. Allow Nearby devices in Android app settings, then return and tap Start sharing."
+                  ? "Wi-Fi Direct mode requires Nearby devices permission. Allow it in Android app settings, then return and tap Start sharing. Existing Wi-Fi or hotspot mode does not require this permission."
                   : status.lastError}
               </p>
               {nearbyWifiPermissionRequired && (
@@ -365,9 +366,32 @@ export default function TetherShare() {
                 {running && <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">Broadcasting</span>}
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Create a private Wi-Fi Direct network for nearby devices without root. SafeNet runs a local HTTP proxy so connected devices can use this phone&apos;s Wi-Fi or mobile connection.
+                {shareMode === "wifi_direct"
+                  ? "Create a private Wi-Fi Direct network for nearby devices without root. SafeNet runs a local HTTP proxy so connected devices can use this phone&apos;s Wi-Fi or mobile connection."
+                  : "Use an already enabled Wi-Fi hotspot or the same Wi-Fi network as the client. Wireless Debugging can use this mode because it uses the phone&apos;s existing local network; ADB is not required by SafeNet."}
               </p>
             </div>
+          </div>
+          <div className="grid gap-3 rounded-xl border border-white/10 bg-black/20 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div>
+              <Label htmlFor="tether-share-mode">Connection method</Label>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Use an existing network for Wi-Fi hotspot or Wireless Debugging. Wi-Fi Direct creates a separate network when you need one.
+              </p>
+            </div>
+            <Select
+              value={shareMode}
+              onValueChange={(value: TetherShareMode) => setShareMode(value)}
+              disabled={running || starting}
+            >
+              <SelectTrigger id="tether-share-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local_network">Existing Wi-Fi / hotspot</SelectItem>
+                <SelectItem value="wifi_direct">Create Wi-Fi Direct network</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center justify-center gap-3 self-center rounded-xl border border-white/10 bg-black/20 px-3 py-2">
             <div className="text-right">
@@ -624,14 +648,23 @@ export default function TetherShare() {
           <CyberCard className="space-y-4">
             <div className="flex items-center gap-2">
               <Wifi className="h-5 w-5 text-primary" />
-              <h3 className="font-display text-lg font-bold text-white">Connect to the network</h3>
+              <h3 className="font-display text-lg font-bold text-white">
+                {status.mode === "wifi_direct" ? "Connect to the network" : "Use the existing network"}
+              </h3>
             </div>
-            <div className="space-y-2">
-              <CopyValue value={status.networkName || "SafeNet-Share"} label="Wi-Fi Direct network" />
-              <CopyValue value={status.passphrase || "Displayed by Android"} label="Passphrase" />
-            </div>
+            {status.mode === "wifi_direct" ? (
+              <div className="space-y-2">
+                <CopyValue value={status.networkName || "SafeNet-Share"} label="Wi-Fi Direct network" />
+                <CopyValue value={status.passphrase || "Displayed by Android"} label="Passphrase" />
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-muted-foreground">
+                Enable the phone&apos;s Wi-Fi hotspot, or connect the phone and client to the same Wi-Fi network.
+                Wireless Debugging may stay enabled; it is only an Android connection method, not a requirement for SafeNet.
+              </p>
+            )}
             <Button type="button" variant="outline" className="w-full" onClick={() => void openWifiSettings()}>
-              <ExternalLink className="mr-2 h-4 w-4" /> Open Android Wi-Fi settings
+              <ExternalLink className="mr-2 h-4 w-4" /> Open Android Wi-Fi &amp; hotspot settings
             </Button>
           </CyberCard>
 
