@@ -7,4 +7,4 @@ Public-IP ISP metadata is an inference from the device's public address, not a d
 
 **Why:** The first metadata provider returned HTTP 429 from the workspace environment even though another provider responded with CORS enabled.
 
-**How to apply:** Keep the provider chain client-side so it observes the phone's public IP rather than the server's egress IP, normalize provider-specific fields, avoid storing the profile, and describe the result as inferred.
+**How to apply:** Keep the provider chain client-side so it observes the phone's public IP rather than the server's egress IP, give each provider its own bounded timeout, normalize provider-specific fields, avoid storing the profile, and describe the result as inferred.

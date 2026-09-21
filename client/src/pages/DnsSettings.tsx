@@ -17,8 +17,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useSafeNetVpn } from "@/hooks/use-vpn";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import {
+  DNS_FAMILY_RESOLVER_PRESETS,
+  DNS_NEXTDNS_RESOLVER_PRESET,
+} from "@shared/dns-resolvers";
+import { useDnsProtection } from "@/hooks/use-vpn";
 
 type ResolverForm = {
   name: string;
@@ -28,6 +32,11 @@ type ResolverForm = {
   secondaryAddress: string;
 };
 
+const resolverPresets = [
+  ...DNS_FAMILY_RESOLVER_PRESETS,
+  DNS_NEXTDNS_RESOLVER_PRESET,
+] as const;
+
 const emptyResolver: ResolverForm = {
   name: "",
   type: "plain",
@@ -35,33 +44,6 @@ const emptyResolver: ResolverForm = {
   primaryAddress: "",
   secondaryAddress: "",
 };
-
-const resolverPresets = [
-  {
-    name: "AdGuard DNS (Family)",
-    type: "doh" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "https://family.adguard-dns.com/dns-query",
-    secondaryAddress: null,
-    description: "Blocks ads, trackers, malware, and adult content.",
-  },
-  {
-    name: "NextDNS",
-    type: "plain" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "45.90.28.0",
-    secondaryAddress: "45.90.30.0",
-    description: "Public NextDNS anycast resolvers without a profile ID.",
-  },
-  {
-    name: "Control D",
-    type: "doh" as const,
-    ipVersion: "ipv4" as const,
-    primaryAddress: "https://freedns.controld.com/p2",
-    secondaryAddress: null,
-    description: "Encrypted Ads & Tracking filtered resolver.",
-  },
-] as const;
 
 function resolverTypeLabel(type: DnsServer["type"]) {
   return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
@@ -103,8 +85,8 @@ export default function DnsSettings() {
   const createServer = useCreateDnsServer();
   const updateServer = useUpdateDnsServer();
   const deleteServer = useDeleteDnsServer();
-  const vpn = useSafeNetVpn();
   const { toast } = useToast();
+  const dnsProtection = useDnsProtection();
   const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
   const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
@@ -154,29 +136,37 @@ export default function DnsSettings() {
   const handleActivate = async (server: DnsServer) => {
     try {
       await activateServer.mutateAsync(server.id);
-      const wireGuardDns = [server.primaryAddress, server.secondaryAddress]
-        .filter(Boolean)
-        .join(",");
-      if (vpn.supported && vpn.status?.wireguardRunning) {
-        await vpn.stopWireGuard();
-        await vpn.startWireGuard({ dnsServers: wireGuardDns });
-      } else if (vpn.supported && vpn.status?.running) {
-        await vpn.stop();
-        await vpn.start({
-          type: server.type,
-          ipVersion: server.ipVersion,
-          primaryAddress: server.primaryAddress,
-          secondaryAddress: server.secondaryAddress,
-        });
+      if (dnsProtection.supported) {
+        await dnsProtection.start(server);
       }
       toast({
-        title: "DNS resolver activated",
-        description: `${server.name} is now the active SafeNet resolver.`,
+        title: dnsProtection.supported ? "DNS filtering activated" : "DNS resolver activated",
+        description: dnsProtection.supported
+          ? `${server.name} is active and device DNS requests now pass through SafeNet filtering.`
+          : `${server.name} is now the active SafeNet resolver.`,
       });
     } catch (error) {
       toast({
         title: "DNS resolver could not be activated",
         description: error instanceof Error ? error.message : "Unable to activate this DNS resolver.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleStartFiltering = async (server: DnsServer) => {
+    try {
+      const status = await dnsProtection.start(server);
+      if (status?.running) {
+        toast({
+          title: "DNS filtering enabled",
+          description: `${server.name} is filtering device DNS requests.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "DNS filtering could not be enabled",
+        description: error instanceof Error ? error.message : "Android did not grant DNS filtering access.",
         variant: "destructive",
       });
     }
@@ -224,11 +214,14 @@ export default function DnsSettings() {
 
     try {
       if (editingResolver) {
-        await updateServer.mutateAsync({ id: editingResolver.id, ...data });
+        const updated = await updateServer.mutateAsync({ id: editingResolver.id, ...data });
+        if (dnsProtection.supported && editingResolver.isActive && dnsProtection.status?.running) {
+          await dnsProtection.start(updated);
+        }
       } else {
         await createServer.mutateAsync({
           ...data,
-          isActive: !servers?.length,
+          isActive: false,
           isCustom: true,
         });
       }
@@ -262,7 +255,7 @@ export default function DnsSettings() {
         ipVersion: preset.ipVersion,
         primaryAddress: preset.primaryAddress,
         secondaryAddress: preset.secondaryAddress,
-        isActive: !servers?.length,
+        isActive: false,
         isCustom: false,
       });
       toast({
@@ -281,6 +274,9 @@ export default function DnsSettings() {
   const handleRemove = async (server: DnsServer) => {
     if (!window.confirm(`Remove ${server.name} from SafeNet DNS resolvers?`)) return;
     try {
+      if (server.isActive && dnsProtection.status?.running) {
+        await dnsProtection.stop();
+      }
       await deleteServer.mutateAsync(server.id);
       toast({ title: "Resolver removed", description: `${server.name} was removed.` });
     } catch (error) {
@@ -297,7 +293,7 @@ export default function DnsSettings() {
 
   return (
     <div className="space-y-6">
-      <Header title="DNS Servers" subtitle="Manage Resolver" />
+      <Header title="DNS Servers" subtitle="Manage Resolvers" />
 
       <CyberCard className="border-primary/20">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -308,7 +304,7 @@ export default function DnsSettings() {
             <div>
               <h2 className="font-display text-lg font-bold text-white">Resolver management</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Choose the active DNS path or maintain your own trusted resolver list.
+                Maintain your trusted resolver list and activate a resolver only when you want to use it.
               </p>
             </div>
           </div>
@@ -333,7 +329,7 @@ export default function DnsSettings() {
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="text-sm font-semibold text-white">{preset.name}</h4>
-                      <Badge variant="outline" className="shrink-0 text-[10px] uppercase">{preset.type}</Badge>
+                       <Badge variant="outline" className="shrink-0 text-[10px]">{resolverTypeLabel(preset.type)}</Badge>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{preset.description}</p>
                   </div>
@@ -470,7 +466,48 @@ export default function DnsSettings() {
           </Button>
         </CyberCard>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="space-y-4">
+          {dnsProtection.supported && (
+            <CyberCard className={dnsProtection.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
+                    Android DNS filtering
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {dnsProtection.status?.running
+                      ? "SafeNet is routing device DNS requests through the selected resolver."
+                      : "Resolver selection alone does not change Android traffic. Choose a resolver and enable filtering when you are ready."}
+                  </p>
+                </div>
+                {dnsProtection.status?.running ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={dnsProtection.isBusy}
+                    onClick={() => void dnsProtection.stop()}
+                  >
+                    Stop filtering
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={dnsProtection.isBusy || !servers.find((server) => server.isActive)}
+                    onClick={() => {
+                      const active = servers.find((server) => server.isActive);
+                      if (active) void handleStartFiltering(active);
+                    }}
+                  >
+                    Enable filtering
+                  </Button>
+                )}
+              </div>
+              {dnsProtection.status?.error && (
+                <p className="mt-2 text-xs text-destructive">{dnsProtection.status.error}</p>
+              )}
+            </CyberCard>
+          )}
+          <div className="grid grid-cols-1 gap-4">
           {servers.map((server) => (
             <CyberCard
               key={server.id}
@@ -503,7 +540,7 @@ export default function DnsSettings() {
                 </div>
               </div>
 
-              <div className="grid w-full grid-cols-3 gap-2 md:w-auto md:min-w-[300px]">
+              <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:min-w-[300px] lg:grid-cols-3">
                 <Button
                   variant={server.isActive ? "default" : "outline"}
                   size="sm"
@@ -514,6 +551,17 @@ export default function DnsSettings() {
                   {activateServer.isPending && !server.isActive ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                   {server.isActive ? "Active" : "Use This"}
                 </Button>
+                {dnsProtection.supported && server.isActive && !dnsProtection.status?.running && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleStartFiltering(server)}
+                    disabled={dnsProtection.isBusy || isMutating}
+                    className="text-primary"
+                  >
+                    Enable filtering
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -535,6 +583,7 @@ export default function DnsSettings() {
               </div>
             </CyberCard>
           ))}
+          </div>
         </div>
       )}
     </div>

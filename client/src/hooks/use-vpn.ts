@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { FirewallConfig } from "@shared/schema";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 export const SAFE_NET_VPN_EULA_VERSION = "1.0";
 
@@ -56,26 +57,6 @@ export interface ApkScanStatus {
   quarantineBytes?: number;
 }
 
-export interface VpnStatus {
-  supported: boolean;
-  running: boolean;
-  permissionGranted: boolean;
-  eulaVersion: string;
-  eulaAccepted: boolean;
-  wireguardConfigured?: boolean;
-  wireguardRunning?: boolean;
-  activeTunnel?: "dns" | "wireguard" | "none" | string;
-  vpnPermissionOwner?: "SafeNet DNS" | "SafeNet WireGuard" | "none" | string;
-  wireguardGateway?: string;
-  wireguardGatewayOwner?: string;
-  wireguardPeerPublicKey?: string;
-  wireguardAllowedIps?: string;
-  wireguardDnsServers?: string;
-  wireguardError?: string | null;
-  error?: string;
-  protection?: ProtectionStatus;
-}
-
 export type ProtectionState =
   | "protected"
   | "vpn_replaced"
@@ -118,8 +99,41 @@ export interface AiShieldResult {
   limitations?: string;
 }
 
+export interface CallScreeningStatus {
+  supported: boolean;
+  roleAvailable: boolean;
+  roleHeld: boolean;
+  enabled: boolean;
+  serviceRegistered: boolean;
+  apiConfigured: boolean;
+  blockedNumberCount: number;
+  message: string;
+}
+
 interface SafeNetVpnPlugin {
-  getStatus(): Promise<VpnStatus>;
+  startDnsProtection(options: {
+    type: "plain" | "doh" | "dot";
+    ipVersion: "ipv4" | "ipv6";
+    primaryAddress: string;
+    secondaryAddress?: string;
+  }): Promise<{
+    supported: boolean;
+    running: boolean;
+    firewallEnabled: boolean;
+    error?: string | null;
+  }>;
+  stopDnsProtection(): Promise<{
+    supported: boolean;
+    running: boolean;
+    firewallEnabled: boolean;
+    error?: string | null;
+  }>;
+  getDnsProtectionStatus(): Promise<{
+    supported: boolean;
+    running: boolean;
+    firewallEnabled: boolean;
+    error?: string | null;
+  }>;
   syncFirewallConfig(options: { config: FirewallConfig }): Promise<{
     synced: boolean;
     firewallEnabled: boolean;
@@ -130,26 +144,26 @@ interface SafeNetVpnPlugin {
   scanInstalledApks(): Promise<{ results: ApkScanResult[] }>;
   deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;
   clearApkScanHistory(): Promise<ApkScanStatus>;
-  acceptEula(options: { version: string }): Promise<VpnStatus>;
-  start(options: {
-    type: string;
-    ipVersion: "ipv4" | "ipv6";
-    primaryAddress: string;
-    secondaryAddress?: string | null;
-  }): Promise<VpnStatus>;
-  stop(): Promise<VpnStatus>;
-  startWireGuard(options?: { dnsServers?: string }): Promise<VpnStatus>;
-  stopWireGuard(): Promise<VpnStatus>;
   getProtectionStatus(): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
   startAiShieldScreen(): Promise<AiShieldResult>;
   stopAiShield(): Promise<AiShieldResult>;
   setAiShieldCloudUploadEnabled(options: { enabled: boolean }): Promise<void>;
+  getCallScreeningStatus(): Promise<CallScreeningStatus>;
+  requestCallScreeningRole(): Promise<CallScreeningStatus>;
+  openCallScreeningSettings(): Promise<CallScreeningStatus>;
+  setCallScreeningEnabled(options: { enabled: boolean }): Promise<CallScreeningStatus>;
+  syncCallScreeningConfig(options: { blockedNumbers: string[] }): Promise<CallScreeningStatus>;
+  getAppLockStatus(): Promise<import("./use-app-lock").AppLockStatus>;
+  setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
+  unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
+  lockAppNow(): Promise<import("./use-app-lock").AppLockStatus>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
   startTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
   openTetherWifiSettings(): Promise<void>;
+  openTetherAppSettings(): Promise<void>;
   addListener(
     eventName: "aiShieldResult",
     listenerFunc: (result: AiShieldResult) => void,
@@ -162,78 +176,118 @@ interface SafeNetVpnPlugin {
 
 export const SafeNetVpn = registerPlugin<SafeNetVpnPlugin>("SafeNetVpn");
 
-export function useSafeNetVpn() {
+export type DnsProtectionStatus = {
+  supported: boolean;
+  running: boolean;
+  firewallEnabled: boolean;
+  error?: string | null;
+};
+
+export function useDnsProtection() {
   const supported = Capacitor.getPlatform() === "android";
-  const [status, setStatus] = useState<VpnStatus | null>(null);
+  const [status, setStatus] = useState<DnsProtectionStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!supported) {
-      return null;
-    }
+    if (!supported) return null;
     try {
-      const nextStatus = await SafeNetVpn.getStatus();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getDnsProtectionStatus());
       setStatus(nextStatus);
       return nextStatus;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Android could not read VPN status.";
-      setStatus((previous) => ({
+    } catch {
+      const unavailable = {
         supported: true,
         running: false,
-        permissionGranted: previous?.permissionGranted ?? false,
-        eulaVersion: previous?.eulaVersion ?? SAFE_NET_VPN_EULA_VERSION,
-        eulaAccepted: previous?.eulaAccepted ?? false,
-        wireguardConfigured: previous?.wireguardConfigured ?? false,
-        wireguardRunning: previous?.wireguardRunning ?? false,
-        activeTunnel: previous?.activeTunnel ?? "none",
-        vpnPermissionOwner: previous?.vpnPermissionOwner ?? "none",
-        error: `DNS protection status is unavailable. ${message}`,
-      }));
-      throw error;
+        firewallEnabled: false,
+        error: "Android DNS filtering status is unavailable.",
+      };
+      setStatus(unavailable);
+      return unavailable;
     }
   }, [supported]);
 
   useEffect(() => {
-    if (!supported) {
-      return;
-    }
-    void refresh().catch(() => undefined);
-    const interval = window.setInterval(() => void refresh().catch(() => undefined), 2000);
+    if (!supported) return;
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
     return () => window.clearInterval(interval);
   }, [refresh, supported]);
 
-  const acceptEula = useCallback(async () => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await SafeNetVpn.acceptEula({ version: SAFE_NET_VPN_EULA_VERSION });
-      setStatus(nextStatus);
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, []);
-
-  const start = useCallback(async (options: {
-    type: string;
+  const start = useCallback(async (server: {
+    type: "plain" | "doh" | "dot";
     ipVersion: "ipv4" | "ipv6";
     primaryAddress: string;
     secondaryAddress?: string | null;
   }) => {
+    if (!supported) return null;
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.start(options);
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startDnsProtection({
+        type: server.type,
+        ipVersion: server.ipVersion,
+        primaryAddress: server.primaryAddress,
+        secondaryAddress: server.secondaryAddress ?? "",
+      }));
       setStatus(nextStatus);
-      await refresh();
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [refresh]);
+  }, [supported]);
 
   const stop = useCallback(async () => {
+    if (!supported) return null;
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.stop();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopDnsProtection());
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [supported]);
+
+  return { supported, status, isBusy, refresh, start, stop };
+}
+
+export function useCallScreening() {
+  const supported = Capacitor.getPlatform() === "android";
+  const [status, setStatus] = useState<CallScreeningStatus | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!supported) return null;
+    try {
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getCallScreeningStatus());
+      setStatus(nextStatus);
+      return nextStatus;
+    } catch {
+      const unavailable: CallScreeningStatus = {
+        supported: true,
+        roleAvailable: false,
+        roleHeld: false,
+        enabled: false,
+        serviceRegistered: false,
+        apiConfigured: false,
+        blockedNumberCount: 0,
+        message: "Android call-screening status is unavailable.",
+      };
+      setStatus(unavailable);
+      return unavailable;
+    }
+  }, [supported]);
+
+  useEffect(() => {
+    if (!supported) return;
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
+    return () => window.clearInterval(interval);
+  }, [refresh, supported]);
+
+  const requestRole = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.requestCallScreeningRole());
       setStatus(nextStatus);
       return nextStatus;
     } finally {
@@ -241,22 +295,10 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  const startWireGuard = useCallback(async (options?: { dnsServers?: string }) => {
+  const openSettings = useCallback(async () => {
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.startWireGuard(options ?? {});
-      setStatus(nextStatus);
-      await refresh();
-      return nextStatus;
-    } finally {
-      setIsBusy(false);
-    }
-  }, [refresh]);
-
-  const stopWireGuard = useCallback(async () => {
-    setIsBusy(true);
-    try {
-      const nextStatus = await SafeNetVpn.stopWireGuard();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.openCallScreeningSettings());
       setStatus(nextStatus);
       return nextStatus;
     } finally {
@@ -264,15 +306,28 @@ export function useSafeNetVpn() {
     }
   }, []);
 
-  return {
-    supported,
-    status,
-    isBusy,
-    refresh,
-    acceptEula,
-    start,
-    stop,
-    startWireGuard,
-    stopWireGuard,
-  };
+  const setEnabled = useCallback(async (enabled: boolean) => {
+    if (!supported) return null;
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() =>
+        SafeNetVpn.setCallScreeningEnabled({ enabled }),
+      );
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [supported]);
+
+  const syncConfig = useCallback(async (blockedNumbers: string[]) => {
+    if (!supported) return null;
+    const nextStatus = await enqueueNativeCommand(() =>
+      SafeNetVpn.syncCallScreeningConfig({ blockedNumbers }),
+    );
+    setStatus(nextStatus);
+    return nextStatus;
+  }, [supported]);
+
+  return { supported, status, isBusy, refresh, requestRole, openSettings, setEnabled, syncConfig };
 }

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MOBILE_API_URL: https://safe-net-shield-official.replit.app
+      VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -72,6 +73,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$VITE_REVENUECAT_ANDROID_API_KEY" || {
+            echo "::error::VITE_REVENUECAT_ANDROID_API_KEY is required for signed Android release builds." >&2
+            exit 1
+          }
           api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
           export VITE_API_URL="$api_origin"
           npm run build
@@ -98,6 +103,7 @@ jobs:
         run: ./scripts/setup-android-sdk.sh
 
       - name: Compile Android native sources before APK packaging
+        id: android-native-compile
         shell: bash
         run: ./scripts/check-android-native-build.sh
 
@@ -157,6 +163,34 @@ jobs:
             echo "- SHA-256: \`$checksum\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Prepare formal release assets
+        id: prepare-release-assets
+        shell: bash
+        env:
+          ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+          RELEASE_TAG: ${{ steps.app_version.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/android-release-assets"
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          apk_asset="SafeNet-Android-APK-${RELEASE_TAG}.apk"
+          checksum_asset="${apk_asset}.sha256"
+          mkdir -p "$release_dir"
+          cp "$apk" "$release_dir/$apk_asset"
+          (
+            cd "$release_dir"
+            sha256sum "$apk_asset" > "$checksum_asset"
+            sha256sum --check "$checksum_asset"
+          )
+          {
+            echo "release_tag=$RELEASE_TAG"
+            echo "apk_asset=$apk_asset"
+            echo "checksum_asset=$checksum_asset"
+            echo "release_dir=$release_dir"
+          } >> "$GITHUB_OUTPUT"
+          echo "Prepared formal release assets for Android version $ANDROID_VERSION_NAME:"
+          ls -lh "$release_dir/$apk_asset" "$release_dir/$checksum_asset"
+
       - name: Upload APK only
         id: upload-apk-only
         uses: actions/upload-artifact@v4
@@ -173,6 +207,82 @@ jobs:
           path: ${{ runner.temp }}/app-release.apk.sha256
           if-no-files-found: error
 
+      - name: Create or update formal GitHub Release
+        id: publish-android-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.app_version.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: SafeNet Android ${{ steps.app_version.outputs.release_tag }}
+          files: |
+            ${{ steps.prepare-release-assets.outputs.release_dir }}/${{ steps.prepare-release-assets.outputs.apk_asset }}
+            ${{ steps.prepare-release-assets.outputs.release_dir }}/${{ steps.prepare-release-assets.outputs.checksum_asset }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify formal GitHub Release assets
+        id: verify-android-release
+        if: always() && steps.publish-android-release.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
+          RELEASE_TAG: ${{ steps.app_version.outputs.release_tag }}
+          APK_ASSET: ${{ steps.prepare-release-assets.outputs.apk_asset }}
+          CHECKSUM_ASSET: ${{ steps.prepare-release-assets.outputs.checksum_asset }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/published-android-release-assets"
+          mkdir -p "$release_dir"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          RELEASE_JSON="$release_json" EXPECTED_TAG="$RELEASE_TAG" EXPECTED_APK="$APK_ASSET" EXPECTED_CHECKSUM="$CHECKSUM_ASSET" node --input-type=module <<'NODE'
+          const release = JSON.parse(process.env.RELEASE_JSON);
+          const expectedTag = process.env.EXPECTED_TAG;
+          const expectedAssets = [
+            process.env.EXPECTED_APK,
+            process.env.EXPECTED_CHECKSUM,
+          ];
+          if (release.tag_name !== expectedTag) {
+            throw new Error(
+              `Formal release tag mismatch: expected ${expectedTag}, received ${release.tag_name ?? "missing"}.`,
+            );
+          }
+          const assetNames = new Set((release.assets ?? []).map((asset) => asset.name));
+          for (const asset of expectedAssets) {
+            if (!assetNames.has(asset)) {
+              throw new Error(
+                `Formal release ${expectedTag} is missing expected asset ${asset}.`,
+              );
+            }
+          }
+          console.log(
+            `Formal release ${release.tag_name} contains the versioned APK and checksum assets.`,
+          );
+          NODE
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$APK_ASSET" \
+            --pattern "$CHECKSUM_ASSET" \
+            --dir "$release_dir" \
+            --clobber
+          (
+            cd "$release_dir"
+            sha256sum --check "$CHECKSUM_ASSET"
+          )
+          apk="$release_dir/$APK_ASSET"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt -perm -u+x | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          test -n "$aapt"
+          "$apksigner" verify --verbose "$apk"
+          "$aapt" dump badging "$apk" |
+            grep -F "package: name='com.safenet.dns' versionCode='$ANDROID_VERSION_CODE' versionName='$ANDROID_VERSION_NAME'"
+          echo "Verified formal release assets for $RELEASE_TAG against Android versionName $ANDROID_VERSION_NAME and versionCode $ANDROID_VERSION_CODE."
+
       - name: Publish Android APK summary
         if: always()
         shell: bash
@@ -180,6 +290,10 @@ jobs:
           ANDROID_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
           ANDROID_VERSION_CODE: ${{ steps.app_version.outputs.version_code }}
           APK_VERIFICATION_OUTCOME: ${{ steps.verify-apk.outcome }}
+          NATIVE_COMPILE_OUTCOME: ${{ steps.android-native-compile.outcome }}
+          RELEASE_PUBLISH_OUTCOME: ${{ steps.publish-android-release.outcome }}
+          RELEASE_VERIFY_OUTCOME: ${{ steps.verify-android-release.outcome }}
+          RELEASE_TAG: ${{ steps.app_version.outputs.release_tag }}
           APK_ARTIFACT_URL: ${{ steps.upload-apk-only.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           CHECKSUM_ARTIFACT_URL: ${{ steps.upload-apk-sha256.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
         run: |
@@ -187,6 +301,10 @@ jobs:
           version_name="${ANDROID_VERSION_NAME:-unresolved}"
           version_code="${ANDROID_VERSION_CODE:-unresolved}"
           apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
+          native_compile_outcome="${NATIVE_COMPILE_OUTCOME:-unavailable}"
+          release_publish_outcome="${RELEASE_PUBLISH_OUTCOME:-unavailable}"
+          release_verify_outcome="${RELEASE_VERIFY_OUTCOME:-not_run}"
+          release_tag="${RELEASE_TAG:-unresolved}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           checksum_url="${CHECKSUM_ARTIFACT_URL:-unavailable}"
           {
@@ -195,7 +313,10 @@ jobs:
             echo "- **Resolved versionName:** \`$version_name\`"
             echo "- **Resolved versionCode:** \`$version_code\`"
             echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Native Android compile:** \`$native_compile_outcome\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **APK checksum:** [preserved SHA-256 artifact]($checksum_url)"
+            echo "- **Formal GitHub Release:** \`$release_publish_outcome\` (tag \`$release_tag\`)"
+            echo "- **Formal release asset verification:** \`$release_verify_outcome\`"
             echo "- **Instrumentation APK verification:** \`not run in APK-only workflow\`"
           } >> "$GITHUB_STEP_SUMMARY"

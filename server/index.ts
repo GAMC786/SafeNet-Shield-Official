@@ -6,6 +6,14 @@ import { createServer } from "http";
 import { startDdnsScheduler } from "./ddns-service";
 import { registerRequestOriginMiddleware } from "./request-origin";
 import { installGlitchTipExpressErrorHandler } from "./glitchtip";
+import { registerRevenueCatRoutes } from "./revenuecat";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
 
 const app = express();
 const httpServer = createServer(app);
@@ -18,6 +26,15 @@ declare module "http" {
   }
 }
 
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+app.use(
+  clerkMiddleware((req) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env.CLERK_PUBLISHABLE_KEY,
+    ),
+  })),
+);
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -28,6 +45,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 registerRequestOriginMiddleware(app);
+registerRevenueCatRoutes(app);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

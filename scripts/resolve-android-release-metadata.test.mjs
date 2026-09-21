@@ -13,9 +13,37 @@ import test from "node:test";
 const scriptPath = new URL("./resolve-android-release-metadata.sh", import.meta.url);
 const repositoryRoot = new URL("..", import.meta.url);
 
-function createFixture(buildGradle) {
+function createFixture(
+  buildGradle,
+  {
+    packageVersion = "1.0.60",
+    packageLockVersion = packageVersion,
+    packageLockRootVersion = packageVersion,
+    manifestVersion = packageVersion,
+  } = {},
+) {
   const directory = mkdtempSync(join(tmpdir(), "android-release-metadata-"));
   mkdirSync(join(directory, "android", "app"), { recursive: true });
+  mkdirSync(join(directory, "client", "public"), { recursive: true });
+  writeFileSync(
+    join(directory, "package.json"),
+    JSON.stringify({ version: packageVersion }),
+  );
+  writeFileSync(
+    join(directory, "package-lock.json"),
+    JSON.stringify({
+      version: packageLockVersion,
+      packages: {
+        "": {
+          version: packageLockRootVersion,
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(directory, "client", "public", "manifest.json"),
+    JSON.stringify({ name: `SafeNet Shield DNS v${manifestVersion}` }),
+  );
   writeFileSync(join(directory, "android", "app", "build.gradle"), buildGradle);
   return directory;
 }
@@ -50,7 +78,7 @@ test("resolves the shared metadata contract and writes GitHub outputs", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(
     readFileSync(outputFile, "utf8"),
-    "version_name=1.0.60\nversion_code=52\nversion=1.0.60\n",
+    "version_name=1.0.60\nversion_code=52\nrelease_tag=v1.0.60\nversion=1.0.60\n",
   );
 });
 
@@ -62,6 +90,23 @@ test("uses one error when Gradle metadata is incomplete", () => {
   assert.match(
     result.stderr,
     /Could not resolve versionName and versionCode from android\/app\/build\.gradle\./,
+  );
+});
+
+test("fails with a file-specific error when the manifest label is stale", () => {
+  const directory = createFixture(
+    `
+      versionCode 52
+      versionName "1.0.60"
+    `,
+    { manifestVersion: "1.0.59" },
+  );
+  const result = runResolver(directory);
+
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.stderr,
+    /App version mismatch: client\/public\/manifest\.json name version=1\.0\.59, package\.json=1\.0\.60/,
   );
 });
 
@@ -214,6 +259,18 @@ test("both release workflows consume the shared metadata contract", async () => 
     );
     assert.match(
       summaryBlock,
+      /Native Android compile:\*\*.*\$native_compile_outcome/,
+      `${validator.name} summary must include native Android compile status`,
+    );
+    if (validator.name === "tagged release workflow") {
+      assert.match(
+        summaryBlock,
+        /Native release instrumentation compile:\*\*.*\$native_instrumentation_compile_outcome/,
+        `${validator.name} summary must include release instrumentation compile status`,
+      );
+    }
+    assert.match(
+      summaryBlock,
       /Expected application package:\*\*.*com\.safenet\.dns/,
       `${validator.name} summary must include the expected application package`,
     );
@@ -236,6 +293,11 @@ test("both release workflows consume the shared metadata contract", async () => 
 
   for (const workflow of [apkOnlyWorkflow, releaseWorkflow]) {
     assert.match(workflow, /bash scripts\/resolve-android-release-metadata\.sh/);
+    assert.match(
+      workflow,
+      /outputs\.release_tag/,
+      "release workflows must use the resolver's canonical release tag",
+    );
     assert.doesNotMatch(
       workflow,
       /sed -nE 's\/\^\[\[:space:\]\]\*version(Name|Code)/,

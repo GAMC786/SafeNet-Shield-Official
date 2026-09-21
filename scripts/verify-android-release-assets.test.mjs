@@ -97,6 +97,36 @@ fi
     join(assets, "SafeNet-DNS-Android-smoke-evidence.sha256"),
     `${smokeChecksum.join("\n")}\n`,
   );
+  const internetShareVerification = [
+    "evidence_schema_version=1",
+    "release_ref=v1.0.66",
+    "release_sha=fixture",
+    "signed_apk_sha256=NOT_RECORDED",
+    "signed_apk_artifact_url=https://github.com/example/safenet/actions/runs/1#artifacts",
+    "internet_share_evidence_run_id=NONE",
+    "internet_share_evidence_run_url=https://github.com/example/safenet/actions/runs/2",
+    "verification_status=BLOCKED",
+    "verification_blocker=INTERNET_SHARE_RUN_MISSING",
+    "profile_count=3",
+    "profile_1_name=pixel-android-14",
+    "profile_2_name=samsung-android-13",
+    "profile_3_name=motorola-android-12",
+    "",
+  ].join("\n");
+  const internetShareVerificationPath = join(
+    assets,
+    "SafeNet-DNS-Android-internet-share-verification.txt",
+  );
+  writeFileSync(internetShareVerificationPath, internetShareVerification);
+  const internetShareVerificationDigest = spawnSync(
+    "sha256sum",
+    [internetShareVerificationPath],
+    { encoding: "utf8" },
+  ).stdout.split(/\s+/)[0];
+  writeFileSync(
+    join(assets, "SafeNet-DNS-Android-internet-share-verification.sha256"),
+    `${internetShareVerificationDigest}  SafeNet-DNS-Android-internet-share-verification.txt\n`,
+  );
 
   return { root, assets, sdk };
 }

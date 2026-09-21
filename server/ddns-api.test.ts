@@ -41,6 +41,12 @@ function createTestStorage() {
       updaters.push(updater);
       return updater;
     },
+    updateDdnsUpdater: async (id: number, updates: Partial<InsertDdnsUpdater>) => {
+      const updater = updaters.find((entry) => entry.id === id);
+      if (!updater) return undefined;
+      Object.assign(updater, updates);
+      return updater;
+    },
     updateDdnsIpInfo: async (id: number, ipAddress: string) => {
       const updater = updaters.find((entry) => entry.id === id);
       assert.ok(updater);
@@ -121,6 +127,16 @@ test("DDNS status polls stay read-only and IP Link endpoints require HTTPS", asy
     const httpsPayload = await httpsResponse.json();
     assert.equal(httpsPayload.provider, "iplink");
     assert.equal(httpsPayload.updateInterval, 123456);
+    const missingUpdate = await request(`${baseUrl}/api/ddns/999`, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ isEnabled: false }),
+    });
+    assert.equal(missingUpdate.status, 404);
+    assert.match((await missingUpdate.json()).message, /not found/i);
     const invalidIntervalResponse = await create("https://updates.example.test/{ip}", 0);
     assert.equal(invalidIntervalResponse.status, 400);
     assert.match((await invalidIntervalResponse.json()).message, /minute/);
@@ -262,6 +278,45 @@ test("DDNS scheduler writes to an elapsed provider interval independently of sta
     assert.equal(providerUrls.length, 1);
     assert.match(providerUrls[0], /duckdns\.org\/update/);
     assert.deepEqual(updatedIds, [updater.id]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DDNS scheduler does not overwrite device-managed SafeNet records with the server IP", async () => {
+  const { checkAndUpdateDdns } = await import("./ddns-service");
+  const updater: DdnsUpdater = {
+    id: 9,
+    hostname: "ddns.example.test",
+    provider: "safenet",
+    apiKey: "",
+    customUrl: null,
+    lastIpAddress: "99.237.6.81",
+    lastUpdateTime: new Date(Date.now() - 7200 * 1000),
+    lastFailureMessage: null,
+    lastFailureTime: null,
+    isEnabled: true,
+    updateInterval: 60000,
+  };
+  let providerRequests = 0;
+  let storageWrites = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerRequests += 1;
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    const results = await checkAndUpdateDdns("136.65.106.124", {
+      getDdnsUpdaters: async () => [updater],
+      updateDdnsIpInfo: async () => {
+        storageWrites += 1;
+        return updater;
+      },
+    });
+    assert.deepEqual(results, []);
+    assert.equal(providerRequests, 0);
+    assert.equal(storageWrites, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,20 +1,34 @@
 import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
-import { useSafeNetVpn } from "@/hooks/use-vpn";
+import { useDnsProtection } from "@/hooks/use-vpn";
 import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { EulaDialog } from "@/components/EulaDialog";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, ShieldCheck, Loader2, Music } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
-import { WireGuardInfographic } from "@/components/WireGuardInfographic";
+import { useAppLock } from "@/hooks/use-app-lock";
+import { useToast } from "@/hooks/use-toast";
+import { DnsVpnEulaDialog } from "@/components/DnsVpnEulaDialog";
+import { SAFE_NET_VPN_EULA_VERSION } from "@/hooks/use-vpn";
+import type { DnsServer } from "@shared/schema";
+
+const DNS_VPN_EULA_STORAGE_KEY = "safenet-dns-vpn-eula-version";
+
+function hasAcceptedDnsVpnEula() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DNS_VPN_EULA_STORAGE_KEY) === SAFE_NET_VPN_EULA_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -22,22 +36,99 @@ export default function Dashboard() {
   const { data: stats } = statsQuery;
   const { data: logs } = logsQuery;
   const { data: dnsServers } = useDnsServers();
-  const vpn = useSafeNetVpn();
   const { data: settings } = useSettings();
   const { data: antivirusSettings } = useAntivirusSettings();
   const soundtrack = useSoundtrack();
-  const [eulaOpen, setEulaOpen] = useState(false);
-  const [startAfterEula, setStartAfterEula] = useState(false);
+  const appLock = useAppLock();
+  const dnsProtection = useDnsProtection();
+  const { toast } = useToast();
+  const [dnsVpnEulaOpen, setDnsVpnEulaOpen] = useState(false);
+  const [dnsVpnEulaAccepted, setDnsVpnEulaAccepted] = useState(hasAcceptedDnsVpnEula);
+  const [pendingDnsVpnServer, setPendingDnsVpnServer] = useState<DnsServer | null>(null);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
-  const isProtected =
-    vpn.status?.running === true &&
-    settings?.firewallEnabled === true &&
-    antivirusSettings?.isEnabled === true;
+  const isProtected = dnsProtection.supported
+    ? dnsProtection.status?.running === true
+    : isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
+  const appLockStateLabel = !appLock.supported
+    ? "ANDROID ONLY"
+    : appLock.status.enabled
+      ? "ACTIVE"
+      : "STANDBY";
+  const appLockStateClass = !appLock.supported
+    ? "border-primary/30 bg-primary/10 text-primary"
+    : appLock.status.enabled
+      ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+      : "border-white/15 bg-white/5 text-muted-foreground";
   
   const activeDns = dnsServers?.find(s => s.isActive);
-  const selectedWireGuardDns = activeDns
-    ? [activeDns.primaryAddress, activeDns.secondaryAddress].filter(Boolean).join(",")
-    : undefined;
+
+  const startDnsVpn = async (server: DnsServer) => {
+    try {
+      const nextStatus = await dnsProtection.start(server);
+      if (nextStatus?.error) {
+        toast({
+          title: "Android DNS VPN could not be changed",
+          description: nextStatus.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Android DNS VPN could not be changed",
+        description: error instanceof Error
+          ? error.message
+          : "Android did not grant DNS filtering access.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDnsVpnToggle = async () => {
+    if (!activeDns || !dnsProtection.supported || dnsProtection.isBusy) return;
+    if (dnsProtection.status?.running) {
+      try {
+        const nextStatus = await dnsProtection.stop();
+        if (nextStatus?.error) {
+          toast({
+            title: "Android DNS VPN could not be changed",
+            description: nextStatus.error,
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Android DNS VPN could not be changed",
+          description: error instanceof Error
+            ? error.message
+            : "Android DNS filtering could not be stopped.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    if (!dnsVpnEulaAccepted) {
+      setPendingDnsVpnServer(activeDns);
+      setDnsVpnEulaOpen(true);
+      return;
+    }
+
+    await startDnsVpn(activeDns);
+  };
+
+  const handleDnsVpnEulaAccept = () => {
+    const server = pendingDnsVpnServer;
+    if (!server) return;
+    try {
+      window.localStorage.setItem(DNS_VPN_EULA_STORAGE_KEY, SAFE_NET_VPN_EULA_VERSION);
+    } catch {
+      // Acceptance still applies for this session if local storage is unavailable.
+    }
+    setDnsVpnEulaAccepted(true);
+    setDnsVpnEulaOpen(false);
+    setPendingDnsVpnServer(null);
+    void startDnsVpn(server);
+  };
 
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -66,15 +157,6 @@ export default function Dashboard() {
     });
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
-  const vpnCardState = !vpn.supported
-    ? "unsupported"
-    : vpn.status === null
-      ? "checking"
-      : vpn.status.running
-        ? "running"
-        : vpn.status.error
-          ? "error"
-          : "inactive";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -83,6 +165,64 @@ export default function Dashboard() {
         subtitle={isServerAvailable ? "System Status: Online" : "Server connection unavailable"}
         status={isProtected ? "active" : "unprotected"}
       />
+
+      <DnsVpnEulaDialog
+        open={dnsVpnEulaOpen}
+        onOpenChange={setDnsVpnEulaOpen}
+        onAccept={handleDnsVpnEulaAccept}
+        onCancel={() => setPendingDnsVpnServer(null)}
+      />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Music className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Soundtrack</p>
+                <p className="text-xs text-muted-foreground">Keep SafeNet soundtrack enabled</p>
+              </div>
+            </div>
+            <Switch
+              checked={soundtrack.enabled}
+              onCheckedChange={soundtrack.setEnabled}
+              aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
+              data-testid="switch-soundtrack"
+            />
+          </div>
+        </CyberCard>
+
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Power className="h-4 w-4 shrink-0 text-primary" />
+                <p className="text-sm font-medium text-foreground">Android DNS VPN</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {dnsProtection.status?.error
+                  || (!dnsProtection.supported
+                    ? "Android app only"
+                    : activeDns
+                      ? "Filter device DNS requests through the selected resolver."
+                      : "Select an active DNS resolver first.")}
+              </p>
+            </div>
+            <Switch
+              checked={dnsProtection.status?.running === true}
+              onCheckedChange={() => void handleDnsVpnToggle()}
+              disabled={!dnsProtection.supported || !activeDns || dnsProtection.isBusy}
+              aria-label={`Android DNS VPN ${dnsProtection.status?.running ? "On" : "Off"}`}
+              title={dnsProtection.supported ? "Toggle Android DNS VPN" : "Available in the Android app"}
+              data-testid="switch-android-dns-vpn"
+              className={dnsProtection.status?.running
+                ? "border-emerald-300 bg-emerald-400/25 shadow-[0_0_18px_rgba(52,211,153,0.24)] data-[state=checked]:border-emerald-300 data-[state=checked]:bg-emerald-400/40"
+                : "border-primary bg-primary/20 shadow-[0_0_18px_rgba(59,130,246,0.28)]"
+              }
+            />
+          </div>
+        </CyberCard>
+      </div>
 
       {/* Connection Status Bar */}
       <CyberCard className="bg-gradient-to-r from-primary/5 to-transparent border-primary/20">
@@ -96,9 +236,14 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm text-muted-foreground">Active DNS Server</p>
-                <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
-                  Connected
+                 <p className="text-sm text-muted-foreground">Selected DNS Resolver</p>
+                 <Badge
+                   variant="outline"
+                   className={activeDns
+                     ? "border-emerald-400/40 bg-emerald-400/10 text-xs text-emerald-300"
+                     : "border-primary/30 text-xs text-primary"}
+                 >
+                    {activeDns ? "DNS Resolver Active" : "Choose a DNS resolver"}
                 </Badge>
               </div>
               <p className="text-lg font-mono font-bold text-white" data-testid="text-active-dns">
@@ -115,8 +260,87 @@ export default function Dashboard() {
         </div>
       </CyberCard>
 
+      <CyberCard className="col-span-1 sm:col-span-2">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_rgba(59,130,246,0.12)]">
+                <LockKeyhole className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-display text-lg font-bold text-white">App Lock Protection</h3>
+                  <Badge variant="outline" className={`text-[10px] font-bold tracking-wider ${appLockStateClass}`}>
+                    {appLockStateLabel}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Offline access protection for SafeNet with LockLock API
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-3 self-end rounded-lg border border-white/10 bg-background/30 px-3 py-2 sm:self-start">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Protection</span>
+              <Switch
+                checked={appLock.status.enabled}
+                onCheckedChange={(enabled) => {
+                  void appLock.setEnabled(enabled).catch(() => undefined);
+                }}
+                disabled={!appLock.supported || appLock.isBusy}
+                aria-label={`App Lock Protection ${appLock.status.enabled ? "On" : "Off"}`}
+                data-testid="switch-app-lock"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Access method</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Offline passcode</p>
+              <p className="mt-1 text-xs text-muted-foreground">Stored locally on this device</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Accessibility</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {appLock.status.accessibilityEnabled === true ? "Connected" : "Setup required"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Monitors protected launches</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {appLock.status.antiUninstall === true ? "Enabled" : "Optional"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Device Administrator protection</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground/80">
+                SafeNet stores only salted local hashes. LockLock permissions are opt-in Android controls.
+              </p>
+            </div>
+            {appLock.status.enabled && appLock.supported && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void appLock.lockNow()}
+                disabled={appLock.isBusy}
+                data-testid="button-lock-app-now"
+                className="shrink-0 border-primary/30 text-primary hover:border-primary hover:bg-primary/10"
+              >
+                <LockKeyhole className="mr-2 h-4 w-4" />
+                Lock app now
+              </Button>
+            )}
+          </div>
+        </div>
+      </CyberCard>
+
       {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 lg:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:gap-6">
         <CyberCard glow className="bg-gradient-to-br from-primary/10 to-transparent border-primary/20">
           <div className="flex items-start justify-between">
             <div>
@@ -159,153 +383,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard
-          className="flex flex-col justify-center items-center text-center space-y-4"
-          data-testid="dashboard-vpn-card"
-          data-vpn-state={vpnCardState}
-        >
-          <div
-            className={`w-16 h-16 rounded-full flex items-center justify-center border relative ${
-              vpn.status?.running
-                ? "bg-green-500/10 border-green-500/30"
-                : "bg-white/5 border-white/10"
-            }`}
-          >
-            {vpn.status === null && vpn.supported ? (
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            ) : (
-              <ShieldCheck className={`w-8 h-8 ${vpn.status?.running ? "text-green-400" : "text-primary"}`} />
-            )}
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">SafeNet VPN</h3>
-            <p className="text-sm text-muted-foreground" data-testid="dashboard-vpn-status">
-              {!vpn.supported
-                ? "Available in the SafeNet Android APK"
-                : vpn.status === null
-                  ? "Checking protection status…"
-                  : vpn.status.running
-                     ? "SafeNet VPN protection is running"
-                     : vpn.status.error || "Protection is inactive · Turn On to connect"}
-            </p>
-          </div>
-          <div className="flex w-full flex-wrap items-center justify-center gap-3">
-            <Switch
-              checked={vpn.status?.running ?? false}
-              onCheckedChange={(checked) => {
-                if (!vpn.supported) return;
-                if (!checked) {
-                  void vpn.stop().catch(() => undefined);
-                  return;
-                }
-                if (!vpn.status?.eulaAccepted) {
-                  setStartAfterEula(true);
-                  setEulaOpen(true);
-                  return;
-                }
-                const activeResolver = activeDns;
-                if (!activeResolver) return;
-                void vpn.start({
-                  type: activeResolver.type,
-                  ipVersion: activeResolver.ipVersion,
-                  primaryAddress: activeResolver.primaryAddress,
-                  secondaryAddress: activeResolver.secondaryAddress,
-                }).catch(() => undefined);
-              }}
-              disabled={!vpn.supported || vpn.isBusy || vpn.status === null || !activeDns || vpn.status?.wireguardRunning}
-              aria-label="SafeNet VPN On/Off"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEulaOpen(true)}
-            >
-                View SafeNet VPN EULA
-            </Button>
-          </div>
-           <div className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-background/30 px-3 py-2">
-             <div className="flex items-center gap-2">
-               <Music className="h-4 w-4 text-primary" />
-               <div>
-                 <p className="text-sm font-medium text-foreground">Soundtrack</p>
-                 <p className="text-xs text-muted-foreground">Keep the SafeNet soundtrack enabled</p>
-               </div>
-             </div>
-             <Switch
-               checked={soundtrack.enabled}
-               onCheckedChange={soundtrack.setEnabled}
-               aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
-               data-testid="switch-soundtrack"
-             />
-           </div>
-          {vpn.status?.error && (
-            <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs">
-              <p role="alert" className="text-destructive">{vpn.status.error}</p>
-              <p className="mt-2 text-muted-foreground">
-                 Recovery is available here: turn protection Off, select a working resolver, then turn it On again.
-              </p>
-            </div>
-          )}
-          {vpn.status?.vpnPermissionOwner && vpn.status.vpnPermissionOwner !== "none" && (
-            <p className="w-full text-left text-xs text-muted-foreground">
-              Android allows one VPN owner at a time. Current owner:{" "}
-              <span className="font-medium text-foreground">{vpn.status.vpnPermissionOwner}</span>.
-            </p>
-          )}
-        </CyberCard>
       </div>
-
-      <CyberCard className="space-y-4">
-          <WireGuardInfographic
-            supported={vpn.supported}
-            configured={vpn.status?.wireguardConfigured === true}
-            running={vpn.status?.wireguardRunning === true}
-            disabled={
-              vpn.isBusy ||
-              vpn.status === null ||
-              (!vpn.status?.wireguardRunning && vpn.status?.running === true)
-            }
-            gateway={vpn.status?.wireguardGateway}
-            dnsServers={vpn.status?.wireguardDnsServers || selectedWireGuardDns}
-            onToggle={(checked) => {
-              if (checked) {
-                void vpn.startWireGuard({ dnsServers: selectedWireGuardDns }).catch(() => undefined);
-              } else {
-                void vpn.stopWireGuard().catch(() => undefined);
-              }
-            }}
-          />
-          {vpn.status?.wireguardError && (
-            <p role="alert" className="text-xs text-destructive">{vpn.status.wireguardError}</p>
-          )}
-          {vpn.status?.running && !vpn.status.wireguardRunning && (
-            <p className="text-xs text-muted-foreground">
-              Stop SafeNet DNS protection before starting WireGuard; Android allows one active VPN tunnel at a time.
-            </p>
-          )}
-      </CyberCard>
-
-      {vpn.supported && (
-        <EulaDialog
-          open={eulaOpen}
-          onOpenChange={setEulaOpen}
-          onAccept={async () => {
-            await vpn.acceptEula();
-            setEulaOpen(false);
-            if (startAfterEula && activeDns) {
-              setStartAfterEula(false);
-              await vpn.start({
-                type: activeDns.type,
-                ipVersion: activeDns.ipVersion,
-                primaryAddress: activeDns.primaryAddress,
-                secondaryAddress: activeDns.secondaryAddress,
-              });
-            }
-          }}
-          isAccepting={vpn.isBusy}
-        />
-      )}
 
       {/* Live Traffic Analysis */}
       <CyberCard className="space-y-5">
@@ -343,7 +421,7 @@ export default function Dashboard() {
               <CheckCircle2 className="h-4 w-4" />
             </div>
             <p className="mt-2 text-2xl font-display font-bold text-white">{allowedQueries.toLocaleString()}</p>
-            <p className="text-[11px] text-muted-foreground">Passed protection</p>
+            <p className="text-[11px] text-muted-foreground">Passed through protection</p>
           </div>
           <div className="rounded-lg border border-sky-400/20 bg-sky-400/5 p-3">
             <div className="flex items-center justify-between text-sky-300">

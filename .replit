@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["actionlint", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "freetype", "glib", "gumbo", "harfbuzz", "jbig2dec", "libdrm", "libjpeg_turbo", "libxkbcommon", "mesa", "mupdf", "nspr", "nss", "openjpeg", "shellcheck", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "android-tools", "clamav"]
+packages = ["actionlint", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "freetype", "glib", "gumbo", "harfbuzz", "jbig2dec", "libdrm", "libjpeg_turbo", "libxkbcommon", "mesa", "mupdf", "nspr", "nss", "openjpeg", "shellcheck", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "android-tools", "clamav", "fetchutils"]
 
 [[ports]]
 localPort = 4173
@@ -76,3 +76,15 @@ integrations = ["javascript_openai_ai_integrations:2.0.0"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[userenv]
+
+[userenv.shared]
+SAFE_NET_CALL_CONTROL_BASE_URL = "https://api.callcontrol.com/api/2015-11-01/Reputation"
+SAFE_NET_CALL_REPUTATION_PROVIDER = "call-control"
+SAFE_NET_CALL_CONTROL_PROTECT_BASE_URL = "https://api.callcontrol.com/api/2015-11-01/Enterprise/ShouldBlock"
+REVENUECAT_ENTITLEMENT_IDENTIFIER = "premium"
+REVENUECAT_GOOGLE_PLAY_STORE_APP_ID = "appb8046f5b77"
+REVENUECAT_PROJECT_ID = "proj7f56aa4c"
+REVENUECAT_TEST_STORE_APP_ID = "app8db4007cbf"
+VITE_REVENUECAT_ANDROID_API_KEY = "goog_vNwVRcGyaghjdJGUKXWkDiZSowK"

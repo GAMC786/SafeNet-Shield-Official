@@ -36,13 +36,6 @@ updates.
 6. Tap **Stop sharing** on the sharing phone. Confirm the screen returns to
    the stopped state, the proxy no longer accepts connections, and the Wi-Fi
    Direct group disappears from the second device.
-7. Repeat steps 1–6 with SafeNet VPN enabled on the sharing phone. Confirm:
-   - Internet Share still starts and stops cleanly.
-   - The second device can still use HTTP and HTTPS through the displayed
-     proxy.
-   - SafeNet VPN protection remains active on the sharing phone.
-   - Stopping either feature does not leave the other feature reporting a
-     stale running state.
 
 ## Evidence to capture
 
@@ -53,7 +46,7 @@ updates.
 | HTTP forwarding | URL and successful response observed on the second device |
 | HTTPS CONNECT forwarding | HTTPS URL and successful response observed on the second device |
 | Disconnect handling | Before/after Connected devices screenshots with timestamps |
-| VPN interaction | VPN status plus Internet Share status while both are enabled |
+| DNS service interaction | Active SafeNet DNS resolver status while Internet Share is enabled |
 
 ## Workspace verification boundary
 

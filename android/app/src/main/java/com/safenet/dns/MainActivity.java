@@ -13,6 +13,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
+import android.content.Intent;
+import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -25,8 +27,14 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
+    private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
     private NativeStartupFallbackView startupFallback;
+    private NativeAppLockView appLockView;
+    private WebView appLockWebView;
+    private boolean appLockHasResumed;
+    private boolean appLockNeedsUnlockOnResume;
+    private boolean appLockActivityActive;
     private Runnable startupCheck;
     private long startupDeadline;
 
@@ -47,6 +55,7 @@ public class MainActivity extends BridgeActivity {
         // tap-to-enable fallback in the soundtrack control.
         webSettings.setMediaPlaybackRequiresUserGesture(false);
         installNativeFallback(webView);
+        installAppLock(webView);
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -137,6 +146,113 @@ public class MainActivity extends BridgeActivity {
         beginStartupCheck(webView);
     }
 
+    private void installAppLock(WebView webView) {
+        if (!(webView.getParent() instanceof ViewGroup)) {
+            return;
+        }
+
+        appLockWebView = webView;
+        ViewGroup container = (ViewGroup) webView.getParent();
+        appLockView = new NativeAppLockView(this);
+        appLockView.setVisibility(View.GONE);
+        appLockView.setElevation(200f);
+        appLockView.setOnUnlockClickListener(view -> requestAppUnlock());
+        appLockView.setOnSecuritySettingsClickListener(view -> openAndroidSecuritySettings());
+        container.addView(
+                appLockView,
+                new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
+
+        if (AppLockManager.isEnabled(this)) {
+            appLockWebView.setVisibility(View.INVISIBLE);
+            appLockView.setVisibility(View.VISIBLE);
+            appLockView.setMessage(
+                    AppLockManager.availabilityMessage(this)
+            );
+        }
+    }
+
+    private void requestAppUnlock() {
+        if (appLockWebView == null || appLockView == null) {
+            return;
+        }
+        if (!AppLockManager.isEnabled(this)) {
+            appLockWebView.setVisibility(View.VISIBLE);
+            appLockView.setVisibility(View.GONE);
+            return;
+        }
+        if (appLockActivityActive) {
+            appLockView.setMessage("The SafeNet passcode screen is already open.");
+            return;
+        }
+
+        appLockWebView.setVisibility(View.INVISIBLE);
+        appLockView.setVisibility(View.VISIBLE);
+        appLockActivityActive = true;
+        String mode = AppLockManager.hasPin(this)
+                ? AppLockManager.MODE_UNLOCK
+                : AppLockManager.MODE_SETUP;
+        appLockView.setMessage(
+                AppLockManager.hasPin(this)
+                        ? "Enter your offline SafeNet passcode to continue."
+                        : "Set up your offline SafeNet passcode and Android permissions."
+        );
+        startActivityForResult(
+                new Intent(this, LockLockActivity.class)
+                        .putExtra(AppLockManager.EXTRA_MODE, mode)
+                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
+                APP_LOCK_ACTIVITY_REQUEST
+        );
+    }
+
+    private void openAndroidSecuritySettings() {
+        if (appLockActivityActive) {
+            return;
+        }
+        appLockActivityActive = true;
+        startActivityForResult(
+                new Intent(this, LockLockActivity.class)
+                        .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_SETUP)
+                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
+                APP_LOCK_ACTIVITY_REQUEST
+        );
+    }
+
+    public void lockAppNow() {
+        if (appLockWebView == null || appLockView == null) {
+            return;
+        }
+        appLockWebView.setVisibility(View.INVISIBLE);
+        appLockView.setVisibility(View.VISIBLE);
+        requestAppUnlock();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != APP_LOCK_ACTIVITY_REQUEST) {
+            return;
+        }
+        appLockActivityActive = false;
+        if (resultCode == RESULT_OK) {
+            AppLockManager.markAuthenticated();
+            appLockNeedsUnlockOnResume = false;
+            if (appLockView != null) {
+                appLockView.setVisibility(View.GONE);
+            }
+            if (appLockWebView != null) {
+                appLockWebView.setVisibility(View.VISIBLE);
+                beginStartupCheck(appLockWebView);
+            }
+        } else if (appLockView != null && AppLockManager.isEnabled(this)) {
+            appLockView.setVisibility(View.VISIBLE);
+            appLockView.setMessage("Enter your LockLock passcode to continue.");
+        }
+    }
+
     private void beginStartupCheck(WebView webView) {
         if (startupCheck != null) {
             startupHandler.removeCallbacks(startupCheck);
@@ -195,6 +311,8 @@ public class MainActivity extends BridgeActivity {
             startupHandler.removeCallbacks(startupCheck);
         }
         startupFallback = null;
+        appLockView = null;
+        appLockWebView = null;
         stopSoundtrack();
         super.onDestroy();
     }
@@ -202,6 +320,18 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         stopSoundtrack();
+        if (AppLockManager.isEnabled(this) && !appLockActivityActive) {
+            AppLockManager.clearSession();
+            if (appLockHasResumed) {
+                appLockNeedsUnlockOnResume = true;
+            }
+            if (appLockWebView != null) {
+                appLockWebView.setVisibility(View.INVISIBLE);
+            }
+            if (appLockView != null) {
+                appLockView.setVisibility(View.VISIBLE);
+            }
+        }
         super.onPause();
     }
 
@@ -210,6 +340,18 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         restoreSystemBars();
         resumeSoundtrack();
+        if (!appLockHasResumed) {
+            appLockHasResumed = true;
+            appLockNeedsUnlockOnResume = AppLockManager.isEnabled(this)
+                    && !AppLockManager.isSessionAuthenticated();
+        }
+        if (appLockNeedsUnlockOnResume
+                && AppLockManager.isEnabled(this)
+                && !AppLockManager.isSessionAuthenticated()
+                && appLockView != null) {
+            appLockNeedsUnlockOnResume = false;
+            appLockView.post(this::requestAppUnlock);
+        }
     }
 
     @Override
