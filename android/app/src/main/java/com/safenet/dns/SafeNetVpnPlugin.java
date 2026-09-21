@@ -382,7 +382,14 @@ public class SafeNetVpnPlugin extends Plugin {
 
     @PluginMethod
     public void getProtectionStatus(PluginCall call) {
-        call.resolve(toJsObject(SafeNetProtectionStatus.get(getContext())));
+        call.resolve(
+            toJsObject(
+                SafeNetProtectionStatus.get(
+                    getContext(),
+                    call.getString("expectedHostname", null)
+                )
+            )
+        );
     }
 
     @PluginMethod

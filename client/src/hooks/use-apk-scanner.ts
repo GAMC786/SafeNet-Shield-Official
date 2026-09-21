@@ -5,6 +5,7 @@ import {
   ApkScanStatus,
   SafeNetVpn,
 } from "@/hooks/use-vpn";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 export function useApkScanner() {
   const supported = Capacitor.getPlatform() === "android";
@@ -20,7 +21,7 @@ export function useApkScanner() {
       return null;
     }
     try {
-      const nextStatus = await SafeNetVpn.getApkScanStatus();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getApkScanStatus());
       setStatus(nextStatus);
       setLastResult(nextStatus.lastScan ?? null);
       setError(null);
@@ -45,7 +46,7 @@ export function useApkScanner() {
     setIsScanning(true);
     setError(null);
     try {
-      const result = await SafeNetVpn.scanApk();
+      const result = await enqueueNativeCommand(() => SafeNetVpn.scanApk());
       setLastResult(result);
       await refresh();
       return result;
@@ -67,7 +68,7 @@ export function useApkScanner() {
     setIsScanning(true);
     setError(null);
     try {
-      const response = await SafeNetVpn.scanInstalledApks();
+      const response = await enqueueNativeCommand(() => SafeNetVpn.scanInstalledApks());
       const results = response.results;
       setInstalledResults(results);
       const finding = results.find((result) => result.verdict !== "safe");
@@ -94,7 +95,9 @@ export function useApkScanner() {
     setIsManaging(true);
     setError(null);
     try {
-      const nextStatus = await SafeNetVpn.updateApkSignatures({ signedUpdate });
+      const nextStatus = await enqueueNativeCommand(() =>
+        SafeNetVpn.updateApkSignatures({ signedUpdate }),
+      );
       setStatus(nextStatus);
       setLastResult(nextStatus.lastScan ?? null);
       return nextStatus;
@@ -116,7 +119,9 @@ export function useApkScanner() {
     setIsManaging(true);
     setError(null);
     try {
-      const nextStatus = await SafeNetVpn.deleteQuarantinedApk({ sha256 });
+      const nextStatus = await enqueueNativeCommand(() =>
+        SafeNetVpn.deleteQuarantinedApk({ sha256 }),
+      );
       setStatus(nextStatus);
       setLastResult(nextStatus.lastScan ?? null);
       return nextStatus;
@@ -138,7 +143,7 @@ export function useApkScanner() {
     setIsManaging(true);
     setError(null);
     try {
-      const nextStatus = await SafeNetVpn.clearApkScanHistory();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.clearApkScanHistory());
       setStatus(nextStatus);
       setLastResult(nextStatus.lastScan ?? null);
       return nextStatus;

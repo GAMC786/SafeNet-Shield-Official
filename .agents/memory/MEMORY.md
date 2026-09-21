@@ -66,6 +66,7 @@
 - [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
 - [DeepCleer integration boundary](deepcleer-integration-boundary.md) — vendor onboarding requires accessKey/appId/eventId/tokenId and explicit frame-sharing consent before cloud moderation.
 - [Native command serialization](native-command-serialization.md) — VPN, WireGuard, and Internet Share plugin calls must share one queue across all mounted hooks.
+- [Protection status coordination](protection-status-coordination.md) — protection indicators require verified browser dependencies or an exact normalized SafeNet Private DNS match.
 - [Caller reputation provider boundary](caller-reputation-provider-boundary.md) — approved endpoint and credentials must be workspace-supplied; missing or invalid reputation data stays fail-open.
 - [Android call-screening response validity](android-call-screening-response.md) — allowed silenced calls cannot carry Android's disallowed-call notification flags.
 - [CallShield evaluation](callshield-evaluation.md) — standalone MIT Android app and local feed, not a hosted reputation API; code and data licensing must be reviewed separately.

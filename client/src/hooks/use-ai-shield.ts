@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AiShieldResult, ProtectionStatus, SafeNetVpn } from "@/hooks/use-vpn";
 import { apiFetch } from "@/lib/api";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
+import { useDnsServers } from "@/hooks/use-dns";
+import { usePrivateDns } from "@/hooks/use-private-dns";
 
 export interface DeepCleerStatus {
   provider: "deepcleer";
@@ -58,6 +61,10 @@ const idleResult: AiShieldResult = {
 
 export function useAiShield() {
   const supported = Capacitor.getPlatform() === "android";
+  const { data: dnsServers } = useDnsServers(supported);
+  const activeDns = dnsServers?.find((server) => server.isActive);
+  const privateDns = usePrivateDns(activeDns);
+  const expectedPrivateDnsHostname = privateDns.expectedHostname;
   const [status, setStatus] = useState<AiShieldResult | null>(supported ? null : idleResult);
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -85,7 +92,7 @@ export function useAiShield() {
       return idleResult;
     }
     try {
-      const nextStatus = await SafeNetVpn.getAiShieldStatus();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getAiShieldStatus());
       applyStatus(nextStatus);
       setError(null);
       return nextStatus;
@@ -103,7 +110,11 @@ export function useAiShield() {
       return null;
     }
     try {
-      const nextProtection = await SafeNetVpn.getProtectionStatus();
+      const nextProtection = await enqueueNativeCommand(() =>
+        SafeNetVpn.getProtectionStatus({
+          expectedHostname: expectedPrivateDnsHostname ?? "",
+        }),
+      );
       setProtection(nextProtection);
       return nextProtection;
     } catch (statusError) {
@@ -115,6 +126,9 @@ export function useAiShield() {
         timestamp: Date.now(),
         safeNetVpnRunning: false,
         safeNetOwnsActiveVpn: false,
+        safeNetPrivateDnsActive: false,
+        privateDnsMode: "unknown",
+        privateDnsHostname: null,
         otherVpnActive: false,
         activeNetwork: false,
         scope: "SafeNet protection status is unavailable.",
@@ -125,7 +139,7 @@ export function useAiShield() {
       });
       return null;
     }
-  }, [supported]);
+  }, [expectedPrivateDnsHostname, supported]);
 
   const updateCloudEnabled = useCallback((enabled: boolean) => {
     const nextEnabled = enabled && Boolean(deepCleerRef.current?.available);
@@ -145,7 +159,9 @@ export function useAiShield() {
           return;
         }
         try {
-          await SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: nextEnabled });
+          await enqueueNativeCommand(() =>
+            SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: nextEnabled }),
+          );
           if (operation === cloudOperationRef.current) {
             cloudEnabledRef.current = nextEnabled;
             setCloudEnabled(nextEnabled);
@@ -295,7 +311,7 @@ export function useAiShield() {
     setIsBusy(true);
     setError(null);
     try {
-      const nextStatus = await action();
+      const nextStatus = await enqueueNativeCommand(action);
       applyStatus(nextStatus);
       return nextStatus;
     } catch (actionError) {

@@ -6,6 +6,7 @@ import { api } from "@shared/routes";
 import { apiFetch } from "@/lib/api";
 import { SafeNetVpn } from "@/hooks/use-vpn";
 import { firewallConfigQueryKey } from "@/hooks/firewall-config-key";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 /**
  * Keeps Android's encrypted offline policy in step with the server
@@ -33,7 +34,9 @@ export function useFirewallConfig(enabled = true) {
     }
 
     let cancelled = false;
-    void SafeNetVpn.syncFirewallConfig({ config: JSON.parse(serializedConfig) }).catch((error) => {
+    void enqueueNativeCommand(() =>
+      SafeNetVpn.syncFirewallConfig({ config: JSON.parse(serializedConfig) }),
+    ).catch((error) => {
       if (!cancelled) {
         console.warn("SafeNet could not sync the firewall policy to Android.", error);
       }

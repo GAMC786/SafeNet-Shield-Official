@@ -68,6 +68,9 @@ export interface ProtectionStatus {
   timestamp: number;
   safeNetVpnRunning: boolean;
   safeNetOwnsActiveVpn: boolean;
+  safeNetPrivateDnsActive: boolean;
+  privateDnsMode: string;
+  privateDnsHostname: string | null;
   otherVpnActive: boolean;
   activeNetwork: boolean;
   scope: string;
@@ -137,7 +140,7 @@ interface SafeNetVpnPlugin {
   scanInstalledApks(): Promise<{ results: ApkScanResult[] }>;
   deleteQuarantinedApk(options: { sha256: string }): Promise<ApkScanStatus>;
   clearApkScanHistory(): Promise<ApkScanStatus>;
-  getProtectionStatus(): Promise<ProtectionStatus>;
+  getProtectionStatus(options?: { expectedHostname?: string }): Promise<ProtectionStatus>;
   getAiShieldStatus(): Promise<AiShieldResult>;
   startAiShieldCamera(): Promise<AiShieldResult>;
   startAiShieldScreen(): Promise<AiShieldResult>;

@@ -391,7 +391,7 @@ test("the Dashboard exposes only the Android Private DNS control", () => {
   assert.match(dashboardSource, /<Switch[\s\S]*?switch-safe-net-private-dns/);
   assert.match(
     dashboardSource,
-    /const isProtected = privateDns\.supported[\s\S]*status\?\.running === true/,
+    /const isProtected = isProtectionActive\(\{[\s\S]*privateDnsRunning: privateDns\.status\?\.running === true/,
   );
   assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
   assert.doesNotMatch(dashboardSource, /WireGuard|VpnService|DNS VPN/);

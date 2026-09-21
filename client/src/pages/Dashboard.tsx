@@ -2,6 +2,7 @@ import { useStats, useLogs } from "@/hooks/use-logs";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useSettings } from "@/hooks/use-settings";
 import { useAntivirusSettings } from "@/hooks/use-antivirus";
+import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   SAFE_NET_PRIVATE_DNS_EULA_VERSION,
   usePrivateDns,
 } from "@/hooks/use-private-dns";
+import { isProtectionActive } from "@/lib/protection-status";
 
 const PRIVATE_DNS_EULA_STORAGE_KEY = "safenet-private-dns-eula-version";
 
@@ -39,6 +41,7 @@ export default function Dashboard() {
   const { data: dnsServers } = useDnsServers();
   const { data: settings } = useSettings();
   const { data: antivirusSettings } = useAntivirusSettings();
+  const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
   const { toast } = useToast();
@@ -47,9 +50,14 @@ export default function Dashboard() {
   const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
   const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
-  const isProtected = privateDns.supported
-    ? privateDns.status?.running === true
-    : isServerAvailable && settings?.firewallEnabled === true && antivirusSettings?.isEnabled === true;
+  const isProtected = isProtectionActive({
+    platform: privateDns.supported ? "android" : "web",
+    serverAvailable: isServerAvailable,
+    privateDnsRunning: privateDns.status?.running === true,
+    firewallEnabled: settings?.firewallEnabled === true,
+    antivirusEnabled: antivirusSettings?.isEnabled === true,
+    antivirusVerified: clamAv.data?.verified === true,
+  });
   const appLockStateLabel = !appLock.supported
     ? "ANDROID ONLY"
     : appLock.status.enabled

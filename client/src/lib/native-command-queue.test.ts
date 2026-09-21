@@ -19,3 +19,19 @@ test("native commands remain serialized across feature hooks", async () => {
   assert.deepEqual(await Promise.all([first, second]), ["first", "second"]);
   assert.deepEqual(events, ["first-start", "first-end", "second-start", "second-end"]);
 });
+
+test("a failed feature command does not block the next feature", async () => {
+  const events: string[] = [];
+  const failedFeature = enqueueNativeCommand(async () => {
+    events.push("ai-start");
+    throw new Error("AI Shield unavailable");
+  });
+  const independentFeature = enqueueNativeCommand(async () => {
+    events.push("apk-start");
+    return "scanner-ready";
+  });
+
+  await assert.rejects(failedFeature, /AI Shield unavailable/);
+  assert.equal(await independentFeature, "scanner-ready");
+  assert.deepEqual(events, ["ai-start", "apk-start"]);
+});

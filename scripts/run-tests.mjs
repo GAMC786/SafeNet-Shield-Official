@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const tests = [];
-const testDirectories = ["server", "scripts"];
+const testDirectories = ["server", "scripts", "client/src/lib"];
 
 function encodeAnnotation(value) {
   return value

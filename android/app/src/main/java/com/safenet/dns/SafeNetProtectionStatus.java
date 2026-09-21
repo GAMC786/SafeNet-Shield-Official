@@ -31,15 +31,13 @@ public final class SafeNetProtectionStatus {
     private SafeNetProtectionStatus() {}
 
     public static JSONObject get(Context context) {
+        return get(context, null);
+    }
+
+    public static JSONObject get(Context context, String expectedHostname) {
         ConnectivitySnapshot snapshot = readConnectivity(context);
-        PrivateDnsSnapshot privateDns = readPrivateDns(context);
-        String state = resolveState(
-            privateDns.active,
-            false,
-            snapshot.otherVpnActive,
-            snapshot.activeNetwork,
-            false
-        );
+        PrivateDnsSnapshot privateDns = readPrivateDns(context, expectedHostname);
+        String state = resolvePrivateDnsState(privateDns.active, snapshot.otherVpnActive);
 
         JSONObject result = new JSONObject();
         try {
@@ -50,6 +48,10 @@ public final class SafeNetProtectionStatus {
             result.put("safeNetPrivateDnsActive", privateDns.active);
             result.put("privateDnsMode", privateDns.mode);
             result.put("privateDnsHostname", privateDns.hostname == null ? JSONObject.NULL : privateDns.hostname);
+            result.put(
+                "privateDnsExpectedHostname",
+                privateDns.expectedHostname == null ? JSONObject.NULL : privateDns.expectedHostname
+            );
             result.put("otherVpnActive", snapshot.otherVpnActive);
             result.put("activeNetwork", snapshot.activeNetwork);
             result.put("vpnRevoked", false);
@@ -85,6 +87,21 @@ public final class SafeNetProtectionStatus {
             // JSONObject operations above contain only primitive values.
         }
         return result;
+    }
+
+    static String resolvePrivateDnsState(boolean privateDnsActive, boolean otherVpnActive) {
+        if (otherVpnActive) {
+            return STATE_VPN_REPLACED;
+        }
+        return privateDnsActive ? STATE_PROTECTED : STATE_PROTECTION_UNAVAILABLE;
+    }
+
+    static boolean privateDnsMatchesExpectedHostname(String mode, String hostname, String expectedHostname) {
+        String normalizedExpected = normalizePrivateDnsHostname(expectedHostname);
+        String normalizedHostname = normalizePrivateDnsHostname(hostname);
+        return "hostname".equals(mode)
+            && normalizedExpected != null
+            && normalizedExpected.equals(normalizedHostname);
     }
 
     static String resolveState(
@@ -131,7 +148,7 @@ public final class SafeNetProtectionStatus {
     ) {
         switch (state) {
             case STATE_PROTECTED:
-                return "SafeNet owns Android's active VPN path for DNS filtering. Private proxy traffic remains outside inspection.";
+                return "Android is using the expected SafeNet Private DNS hostname for encrypted DNS resolution. Private proxy traffic remains outside inspection.";
             case STATE_VPN_REPLACED:
                 return otherVpnActive
                     ? "Another VPN currently owns Android's network path. SafeNet DNS blocking is not active."
@@ -182,8 +199,9 @@ public final class SafeNetProtectionStatus {
         return snapshot;
     }
 
-    private static PrivateDnsSnapshot readPrivateDns(Context context) {
+    private static PrivateDnsSnapshot readPrivateDns(Context context, String expectedHostname) {
         PrivateDnsSnapshot snapshot = new PrivateDnsSnapshot();
+        snapshot.expectedHostname = normalizePrivateDnsHostname(expectedHostname);
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             snapshot.mode = "unsupported";
             return snapshot;
@@ -198,9 +216,11 @@ public final class SafeNetProtectionStatus {
                 context.getContentResolver(),
                 PRIVATE_DNS_SPECIFIER
             );
-            snapshot.active = "hostname".equals(mode)
-                && snapshot.hostname != null
-                && !snapshot.hostname.trim().isEmpty();
+            snapshot.active = privateDnsMatchesExpectedHostname(
+                mode,
+                snapshot.hostname,
+                snapshot.expectedHostname
+            );
         } catch (SecurityException ignored) {
             snapshot.mode = "unknown";
         }
@@ -218,5 +238,6 @@ public final class SafeNetProtectionStatus {
         private boolean active;
         private String mode = "unknown";
         private String hostname;
+        private String expectedHostname;
     }
 }

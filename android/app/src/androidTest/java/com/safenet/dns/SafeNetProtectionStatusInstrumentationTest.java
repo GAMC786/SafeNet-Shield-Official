@@ -43,6 +43,45 @@ public class SafeNetProtectionStatusInstrumentationTest {
     }
 
     @Test
+    public void privateDnsProtectionRequiresAnExactNormalizedHostname() {
+        assertTrue(
+            SafeNetProtectionStatus.privateDnsMatchesExpectedHostname(
+                "hostname",
+                "DNS.SafeNet.example.",
+                " dns.safenet.example "
+            )
+        );
+        assertEquals(
+            SafeNetProtectionStatus.STATE_PROTECTED,
+            SafeNetProtectionStatus.resolvePrivateDnsState(true, false)
+        );
+        assertEquals(
+            SafeNetProtectionStatus.STATE_PROTECTION_UNAVAILABLE,
+            SafeNetProtectionStatus.resolvePrivateDnsState(false, false)
+        );
+        assertEquals(
+            SafeNetProtectionStatus.STATE_VPN_REPLACED,
+            SafeNetProtectionStatus.resolvePrivateDnsState(true, true)
+        );
+        assertEquals(
+            false,
+            SafeNetProtectionStatus.privateDnsMatchesExpectedHostname(
+                "hostname",
+                "other.example",
+                "dns.safenet.example"
+            )
+        );
+        assertEquals(
+            false,
+            SafeNetProtectionStatus.privateDnsMatchesExpectedHostname(
+                "automatic",
+                "dns.safenet.example",
+                "dns.safenet.example"
+            )
+        );
+    }
+
+    @Test
     public void statusAlwaysExplainsPrivateProxyAndDnsLimitations() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSONObject status = SafeNetProtectionStatus.get(context);
