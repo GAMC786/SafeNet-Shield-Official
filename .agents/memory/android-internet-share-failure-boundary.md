@@ -7,7 +7,7 @@ Internet Share must catch failures in the Android foreground service and Wi-Fi D
 
 **Why:** Starting the service returns before asynchronous Wi-Fi Direct setup completes, so a JavaScript `try/catch` cannot protect the app from native startup exceptions.
 
-**How to apply:** Keep plugin, foreground-service, Wi-Fi Direct, group-info, and local-proxy startup paths defensive; verify the behavior on a physical Android device because the workspace cannot reproduce device-specific Wi-Fi Direct failures.
+**How to apply:** Keep plugin, foreground-service, Wi-Fi Direct, group-info, and local-proxy startup paths defensive; declare ACCESS_WIFI_STATE and CHANGE_WIFI_STATE alongside the API-level runtime permission; verify the behavior on a physical Android device because the workspace cannot reproduce device-specific Wi-Fi Direct failures.
 
 ## Credential handoff
 

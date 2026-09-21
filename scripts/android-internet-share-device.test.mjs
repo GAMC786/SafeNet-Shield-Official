@@ -19,6 +19,10 @@ const plugin = readFileSync(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java", import.meta.url),
   "utf8",
 );
+const manifest = readFileSync(
+  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
+  "utf8",
+);
 const tetherHook = readFileSync(
   new URL("../client/src/hooks/use-tether-share.ts", import.meta.url),
   "utf8",
@@ -34,6 +38,12 @@ test("Internet Share instrumentation covers permission, start, and stop cleanup"
   assert.match(instrumentation, /INTERNET_SHARE_CLIENT_PROXY_CONFIG result=PASS/);
   assert.match(instrumentation, /INTERNET_SHARE_STOP result=PASS/);
   assert.match(instrumentation, /getTetherStatus/);
+});
+
+test("the APK declares the normal Wi-Fi Direct permissions", () => {
+  assert.match(manifest, /android\.permission\.ACCESS_WIFI_STATE/);
+  assert.match(manifest, /android\.permission\.CHANGE_WIFI_STATE/);
+  assert.match(manifest, /android\.permission\.NEARBY_WIFI_DEVICES/);
 });
 
 test("permission recovery retries a pending share start after Android Settings", () => {
