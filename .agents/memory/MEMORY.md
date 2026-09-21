@@ -43,6 +43,7 @@
 - [ISP profile provider fallback](isp-profile-provider-fallback.md) — public-IP ISP metadata services can rate-limit; use a browser-safe fallback chain and label results as inferred.
 - [Replit analytics cold-load delivery](replit-analytics-cold-load.md) — async tracker injection can drop return events fired during the first Settings mount; queue them before relying on published analytics.
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
+- [Optional push-alert status](optional-push-alert-status.md) — OneSignal is optional; provider auth failures must not surface as antivirus outages or non-2xx app status responses.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
 - [Android DNS physical evidence](android-dns-physical-evidence.md) — prove live virtual-DNS blocking without changing a reused phone's persisted firewall policy.
 - [Workflow dispatch input budget](workflow-dispatch-input-budget.md) — GitHub workflow_dispatch allows at most ten inputs; reuse an existing gate or move settings before adding another.
