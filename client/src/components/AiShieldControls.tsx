@@ -176,7 +176,7 @@ export function AiShieldControls() {
               <Switch
                 checked={cameraEnabled}
                 onCheckedChange={(checked) => void toggleSource("camera", checked)}
-                disabled={!shield.supported || shield.isBusy}
+                disabled={!shield.supported || !deepCleerAvailable || shield.isBusy}
                 data-testid="switch-ai-camera"
                 aria-label={`Camera monitoring ${cameraEnabled ? "On" : "Off"}`}
               />
@@ -194,7 +194,7 @@ export function AiShieldControls() {
               <Switch
                 checked={screenEnabled}
                 onCheckedChange={(checked) => void toggleSource("screen", checked)}
-                disabled={!shield.supported || shield.isBusy}
+                disabled={!shield.supported || !deepCleerAvailable || shield.isBusy}
                 data-testid="switch-ai-screen"
                 aria-label={`Screen monitoring ${screenEnabled ? "On" : "Off"}`}
               />
