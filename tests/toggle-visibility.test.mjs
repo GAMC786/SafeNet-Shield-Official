@@ -490,11 +490,8 @@ test("Settings show the current version without firewall controls", async () => 
   for (const mediaType of ["images", "videos", "livestreams", "texts", "audios"]) {
     const mediaSwitch = page.getByTestId(`switch-ai-${mediaType}`);
     assert.equal(await mediaSwitch.count(), 1);
-    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
-    await mediaSwitch.click();
     assert.equal(await mediaSwitch.getAttribute("data-state"), "unchecked");
-    await mediaSwitch.click();
-    assert.equal(await mediaSwitch.getAttribute("data-state"), "checked");
+    assert.equal(await mediaSwitch.isDisabled(), true);
   }
   assert.equal(await page.getByTestId("button-ai-start-camera").count(), 0);
   assert.equal(await page.getByTestId("button-ai-start-screen").count(), 0);
