@@ -234,6 +234,24 @@ public final class SafeNetProtectionStatus {
         return snapshot;
     }
 
+    private static String normalizePrivateDnsHostname(String value) {
+        if (value == null) return null;
+        String normalized = value.trim().toLowerCase(java.util.Locale.US);
+        while (normalized.endsWith(".")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.isEmpty() || normalized.contains("/") || normalized.contains(" ")) {
+            return null;
+        }
+        if (normalized.matches("[^:]+:\\d{1,5}")) {
+            normalized = normalized.substring(0, normalized.lastIndexOf(':'));
+        }
+        if (normalized.contains(":") || !normalized.matches("[a-z0-9.-]+")) {
+            return null;
+        }
+        return normalized;
+    }
+
     private static final class ConnectivitySnapshot {
         private boolean activeNetwork;
         private boolean ownsSafeNetVpn;
