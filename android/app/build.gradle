@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 apply plugin: 'com.android.application'
 
 def releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
@@ -11,52 +13,6 @@ def releaseSigningConfigured = [
     releaseKeyPassword
 ].every { value -> value != null && !value.trim().isEmpty() }
 
-def wireGuardValue = { String environmentName, String propertyName ->
-    def environmentValue = System.getenv(environmentName)
-    if (environmentValue != null) {
-        return environmentValue
-    }
-    def propertyValue = project.findProperty(propertyName)
-    return propertyValue == null ? "" : propertyValue.toString()
-}
-
-def wireGuardBuildConfigString = { String value ->
-    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
-}
-
-def wireGuardGatewayEndpoint = wireGuardValue(
-    "SAFENET_WIREGUARD_GATEWAY_ENDPOINT",
-    "safenetWireguardGatewayEndpoint"
-)
-def wireGuardGatewayOwner = wireGuardValue(
-    "SAFENET_WIREGUARD_GATEWAY_OWNER",
-    "safenetWireguardGatewayOwner"
-)
-def wireGuardPeerPublicKey = wireGuardValue(
-    "SAFENET_WIREGUARD_PEER_PUBLIC_KEY",
-    "safenetWireguardPeerPublicKey"
-)
-def wireGuardClientPrivateKey = wireGuardValue(
-    "SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY",
-    "safenetWireguardClientPrivateKey"
-)
-def wireGuardClientAddress = wireGuardValue(
-    "SAFENET_WIREGUARD_CLIENT_ADDRESS",
-    "safenetWireguardClientAddress"
-)
-def wireGuardAllowedIps = wireGuardValue(
-    "SAFENET_WIREGUARD_ALLOWED_IPS",
-    "safenetWireguardAllowedIps"
-)
-def wireGuardDnsServers = wireGuardValue(
-    "SAFENET_WIREGUARD_DNS_SERVERS",
-    "safenetWireguardDnsServers"
-)
-def wireGuardPersistentKeepalive = wireGuardValue(
-    "SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE",
-    "safenetWireguardPersistentKeepalive"
-)
-
 android {
     namespace "com.safenet.dns"
     compileSdk rootProject.ext.compileSdkVersion
@@ -69,17 +25,9 @@ android {
         testApplicationId "com.safenet.dns.test"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 62
-        versionName "1.0.70"
+        versionCode 73
+        versionName "1.0.81"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_ENDPOINT", wireGuardBuildConfigString(wireGuardGatewayEndpoint)
-        buildConfigField "String", "SAFENET_WIREGUARD_GATEWAY_OWNER", wireGuardBuildConfigString(wireGuardGatewayOwner)
-        buildConfigField "String", "SAFENET_WIREGUARD_PEER_PUBLIC_KEY", wireGuardBuildConfigString(wireGuardPeerPublicKey)
-        buildConfigField "String", "SAFENET_WIREGUARD_CLIENT_PRIVATE_KEY", wireGuardBuildConfigString(wireGuardClientPrivateKey)
-        buildConfigField "String", "SAFENET_WIREGUARD_CLIENT_ADDRESS", wireGuardBuildConfigString(wireGuardClientAddress)
-        buildConfigField "String", "SAFENET_WIREGUARD_ALLOWED_IPS", wireGuardBuildConfigString(wireGuardAllowedIps)
-        buildConfigField "String", "SAFENET_WIREGUARD_DNS_SERVERS", wireGuardBuildConfigString(wireGuardDnsServers)
-        buildConfigField "String", "SAFENET_WIREGUARD_PERSISTENT_KEEPALIVE", wireGuardBuildConfigString(wireGuardPersistentKeepalive)
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -155,6 +103,49 @@ tasks.register("verifyReleaseSigning") {
     }
 }
 
+tasks.register("writeReleaseArtifactMetadata") {
+    dependsOn "assembleRelease"
+    doLast {
+        def releaseApk = file("$buildDir/outputs/apk/release/app-release.apk")
+        if (!releaseApk.isFile()) {
+            throw new GradleException("Signed release APK was not found: ${releaseApk}")
+        }
+
+        def releaseRef = System.getenv("GITHUB_REF")
+        def releaseSha = System.getenv("GITHUB_SHA")
+        if (releaseRef == null || releaseRef.trim().isEmpty() ||
+            releaseSha == null || releaseSha.trim().isEmpty()) {
+            throw new GradleException(
+                "Release artifact metadata requires GITHUB_REF and GITHUB_SHA."
+            )
+        }
+
+        def digest = MessageDigest.getInstance("SHA-256")
+        releaseApk.withInputStream { input ->
+            byte[] buffer = new byte[8192]
+            int read
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read)
+            }
+        }
+        def apkSha256 = digest.digest().collect { byte value ->
+            String.format("%02x", value & 0xff)
+        }.join()
+
+        def metadataFile = file("$buildDir/outputs/apk/release/app-release.apk.metadata")
+        metadataFile.text = [
+            "schema_version=1",
+            "release_ref=${releaseRef}",
+            "release_sha=${releaseSha}",
+            "package_name=${android.defaultConfig.applicationId}",
+            "version_code=${android.defaultConfig.versionCode}",
+            "version_name=${android.defaultConfig.versionName}",
+            "apk_file=app-release.apk",
+            "apk_sha256=${apkSha256}"
+        ].join(System.lineSeparator()) + System.lineSeparator()
+    }
+}
+
 tasks.configureEach {
     if (name == "preReleaseBuild") {
         dependsOn "verifyReleaseSigning"
@@ -192,7 +183,6 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation "com.wireguard.android:tunnel:1.0.20250531"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { SafeNetVpn } from "@/hooks/use-vpn";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 export interface TetherShareDevice {
   name: string;
@@ -15,8 +16,13 @@ export interface TetherShareStatus {
   passphrase?: string | null;
   proxyHost?: string | null;
   proxyPort?: number | null;
+  httpProxyPort?: number | null;
+  socksProxyPort?: number | null;
+  httpProxySupported?: boolean;
+  socksProxySupported?: boolean;
   connectedDevices: TetherShareDevice[];
   groupOwner: boolean;
+  permissionGranted?: boolean;
   lastError?: string | null;
   requiresManualProxy: boolean;
 }
@@ -27,11 +33,13 @@ const unsupportedStatus: TetherShareStatus = {
   starting: false,
   connectedDevices: [],
   groupOwner: false,
+  permissionGranted: false,
   requiresManualProxy: true,
 };
 
 export function useTetherShare() {
   const supported = Capacitor.getPlatform() === "android";
+  const pendingStartRef = useRef(false);
   const [status, setStatus] = useState<TetherShareStatus | null>(
     supported ? null : unsupportedStatus,
   );
@@ -40,19 +48,18 @@ export function useTetherShare() {
   const refresh = useCallback(async () => {
     if (!supported) return unsupportedStatus;
     try {
-      const nextStatus = await SafeNetVpn.getTetherStatus();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.getTetherStatus());
       setStatus(nextStatus);
       return nextStatus;
     } catch (error) {
-      const nextStatus: TetherShareStatus = {
-        ...(status ?? unsupportedStatus),
+      setStatus((previous) => ({
+        ...(previous ?? unsupportedStatus),
         supported: true,
         lastError: error instanceof Error ? error.message : "Android could not read Internet Share status.",
-      };
-      setStatus(nextStatus);
-      return nextStatus;
+      }));
+      return null;
     }
-  }, [status, supported]);
+  }, [supported]);
 
   useEffect(() => {
     if (!supported) return;
@@ -63,31 +70,65 @@ export function useTetherShare() {
 
   const start = useCallback(async () => {
     if (!supported) return unsupportedStatus;
+    pendingStartRef.current = true;
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.startTetherShare();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.startTetherShare());
+      pendingStartRef.current = false;
       setStatus(nextStatus);
+      await refresh().catch(() => null);
       return nextStatus;
+    } catch (error) {
+      // Keep the intent pending when Android sent the user to permission
+      // settings. Returning to the app will retry once Nearby devices is
+      // granted instead of requiring a second toggle tap.
+      await refresh().catch(() => null);
+      throw error;
     } finally {
       setIsBusy(false);
     }
-  }, [supported]);
+  }, [refresh, supported]);
 
   const stop = useCallback(async () => {
     if (!supported) return unsupportedStatus;
+    pendingStartRef.current = false;
     setIsBusy(true);
     try {
-      const nextStatus = await SafeNetVpn.stopTetherShare();
+      const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.stopTetherShare());
       setStatus(nextStatus);
+      await refresh().catch(() => null);
       return nextStatus;
     } finally {
       setIsBusy(false);
     }
-  }, [supported]);
+  }, [refresh, supported]);
+
+  useEffect(() => {
+    if (!supported) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      void (async () => {
+        const nextStatus = await refresh();
+        if (
+          pendingStartRef.current &&
+          nextStatus?.permissionGranted === true &&
+          !nextStatus.running
+        ) {
+          await start().catch(() => null);
+        }
+      })();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [refresh, start, supported]);
 
   const openWifiSettings = useCallback(async () => {
-    if (supported) await SafeNetVpn.openTetherWifiSettings();
+    if (supported) await enqueueNativeCommand(() => SafeNetVpn.openTetherWifiSettings());
   }, [supported]);
 
-  return { supported, status, isBusy, refresh, start, stop, openWifiSettings };
+  const openAppSettings = useCallback(async () => {
+    if (supported) await enqueueNativeCommand(() => SafeNetVpn.openTetherAppSettings());
+  }, [supported]);
+
+  return { supported, status, isBusy, refresh, start, stop, openWifiSettings, openAppSettings };
 }

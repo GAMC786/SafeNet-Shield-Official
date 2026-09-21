@@ -32,10 +32,15 @@ function readMediaPreferences(): AiShieldMediaPreferences {
 
   try {
     const stored = JSON.parse(window.localStorage.getItem(AI_SHIELD_MEDIA_PREFERENCES_KEY) || "null") as Partial<AiShieldMediaPreferences> | null;
-    return {
-      ...defaultMediaPreferences,
-      ...(stored || {}),
-    };
+    return (Object.keys(defaultMediaPreferences) as AiShieldMediaType[]).reduce(
+      (preferences, mediaType) => {
+        preferences[mediaType] = typeof stored?.[mediaType] === "boolean"
+          ? stored[mediaType] as boolean
+          : defaultMediaPreferences[mediaType];
+        return preferences;
+      },
+      {} as AiShieldMediaPreferences,
+    );
   } catch {
     return defaultMediaPreferences;
   }
@@ -59,8 +64,11 @@ export function useAiShield() {
   const [error, setError] = useState<string | null>(null);
   const [deepCleer, setDeepCleer] = useState<DeepCleerStatus | null>(null);
   const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [isCloudBusy, setIsCloudBusy] = useState(false);
   const [mediaPreferences, setMediaPreferences] = useState<AiShieldMediaPreferences>(readMediaPreferences);
   const cloudEnabledRef = useRef(false);
+  const cloudOperationRef = useRef(0);
+  const cloudQueueRef = useRef<Promise<void>>(Promise.resolve());
   const deepCleerRef = useRef<DeepCleerStatus | null>(null);
   const latestStatusTimestamp = useRef(0);
 
@@ -119,6 +127,47 @@ export function useAiShield() {
     }
   }, [supported]);
 
+  const updateCloudEnabled = useCallback((enabled: boolean) => {
+    const nextEnabled = enabled && Boolean(deepCleerRef.current?.available);
+    const operation = ++cloudOperationRef.current;
+    cloudEnabledRef.current = nextEnabled;
+    setCloudEnabled(nextEnabled);
+
+    if (!supported) {
+      return;
+    }
+
+    setIsCloudBusy(true);
+    const queued = cloudQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (operation !== cloudOperationRef.current) {
+          return;
+        }
+        try {
+          await SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: nextEnabled });
+          if (operation === cloudOperationRef.current) {
+            cloudEnabledRef.current = nextEnabled;
+            setCloudEnabled(nextEnabled);
+          }
+        } catch (cloudError) {
+          if (operation === cloudOperationRef.current) {
+            cloudEnabledRef.current = false;
+            setCloudEnabled(false);
+            setError(cloudError instanceof Error
+              ? cloudError.message
+              : "DeepCleer cloud sharing could not be updated.");
+          }
+        } finally {
+          if (operation === cloudOperationRef.current) {
+            setIsCloudBusy(false);
+          }
+        }
+      });
+    cloudQueueRef.current = queued.catch(() => undefined);
+    void queued;
+  }, [supported]);
+
   useEffect(() => {
     let disposed = false;
     const refreshDeepCleer = async () => {
@@ -132,11 +181,7 @@ export function useAiShield() {
           setDeepCleer(nextStatus);
           deepCleerRef.current = nextStatus;
           if (!nextStatus.available) {
-            cloudEnabledRef.current = false;
-            setCloudEnabled(false);
-            if (supported) {
-              void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
-            }
+            updateCloudEnabled(false);
           }
         }
       } catch {
@@ -150,11 +195,7 @@ export function useAiShield() {
           };
           setDeepCleer(unavailable);
           deepCleerRef.current = unavailable;
-          cloudEnabledRef.current = false;
-          setCloudEnabled(false);
-          if (supported) {
-            void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
-          }
+          updateCloudEnabled(false);
         }
       }
     };
@@ -164,20 +205,7 @@ export function useAiShield() {
       disposed = true;
       window.clearInterval(deepCleerInterval);
     };
-  }, []);
-
-  const updateCloudEnabled = useCallback((enabled: boolean) => {
-    const nextEnabled = enabled && Boolean(deepCleerRef.current?.available);
-    cloudEnabledRef.current = nextEnabled;
-    setCloudEnabled(nextEnabled);
-    if (supported) {
-      void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: nextEnabled }).catch(() => {
-        cloudEnabledRef.current = false;
-        setCloudEnabled(false);
-        setError("DeepCleer cloud sharing could not be enabled.");
-      });
-    }
-  }, [supported]);
+  }, [supported, updateCloudEnabled]);
 
   const setMediaPreference = useCallback((mediaType: AiShieldMediaType, enabled: boolean) => {
     setMediaPreferences((previous) => {
@@ -217,6 +245,7 @@ export function useAiShield() {
       if (!cloudEnabledRef.current || !deepCleerRef.current?.available) {
         return;
       }
+      const cloudOperation = cloudOperationRef.current;
       void apiFetch("/api/integrations/deepcleer/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,10 +261,10 @@ export function useAiShield() {
           throw new Error(payload?.message || "DeepCleer image moderation failed.");
         }
       }).catch((frameError) => {
-        cloudEnabledRef.current = false;
-        setCloudEnabled(false);
-        void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
-        setError(frameError instanceof Error ? frameError.message : "DeepCleer image moderation failed.");
+        if (cloudOperation === cloudOperationRef.current) {
+          setError(frameError instanceof Error ? frameError.message : "DeepCleer image moderation failed.");
+          updateCloudEnabled(false);
+        }
       });
     }).then((nextListener) => {
       if (disposed) {
@@ -247,7 +276,7 @@ export function useAiShield() {
     return () => {
       window.clearInterval(interval);
       disposed = true;
-      void SafeNetVpn.setAiShieldCloudUploadEnabled({ enabled: false }).catch(() => undefined);
+      updateCloudEnabled(false);
       if (listener) {
         void listener.remove();
       }
@@ -255,7 +284,7 @@ export function useAiShield() {
         void frameListener.remove();
       }
     };
-  }, [applyStatus, refresh, refreshProtection, supported]);
+  }, [applyStatus, refresh, refreshProtection, supported, updateCloudEnabled]);
 
   const run = useCallback(async (
     action: () => Promise<AiShieldResult>,
@@ -298,6 +327,7 @@ export function useAiShield() {
     status,
     protection,
     isBusy,
+    isCloudBusy,
     error,
     deepCleer,
     cloudEnabled,

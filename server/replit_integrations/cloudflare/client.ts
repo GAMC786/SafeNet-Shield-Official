@@ -1,6 +1,7 @@
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
 const connectors = new ReplitConnectors();
+const CLOUDFLARE_API_BASE_URL = "https://api.cloudflare.com/client";
 
 type CloudflareApiError = {
   code?: number;
@@ -40,14 +41,25 @@ async function requestCloudflare<T>(
     body?: unknown;
   },
 ): Promise<T> {
-  const response = await connectors.proxy("cloudflare", path, {
-    method: options?.method,
-    body: options?.body,
-    headers: {
-      Accept: "application/json",
-      ...(options?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const response = token
+    ? await fetch(`${CLOUDFLARE_API_BASE_URL}${path}`, {
+        method: options?.method,
+        body: options?.body === undefined ? undefined : JSON.stringify(options.body),
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        },
+      })
+    : await connectors.proxy("cloudflare", path, {
+        method: options?.method,
+        body: options?.body,
+        headers: {
+          Accept: "application/json",
+          ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        },
+      });
 
   let payload: CloudflareEnvelope<T> = {};
   try {

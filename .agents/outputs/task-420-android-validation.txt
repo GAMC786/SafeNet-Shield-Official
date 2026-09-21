@@ -1,0 +1,77 @@
+Task 420 - DNS and DDNS signed Android validation
+================================================
+
+Overall status: BLOCKED
+Validation date: 2026-09-17
+
+Required evidence
+-----------------
+DNS_RESOLVER_UI=NOT_RECORDED
+DDNS_UI=NOT_RECORDED
+INTERNET_SHARE_START=NOT_RECORDED
+INTERNET_SHARE_STOP=NOT_RECORDED
+VPN_PACKAGE_SURFACE=NOT_RECORDED
+
+Local workspace checks
+----------------------
+Signed APK target:
+  android/app/build/outputs/apk/release/app-release.apk
+  status: NOT_BUILT
+Instrumentation APK target:
+  android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+  status: NOT_BUILT
+Exact build command:
+  cd android && ./gradlew assembleRelease assembleReleaseAndroidTest
+Build result:
+  BLOCKED before compilation
+Build blocker:
+  Android SDK location not found. ANDROID_HOME, ANDROID_SDK_ROOT, and
+  android/local.properties sdk.dir are not configured in this workspace.
+Attached Android target:
+  NONE
+adb devices:
+  List of devices attached
+
+Smoke command result
+--------------------
+Exact script:
+  ./scripts/android-smoke-test.sh --apk android/app/build/outputs/apk/release/app-release.apk \
+    --test-apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+Result:
+  BLOCKED before device execution
+Reason:
+  Release APK not found.
+
+Available hosted evidence
+------------------------
+Run:
+  https://github.com/GAMC786/SafeNet-Shield-Official/actions/runs/35180563024
+Signed APK and instrumentation artifacts:
+  Built and uploaded by build-android in that run.
+android-release-smoke:
+  completed / success at the workflow level, but instrumentation did not start.
+Bounded smoke result:
+  validation_mode=hosted-emulator-reduced
+  device_kind=hosted-emulator
+  instrumentation_status=not-started
+  failure_category=EMULATOR_RUNNER_FAILURE
+  DNS_RESOLVER_UI=NOT_RECORDED
+  DDNS_UI=NOT_RECORDED
+  INTERNET_SHARE_START=NOT_RECORDED
+  INTERNET_SHARE_STOP=NOT_RECORDED
+  VPN_PACKAGE_SURFACE=NOT_RECORDED
+Runner log:
+  Release APK could not be installed after bounded retries.
+Physical-device job:
+  android-connectivity-physical was skipped.
+
+Contract verification
+---------------------
+node --test scripts/android-native-build-check.test.mjs
+  6 tests passed
+
+Conclusion
+----------
+This workspace cannot claim a real signed-install PASS. A runner with the pinned
+Android SDK, a signed APK pair from the same commit, and an attached Android
+target is required before the five markers can be captured.

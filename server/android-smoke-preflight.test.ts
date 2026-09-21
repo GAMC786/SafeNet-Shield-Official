@@ -388,7 +388,7 @@ test("temporary-CA cleanup preflight failure preserves emulator metadata and log
 test("tagged releases use the hosted emulator with reduced validation", () => {
   assert.match(
     workflow,
-    /android-release-smoke:\n\s+needs: build-android\n\s+if: startsWith\(github\.ref, 'refs\/tags\/v'\)/,
+    /android-release-smoke:\n\s+needs: build-android\n\s+if: (?:always\(\) && )?startsWith\(github\.ref, 'refs\/tags\/v'\)/,
   );
   assert.match(workflow, /android-release-smoke:[\s\S]*?\n\s+runs-on: ubuntu-latest/);
   assert.match(

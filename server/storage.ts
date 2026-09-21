@@ -34,7 +34,7 @@ export interface IStorage {
   // DDNS Updaters
   getDdnsUpdaters(): Promise<DdnsUpdater[]>;
   createDdnsUpdater(updater: InsertDdnsUpdater): Promise<DdnsUpdater>;
-  updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater>;
+  updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater | undefined>;
   deleteDdnsUpdater(id: number): Promise<void>;
   updateDdnsIpInfo(id: number, ipAddress: string): Promise<DdnsUpdater>;
   updateDdnsFailureInfo(id: number, message: string): Promise<DdnsUpdater>;
@@ -84,17 +84,7 @@ export class DatabaseStorage implements IStorage {
     if (!server) {
       throw new Error("DNS resolver not found");
     }
-    const existing = await this.getDnsServers();
-    if (existing.length === 1) {
-      throw new Error("At least one DNS resolver must remain configured");
-    }
     await db.delete(dnsServers).where(eq(dnsServers.id, id));
-    if (server.isActive) {
-      const fallback = existing.find((candidate) => candidate.id !== id);
-      if (fallback) {
-        await this.activateDnsServer(fallback.id);
-      }
-    }
   }
 
   async activateDnsServer(id: number): Promise<DnsServer> {
@@ -199,7 +189,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater> {
+  async updateDdnsUpdater(id: number, updates: Partial<InsertDdnsUpdater>): Promise<DdnsUpdater | undefined> {
     const [updated] = await db.update(ddnsUpdaters)
       .set(updates)
       .where(eq(ddnsUpdaters.id, id))
@@ -377,7 +367,9 @@ export class DatabaseStorage implements IStorage {
     
     return {
       totalThreats: events.length,
-      blockedToday: events.filter(e => e.timestamp && new Date(e.timestamp) >= today).length,
+      blockedToday: events.filter(
+        (e) => e.action === "blocked" && e.timestamp && new Date(e.timestamp) >= today,
+      ).length,
       activeFeeds: feeds.filter(f => f.isEnabled).length,
     };
   }

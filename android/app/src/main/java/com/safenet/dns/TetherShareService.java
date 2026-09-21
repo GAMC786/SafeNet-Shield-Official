@@ -26,9 +26,21 @@ public final class TetherShareService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        createChannel();
-        startForeground(NOTIFICATION_ID, notification());
-        TetherShareManager.get(this).start();
+        TetherShareManager manager = TetherShareManager.get(this);
+        try {
+            createChannel();
+            startForeground(NOTIFICATION_ID, notification());
+            manager.start();
+        } catch (RuntimeException error) {
+            manager.fail("Android could not start Internet Share.");
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } catch (RuntimeException ignored) {
+                // The service may not have reached the foreground state.
+            }
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 

@@ -43,89 +43,6 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
-// Keep the branded startup experience visible for the full ten-second handoff.
-const STARTUP_LOADER_DURATION_MS = 10_000;
-const STARTUP_LOADER_FADE_MS = 180;
-const STARTUP_COMPLETE_EVENT = "safenet:startup-complete";
-let startupDurationComplete = false;
-let startupAppReady = false;
-let startupHandoffScheduled = false;
-
-function completeStartupIfReady() {
-  if (!startupDurationComplete || !startupAppReady) {
-    return;
-  }
-  const loader = document.getElementById("startup-loader");
-  if (
-    !loader ||
-    loader.classList.contains("is-complete") ||
-    startupHandoffScheduled
-  ) {
-    return;
-  }
-  startupHandoffScheduled = true;
-  // Let the app commit and paint before fading the static shell. One owner and
-  // one frame handoff avoids the HTML loader, React tree, and native fallback
-  // flashing over each other.
-  window.requestAnimationFrame(() => {
-    loader.setAttribute("aria-busy", "false");
-    loader.classList.add("is-complete");
-    window.setTimeout(() => {
-      loader.remove();
-      window.dispatchEvent(new Event(STARTUP_COMPLETE_EVENT));
-    }, STARTUP_LOADER_FADE_MS);
-  });
-}
-
-function markStartupAppReady() {
-  startupAppReady = true;
-  completeStartupIfReady();
-}
-
-function startStartupLoader() {
-  const loader = document.getElementById("startup-loader");
-  const progressBar = document.getElementById("startup-loader-progress-bar");
-  const percentage = document.getElementById("startup-loader-percentage");
-  if (!loader || !progressBar || !percentage) {
-    return;
-  }
-
-  const startedAt = performance.now();
-  const updateProgress = () => {
-    const elapsed = performance.now() - startedAt;
-    const progress = Math.min(
-      1,
-      elapsed / STARTUP_LOADER_DURATION_MS,
-    );
-    const value = Math.floor(
-      progress * 100,
-    );
-    progressBar.style.transform = `scaleX(${progress})`;
-    percentage.textContent = `${value}%`;
-    loader.setAttribute("aria-valuenow", String(value));
-
-    if (value < 100) {
-      window.requestAnimationFrame(updateProgress);
-      return;
-    }
-
-    startupDurationComplete = true;
-    completeStartupIfReady();
-  };
-
-  window.requestAnimationFrame(updateProgress);
-}
-
-startStartupLoader();
-
-function hideDashboardFallback() {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      document.getElementById("dashboard-fallback")?.remove();
-    });
-  });
-}
-
 function isPackagedApp() {
   return (
     window.location.hostname === "localhost" &&
@@ -146,6 +63,4 @@ function openDashboardOnLaunch() {
 
 openDashboardOnLaunch();
 
-hideDashboardFallback();
 root.render(<App />);
-markStartupAppReady();

@@ -20,13 +20,17 @@ import {
   DDNS_MIN_INTERVAL_SECONDS,
   DDNS_MIN_INTERVAL_MS,
 } from "@shared/schema";
-import { DEFAULT_DNS_RESOLVER } from "@shared/dns-resolvers";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 import {
   getDeepCleerStatus,
   moderateDeepCleerImage,
 } from "./deepcleer-service";
+import {
+  getCallReputationAvailability,
+  lookupCallReputation,
+  reportCall,
+} from "./call-reputation";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -115,8 +119,11 @@ export async function registerRoutes(
   });
 
   app.get("/api/speedtest/turn-creds", async (_req, res) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const response = await fetch("https://speed.cloudflare.com/turn-creds", {
+        signal: controller.signal,
         headers: {
           Accept: "application/json",
           Origin: "https://speed.cloudflare.com",
@@ -146,7 +153,12 @@ export async function registerRoutes(
       }
       return res.json({ username, credential, server });
     } catch {
+      if (controller.signal.aborted) {
+        return res.status(504).json({ message: "Cloudflare TURN credentials timed out." });
+      }
       return res.status(502).json({ message: "Cloudflare TURN credentials are unavailable." });
+    } finally {
+      clearTimeout(timeout);
     }
   });
 
@@ -168,6 +180,32 @@ export async function registerRoutes(
       }
     },
   );
+
+  app.get("/api/spam-call-blocker/reputation/status", async (_req, res) => {
+    const result = await getCallReputationAvailability();
+    return res.json(result);
+  });
+
+  app.get("/api/spam-call-blocker/reputation", async (req, res) => {
+    const number = typeof req.query.number === "string" ? req.query.number : "";
+    const result = await lookupCallReputation(number);
+    if (!result.available) {
+      return res.status(503).json(result);
+    }
+    return res.json(result);
+  });
+
+  app.post("/api/spam-call-blocker/report", async (req, res) => {
+    const input = z.object({
+      number: z.string().min(1),
+      reason: z.string().max(240).optional(),
+    }).safeParse(req.body);
+    if (!input.success) {
+      return res.status(400).json({ accepted: false, reason: "A caller number is required." });
+    }
+    const result = await reportCall(input.data.number, input.data.reason);
+    return res.status(result.accepted ? 200 : 503).json(result);
+  });
 
   // Register AI Integrations
   registerChatRoutes(app);
@@ -369,14 +407,23 @@ export async function registerRoutes(
       if (!hostname || !provider) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      // IP Link requires customUrl. Cloudflare uses the managed connector.
+      if (provider === "cloudflare" || provider === "safenet") {
+        const { getCloudflareStatus } = await import("./replit_integrations/cloudflare/client");
+        const cloudflareStatus = await getCloudflareStatus();
+        if (!cloudflareStatus.ready) {
+          return res.status(503).json({
+            message: cloudflareStatus.message || "An active Cloudflare zone is required for SafeNet DDNS.",
+          });
+        }
+      }
+      // IP Link requires customUrl. SafeNet DDNS and Cloudflare use the managed connector.
       if (provider === "iplink" && !customUrl) {
         return res.status(400).json({ message: "Custom URL is required for IP Link provider" });
       }
       if (provider === "iplink" && customUrl && !isSecureDdnsUrl(customUrl)) {
         return res.status(400).json({ message: "IP Link custom URLs must use HTTPS" });
       }
-      if (provider !== "iplink" && provider !== "cloudflare" && !apiKey) {
+      if (provider !== "iplink" && provider !== "cloudflare" && provider !== "safenet" && !apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
        const parsedInterval = z.coerce.number().int().min(DDNS_MIN_INTERVAL_MINUTES).safeParse(updateInterval);
@@ -424,6 +471,9 @@ export async function registerRoutes(
             : {}),
         ...(typeof isEnabled === 'boolean' && { isEnabled }),
       });
+       if (!updater) {
+         return res.status(404).json({ message: "DDNS updater not found" });
+       }
       res.json(publicDdnsUpdater(updater));
     } catch (err) {
       res.status(404).json({ message: "DDNS updater not found" });
@@ -443,8 +493,10 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       const { clientIp } = req.body;
-      const { checkAndUpdateDdns } = await import("./ddns-service");
-      const results = await checkAndUpdateDdns(clientIp, storage, id);
+      const { checkAndUpdateDdns, forceUpdateDdns } = await import("./ddns-service");
+      const results = typeof clientIp === "string" && clientIp.trim()
+        ? [await forceUpdateDdns(id, clientIp.trim(), storage)]
+        : await checkAndUpdateDdns(undefined, storage, id);
       const failures = results.filter((result) => !result.success);
       if (failures.length > 0) {
         return res.status(502).json({
@@ -778,11 +830,6 @@ export async function registerRoutes(
 }
 
 async function seedDatabase(storage: IStorage) {
-  const existingServers = await storage.getDnsServers();
-  if (existingServers.length === 0) {
-    await storage.createDnsServer(DEFAULT_DNS_RESOLVER);
-  }
-
   const existingBlocklists = await storage.getBlocklists();
   if (existingBlocklists.length === 0) {
     await storage.createBlocklist({

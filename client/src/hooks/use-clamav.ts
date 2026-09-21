@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 
 export type ClamAvStatus = {
   configured: boolean;
@@ -32,7 +33,7 @@ export function useClamAvStatus() {
   return useQuery<ClamAvStatus>({
     queryKey: ["/api/antivirus/clamav/status"],
     queryFn: async () => {
-      const response = await fetch("/api/antivirus/clamav/status");
+      const response = await apiFetch("/api/antivirus/clamav/status", { timeoutMs: 10000 });
       if (!response.ok) throw new Error("ClamAV status could not be read");
       return response.json() as Promise<ClamAvStatus>;
     },
@@ -45,11 +46,15 @@ export function useVerifyClamAv() {
   const queryClient = useQueryClient();
   return useMutation<ClamAvVerification, Error>({
     mutationFn: async () => {
-      const response = await fetch("/api/antivirus/clamav/verify", {
+      const response = await apiFetch("/api/antivirus/clamav/verify", {
         method: "POST",
         headers: { Accept: "application/json" },
+        timeoutMs: 30000,
       });
       const body = await response.json() as ClamAvVerification & { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message || "ClamAV verification could not be completed.");
+      }
       return body;
     },
     onSuccess: (result) => {
