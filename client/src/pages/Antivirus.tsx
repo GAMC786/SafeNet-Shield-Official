@@ -6,7 +6,6 @@ import {
 } from "@/hooks/use-antivirus";
 import { useApkScanner } from "@/hooks/use-apk-scanner";
 import { useClamAvStatus, useVerifyClamAv } from "@/hooks/use-clamav";
-import { useOneSignalStatus } from "@/hooks/use-onesignal";
 import type { ApkQuarantineFile, ApkScanResult } from "@/hooks/use-vpn";
 import type { ThreatFeed } from "@shared/schema";
 import { Header } from "@/components/Header";
@@ -37,11 +36,9 @@ export default function Antivirus() {
   const apkScanner = useApkScanner();
   const clamAv = useClamAvStatus();
   const verifyClamAv = useVerifyClamAv();
-  const oneSignal = useOneSignalStatus();
   const { toast } = useToast();
   const clamAvVerified = clamAv.data?.verified === true;
   const antivirusEnabled = clamAvVerified && settings?.isEnabled === true;
-  const pushAlertsConfigured = oneSignal.data?.configured === true;
 
   const [isFeedDialogOpen, setIsFeedDialogOpen] = usePersistentState("safenet-antivirus-feed-dialog-open", false);
   const [editingFeed, setEditingFeed] = useState<ThreatFeed | null>(null);
@@ -330,42 +327,6 @@ export default function Antivirus() {
         subtitle="On-Device APK & DNS Threat Protection"
         status={antivirusEnabled ? "active" : "unprotected"}
       />
-
-      <CyberCard className={pushAlertsConfigured
-        ? "border-emerald-500/30 bg-emerald-500/5"
-        : "border-yellow-500/30 bg-yellow-500/5"}
-      >
-        <div className="flex items-start gap-3">
-          {pushAlertsConfigured
-            ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-400" />
-            : <AlertCircle className="mt-0.5 h-5 w-5 text-yellow-400" />}
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-display text-lg tracking-wider">Push security alerts</h2>
-              <Badge
-                variant="outline"
-                className={pushAlertsConfigured
-                  ? "border-emerald-500/40 text-emerald-300"
-                  : "border-yellow-500/40 text-yellow-200"}
-                data-testid="onesignal-status"
-              >
-                {oneSignal.isLoading ? "checking" : pushAlertsConfigured ? "ready" : "not configured"}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {oneSignal.isLoading
-                ? "Checking the OneSignal connection..."
-                : oneSignal.data?.message
-                  || (oneSignal.error
-                    ? "Optional push security alerts are unavailable. Antivirus and ClamAV protection remain active."
-                    : "Optional push security alerts are not configured. Antivirus and ClamAV protection remain active.")}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              High and critical events send generic alerts without domains, file contents, or private DNS data.
-            </p>
-          </div>
-        </div>
-      </CyberCard>
 
       <CyberCard className={clamAv.data?.verified
         ? "border-emerald-500/30 bg-emerald-500/5"
