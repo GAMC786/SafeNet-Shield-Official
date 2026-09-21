@@ -475,7 +475,7 @@ public class AppLockInstrumentationTest {
     }
 
     private String instrumentationArgument(String key) {
-        Bundle arguments = InstrumentationRegistry.getInstrumentation().getArguments();
+        Bundle arguments = InstrumentationRegistry.getArguments();
         return arguments == null ? null : arguments.getString(key);
     }
 
