@@ -26,3 +26,9 @@ Release instrumentation compilation exercises the full Android test-source graph
 **Why:** The hosted release test compile caught both a missing standard-library import and retained non-VPN UI-test helpers that had been commented out during VPN removal.
 
 **How to apply:** Use the hosted release-instrumentation preflight as the source-of-truth check for Android test Java, and keep retained instrumentation helpers active when their tests remain enabled.
+
+The official APK workflow must be dispatched from a branch containing the validated workspace tree; the official repository's default branch can lag behind the current app source.
+
+**Why:** A successful workflow on the official default branch can produce an older APK, while a source branch release can expose Java-only compilation gaps before publication.
+
+**How to apply:** Publish the exact validated commit to a dedicated official release branch, dispatch the signed workflow against that branch, and verify the formal release tag and checksum assets afterward.
