@@ -79,3 +79,4 @@
 - [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.
 - [Android VPN scope](android-vpn-removal-boundary.md) — SafeNet may use a DNS-only VPN for resolver filtering, but must not imply arbitrary HTTPS traffic inspection or restore WireGuard.
 - [LockLock app protection boundary](androidx-secure-app-lock.md) — offline selected-app locking uses explicit Accessibility/Device Admin opt-ins, salted hashes, recovery, and brute-force cooldowns.
+- [Release completion signal](android-release-completion-signal.md) — trust the release and post-publication verification jobs plus the GitHub Release assets; optional queued validation jobs can leave the overall run queued.
