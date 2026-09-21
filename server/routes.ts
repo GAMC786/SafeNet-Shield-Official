@@ -421,7 +421,9 @@ export async function registerRoutes(
   app.get("/api/integrations/onesignal/status", async (_req, res) => {
     const { getOneSignalStatus } = await import("./replit_integrations/onesignal/client");
     const status = await getOneSignalStatus();
-    res.status(status.connected ? 200 : 503).json(status);
+    // Push alerts are optional. Their provider status must not make the
+    // antivirus page or its core protection APIs look unavailable.
+    res.json(status);
   });
 
   app.get("/api/integrations/deepcleer/status", (_req, res) => {

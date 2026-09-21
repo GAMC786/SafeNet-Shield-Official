@@ -63,10 +63,14 @@ export async function getOneSignalStatus(): Promise<OneSignalStatus> {
       message: "OneSignal is connected and ready for push security alerts.",
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const isAuthorizationFailure = /HTTP 401|HTTP 403|rejected the request/i.test(message);
     return {
       connected: false,
       configured: false,
-      message: error instanceof Error ? error.message : "OneSignal connection failed.",
+      message: isAuthorizationFailure
+        ? "Optional push security alerts are not configured. Antivirus and ClamAV protection remain active."
+        : "Optional push security alerts are currently unavailable. Antivirus and ClamAV protection remain active.",
     };
   }
 }
