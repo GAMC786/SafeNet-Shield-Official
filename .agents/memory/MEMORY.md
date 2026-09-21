@@ -38,6 +38,7 @@
 - [Stripe subscription entitlement safety](stripe-subscription-entitlement-safety.md) — grant access only for the exact synced plan, and serialize checkout creation across app instances.
 - [Stripe startup coordination](stripe-startup-coordination.md) — autoscaled startup mutations share one database lock and backfill uses an explicit object selection.
 - [Published Stripe connector auth](published-stripe-connector-auth.md) — production must prefer the deployment token when both repl and deployment connector tokens are present.
+- [OneSignal environment split](onesignal-environment-split.md) — a working workspace connector does not prove the published deployment has valid OneSignal credentials.
 - [Reference soundtrack and Rive loading](reference-soundtrack-rive-loading.md) — the reference audio can stream after a user gesture, but its mainstage Rive file lacks cross-origin headers.
 - [Startup artwork scaling](startup-artwork-scaling.md) — preserve the 1008×2244 PNG aspect ratio; phone viewport proportions make contain fill Android screens without cropping the shield or astronaut.
 - [ISP profile provider fallback](isp-profile-provider-fallback.md) — public-IP ISP metadata services can rate-limit; use a browser-safe fallback chain and label results as inferred.
