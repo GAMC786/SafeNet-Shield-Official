@@ -79,7 +79,8 @@ export function AiShieldControls() {
   const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
-  const deepCleerCloudEnabled = shield.deepCleer?.available === true && shield.cloudEnabled;
+  const deepCleerAvailable = shield.deepCleer?.available === true;
+  const deepCleerCloudEnabled = deepCleerAvailable && shield.cloudEnabled;
   const mediaControls = [
     { key: "images", label: "Images", description: "Analyze image frames", icon: ImageIcon },
     { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
@@ -218,10 +219,11 @@ export function AiShieldControls() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch
-                    checked={enabled}
+                    checked={deepCleerAvailable && enabled}
                     onCheckedChange={(checked) => shield.setMediaPreference(key, checked)}
+                    disabled={!deepCleerAvailable || !shield.supported}
                     data-testid={`switch-ai-${key}`}
-                    aria-label={`${label} detection ${enabled ? "On" : "Off"}`}
+                    aria-label={`${label} detection ${deepCleerAvailable && enabled ? "On" : "Off"}`}
                   />
                 </div>
               </div>
