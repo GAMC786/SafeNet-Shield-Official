@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater } from "@/hooks/use-ddns";
+import { useEffect, useRef, useState } from "react";
+import { useDdnsUpdaters, useCloudflareStatus, useCreateDdnsUpdater, useDeleteDdnsUpdater, useUpdateDdnsUpdater, usePublicIp, useTestDdnsUpdater, useUpdateDdnsUpdaterWithIp } from "@/hooks/use-ddns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { DDNS_DEFAULT_INTERVAL_MINUTES, DDNS_MIN_INTERVAL_MINUTES, type PublicDdnsUpdater } from "@shared/schema";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Zap, Loader2 } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Clock, Wifi, Server, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,13 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 
+function getDdnsHostnameUrl(hostname: string): string {
+  const normalizedHostname = hostname.trim();
+  return /^https?:\/\//i.test(normalizedHostname)
+    ? normalizedHostname
+    : `https://${normalizedHostname}`;
+}
+
 export default function DdnsUpdater() {
   const { data: updaters, isLoading } = useDdnsUpdaters();
   const cloudflareStatus = useCloudflareStatus();
@@ -25,6 +32,7 @@ export default function DdnsUpdater() {
   const deleteUpdater = useDeleteDdnsUpdater();
   const updateUpdater = useUpdateDdnsUpdater();
   const testUpdater = useTestDdnsUpdater();
+  const updateDdnsUpdaterWithIp = useUpdateDdnsUpdaterWithIp();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = usePersistentState("safenet-ddns-dialog-open", false);
   const [editingUpdater, setEditingUpdater] = useState<PublicDdnsUpdater | null>(null);
@@ -39,6 +47,23 @@ export default function DdnsUpdater() {
     testedAt: number;
   }>>({});
   const activeDnsServer = dnsServers?.find((server) => server.isActive);
+  const lastPushedClientIp = useRef<Record<number, string>>({});
+
+  useEffect(() => {
+    const clientIp = publicIpData?.ip;
+    if (!clientIp || !updaters?.length) return;
+
+    const deviceManagedUpdaters = updaters.filter(
+      (updater) => updater.provider === "safenet" && updater.isEnabled !== false,
+    );
+    for (const updater of deviceManagedUpdaters) {
+      if (lastPushedClientIp.current[updater.id] === clientIp) continue;
+      lastPushedClientIp.current[updater.id] = clientIp;
+      void updateDdnsUpdaterWithIp.mutateAsync({ id: updater.id, clientIp }).catch(() => {
+        delete lastPushedClientIp.current[updater.id];
+      });
+    }
+  }, [publicIpData?.ip, updateDdnsUpdaterWithIp.mutateAsync, updaters]);
 
   const isAutoMode = Boolean(updaters?.length && updaters.every((updater) => updater.isEnabled !== false));
   const [isSwitchingToAuto, setIsSwitchingToAuto] = useState(false);
@@ -59,7 +84,7 @@ export default function DdnsUpdater() {
       toast({
         title: nextAutoMode ? "Automatic updates enabled" : "Automatic updates paused",
         description: nextAutoMode
-          ? "All configured DDNS resolvers will update automatically."
+          ? "SafeNet DDNS follows this device's public IP while this page is open; other resolvers use the hosted scheduler."
           : "DDNS provider updates are paused until auto mode is enabled again.",
       });
     } catch (error) {
@@ -82,7 +107,7 @@ export default function DdnsUpdater() {
     isEnabled: boolean;
   }>("safenet-ddns-draft", {
     hostname: "",
-    provider: "duckdns" as PublicDdnsUpdater["provider"],
+    provider: "safenet" as PublicDdnsUpdater["provider"],
     apiKey: "",
     customUrl: "",
     updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
@@ -105,7 +130,7 @@ export default function DdnsUpdater() {
     clearEditingUpdaterId();
     setFormData({
       hostname: "",
-      provider: "duckdns",
+       provider: "safenet",
       apiKey: "",
       customUrl: "",
       updateIntervalMinutes: DDNS_DEFAULT_INTERVAL_MINUTES,
@@ -135,7 +160,10 @@ export default function DdnsUpdater() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.provider === "cloudflare" && cloudflareStatus.data?.ready !== true) {
+    if (
+      (formData.provider === "cloudflare" || formData.provider === "safenet")
+      && cloudflareStatus.data?.ready !== true
+    ) {
       toast({
         title: "Active Cloudflare zone required",
         description: cloudflareStatus.data?.message
@@ -217,24 +245,6 @@ export default function DdnsUpdater() {
     }
   };
 
-  const handleUpdaterToggle = async (updater: PublicDdnsUpdater) => {
-    const nextEnabled = updater.isEnabled === false;
-    try {
-      await updateUpdater.mutateAsync({
-        id: updater.id,
-        data: { isEnabled: nextEnabled },
-      });
-      toast({
-        title: `${updater.hostname} ${nextEnabled ? "enabled" : "disabled"}`,
-        description: nextEnabled
-          ? "This updater will run on its configured schedule."
-          : "This updater is paused until you enable it again.",
-      });
-    } catch {
-      // The mutation hook restores the previous state and reports the error.
-    }
-  };
-
   const handleDeleteUpdater = async (updater: PublicDdnsUpdater) => {
     if (!window.confirm(`Delete the DDNS updater for ${updater.hostname}?`)) return;
     try {
@@ -285,24 +295,24 @@ export default function DdnsUpdater() {
               {activeDnsServer?.name || "No resolver selected"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              DDNS status is read-only and live. Provider updates use the authenticated
-              SafeNet API, and custom IP Link endpoints require HTTPS.
+              DDNS status is live and read-only. Provider updates use the authenticated
+              SafeNet API, and custom IP Link endpoints must use HTTPS.
             </p>
           </div>
         </div>
       </CyberCard>
 
       <div className="flex gap-2 justify-end mb-6">
-        <Button
-          variant={isAutoMode ? "default" : "outline"}
-          onClick={() => void handleAutoModeToggle()}
-          disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
-          aria-pressed={isAutoMode}
-          className="flex items-center gap-2"
-        >
-          <Zap className="w-4 h-4" />
-          {isSwitchingToAuto ? "Switching..." : isAutoMode ? "Auto Mode On" : "Switch to Auto"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Automatic Updater</span>
+          <Switch
+            checked={isAutoMode}
+            onCheckedChange={() => void handleAutoModeToggle()}
+            disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
+            aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
+            data-testid="switch-ddns-auto-mode"
+          />
+        </div>
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) resetForm();
@@ -331,7 +341,7 @@ export default function DdnsUpdater() {
                 />
               </div>
 
-              <div className="space-y-2">
+               <div className="space-y-2">
                 <Label>Provider</Label>
                 <Select
                   value={formData.provider}
@@ -341,6 +351,7 @@ export default function DdnsUpdater() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
+                     <SelectItem value="safenet">SafeNet DDNS (Cloudflare DNS)</SelectItem>
                     <SelectItem value="duckdns">DuckDNS</SelectItem>
                     <SelectItem value="noip">No-IP</SelectItem>
                     <SelectItem value="dynu">Dynu</SelectItem>
@@ -371,7 +382,7 @@ export default function DdnsUpdater() {
                 </div>
               )}
 
-              {formData.provider === "cloudflare" ? (
+               {formData.provider === "cloudflare" || formData.provider === "safenet" ? (
                 <div
                   className={cn(
                     "rounded-md border p-3 text-sm",
@@ -381,9 +392,13 @@ export default function DdnsUpdater() {
                   )}
                   role="status"
                 >
-                  <p className="font-medium">Managed Cloudflare connection</p>
+                   <p className="font-medium">
+                     {formData.provider === "safenet" ? "SafeNet DDNS hostname" : "Managed Cloudflare connection"}
+                   </p>
                   <p className="mt-1 text-xs opacity-90">
-                    {cloudflareStatus.isLoading
+                     {formData.provider === "safenet" && cloudflareStatus.data?.ready === true
+                        ? "SafeNet will keep this hostname's A record pointed at your current public IP for NextDNS, Control D, OpenDNS, and AdGuard linked-IP setup."
+                       : cloudflareStatus.isLoading
                       ? "Checking the connected Cloudflare account..."
                       : cloudflareStatus.data?.message
                         || cloudflareStatus.error?.message
@@ -432,7 +447,7 @@ export default function DdnsUpdater() {
                   className="bg-background border-border"
                 />
                  <p className="text-xs text-muted-foreground">
-                    Provider writes are limited to this interval. Existing secrets are kept when the key or custom URL is blank.
+                     Provider updates are limited to this interval. Existing secrets are kept when the key or custom URL is left blank.
                  </p>
               </div>
 
@@ -469,7 +484,27 @@ export default function DdnsUpdater() {
                     <Globe className="w-5 h-5 text-primary" />
                     {updater.hostname}
                   </h3>
-                  <p className="text-sm text-muted-foreground font-mono mt-1">{updater.provider.toUpperCase()}</p>
+                   <p className="text-sm text-muted-foreground font-mono mt-1">
+                     {updater.provider === "safenet" ? "SAFENET DDNS" : updater.provider.toUpperCase()}
+                   </p>
+                   {updater.provider === "safenet" && (
+                   <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                     <p className="text-xs text-muted-foreground">SafeNet DDNS Hostname URL</p>
+                     <a
+                       href={getDdnsHostnameUrl(updater.hostname)}
+                       target="_blank"
+                       rel="noreferrer"
+                       data-testid={`link-ddns-hostname-${updater.id}`}
+                       className="mt-1 inline-flex max-w-full items-center gap-1 break-all font-mono text-sm text-primary underline underline-offset-4 hover:text-primary/80"
+                     >
+                       <span>{getDdnsHostnameUrl(updater.hostname)}</span>
+                       <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                     </a>
+                     <p className="mt-2 text-xs text-muted-foreground">
+                        Enter the hostname from this URL in NextDNS, Control D, OpenDNS, or AdGuard linked-IP settings.
+                     </p>
+                   </div>
+                   )}
                 </div>
                 <Badge variant={updater.isEnabled ? "default" : "secondary"}>
                   {updater.isEnabled ? "Active" : "Inactive"}
@@ -555,22 +590,6 @@ export default function DdnsUpdater() {
                    {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
                    Test
                  </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleUpdaterToggle(updater)}
-                  disabled={updateUpdater.isPending}
-                   aria-label={`${updater.isEnabled ? "Turn Off" : "Turn On"} ${updater.hostname}`}
-                  aria-pressed={updater.isEnabled ?? false}
-                  className={cn(
-                    "min-h-10 flex-1 border-2 font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                    updater.isEnabled
-                      ? "border-amber-400/60 bg-amber-500/15 text-amber-200 hover:border-amber-300 hover:bg-amber-500/25"
-                      : "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/25"
-                  )}
-                >
-                   {updater.isEnabled ? "On" : "Off"}
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"

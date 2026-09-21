@@ -19,6 +19,8 @@
 - [DDNS status polling boundary](ddns-status-polling-boundary.md) — 500 ms refresh is for local status visibility only; external DDNS provider writes remain scheduler- or user-triggered.
 - [Development schema sync](development-schema-sync.md) — apply additive shared-schema changes to the development database before runtime verification on an unmerged branch.
 - [Cloudflare mobile upload probes](cloudflare-mobile-upload-probes.md) — Android WebViews may fail large upload probes; keep mobile uploads small and report bounded partial results.
+- [Cloudflare hosted retry timing](cloudflare-hosted-retry-timing.md) — hosted Chromium needs bounded 60-second recovery waits and may expose either retry or resume state.
+- [Android call-screening API compatibility](android-call-screening-api-compatibility.md) — use RoleManager for the role request; the pinned SDK does not expose Intent.EXTRA_ROLE_NAME.
 - [Post-merge setup retries](post-merge-setup-retries.md) — an unexpected post-merge disconnect can be transient; retry the configured hook before changing its commands.
 - [Optimistic collection rollbacks](optimistic-collection-rollbacks.md) — concurrent entity mutations must roll back only the failed entity, preserving other optimistic updates.
 - [Gmail connector auth boundary](gmail-connector-auth-boundary.md) — Gmail mailbox access can send messages but cannot authenticate SafeNet users.
@@ -41,11 +43,18 @@
 - [Replit analytics cold-load delivery](replit-analytics-cold-load.md) — async tracker injection can drop return events fired during the first Settings mount; queue them before relying on published analytics.
 - [Optional AI integration initialization](optional-ai-integration-initialization.md) — hosted release tests may not have OpenAI credentials; construct optional AI clients only when their routes are used.
 - [Android physical-device access](android-physical-device-access.md) — local phones are not exposed to cloud-workspace ADB; collect device evidence or use a separate runner.
-- [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
+- [Android DNS physical evidence](android-dns-physical-evidence.md) — prove live virtual-DNS blocking without changing a reused phone's persisted firewall policy.
+- [Workflow dispatch input budget](workflow-dispatch-input-budget.md) — GitHub workflow_dispatch allows at most ten inputs; reuse an existing gate or move settings before adding another.
+- [Android physical connectivity recovery](android-physical-connectivity-recovery.md) — physical phones must use public resolvers; classify missing or emulated targets as access blocks.
+ - [Android call-screening role fallback](android-call-screening-role-fallback.md) — role requests need a default-app settings fallback and must return the post-settings role state.
+ - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
+ - [Android DNS upstream network](android-dns-upstream-network.md) — DNS-only VPN resolver sockets must bind to a non-VPN network and remain protected from the VPN loop.
+- [Android VPN intentional shutdown](android-vpn-intentional-shutdown.md) — mark user-requested VPN stops before closing the interface or onDestroy reports a false unexpected failure.
 - [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.
 - [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
 - [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.
+- [Android SDK action defaults](android-sdk-action-defaults.md) — every setup-android step must override the removed default “tools” package when a pinned installer owns the SDK.
 - [DDNS interval units](ddns-interval-units.md) — DDNS accepts whole minutes at the API/UI boundary while persistence remains milliseconds and scheduler comparisons use seconds.
 - [Google speed test integration](google-speedtest-integration.md) — link to Google’s official hosted test externally; no documented public speed-test JSON API exists.
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
@@ -55,3 +64,16 @@
 - [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
 - [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
 - [DeepCleer integration boundary](deepcleer-integration-boundary.md) — vendor onboarding requires accessKey/appId/eventId/tokenId and explicit frame-sharing consent before cloud moderation.
+- [Native command serialization](native-command-serialization.md) — VPN, WireGuard, and Internet Share plugin calls must share one queue across all mounted hooks.
+- [Caller reputation provider boundary](caller-reputation-provider-boundary.md) — approved endpoint and credentials must be workspace-supplied; missing or invalid reputation data stays fail-open.
+- [Android call-screening response validity](android-call-screening-response.md) — allowed silenced calls cannot carry Android's disallowed-call notification flags.
+- [CallShield evaluation](callshield-evaluation.md) — standalone MIT Android app and local feed, not a hosted reputation API; code and data licensing must be reviewed separately.
+- [Spam provider selection](spam-provider-selection.md) — Hiya Protect is the best fit with partner access; Call Control Identify is the easier fallback but needs SafeNet policy mapping.
+- [RevenueCat connector API actions](revenuecat-connector-api.md) — product relationships mutate through generated SDK action routes, not collection POST endpoints.
+- [Android RevenueCat billing proof](android-revenuecat-billing-proof.md) — real purchase validation needs a Play-enabled runner and license tester; google_apis emulator smoke is not sufficient.
+- [RevenueCat Google Play readiness](revenuecat-google-play-readiness.md) — an active RevenueCat product still needs Play credentials and a successful store-state read before release.
+- [WireGuard-only VPN path](wireguard-only-vpn-path.md) — expose only WireGuard in the UI; legacy DNS VPN code may remain only for safe shutdown compatibility.
+- [Android Internet Share failure boundary](android-internet-share-failure-boundary.md) — native Wi-Fi Direct and foreground-service failures must become visible errors instead of crashing the APK.
+- [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.
+- [Android VPN scope](android-vpn-removal-boundary.md) — SafeNet may use a DNS-only VPN for resolver filtering, but must not imply arbitrary HTTPS traffic inspection or restore WireGuard.
+- [LockLock app protection boundary](androidx-secure-app-lock.md) — offline selected-app locking uses explicit Accessibility/Device Admin opt-ins, salted hashes, recovery, and brute-force cooldowns.

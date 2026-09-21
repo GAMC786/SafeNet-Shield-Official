@@ -59,6 +59,8 @@ function providerDisplayName(provider: string): string {
       return "DNSExit";
     case "iplink":
       return "IP Link";
+    case "safenet":
+      return "SafeNet DDNS";
     default:
       return provider;
   }
@@ -68,7 +70,7 @@ export async function testDdnsConnection(
   provider: string,
   customUrl?: string | null,
 ): Promise<DdnsConnectivityResult> {
-  if (provider.toLowerCase() === "cloudflare") {
+  if (provider.toLowerCase() === "cloudflare" || provider.toLowerCase() === "safenet") {
     const status = await getCloudflareStatus();
     return status.ready
       ? { success: true, message: status.message }
@@ -150,6 +152,18 @@ export async function getCurrentPublicIp(): Promise<string> {
   }
 }
 
+const DDNS_PROVIDER_TIMEOUT_MS = 10_000;
+
+async function fetchDdnsProvider(
+  input: string | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(DDNS_PROVIDER_TIMEOUT_MS),
+  });
+}
+
 // Update DNS record based on provider
 async function updateDnsRecord(
   hostname: string,
@@ -166,7 +180,8 @@ async function updateDnsRecord(
         return await updateNoIp(hostname, apiKey, ipAddress);
       case "dynu":
         return await updateDynu(hostname, apiKey, ipAddress);
-      case "cloudflare":
+       case "cloudflare":
+       case "safenet":
         await updateCloudflareDns(hostname, ipAddress);
         return providerResponseSuccess();
       case "dnsexit":
@@ -190,7 +205,7 @@ async function updateDnsRecord(
 }
 
 async function updateDuckDns(hostname: string, token: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch(
+  const response = await fetchDdnsProvider(
     `https://www.duckdns.org/update?domains=${hostname}&token=${token}&ip=${ip}`
   );
   const text = await response.text();
@@ -200,7 +215,7 @@ async function updateDuckDns(hostname: string, token: string, ip: string): Promi
 }
 
 async function updateNoIp(hostname: string, authToken: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://dynupdate.no-ip.com/nic/update", {
+  const response = await fetchDdnsProvider("https://dynupdate.no-ip.com/nic/update", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
@@ -214,7 +229,7 @@ async function updateNoIp(hostname: string, authToken: string, ip: string): Prom
 }
 
 async function updateDynu(hostname: string, apiKey: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://api.dynu.com/v2/dns", {
+  const response = await fetchDdnsProvider("https://api.dynu.com/v2/dns", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -227,7 +242,7 @@ async function updateDynu(hostname: string, apiKey: string, ip: string): Promise
 }
 
 async function updateDnsExit(hostname: string, credentials: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch(
+  const response = await fetchDdnsProvider(
     `https://update.dnsexit.com/dns/ud/?host=${encodeURIComponent(hostname)}&myip=${encodeURIComponent(ip)}`,
     {
       headers: {
@@ -242,7 +257,7 @@ async function updateDnsExit(hostname: string, credentials: string, ip: string):
 }
 
 async function updateDnsOMatic(hostname: string, credentials: string, ip: string): Promise<DdnsUpdateResult> {
-  const response = await fetch("https://updates.dnsomatic.com/nic/update", {
+  const response = await fetchDdnsProvider("https://updates.dnsomatic.com/nic/update", {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -277,7 +292,7 @@ async function updateIpLink(hostname: string, ip: string, customUrl?: string | n
     .replace(/\{IP\}/g, ip)
     .replace(/\{HOSTNAME\}/g, hostname);
   
-  const response = await fetch(url);
+  const response = await fetchDdnsProvider(url);
   // Consider any 2xx response as success
   return response.ok
     ? providerResponseSuccess()
@@ -350,6 +365,14 @@ export async function checkAndUpdateDdns(
 
   for (const updater of updaters) {
     if (!updater.isEnabled || (targetUpdaterId !== undefined && updater.id !== targetUpdaterId)) continue;
+
+    // SafeNet DDNS represents the public IP of the device using the app.
+    // The hosted scheduler only knows the Replit server's public IP, so it
+    // must never overwrite a device-managed SafeNet record. SafeNet records
+    // are updated through the client-IP routes instead.
+    if (updater.provider.toLowerCase() === "safenet") {
+      continue;
+    }
 
     // Check if update is needed
     const lastUpdateSeconds = updater.lastUpdateTime

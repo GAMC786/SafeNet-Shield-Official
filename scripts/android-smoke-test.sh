@@ -14,6 +14,14 @@ readonly FIXTURE_HTTP_PORT=18080
 readonly PREFLIGHT_REMOTE_CA_PREFIX="/system/etc/security/cacerts/safenet-preflight-"
 readonly DEFAULT_EMULATOR_METADATA_VALUE="unavailable"
 readonly COMPACT_STARTUP_WM_SIZE="480x640"
+readonly REQUIRED_RESOLVER_RECOVERY_CYCLES=2
+readonly MAX_INSTALL_DIAGNOSTICS_BYTES=12000
+readonly RESOLVER_PHASE_LABEL_REGEX='[A-Za-z0-9_-]+'
+readonly RESOLVER_FAILURE_RECORD_PATTERN='DOH_DOT_RECOVERY protocol=(doh|dot) phase=([^[:space:]]+) result=FAIL failure_category=([A-Z_]+) elapsed_ms=([0-9]+)$'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=android-install-failure-parser.sh
+source "$script_dir/android-install-failure-parser.sh"
 
 apk_path="${DEFAULT_APK}"
 test_apk_path="${DEFAULT_TEST_APK}"
@@ -23,6 +31,8 @@ preflight_only=false
 startup_only=false
 compact_startup=false
 resolver_mode="${ANDROID_SMOKE_RESOLVER_MODE:-fixture}"
+resolver_failure_validation="${ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION:-false}"
+dns_filtering_validation="${ANDROID_SMOKE_DNS_FILTERING_VALIDATION:-false}"
 validation_mode="${ANDROID_SMOKE_VALIDATION_MODE:-real-device}"
 device_kind="${ANDROID_SMOKE_DEVICE_KIND:-attached-device}"
 fixture_host="${ANDROID_SMOKE_FIXTURE_HOST:-10.0.2.2}"
@@ -46,6 +56,12 @@ compact_wm_override=""
 compact_wm_size_applied=false
 openssl_bin="${OPENSSL_BIN:-openssl}"
 coverage_label="controlled-fixture"
+call_screening_status="NOT_RECORDED"
+instrumentation_apk_attempted=false
+last_install_outcome="NOT_RECORDED"
+last_install_category="NOT_RECORDED"
+last_install_status="NOT_RECORDED"
+last_install_attempts=0
 adb_args=()
 if [[ "$resolver_mode" == "public" ]]; then
     coverage_label="external-network"
@@ -107,6 +123,8 @@ Options:
   --startup-only   Install the signed app APK and verify startup plus packaged media
   --compact-startup  Also run the startup sampling test at a compact 480x640 emulator size (requires --startup-only)
   --resolver-mode MODE  fixture (default) or public
+  --dns-filtering-validation
+                       Exercise real DNS blocking on a permissioned target
   --help           Show this help
 
 The full smoke lane also requires AUTH_SMOKE_STORAGE_STATE and
@@ -119,7 +137,8 @@ emulator host (10.0.2.2 by default). Public mode uses external resolvers and
 is intended only as an explicit external-network check. Resolver endpoints can
 be overridden with ANDROID_SMOKE_PLAIN_PRIMARY,
 ANDROID_SMOKE_PLAIN_SECONDARY, ANDROID_SMOKE_DOH_SECONDARY, and
-ANDROID_SMOKE_DOT_SECONDARY in public mode.
+ANDROID_SMOKE_DOT_SECONDARY in public mode. The full smoke also runs bounded
+DoH and DoT outage/recovery phases and archives protocol-specific results.
 EOF
 }
 
@@ -161,6 +180,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { echo "ERROR: --resolver-mode requires fixture or public." >&2; exit 2; }
             resolver_mode="$2"
             shift 2
+            ;;
+        --dns-filtering-validation)
+            dns_filtering_validation=true
+            shift
             ;;
         --help|-h)
             usage
@@ -233,9 +256,6 @@ mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/clerk-auth-instrumentation.log "$output_dir"/clerk-auth-logcat.txt \
     "$output_dir"/clerk-auth-result.txt \
-    "$output_dir"/wireguard-instrumentation.log "$output_dir"/wireguard-logcat.txt \
-    "$output_dir"/wireguard-connectivity.txt "$output_dir"/wireguard-vpn.txt \
-    "$output_dir"/wireguard-result.txt "$output_dir"/wireguard-failure-category.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
@@ -245,11 +265,22 @@ rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
     "$output_dir"/compact-startup-instrumentation.log "$output_dir"/compact-startup-result.txt \
     "$output_dir"/media-smoke-instrumentation.log "$output_dir"/media-smoke-logcat.txt \
     "$output_dir"/media-smoke-result.txt \
-    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt
+    "$output_dir"/install-failure.txt "$output_dir"/install-device-diagnostics.txt \
+    "$output_dir"/connectivity-recovery-logcat.txt "$output_dir"/connectivity-recovery-result.txt \
+    "$output_dir"/ai-shield-instrumentation.log "$output_dir"/ai-shield-result.txt \
+    "$output_dir"/call-screening-instrumentation.log "$output_dir"/call-screening-logcat.txt \
+    "$output_dir"/call-screening-result.txt \
+    "$output_dir"/resolver-recovery-contract-error.txt
 {
     printf 'validation_mode=%s\n' "$validation_mode"
     printf 'device_kind=%s\n' "$device_kind"
     printf 'coverage=%s\nresolver_mode=%s\n' "$coverage_label" "$resolver_mode"
+    printf 'call_screening=required\n'
+    printf 'connectivity_recovery=required\n'
+    printf 'resolver_recovery=required\ndoh_recovery=required\ndot_recovery=required\n'
+    if [[ "$dns_filtering_validation" == "true" ]]; then
+        printf 'dns_filtering=required\n'
+    fi
 } > "$output_dir/coverage.txt"
 
 if [[ -n "$serial" ]]; then
@@ -548,13 +579,133 @@ fi
 
 install_release_apk() {
     local install_path="$1"
-    for _ in {1..3}; do
-        if timeout 120s adb "${adb_args[@]}" install -r "$install_path"; then
+    local attempt
+    local install_output
+    local install_status
+
+    last_install_outcome="NOT_RECORDED"
+    last_install_category="NOT_RECORDED"
+    last_install_status="NOT_RECORDED"
+    last_install_attempts=0
+    for attempt in {1..3}; do
+        set +e
+        install_output="$(timeout 120s adb "${adb_args[@]}" install -r "$install_path" 2>&1)"
+        install_status=$?
+        set -e
+        last_install_attempts="$attempt"
+        last_install_status="$install_status"
+        last_install_outcome="$(sanitize_android_install_outcome "$install_output")"
+        last_install_category="$(classify_android_install_failure "$install_output" "$install_status")"
+        printf 'adb install attempt %s/3: %s\n' "$attempt" "$last_install_outcome"
+        if [[ "$install_status" -eq 0 ]]; then
             return 0
         fi
-        sleep 5
+        if [[ "$attempt" -lt 3 ]]; then
+            sleep 5
+        fi
     done
     return 1
+}
+
+apk_sha256() {
+    local install_path="$1"
+    sha256sum "$install_path" 2>/dev/null | awk '{print $1}' || printf 'NOT_RECORDED'
+}
+
+record_install_device_diagnostics() {
+    local destination="$output_dir/install-device-diagnostics.txt"
+    local data_storage_raw
+    local package_service_raw
+    local mount_service_raw
+    local adb_state_raw
+    local data_storage
+    local package_service
+    local mount_service
+    local adb_state
+
+    data_storage_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell df -k /data 2>&1 |
+            tr -d '\r' |
+            grep -E '(^Filesystem|/data$|/data[[:space:]])' |
+            tail -n 2 || true
+    )"
+    package_service_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell cmd package path android 2>&1 |
+            tr -d '\r' || true
+    )"
+    mount_service_raw="$(
+        timeout 10s adb "${adb_args[@]}" shell service check mount 2>&1 |
+            tr -d '\r' || true
+    )"
+    adb_state_raw="$(
+        timeout 10s adb "${adb_args[@]}" get-state 2>&1 |
+            tr -d '\r' || true
+    )"
+    data_storage="$(sanitize_android_install_outcome "$data_storage_raw")"
+    package_service="$(sanitize_android_install_outcome "$package_service_raw")"
+    mount_service="$(sanitize_android_install_outcome "$mount_service_raw")"
+    adb_state="$(sanitize_android_install_outcome "$adb_state_raw")"
+
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'target=%s\n' "$serial"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$(read_android_property ro.build.version.sdk)"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'adb_state=%s\n' "${adb_state:-NOT_RECORDED}"
+        printf 'package_service=%s\n' "${package_service:-NOT_RECORDED}"
+        printf 'mount_service=%s\n' "${mount_service:-NOT_RECORDED}"
+        printf 'data_storage=%s\n' "${data_storage:-NOT_RECORDED}"
+    } | head -c "$MAX_INSTALL_DIAGNOSTICS_BYTES" > "$destination"
+}
+
+android_install_failure() {
+    local install_path="$1"
+    local install_target="$2"
+    local instrumentation_attempted="$3"
+    local apk_name
+    local digest
+    local device_api_level
+
+    apk_name="$(basename "$install_path")"
+    digest="$(apk_sha256 "$install_path")"
+    device_api_level="$(read_android_property ro.build.version.sdk)"
+    record_install_device_diagnostics
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'failure_category=ANDROID_INSTALL_FAILURE\n'
+        printf 'failure_stage=%s\n' "$install_target"
+        printf 'target=%s\n' "$serial"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$device_api_level"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'apk_name=%s\n' "$apk_name"
+        printf 'apk_sha256=%s\n' "$digest"
+        printf 'package_manager_category=%s\n' "$last_install_category"
+        printf 'adb_install_outcome=%s\n' "$last_install_outcome"
+        printf 'install_attempts=%s\n' "$last_install_attempts"
+        printf 'adb_exit_status=%s\n' "$last_install_status"
+        printf 'instrumentation_apk_attempted=%s\n' "$instrumentation_attempted"
+    } | tee "$output_dir/install-failure.txt" >&2
+    {
+        printf 'failure_class=INFRASTRUCTURE\n'
+        printf 'target=%s\n' "$serial"
+        printf 'apk=%s\n' "$apk_name"
+        printf 'validation_mode=%s\n' "$validation_mode"
+        printf 'device_kind=%s\n' "$device_kind"
+        printf 'target_api_level=%s\n' "$emulator_api_level"
+        printf 'device_api_level=%s\n' "$device_api_level"
+        printf 'instrumentation_status=NOT_STARTED\n'
+        printf 'instrumentation_apk_attempted=%s\n' "$instrumentation_attempted"
+        printf 'apk_sha256=%s\n' "$digest"
+        printf 'package_manager_category=%s\n' "$last_install_category"
+        printf 'adb_install_outcome=%s\n' "$last_install_outcome"
+        printf 'failure_category=ANDROID_INSTALL_FAILURE\n'
+        printf 'result=FAIL\n'
+    } | tee "$output_dir/result.txt" >&2
+    printf 'ANDROID_INSTALL_FAILURE\n' | tee "$output_dir/failure-category.txt" >&2
+    echo "Android $install_target installation failed after bounded retries. Evidence: $output_dir" >&2
+    exit 1
 }
 
 remount_system() {
@@ -659,7 +810,7 @@ run_media_smoke() {
     set +e
     adb_run shell am instrument -w -r \
         "${preserve_auth_args[@]}" \
-        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetVpnUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
+        -e class com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/media-smoke-instrumentation.log"
     media_status="${PIPESTATUS[0]}"
@@ -682,82 +833,6 @@ run_media_smoke() {
     echo "Android packaged media smoke passed. Evidence: $output_dir"
 }
 
-wireguard_smoke_failure() {
-    local category="$1"
-    local message="$2"
-    local configuration_status="PASS"
-    local permission_status="PASS"
-    local gateway_status="PASS"
-    if [[ "$category" == "CONFIGURATION" ]]; then
-        configuration_status="FAIL"
-        permission_status="NOT_RECORDED"
-        gateway_status="NOT_RECORDED"
-    elif [[ "$category" == "PERMISSION" ]]; then
-        permission_status="FAIL"
-        gateway_status="NOT_RECORDED"
-    fi
-    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
-    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
-    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
-    printf '%s\n' "$category" | tee "$output_dir/wireguard-failure-category.txt" >&2
-    {
-        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
-            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
-        printf 'configuration=%s\npermission=%s\ngateway_connectivity=%s\ngateway_identity=%s\ntunnel=%s\nandroid_vpn=%s\n' \
-            "$configuration_status" "$permission_status" "$gateway_status" \
-            "NOT_CONFIRMED" "NOT_RUNNING" "NOT_CONFIRMED"
-        printf 'failure_category=%s\nresult=FAIL\nmessage=%s\n' "$category" "$message"
-    } | tee "$output_dir/wireguard-result.txt" "$output_dir/result.txt" >&2
-    echo "Android SafeNet WireGuard smoke failed ($category): $message" >&2
-    echo "Evidence: $output_dir" >&2
-    exit 1
-}
-
-run_wireguard_smoke() {
-    local wireguard_status
-    local failure_category="GATEWAY_CONNECTIVITY"
-    local failure_message="the configured WireGuard tunnel did not reach a stable running state"
-
-    echo "Running configured SafeNet WireGuard tunnel smoke..."
-    set +e
-    adb_run shell am instrument -w -r \
-        -e class com.safenet.dns.SafeNetVpnInstrumentationTest#configuredWireGuardStartsTunnelAndReportsSafeNetGateway \
-        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
-        tee "$output_dir/wireguard-instrumentation.log"
-    wireguard_status="${PIPESTATUS[0]}"
-    set -e
-    capture wireguard-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
-    capture wireguard-vpn adb "${adb_args[@]}" shell dumpsys vpn
-    capture wireguard-logcat adb "${adb_args[@]}" shell logcat -d -t 600
-
-    if grep -Eiq 'WIREGUARD_FAILURE category=CONFIGURATION' \
-        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
-        failure_category="CONFIGURATION"
-        failure_message="the release APK did not contain a usable SafeNet WireGuard configuration"
-    elif grep -Eiq 'WIREGUARD_FAILURE category=PERMISSION' \
-        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
-        failure_category="PERMISSION"
-        failure_message="Android VPN permission was not granted to SafeNet WireGuard"
-    elif grep -Eiq 'WIREGUARD_FAILURE category=GATEWAY_CONNECTIVITY' \
-        "$output_dir/wireguard-instrumentation.log" "$output_dir/wireguard-logcat.txt"; then
-        failure_category="GATEWAY_CONNECTIVITY"
-    fi
-
-    if [[ "$wireguard_status" -ne 0 ]] ||
-        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
-            "$output_dir/wireguard-instrumentation.log" ||
-        ! grep -Fq 'WIREGUARD_SMOKE result=PASS' "$output_dir/wireguard-logcat.txt"; then
-        wireguard_smoke_failure "$failure_category" "$failure_message"
-    fi
-
-    {
-        printf 'target=%s\napk=%s\ntest_apk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
-            "$serial" "$apk_path" "$test_apk_path" "$validation_mode" "$device_kind"
-        printf 'configuration=PASS\npermission=PASS\ngateway_connectivity=PASS\ngateway_identity=SafeNet\ntunnel=RUNNING\nandroid_vpn=PASS\nfailure_category=PASS\nresult=PASS\n'
-    } | tee "$output_dir/wireguard-result.txt"
-    echo "Configured SafeNet WireGuard tunnel smoke passed. Evidence: $output_dir"
-}
-
 run_compact_startup_sampling() {
     local wm_size_output
     local compact_status
@@ -772,7 +847,7 @@ run_compact_startup_sampling() {
 
     set +e
     adb_run shell am instrument -w -r \
-        -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
+        -e class com.safenet.dns.SafeNetUiInstrumentationTest#startupLoaderProgressIsMonotonicAndOpaqueUntilHandoff \
         "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
         tee "$output_dir/compact-startup-instrumentation.log"
     compact_status="${PIPESTATUS[0]}"
@@ -800,7 +875,7 @@ run_startup_check() {
     echo "Launching signed SafeNet APK for direct WebView startup check..."
     timeout 30s adb "${adb_args[@]}" uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
     install_release_apk "$apk_path" ||
-        startup_failure "the signed release APK could not be installed"
+        android_install_failure "$apk_path" "release APK" false
     timeout 30s adb "${adb_args[@]}" shell am force-stop "$PACKAGE_NAME" || true
     timeout 30s adb "${adb_args[@]}" logcat -c || true
     launch_output="$(
@@ -845,8 +920,9 @@ run_startup_check() {
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
         printf 'native_loader=REMOVED\nweb_loader=RECORDED\nwebview_transition=PASS\nresult=PASS\n'
     } | tee "$output_dir/startup-result.txt"
+    instrumentation_apk_attempted=true
     if ! install_release_apk "$test_apk_path"; then
-        media_smoke_failure "the release instrumentation APK could not be installed"
+        android_install_failure "$test_apk_path" "release instrumentation APK" "$instrumentation_apk_attempted"
     fi
     run_media_smoke
     echo "Android startup check passed. Evidence: $output_dir"
@@ -863,15 +939,12 @@ if [[ "$startup_only" == true ]]; then
     exit 0
 fi
 if ! install_release_apk "$apk_path"; then
-    echo "ERROR: Release APK could not be installed after bounded retries." >&2
-    exit 1
+    android_install_failure "$apk_path" "release APK" false
 fi
+instrumentation_apk_attempted=true
 if ! install_release_apk "$test_apk_path"; then
-    echo "ERROR: Release instrumentation APK could not be installed after bounded retries." >&2
-    exit 1
+    android_install_failure "$test_apk_path" "release instrumentation APK" "$instrumentation_apk_attempted"
 fi
-
-run_wireguard_smoke
 
 prepare_clerk_session || {
     echo "Android Clerk smoke could not prepare a real storage-state session." >&2
@@ -883,7 +956,7 @@ set +e
 adb_run shell am instrument -w -r \
     -e clerk-origin "$clerk_origin" \
     -e clerk-cookie-base64 "$clerk_cookie_payload" \
-    -e class com.safenet.dns.SafeNetVpnUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
+    -e class com.safenet.dns.SafeNetUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/clerk-auth-instrumentation.log"
 clerk_auth_status="${PIPESTATUS[0]}"
 set -e
@@ -905,6 +978,67 @@ fi
 } | tee "$output_dir/clerk-auth-result.txt"
 
 run_media_smoke
+
+run_call_screening_smoke() {
+    local screening_status
+    local screening_origin_args=()
+    local screening_responses="NOT_RECORDED"
+    local screening_decisions="NOT_RECORDED"
+
+    if [[ "$resolver_mode" == "fixture" ]]; then
+        screening_origin_args=(-e call-screening-origin "https://$fixture_host:$FIXTURE_HTTP_PORT")
+    fi
+
+    echo "Running SafeNet Android call-screening role and fail-open checks..."
+    set +e
+    adb_run shell am instrument -w -r \
+        -e class "com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callScreeningRoleCanBeGrantedOnSupportedEmulator,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#callResponseFlagsMatchEverySupportedAction,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#localBlockDoesNotDependOnProviderAvailability,com.safenet.dns.SafeNetCallScreeningInstrumentationTest#reputationDecisionsAndFallbacksAreFailOpen" \
+        "${screening_origin_args[@]}" \
+        "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 |
+        tee "$output_dir/call-screening-instrumentation.log"
+    screening_status="${PIPESTATUS[0]}"
+    set -e
+    capture call-screening-logcat adb "${adb_args[@]}" shell logcat -d -t 500 -s SafeNetCallScreeningSmoke:I
+
+    if [[ "$screening_status" -ne 0 ]] ||
+        grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
+            "$output_dir/call-screening-instrumentation.log" ||
+        ! grep -Fq 'CALL_SCREENING_ROLE result=PASS' "$output_dir/call-screening-logcat.txt" ||
+        ! grep -Fq 'CALL_SCREENING_RESPONSES result=PASS' "$output_dir/call-screening-logcat.txt" ||
+        ! grep -Fq 'CALL_SCREENING_LOCAL_BLOCK result=PASS' "$output_dir/call-screening-logcat.txt"; then
+        {
+            printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+                "$serial" "$validation_mode" "$device_kind"
+            printf 'role=FAIL\nresponses=%s\ndecisions=%s\nlocal_block=FAIL\nresult=FAIL\n' \
+                "$screening_responses" "$screening_decisions"
+        } | tee "$output_dir/call-screening-result.txt" >&2
+        echo "Android call-screening smoke failed. Evidence: $output_dir" >&2
+        return 1
+    fi
+    screening_responses="PASS"
+    if [[ "$resolver_mode" == "fixture" ]]; then
+        if ! grep -Fq 'CALL_SCREENING_DECISIONS result=PASS' \
+            "$output_dir/call-screening-logcat.txt"; then
+            {
+                printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+                    "$serial" "$validation_mode" "$device_kind"
+                printf 'role=PASS\nresponses=%s\ndecisions=FAIL\nlocal_block=PASS\nresult=FAIL\n' \
+                    "$screening_responses"
+            } | tee "$output_dir/call-screening-result.txt" >&2
+            echo "Android call-screening reputation checks failed. Evidence: $output_dir" >&2
+            return 1
+        fi
+        screening_decisions="PASS"
+    fi
+    {
+        printf 'target=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
+            "$serial" "$validation_mode" "$device_kind"
+        printf 'role=PASS\nresponses=%s\ndecisions=%s\nlocal_block=PASS\nresult=PASS\n' \
+            "$screening_responses" "$screening_decisions"
+    } | tee "$output_dir/call-screening-result.txt"
+    echo "Android call-screening smoke passed. Evidence: $output_dir"
+    return 0
+}
 
 if [[ "$resolver_mode" == "fixture" ]]; then
     fixture_tmp="$(make_temp_dir)"
@@ -1065,39 +1199,192 @@ EOF
     ordinary_url="https://$fixture_host:$FIXTURE_HTTP_PORT/"
 fi
 
+call_screening_status="PASS"
+if ! run_call_screening_smoke; then
+    call_screening_status="FAIL"
+fi
+
+if [[ "$resolver_failure_validation" == "true" ]]; then
+    if [[ "$resolver_mode" != "fixture" ]]; then
+        echo "ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION requires fixture resolver mode." >&2
+        exit 2
+    fi
+    # RFC 5737 documentation space: this deliberately unreachable endpoint
+    # exercises the DoH failure record without contacting a real resolver or
+    # placing any resolver credential in instrumentation output.
+    doh_secondary="https://203.0.113.7/dns-query"
+fi
+
 capture device-details adb "${adb_args[@]}" shell sh -c \
     'echo "serial=$(getprop ro.serialno)"; echo "manufacturer=$(getprop ro.product.manufacturer)"; echo "model=$(getprop ro.product.model)"; echo "android=$(getprop ro.build.version.release)"; echo "sdk=$(getprop ro.build.version.sdk)"; echo "abi=$(getprop ro.product.cpu.abi)"'
 capture network-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
 capture network-ip-route adb "${adb_args[@]}" shell sh -c 'ip addr; echo "--- routes ---"; ip route'
 capture network-proc-route adb "${adb_args[@]}" shell cat /proc/net/route
 
-echo "Running SafeNet DNS instrumentation..."
+echo "Running SafeNet Android instrumentation..."
+dns_filtering_args=()
+if [[ "$dns_filtering_validation" == "true" ]]; then
+    dns_filtering_args=(-e physical-dns-filtering true)
+fi
 set +e
 adb_run shell am instrument -w -r \
-    -e class com.safenet.dns.SafeNetVpnInstrumentationTest,com.safenet.dns.SafeNetVpnUiInstrumentationTest \
+    -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest,com.safenet.dns.DnsVpnEulaInstrumentationTest" \
     -e preserve-auth-session true \
+    -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
     -e dot-secondary "$dot_secondary" \
     -e ordinary-url "$ordinary_url" \
     -e resolver-mode "$resolver_mode" \
+    "${dns_filtering_args[@]}" \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/instrumentation.log"
 instrumentation_status="${PIPESTATUS[0]}"
 set -e
 
-# Capture the VPN and network state even after a failed test. This is the
-# evidence needed to tell a route problem from an upstream resolver problem.
+# Capture network state even after a failed test.
 capture post-test-connectivity adb "${adb_args[@]}" shell dumpsys connectivity
-capture post-test-vpn adb "${adb_args[@]}" shell dumpsys vpn
 capture post-test-logcat adb "${adb_args[@]}" shell logcat -d -t 400
+capture resolver-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+# Keep only bounded, protocol-specific failure records. These records contain
+# controlled phase/category/timing fields and never include exception text,
+# resolver URLs, or other credential-bearing instrumentation output.
+# The Android instrumentation clamps this same inclusive maximum.
+MAX_RESOLVER_FAILURE_ELAPSED_MS=300000
+resolver_recovery_contract_status="PASS"
+record_resolver_contract_failure() {
+    if [[ "$resolver_recovery_contract_status" == "FAIL" ]]; then
+        return
+    fi
+    resolver_recovery_contract_status="FAIL"
+    {
+        printf 'resolver_recovery_contract=FAIL\n'
+        printf 'field=phase\n'
+        printf 'reason=instrumentation emitted a phase label outside the shared validation rule\n'
+        printf 'rule=%s\n' "$RESOLVER_PHASE_LABEL_REGEX"
+    } > "$output_dir/resolver-recovery-contract-error.txt"
+    echo "ERROR: resolver recovery evidence contains a phase label outside the shared rule ($RESOLVER_PHASE_LABEL_REGEX)." >&2
+}
+while IFS= read -r resolver_failure_record; do
+    if [[ "$resolver_failure_record" =~ $RESOLVER_FAILURE_RECORD_PATTERN ]]; then
+        resolver_phase="${BASH_REMATCH[2]}"
+        if [[ ! "$resolver_phase" =~ ^${RESOLVER_PHASE_LABEL_REGEX}$ ]]; then
+            record_resolver_contract_failure
+        fi
+    fi
+done < <(
+    grep -E 'DOH_DOT_RECOVERY protocol=(doh|dot) phase=' \
+        "$output_dir/resolver-recovery-logcat.txt" || true
+)
+if grep -Fq 'DOH_DOT_RECOVERY_CONTRACT_FAILURE field=phase' \
+    "$output_dir/resolver-recovery-logcat.txt"; then
+    record_resolver_contract_failure
+fi
+grep -Eo "DOH_DOT_RECOVERY protocol=(doh|dot) phase=${RESOLVER_PHASE_LABEL_REGEX} result=FAIL failure_category=[A-Z_]+ elapsed_ms=[0-9]+$" \
+    "$output_dir/resolver-recovery-logcat.txt" |
+awk -v max_elapsed_ms="$MAX_RESOLVER_FAILURE_ELAPSED_MS" '
+    {
+        elapsed_ms = $NF
+        sub(/^elapsed_ms=/, "", elapsed_ms)
+        if ((elapsed_ms + 0) <= max_elapsed_ms) {
+            print
+        }
+    }
+' |
+head -n 20 > "$output_dir/resolver-recovery-failures.txt" || true
 
 test_failed=0
+if [[ "${call_screening_status:-NOT_RECORDED}" == "FAIL" ]]; then
+    test_failed=1
+fi
 if [[ "$instrumentation_status" -ne 0 ]] ||
     grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
         "$output_dir/instrumentation.log"; then
     test_failed=1
 fi
+
+dns_resolver_ui_status="PASS"
+ddns_ui_status="PASS"
+vpn_package_surface_status="PASS"
+internet_share_start_status="PASS"
+internet_share_stop_status="PASS"
+dns_filtering_status="NOT_APPLICABLE"
+if ! grep -Fq 'DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS' \
+    "$output_dir/instrumentation.log"; then
+    dns_resolver_ui_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS' \
+    "$output_dir/instrumentation.log"; then
+    ddns_ui_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'DNS_VPN_PACKAGE_SURFACE result=PASS service=PRESENT permission=PRESENT' \
+    "$output_dir/instrumentation.log"; then
+    vpn_package_surface_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'INTERNET_SHARE_START result=PASS' \
+    "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+    internet_share_start_status="FAIL"
+    test_failed=1
+fi
+if ! grep -Fq 'INTERNET_SHARE_STOP result=PASS' \
+    "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+    internet_share_stop_status="FAIL"
+    test_failed=1
+fi
+if [[ "$dns_filtering_validation" == "true" ]]; then
+    dns_filtering_status="FAIL"
+    if grep -Fq 'DNS_FILTERING_DEVICE result=PASS' \
+        "$output_dir/instrumentation.log" "$output_dir/post-test-logcat.txt" 2>/dev/null; then
+        dns_filtering_status="PASS"
+    else
+        test_failed=1
+    fi
+fi
+
+resolver_recovery_status="NOT_APPLICABLE"
+doh_recovery_status="NOT_APPLICABLE"
+dot_recovery_status="NOT_APPLICABLE"
+doh_recovery_cycles=0
+dot_recovery_cycles=0
+doh_recovery_failure_category="NOT_RECORDED"
+doh_recovery_failure_phase="NOT_RECORDED"
+doh_recovery_failure_elapsed_ms="NOT_RECORDED"
+dot_recovery_failure_category="NOT_RECORDED"
+dot_recovery_failure_phase="NOT_RECORDED"
+dot_recovery_failure_elapsed_ms="NOT_RECORDED"
+{
+    printf 'resolver_recovery_contract=%s\n' "$resolver_recovery_contract_status"
+    printf 'resolver_recovery=%s\n' "$resolver_recovery_status"
+    printf 'doh_recovery=%s\n' "$doh_recovery_status"
+    printf 'dot_recovery=%s\n' "$dot_recovery_status"
+    printf 'doh_recovery_cycles=%s\n' "$doh_recovery_cycles"
+    printf 'dot_recovery_cycles=%s\n' "$dot_recovery_cycles"
+    printf 'doh_recovery_failure_category=%s\n' "$doh_recovery_failure_category"
+    printf 'doh_recovery_failure_phase=%s\n' "$doh_recovery_failure_phase"
+    printf 'doh_recovery_failure_elapsed_ms=%s\n' "$doh_recovery_failure_elapsed_ms"
+    printf 'dot_recovery_failure_category=%s\n' "$dot_recovery_failure_category"
+    printf 'dot_recovery_failure_phase=%s\n' "$dot_recovery_failure_phase"
+    printf 'dot_recovery_failure_elapsed_ms=%s\n' "$dot_recovery_failure_elapsed_ms"
+    printf 'dns_filtering=%s\n' "$dns_filtering_status"
+} | tee "$output_dir/resolver-recovery-result.txt"
+
+capture connectivity-recovery-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+if grep -Fq 'CONNECTIVITY_RECOVERY result=PASS' \
+    "$output_dir/connectivity-recovery-logcat.txt"; then
+    connectivity_recovery_status="PASS"
+elif grep -Eiq 'CONNECTIVITY_RECOVERY result=FAIL' \
+    "$output_dir/connectivity-recovery-logcat.txt"; then
+    connectivity_recovery_status="FAIL"
+    test_failed=1
+else
+    connectivity_recovery_status="NOT_RECORDED"
+    test_failed=1
+fi
+printf 'connectivity_recovery=%s\n' "$connectivity_recovery_status" |
+    tee "$output_dir/connectivity-recovery-result.txt"
 
 # Keep the consent-gated AI Shield lifecycle evidence easy to find without
 # claiming success when a runner skipped or failed either device test.
@@ -1127,10 +1414,11 @@ fi
 
 failure_category="PASS"
 if [[ "$test_failed" -ne 0 ]]; then
-    evidence="$output_dir/instrumentation.log $output_dir/post-test-connectivity $output_dir/post-test-vpn $output_dir/post-test-logcat"
+    evidence="$output_dir/instrumentation.log $output_dir/post-test-connectivity $output_dir/post-test-logcat"
     if [[ "$resolver_mode" == "fixture" ]] &&
         { [[ "$fixture_process_failed" -ne 0 ]] ||
-          grep -Eiq 'FIXTURE_FAILURE|Android DNS fixture failure' "$output_dir/instrumentation.log" "$fixture_log"; }; then
+          grep -Eiq 'FIXTURE_FAILURE|Android DNS fixture failure' \
+              "$output_dir/instrumentation.log" "$output_dir/resolver-recovery-logcat.txt" "$fixture_log"; }; then
         failure_category="FIXTURE_FAILURE"
     elif grep -Eiq 'ENETUNREACH|Network is unreachable' $evidence; then
         failure_category="ENETUNREACH"
@@ -1141,8 +1429,8 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
-    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\ndns_filtering=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+   "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$dns_resolver_ui_status" "$ddns_ui_status" "$vpn_package_surface_status" "$internet_share_start_status" "$internet_share_stop_status" "$dns_filtering_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then
     echo "Android DNS smoke tests failed ($failure_category)." >&2

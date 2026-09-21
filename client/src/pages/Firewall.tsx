@@ -4,10 +4,11 @@ import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/u
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
 import { useFirewallRules, useCreateFirewallRule, useUpdateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
 import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema";
+import { DNS_PROVIDER_ACCESS_RULES, type DnsProviderAccessRule } from "@shared/dns-resolvers";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole } from "lucide-react";
+import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole, Globe2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -193,6 +194,53 @@ export default function Firewall() {
     });
   };
 
+  const handleAddDnsProvider = async (provider: DnsProviderAccessRule) => {
+    const existingAddresses = new Set(
+      (rules || [])
+        .filter((rule) => rule.service === "dns" && rule.action === "allow")
+        .map((rule) => (rule.destinationAddress || "").trim().toLowerCase()),
+    );
+    const addressesToAdd = provider.addresses.filter(
+      (address) => !existingAddresses.has(address.toLowerCase()),
+    );
+
+    if (addressesToAdd.length === 0) {
+      toast({
+        title: `${provider.name} is already allowed`,
+        description: "All of this provider's resolver addresses are already in Access Rules.",
+      });
+      return;
+    }
+
+    try {
+      await Promise.all(
+        addressesToAdd.map((address) =>
+          createRule.mutateAsync({
+            name: `${provider.name} DNS (${address})`,
+            sourceInterface: "lan",
+            sourceAddress: "Any",
+            destinationInterface: "wan",
+            destinationAddress: address,
+            service: "dns",
+            action: "allow",
+            isEnabled: true,
+            priority: 200,
+          }),
+        ),
+      );
+      toast({
+        title: `${provider.name} added to Access Rules`,
+        description: `${addressesToAdd.length} DNS resolver ${addressesToAdd.length === 1 ? "address is" : "addresses are"} now allowed.`,
+      });
+    } catch (error) {
+      toast({
+        title: `${provider.name} could not be added`,
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const openEditBlocklistDialog = (item: Blocklist) => {
     setEditingBlocklist(item);
     setEditingBlocklistId(item.id);
@@ -320,13 +368,10 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Block domains through SafeNet&apos;s DNS path when the Android VPN is active. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Block domains through SafeNet&apos;s DNS path. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {firewallEnabled ? "On" : "Off"}
-            </span>
             <Switch
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
@@ -378,6 +423,56 @@ export default function Firewall() {
                 aria-label="Prevent DNS Overrides"
                 data-testid="switch-prevent-dns-overrides"
               />
+            </div>
+          </CyberCard>
+
+          <CyberCard className="border-cyan-400/20 bg-cyan-400/5">
+            <div className="flex items-start gap-3">
+              <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-cyan-300" />
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display font-bold text-white">Family DNS Provider Presets</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add family-safe resolver addresses as LAN-to-WAN DNS allow rules. Each address is saved
+                  separately so IPv4 and IPv6 clients are matched correctly.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {DNS_PROVIDER_ACCESS_RULES.map((provider) => (
+                    <div
+                      key={provider.id}
+                      className="rounded-lg border border-white/10 bg-background/40 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h4 className="font-display font-bold text-white">{provider.name}</h4>
+                          <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
+                          onClick={() => void handleAddDnsProvider(provider)}
+                          disabled={createRule.isPending}
+                          data-testid={`button-add-dns-provider-${provider.id}`}
+                        >
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Add
+                        </Button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {provider.addresses.map((address) => (
+                          <Badge
+                            key={address}
+                            variant="outline"
+                            className="border-white/10 font-mono text-[10px] text-muted-foreground"
+                          >
+                            {address}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </CyberCard>
 
@@ -534,15 +629,14 @@ export default function Firewall() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleRule(rule)}
-                        className={rule.isEnabled === false ? "text-muted-foreground hover:text-primary" : "text-primary hover:text-primary hover:bg-primary/10"}
-                        aria-label={`${rule.isEnabled === false ? "Enable" : "Disable"} ${rule.name}`}
-                      >
-                        {rule.isEnabled === false ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                      </Button>
+                      <Switch
+                        checked={rule.isEnabled !== false}
+                        onCheckedChange={() => handleToggleRule(rule)}
+                        disabled={updateRule.isPending}
+                        aria-label={`${rule.name} ${rule.isEnabled === false ? "Off" : "On"}`}
+                        data-testid={`switch-firewall-rule-${rule.id}`}
+                        className="h-8 w-14"
+                      />
                       <Button
                         variant="ghost"
                         size="icon"
@@ -674,16 +768,14 @@ export default function Firewall() {
                   </Badge>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
-                    onClick={() => handleToggleBlocklist(item)}
-                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
-                    data-testid={`button-toggle-rule-${item.id}`}
-                  >
-                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                  </Button>
+                  <Switch
+                    checked={item.isActive === true}
+                    onCheckedChange={() => handleToggleBlocklist(item)}
+                    disabled={updateBlock.isPending}
+                    aria-label={`${item.content} ${item.isActive ? "On" : "Off"}`}
+                    data-testid={`switch-toggle-rule-${item.id}`}
+                    className="h-8 w-14"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
@@ -738,15 +830,14 @@ export default function Firewall() {
                   <span className="font-mono text-sm">{item.content}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={item.isActive ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-primary"}
-                    onClick={() => handleToggleBlocklist(item)}
-                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.content}`}
-                  >
-                    {item.isActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                  </Button>
+                  <Switch
+                    checked={item.isActive === true}
+                    onCheckedChange={() => handleToggleBlocklist(item)}
+                    disabled={updateBlock.isPending}
+                    aria-label={`${item.content} ${item.isActive ? "On" : "Off"}`}
+                    data-testid={`switch-toggle-keyword-${item.id}`}
+                    className="h-8 w-14"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

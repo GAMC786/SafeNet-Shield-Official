@@ -21,6 +21,11 @@ on:
         options:
           - fixture
           - public
+      android_resolver_failure_validation:
+        description: "Intentionally exercise one bounded encrypted-resolver failure record"
+        required: true
+        default: false
+        type: boolean
       dns_alert_validation:
         description: "Maintainer-only DNS alert lifecycle validation"
         required: true
@@ -35,7 +40,12 @@ on:
         default: false
         type: boolean
       android_startup_validation:
-        description: "Run the signed APK startup handoff check on the dedicated Android runner"
+        description: "Run signed APK startup and physical LockLock selected-app checks"
+        required: true
+        default: false
+        type: boolean
+      android_billing_validation:
+        description: "Run the signed APK RevenueCat purchase and restore proof on a Play-enabled runner"
         required: true
         default: false
         type: boolean
@@ -44,6 +54,21 @@ on:
         required: true
         default: false
         type: boolean
+      android_internet_share_physical_validation:
+        description: "Run the signed Internet Share Wi-Fi Direct proxy check on physical Android devices"
+        required: true
+        default: false
+        type: boolean
+      android_dns_ddns_physical_validation:
+        description: "Run the signed DNS resolver and DDNS UI checks on a physical Android device"
+        required: true
+        default: false
+        type: boolean
+      android_internet_share_client_serials:
+        description: "JSON map of profile names to separate client-phone ADB serials"
+        required: false
+        default: "{}"
+        type: string
 
 permissions:
   contents: read
@@ -625,17 +650,30 @@ jobs:
     outputs:
       android_apk_artifact_url: ${{ steps.upload-signed-release-apk.outputs.artifact-url }}
       android_instrumentation_artifact_url: ${{ steps.upload-release-instrumentation-apk.outputs.artifact-url }}
+      android_sdk_setup_category: ${{ steps.android-sdk-setup-report.outputs.category }}
+      android_native_compile_outcome: ${{ steps.android-native-compile.outcome }}
+      android_native_instrumentation_compile_outcome: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+      android_native_release_instrumentation_compile_outcome: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+      android_native_signed_instrumentation_compile_outcome: ${{ steps.android-native-signed-release-instrumentation-compile.outcome }}
+      android_native_build_evidence_artifact_url: ${{ steps.upload-android-native-build-evidence.outputs.artifact-url }}
+      android_native_debug_failure_category: ${{ steps.android-native-compile-summary.outputs.debug_failure_category }}
+      android_native_release_instrumentation_failure_category: ${{ steps.android-native-compile-summary.outputs.release_instrumentation_failure_category }}
+      android_native_signed_instrumentation_failure_category: ${{ steps.android-native-compile-summary.outputs.signed_instrumentation_failure_category }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
     env:
       ANDROID_SMOKE_RESOLVER_MODE: ${{ github.event_name == 'schedule' && 'public' || github.event.inputs.android_resolver_mode || 'fixture' }}
+      ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && inputs.android_resolver_failure_validation || 'false' }}
       ANDROID_SMOKE_COVERAGE: ${{ github.event_name == 'schedule' && 'external-network' || github.event.inputs.android_resolver_mode == 'public' && 'external-network' || 'controlled-fixture' }}
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-full
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
+      ANDROID_SDK_SETUP_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-sdk-setup
+      ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/debug
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
       ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
@@ -646,6 +684,26 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      - name: Resolve and verify app release version
+        id: app_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolver_args=(--output "$GITHUB_OUTPUT")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            expected_version="${GITHUB_REF_NAME#v}"
+            if [[ -z "$expected_version" ]]; then
+              echo "::error::Could not resolve the release version from GITHUB_REF_NAME."
+              exit 1
+            fi
+            resolver_args+=(
+              --expected-version "$expected_version"
+              --expected-label tag
+              --mismatch-prefix "Release version mismatch"
+            )
+          fi
+          bash scripts/resolve-android-release-metadata.sh "${resolver_args[@]}"
 
       - name: Install dependencies with bounded retry
         run: bash scripts/npm-ci-with-retry.sh
@@ -660,7 +718,18 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run browser UI tests
+        if: env.ANDROID_SMOKE_RESOLVER_FAILURE_VALIDATION != 'true'
         run: npm run test:ui
+
+      - name: Require RevenueCat Android key for release builds
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VITE_REVENUECAT_ANDROID_API_KEY}" || {
+            echo "::error::VITE_REVENUECAT_ANDROID_API_KEY is required for signed Android release builds."
+            exit 1
+          }
 
       - name: Build web app
         run: npm run build
@@ -672,11 +741,103 @@ jobs:
           java-version: '21'
 
       - name: Setup Android SDK
+        id: setup-android-sdk-action
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android defaults to the removed "tools" package. The
+          # pinned installer below installs the complete Gradle toolchain.
+          packages: 'platform-tools'
 
       - name: Install and verify Android toolchain from Gradle pins
+        id: install-android-sdk
         shell: bash
-        run: ./scripts/setup-android-sdk.sh
+        run: |
+          set -o pipefail
+          ./scripts/setup-android-sdk.sh 2>&1 | tee "$RUNNER_TEMP/android-sdk-setup.log"
+
+      - name: Publish Android SDK setup status
+        id: android-sdk-setup-report
+        if: always()
+        shell: bash
+        env:
+          SETUP_ACTION_OUTCOME: ${{ steps.setup-android-sdk-action.outcome }}
+          INSTALL_STEP_OUTCOME: ${{ steps.install-android-sdk.outcome }}
+        run: |
+          set -u
+          output_dir="${ANDROID_SDK_SETUP_OUTPUT_DIR}"
+          mkdir -p "$output_dir"
+          category="PASS"
+          stage="completed"
+          reason="NONE"
+          attempts="0"
+          exit_status="0"
+          if [[ "$SETUP_ACTION_OUTCOME" != "success" ]]; then
+            category="ANDROID_SDK_SETUP_FAILURE"
+            stage="android-actions/setup-android"
+            reason="SETUP_ACTION_FAILURE"
+          elif [[ "$INSTALL_STEP_OUTCOME" != "success" ]]; then
+            category="ANDROID_SDK_SETUP_FAILURE"
+            stage="pinned-sdk-install"
+            result_file="$output_dir/result.txt"
+            if [[ -f "$result_file" ]]; then
+              reason="$(sed -n 's/^failure_reason=//p' "$result_file" | head -n 1)"
+              attempts="$(sed -n 's/^attempts=//p' "$result_file" | head -n 1)"
+              exit_status="$(sed -n 's/^exit_status=//p' "$result_file" | head -n 1)"
+            fi
+            reason="${reason:-UNCLASSIFIED_INSTALL_FAILURE}"
+            attempts="${attempts:-0}"
+            exit_status="${exit_status:-1}"
+          fi
+
+          if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+            if [[ -f "$RUNNER_TEMP/android-sdk-setup.log" ]]; then
+              tail -c 16000 "$RUNNER_TEMP/android-sdk-setup.log" > "$output_dir/diagnostics.log"
+            else
+              printf '%s\n' \
+                "The Android SDK action failed before the pinned installer produced a log." \
+                "Inspect the failed Setup Android SDK step and retry the hosted runner." \
+                > "$output_dir/diagnostics.log"
+            fi
+            printf '%s\n' "$category" > "$output_dir/failure-category.txt"
+          else
+            printf '%s\n' "$category" > "$output_dir/failure-category.txt"
+          fi
+
+          {
+            printf 'failure_class=%s\n' "$([[ "$category" == "PASS" ]] && echo "NONE" || echo "INFRASTRUCTURE")"
+            printf 'failure_category=%s\n' "$category"
+            printf 'failure_stage=%s\n' "$stage"
+            printf 'failure_reason=%s\n' "$reason"
+            printf 'attempts=%s\n' "$attempts"
+            printf 'exit_status=%s\n' "$exit_status"
+            printf 'setup_action_outcome=%s\n' "$SETUP_ACTION_OUTCOME"
+            printf 'install_step_outcome=%s\n' "$INSTALL_STEP_OUTCOME"
+          } > "$output_dir/result.txt"
+          printf 'category=%s\n' "$category" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Android SDK setup"
+            echo
+            echo "- **Infrastructure category:** \`$category\`"
+            echo "- **Failed stage:** \`$stage\`"
+            echo "- **Failure reason:** \`$reason\`"
+            echo "- **Install attempts:** \`$attempts\`"
+            echo "- **Setup action:** \`$SETUP_ACTION_OUTCOME\`"
+            echo "- **Pinned SDK install:** \`$INSTALL_STEP_OUTCOME\`"
+            if [[ "$category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+              echo "- **Resolver smoke proof:** \`NOT_RUN\` — blocked by Android SDK setup infrastructure."
+              echo "- **Bounded diagnostics:** preserved in the Android SDK setup evidence artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android SDK setup evidence
+        id: upload-android-sdk-setup-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-sdk-setup-evidence
+          path: android/app/build/reports/android-sdk-setup
+          if-no-files-found: warn
 
       - name: Preflight Android emulator system trust
         id: android-system-trust-preflight
@@ -704,8 +865,16 @@ jobs:
           MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
 
       - name: Compile Android native sources before APK packaging
+        id: android-native-compile
         shell: bash
         run: ./scripts/check-android-native-build.sh
+
+      - name: Compile release instrumentation target before signing
+        id: android-native-release-instrumentation-compile
+        shell: bash
+        env:
+          ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/release-instrumentation-preflight
+        run: ./scripts/check-android-native-build.sh --release-instrumentation
 
       - name: Build debug APK
         if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/v')
@@ -743,26 +912,91 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Upload signed release APK
-        id: upload-signed-release-apk
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4
-        with:
-          name: SafeNet-DNS-Android
-          path: android/app/build/outputs/apk/release/app-release.apk
-
       - name: Build release instrumentation APK
+        id: android-native-signed-release-instrumentation-compile
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        working-directory: android
         # The application release was already built and signed above. The
-        # instrumentation APK uses the test signing configuration, so do not
-        # re-run the application release-signing guard for this task.
-        run: ./gradlew :app:assembleReleaseAndroidTest -x verifyReleaseSigning
+        # instrumentation APK uses the test signing configuration, so the
+        # checker does not re-run the application release-signing guard here.
+        run: ./scripts/check-android-native-build.sh --signed-release-instrumentation
         env:
+          ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/release-instrumentation-signed
           ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload Android native build evidence
+        if: always()
+        id: upload-android-native-build-evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-native-build-evidence
+          path: android/app/build/reports/android-native-build
+          if-no-files-found: warn
+
+      - name: Publish Android native compile summary
+        id: android-native-compile-summary
+        if: always()
+        shell: bash
+        env:
+          DEBUG_COMPILE_OUTCOME: ${{ steps.android-native-compile.outcome }}
+          RELEASE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ steps.android-native-release-instrumentation-compile.outcome }}
+          SIGNED_INSTRUMENTATION_COMPILE_OUTCOME: ${{ steps.android-native-signed-release-instrumentation-compile.outcome }}
+          NATIVE_EVIDENCE_URL: ${{ steps.upload-android-native-build-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -euo pipefail
+
+          output_root="android/app/build/reports/android-native-build"
+          evidence_url="${NATIVE_EVIDENCE_URL:-unavailable}"
+
+          read_result_value() {
+            local result_file="$1"
+            local key="$2"
+            if [[ -s "$result_file" ]]; then
+              awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$result_file"
+            fi
+          }
+
+          category_for() {
+            local outcome="$1"
+            local result_file="$2"
+            local category=""
+            if [[ "$outcome" == "skipped" ]]; then
+              printf 'NOT_RUN'
+              return
+            fi
+            category="$(read_result_value "$result_file" failure_category)"
+            if [[ -n "$category" ]]; then
+              printf '%s' "$category"
+            elif [[ "$outcome" == "failure" ]]; then
+              printf 'ANDROID_NATIVE_BUILD_FAILURE'
+            else
+              printf 'UNCLASSIFIED'
+            fi
+          }
+
+          debug_category="$(category_for "${DEBUG_COMPILE_OUTCOME:-unavailable}" "$output_root/debug/result.txt")"
+          release_instrumentation_category="$(category_for "${RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}" "$output_root/release-instrumentation-preflight/result.txt")"
+          signed_instrumentation_category="$(category_for "${SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}" "$output_root/release-instrumentation-signed/result.txt")"
+
+          {
+            printf 'debug_failure_category=%s\n' "$debug_category"
+            printf 'release_instrumentation_failure_category=%s\n' "$release_instrumentation_category"
+            printf 'signed_instrumentation_failure_category=%s\n' "$signed_instrumentation_category"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Android native compile"
+            echo
+            echo "| Build mode | Step outcome | Failure category |"
+            echo "| --- | --- | --- |"
+            echo "| Debug | \`${DEBUG_COMPILE_OUTCOME:-unavailable}\` | \`$debug_category\` |"
+            echo "| Release instrumentation preflight | \`${RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}\` | \`$release_instrumentation_category\` |"
+            echo "| Signed release instrumentation | \`${SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}\` | \`$signed_instrumentation_category\` |"
+            echo
+            echo "- **Bounded native build evidence:** [Download the preserved evidence artifact]($evidence_url)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify release instrumentation APK
         id: verify-release-instrumentation-apk
@@ -777,13 +1011,45 @@ jobs:
           fi
           echo "Verified release instrumentation APK: $test_apk"
 
+      - name: Write signed APK checksums
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd android/app/build/outputs/apk/release
+            sha256sum app-release.apk > app-release.apk.sha256
+          )
+          (
+            cd android/app/build/outputs/apk/androidTest/release
+            sha256sum app-release-androidTest.apk > app-release-androidTest.apk.sha256
+          )
+
+      - name: Write signed release APK metadata
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        working-directory: android
+        run: ./gradlew :app:writeReleaseArtifactMetadata
+
+      - name: Upload signed release APK
+        id: upload-signed-release-apk
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release.apk.sha256
+            android/app/build/outputs/apk/release/app-release.apk.metadata
+
       - name: Upload release instrumentation APK
         id: upload-release-instrumentation-apk
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-DNS-Android-instrumentation
-          path: android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+          path: |
+            android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+            android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk.sha256
 
       - name: Run Android DNS smoke tests on emulator (${{ env.ANDROID_SMOKE_COVERAGE }})
         id: android-dns-smoke
@@ -1098,6 +1364,168 @@ jobs:
               }
             );
             core.info(`Closed recovered maintainer alert #${alert.number}.`);
+
+  android-billing-preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_billing_validation == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    env:
+      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+    steps:
+      - name: Check Clerk billing session configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${AUTH_SMOKE_STORAGE_STATE}" ]]; then
+            echo "::error::AUTH_SMOKE_STORAGE_STATE repository secret is required before Android billing validation can run."
+            exit 1
+          fi
+          AUTH_SMOKE_STORAGE_STATE="$AUTH_SMOKE_STORAGE_STATE" node --input-type=module - <<'NODE'
+          const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+          let state;
+          try {
+            state = JSON.parse(raw);
+          } catch {
+            console.error("AUTH_SMOKE_STORAGE_STATE must be valid JSON for the Clerk billing session.");
+            process.exit(1);
+          }
+          const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
+          const hasCookie = cookies.some(
+            (cookie) =>
+              typeof cookie?.name === "string" &&
+              cookie.name.length > 0 &&
+              typeof cookie?.value === "string" &&
+              cookie.value.length > 0,
+          );
+          if (!hasCookie) {
+            console.error(
+              "AUTH_SMOKE_STORAGE_STATE must contain a Clerk browser cookie for the billing session.",
+            );
+            process.exit(1);
+          }
+          console.log("Clerk billing session configuration: ready.");
+          NODE
+
+      - name: Check dedicated Play billing runner
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const requiredLabel = 'android-play-billing';
+            const { data } = await github.rest.actions.listSelfHostedRunnersForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const readyRunner = (data.runners || []).find((runner) =>
+              runner.status === 'online' &&
+              runner.busy === false &&
+              (runner.labels || []).some((label) => label.name === requiredLabel)
+            );
+            if (!readyRunner) {
+              core.setFailed(
+                `No online idle self-hosted runner has the "${requiredLabel}" label. ` +
+                `Register or start that runner before dispatching Android billing validation.`
+              );
+              return;
+            }
+            core.info(`Ready Android billing runner found with the ${requiredLabel} label.`);
+
+  android-billing-proof:
+    needs: [build-android, android-billing-preflight]
+    if: >-
+      always() &&
+      needs.build-android.result == 'success' &&
+      needs.android-billing-preflight.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_billing_validation == true
+    # This runner must be a configured Google Play device or Play-enabled
+    # emulator with a license-tester account. The ordinary hosted google_apis
+    # image cannot open a real Play Billing purchase dialog.
+    runs-on: [self-hosted, linux, x64, android-play-billing]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      ANDROID_BILLING_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+      ANDROID_BILLING_OUTPUT_DIR: android/app/build/reports/android-billing/latest
+      ANDROID_BILLING_PREFLIGHT_TIMEOUT_SECONDS: 20
+    steps:
+      - name: Checkout billing proof
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Verify signed release APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="artifacts/android/app-release.apk"
+          test_apk="artifacts/android-test/app-release-androidTest.apk"
+          test -s "$apk"
+          test -s "$test_apk"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt -perm -u+x | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          test -n "$aapt"
+          "$apksigner" verify --verbose "$apk"
+          "$aapt" dump badging "$apk" |
+            grep -F "package: name='com.safenet.dns'"
+
+      - name: Run signed purchase, restore, and entitlement proof
+        id: android-billing-proof
+        shell: bash
+        run: bash scripts/android-billing-proof.sh
+
+      - name: Publish Android billing proof summary
+        if: always()
+        shell: bash
+        env:
+          PROOF_OUTCOME: ${{ steps.android-billing-proof.outcome }}
+        run: |
+          set -euo pipefail
+          result_file="$ANDROID_BILLING_OUTPUT_DIR/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          preflight="$(awk -F= '$1 == "configuration_preflight" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          preflight="${preflight:-NOT_RECORDED}"
+          recovery="$(awk -F= '$1 == "account_recovery" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          recovery="${recovery:-NOT_RECORDED}"
+          {
+            echo "## Android RevenueCat billing proof"
+            echo
+            echo "- **Runner:** \`dedicated Play-enabled runner\`"
+            echo "- **Configuration preflight:** \`$preflight\`"
+            echo "- **Billing account recovery:** \`$recovery\`"
+            echo "- **Signed APK proof:** \`$result\`"
+            echo "- **Purchase/restore instrumentation:** \`${PROOF_OUTCOME:-NOT_RECORDED}\`"
+            echo "- **Authenticated server entitlement:** \`$result\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android billing proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-billing-proof
+          path: android/app/build/reports/android-billing/latest
+          if-no-files-found: warn
 
   android-runner-health:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -1426,7 +1854,7 @@ jobs:
 
   android-release-smoke:
     needs: build-android
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.build-android.result != 'cancelled'
     # Hosted fallback for public repositories: this validates APK installation,
     # WebView relaunch, instrumentation, and public-network
     # DNS behavior, but cannot validate
@@ -1444,23 +1872,28 @@ jobs:
       ANDROID_SMOKE_VALIDATION_MODE: hosted-emulator-reduced
       ANDROID_SMOKE_DEVICE_KIND: hosted-emulator
       ANDROID_AVD_NAME: safenet-hosted
+      BUILD_ANDROID_RESULT: ${{ needs.build-android.result }}
+      ANDROID_SDK_SETUP_CATEGORY: ${{ needs.build-android.outputs.android_sdk_setup_category || 'NOT_RECORDED' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Download signed release APK
+        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android
           path: artifacts/android
 
       - name: Download release instrumentation APK
+        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
 
       - name: Verify release APK inputs
+        if: needs.build-android.result == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -1472,6 +1905,7 @@ jobs:
 
       - name: Run hosted-emulator smoke test (reduced validation)
         id: android-release-dns-smoke
+        if: needs.build-android.result == 'success'
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -1509,20 +1943,37 @@ jobs:
           release_result_url="${RELEASE_RESULT_URL:-unavailable}"
           category_file="$evidence_dir/failure-category.txt"
           category="EMULATOR_RUNNER_FAILURE"
+          resolver_proof_status="NOT_RECORDED"
+          resolver_proof_block_reason="none"
+          build_android_result="${BUILD_ANDROID_RESULT:-success}"
+          android_sdk_setup_category="${ANDROID_SDK_SETUP_CATEGORY:-NOT_RECORDED}"
+
+          if [[ "$build_android_result" != "success" ]]; then
+            if [[ "$android_sdk_setup_category" == "ANDROID_SDK_SETUP_FAILURE" ]]; then
+              category="ANDROID_SDK_SETUP_FAILURE"
+              resolver_proof_status="NOT_RUN"
+              resolver_proof_block_reason="ANDROID_SDK_SETUP_FAILURE"
+            else
+              category="ANDROID_BUILD_FAILURE"
+              resolver_proof_status="NOT_RUN"
+              resolver_proof_block_reason="ANDROID_BUILD_FAILURE"
+            fi
+          fi
 
           # The emulator action can fail before its script starts. Keep the
           # summary useful in that case, and only publish categories emitted
           # by the smoke script rather than arbitrary evidence-file content.
-          if [[ -f "$category_file" ]]; then
+          if [[ "$build_android_result" == "success" && -f "$category_file" ]]; then
             candidate="$(head -n 1 "$category_file" | tr -d '\r')"
             case "$candidate" in
-              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE)
+              PASS|FIXTURE_FAILURE|ENETUNREACH|UNRELATED_NETWORK_FAILURE|NON_NETWORK_FAILURE|ANDROID_INSTALL_FAILURE)
                 category="$candidate"
                 ;;
               *)
                 category="UNKNOWN_FAILURE"
                 ;;
             esac
+            resolver_proof_status="RECORDED"
           fi
 
           # Keep a small, stable result record even when the emulator action
@@ -1538,16 +1989,81 @@ jobs:
           resolver_mode=public
           coverage=hosted-emulator
           instrumentation_status=not-started
+          connectivity_recovery=not-started
+          resolver_recovery=not-started
+          doh_recovery=not-started
+          dot_recovery=not-started
+          doh_recovery_failure_category=NOT_RECORDED
+          doh_recovery_failure_phase=NOT_RECORDED
+          doh_recovery_failure_elapsed_ms=NOT_RECORDED
+          dot_recovery_failure_category=NOT_RECORDED
+          dot_recovery_failure_phase=NOT_RECORDED
+          dot_recovery_failure_elapsed_ms=NOT_RECORDED
           failure_category=$category
           EOF
           fi
+          recovery_status="$(awk -F= '$1 == "connectivity_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          recovery_status="${recovery_status:-NOT_RECORDED}"
+          resolver_recovery_status="$(awk -F= '$1 == "resolver_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          resolver_recovery_status="${resolver_recovery_status:-NOT_RECORDED}"
+          install_failure_category="$(awk -F= '$1 == "package_manager_category" { print substr($0, index($0, "=") + 1); exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_failure_category="${install_failure_category:-NOT_RECORDED}"
+          install_outcome="$(awk -F= '$1 == "adb_install_outcome" { print substr($0, index($0, "=") + 1); exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_outcome="${install_outcome:-NOT_RECORDED}"
+          install_attempts="$(awk -F= '$1 == "install_attempts" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_attempts="${install_attempts:-NOT_RECORDED}"
+          install_exit_status="$(awk -F= '$1 == "adb_exit_status" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          install_exit_status="${install_exit_status:-NOT_RECORDED}"
+          if [[ -s "$evidence_dir/install-device-diagnostics.txt" ]]; then
+            install_device_diagnostics="PRESENT"
+          else
+            install_device_diagnostics="NOT_RECORDED"
+          fi
+          doh_recovery_status="$(awk -F= '$1 == "doh_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_recovery_status="${doh_recovery_status:-NOT_RECORDED}"
+          dot_recovery_status="$(awk -F= '$1 == "dot_recovery" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_recovery_status="${dot_recovery_status:-NOT_RECORDED}"
+          doh_failure_category="$(awk -F= '$1 == "doh_recovery_failure_category" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_category="${doh_failure_category:-NOT_RECORDED}"
+          doh_failure_phase="$(awk -F= '$1 == "doh_recovery_failure_phase" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_phase="${doh_failure_phase:-NOT_RECORDED}"
+          doh_failure_elapsed_ms="$(awk -F= '$1 == "doh_recovery_failure_elapsed_ms" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          doh_failure_elapsed_ms="${doh_failure_elapsed_ms:-NOT_RECORDED}"
+          dot_failure_category="$(awk -F= '$1 == "dot_recovery_failure_category" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_category="${dot_failure_category:-NOT_RECORDED}"
+          dot_failure_phase="$(awk -F= '$1 == "dot_recovery_failure_phase" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_phase="${dot_failure_phase:-NOT_RECORDED}"
+          dot_failure_elapsed_ms="$(awk -F= '$1 == "dot_recovery_failure_elapsed_ms" { print $2; exit }' "$evidence_dir/result.txt" 2>/dev/null || true)"
+          dot_failure_elapsed_ms="${dot_failure_elapsed_ms:-NOT_RECORDED}"
           cp "$evidence_dir/result.txt" "$evidence_dir/android-smoke-result.txt"
+          {
+            echo "android_sdk_setup_category=$android_sdk_setup_category"
+            echo "resolver_proof_status=$resolver_proof_status"
+            echo "resolver_proof_block_reason=$resolver_proof_block_reason"
+          } >> "$evidence_dir/android-smoke-result.txt"
           {
             echo "validation_mode=hosted-emulator-reduced"
             echo "device_kind=hosted-emulator"
             echo "coverage=hosted-emulator"
             echo "resolver_mode=public"
+            echo "android_sdk_setup_category=$android_sdk_setup_category"
             echo "failure_category=$category"
+            echo "resolver_proof_status=$resolver_proof_status"
+            echo "resolver_proof_block_reason=$resolver_proof_block_reason"
+            echo "resolver_recovery=$resolver_recovery_status"
+            echo "doh_recovery=$doh_recovery_status"
+            echo "dot_recovery=$dot_recovery_status"
+            echo "doh_recovery_failure_category=$doh_failure_category"
+            echo "doh_recovery_failure_phase=$doh_failure_phase"
+            echo "doh_recovery_failure_elapsed_ms=$doh_failure_elapsed_ms"
+            echo "dot_recovery_failure_category=$dot_failure_category"
+            echo "dot_recovery_failure_phase=$dot_failure_phase"
+            echo "dot_recovery_failure_elapsed_ms=$dot_failure_elapsed_ms"
+            echo "install_failure_category=$install_failure_category"
+            echo "install_outcome=$install_outcome"
+            echo "install_attempts=$install_attempts"
+            echo "install_exit_status=$install_exit_status"
+            echo "install_device_diagnostics=$install_device_diagnostics"
             echo "smoke_step_outcome=$SMOKE_STEP_OUTCOME"
             echo "workflow_run=$RUN_URL"
             echo "release_evidence_url=$release_evidence_url"
@@ -1559,6 +2075,18 @@ jobs:
             echo
             echo "- **Validation mode:** \`hosted emulator / public network\` (writable-system trust preflight is not run)"
             echo "- **Failure category:** \`$category\`"
+            echo "- **Android SDK setup:** \`$android_sdk_setup_category\`"
+            if [[ "$resolver_proof_status" == "NOT_RUN" ]]; then
+              echo "- **Resolver smoke proof:** \`NOT_RUN\` — blocked by \`$resolver_proof_block_reason\`"
+            else
+              echo "- **Resolver smoke proof:** \`$resolver_proof_status\`"
+            fi
+            echo "- **Internet loss and recovery:** \`$recovery_status\` (offline banner, offline DNS filtering, and post-reconnect API status are recorded in the evidence archive)"
+            echo "- **DoH outage recovery:** \`$doh_recovery_status\`"
+            echo "- **DoT outage recovery:** \`$dot_recovery_status\`"
+            echo "- **DoH failure detail:** \`$doh_failure_category\` in \`$doh_failure_phase\` after \`${doh_failure_elapsed_ms}ms\`"
+            echo "- **DoT failure detail:** \`$dot_failure_category\` in \`$dot_failure_phase\` after \`${dot_failure_elapsed_ms}ms\`"
+            echo "- **Android install diagnostics:** category \`$install_failure_category\`; sanitized outcome \`$install_outcome\`; attempts \`$install_attempts\`; exit status \`$install_exit_status\`; device diagnostics \`$install_device_diagnostics\`"
             echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence artifact:** [Download smoke evidence]($EVIDENCE_URL)"
@@ -1689,6 +2217,379 @@ jobs:
           path: android/app/build/reports/android-startup/latest
           if-no-files-found: error
 
+  android-app-lock:
+    needs: build-android
+    if: >-
+      always() &&
+      needs.build-android.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, linux, x64, android-writable-system]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_EMULATOR_API_LEVEL: 35
+      ANDROID_AVD_NAME: safenet-writable
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-app-lock/latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Verify dedicated Android release runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          ./scripts/provision-android-runner.sh --check
+
+      - name: Start dedicated Android device
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$sdk_root/emulator:$PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
+          adb start-server
+          adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' |
+            while read -r serial; do
+              adb -s "$serial" emu kill >/dev/null 2>&1 || true
+            done
+          emulator -avd "$ANDROID_AVD_NAME" \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -writable-system \
+            > "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/emulator.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/safenet-android-app-lock-emulator.pid"
+          adb -s emulator-5554 wait-for-device
+          for _ in {1..180}; do
+            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = "1"
+
+      - name: Run LockLock instrumentation checks
+        id: android-app-lock-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/android-app-lock-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR" \
+            --serial emulator-5554
+
+      - name: Stop dedicated Android device
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$PATH"
+          adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+          if [[ -f "$RUNNER_TEMP/safenet-android-app-lock-emulator.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/safenet-android-app-lock-emulator.pid")" >/dev/null 2>&1 || true
+          fi
+
+      - name: Publish LockLock instrumentation summary
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.android-app-lock-check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          result_file="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          {
+            echo "## LockLock Android instrumentation"
+            echo
+            echo "- **Runner:** \`dedicated writable-system Android runner\`"
+            echo "- **Result:** \`$result\`"
+            echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
+            echo "- **Coverage:** native setup validation and permission handoff, incorrect recovery, successful reset, disable flow, cooldown, disabled-admin status, SafeNet and Settings foreground events, duplicate activity prevention"
+            echo "- **Failure evidence:** bounded logcat/activity/accessibility diagnostics plus a LockLock screenshot and UI hierarchy when the form flow fails."
+            echo "- **Evidence:** [Download bounded device diagnostics]($RUN_URL#artifacts)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload LockLock instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-app-lock-evidence
+          path: android/app/build/reports/android-app-lock/latest
+          if-no-files-found: warn
+
+  android-app-lock-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_startup_validation == true
+    runs-on: [self-hosted, linux, x64, android-physical-device]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-locklock-physical/latest
+    steps:
+      - name: Checkout code
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        id: setup_java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android platform tools
+        id: setup_android_platform_tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install and verify pinned Android SDK
+        id: setup_android_sdk
+        shell: bash
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Download signed release APK from this workflow run
+        id: download_android_apk
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download signed instrumentation APK from this workflow run
+        id: download_android_test_apk
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run LockLock selected-app proof on physical phone
+        id: android-app-lock-physical-check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          export PATH="$sdk_root/platform-tools:$PATH"
+          mkdir -p "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          if ! command -v adb >/dev/null 2>&1; then
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker ADB_UNAVAILABLE \
+              --message "adb is unavailable on the physical LockLock runner." \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
+          fi
+          timeout 30s adb start-server >/dev/null 2>&1 || true
+          device_listing="$(timeout 30s adb devices 2>&1)"
+          device_listing_status=$?
+          if [[ "$device_listing_status" -ne 0 ]]; then
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker ADB_DEVICE_DISCOVERY_FAILED \
+              --message "ADB device discovery failed on the physical LockLock runner (exit $device_listing_status)." \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
+          fi
+          serial="$(printf '%s\n' "$device_listing" |
+            awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')"
+          if [[ -z "$serial" ]]; then
+            if printf '%s\n' "$device_listing" |
+              awk 'NR > 1 && $2 == "device" { found=1 } END { exit(found ? 0 : 1) }'; then
+              blocker="NO_PHYSICAL_PHONE"
+              message="Only emulator or non-physical Android targets were available on the LockLock runner."
+            else
+              blocker="NO_READY_PHYSICAL_PHONE"
+              message="No ready physical Android phone was attached to the LockLock runner."
+            fi
+            bash ./scripts/android-app-lock-device-test.sh \
+              --physical --blocked \
+              --blocker "$blocker" \
+              --message "$message" \
+              --release-ref "$GITHUB_REF" \
+              --release-sha "$GITHUB_SHA" \
+              --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+              --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+              --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+            exit $?
+          fi
+          bash ./scripts/android-app-lock-device-test.sh \
+            --physical \
+            --serial "$serial" \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          status=$?
+          printf 'workflow_exit_status=%s\n' "$status" \
+            >> "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/workflow-result.txt"
+          exit "$status"
+
+      - name: Record blocked LockLock evidence when the physical runner is unavailable
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          JAVA_OUTCOME: ${{ steps.setup_java.outcome }}
+          PLATFORM_TOOLS_OUTCOME: ${{ steps.setup_android_platform_tools.outcome }}
+          SDK_OUTCOME: ${{ steps.setup_android_sdk.outcome }}
+          APK_DOWNLOAD_OUTCOME: ${{ steps.download_android_apk.outcome }}
+          TEST_APK_DOWNLOAD_OUTCOME: ${{ steps.download_android_test_apk.outcome }}
+          CHECK_OUTCOME: ${{ steps.android-app-lock-physical-check.outcome }}
+        run: |
+          set +e
+          evidence_dir="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          result_file="$evidence_dir/result.txt"
+          if [[ -s "$result_file" ]] &&
+            grep -Eq '^result=(PASS|FAIL|BLOCKED)$' "$result_file"; then
+            exit 0
+          fi
+          blocker="RUNNER_PREFLIGHT_FAILED"
+          message="The physical LockLock runner was unavailable before device discovery."
+          for outcome in \
+            "${CHECKOUT_OUTCOME:-success}" \
+            "${JAVA_OUTCOME:-success}" \
+            "${PLATFORM_TOOLS_OUTCOME:-success}" \
+            "${SDK_OUTCOME:-success}" \
+            "${APK_DOWNLOAD_OUTCOME:-success}" \
+            "${TEST_APK_DOWNLOAD_OUTCOME:-success}"; do
+            if [[ "$outcome" != "success" ]]; then
+              message="The physical LockLock runner preflight did not complete (step outcome: $outcome)."
+              break
+            fi
+          done
+          if [[ "$message" == "The physical LockLock runner was unavailable before device discovery." ]]; then
+            blocker="DEVICE_DISCOVERY_FAILED"
+            message="The physical LockLock device check did not produce a result during device discovery."
+          fi
+          bash ./scripts/android-app-lock-device-test.sh \
+            --physical --blocked \
+            --blocker "$blocker" \
+            --message "$message" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$evidence_dir" >/dev/null 2>&1 || true
+          {
+            printf 'workflow_checkout_outcome=%s\n' "${CHECKOUT_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_java_outcome=%s\n' "${JAVA_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_platform_tools_outcome=%s\n' "${PLATFORM_TOOLS_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_sdk_outcome=%s\n' "${SDK_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_apk_download_outcome=%s\n' "${APK_DOWNLOAD_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_test_apk_download_outcome=%s\n' "${TEST_APK_DOWNLOAD_OUTCOME:-NOT_RECORDED}"
+            printf 'workflow_check_outcome=%s\n' "${CHECK_OUTCOME:-NOT_RECORDED}"
+          } >> "$result_file"
+
+      - name: Publish physical LockLock summary
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.android-app-lock-physical-check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          result_file="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/result.txt"
+          result="$(sed -n 's/^result=//p' "$result_file" 2>/dev/null | head -n 1)"
+          result="${result:-NOT_RECORDED}"
+          model="$(sed -n 's/^device_model=//p' "$result_file" 2>/dev/null | head -n 1)"
+          model="${model:-NOT_RECORDED}"
+          target="$(sed -n 's/^target_package=//p' "$result_file" 2>/dev/null | head -n 1)"
+          target="${target:-NOT_RECORDED}"
+          release_ref="$(sed -n 's/^release_ref=//p' "$result_file" 2>/dev/null | head -n 1)"
+          release_ref="${release_ref:-NOT_RECORDED}"
+          release_sha="$(sed -n 's/^release_sha=//p' "$result_file" 2>/dev/null | head -n 1)"
+          release_sha="${release_sha:-NOT_RECORDED}"
+          blocker_category="$(sed -n 's/^blocker_category=//p' "$result_file" 2>/dev/null | head -n 1)"
+          blocker_category="${blocker_category:-NONE}"
+          package_name="$(sed -n 's/^package_name=//p' "$result_file" 2>/dev/null | head -n 1)"
+          package_name="${package_name:-NOT_RECORDED}"
+          version_name="$(sed -n 's/^version_name=//p' "$result_file" 2>/dev/null | head -n 1)"
+          version_name="${version_name:-NOT_RECORDED}"
+          version_code="$(sed -n 's/^version_code=//p' "$result_file" 2>/dev/null | head -n 1)"
+          version_code="${version_code:-NOT_RECORDED}"
+          apk_sha256="$(sed -n 's/^apk_sha256=//p' "$result_file" 2>/dev/null | head -n 1)"
+          apk_sha256="${apk_sha256:-NOT_RECORDED}"
+          artifact_verification="$(sed -n 's/^artifact_verification=//p' "$result_file" 2>/dev/null | head -n 1)"
+          artifact_verification="${artifact_verification:-NOT_RECORDED}"
+          accessibility="$(sed -n 's/^accessibility_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+          accessibility="${accessibility:-NOT_RECORDED}"
+          device_admin="$(sed -n 's/^device_admin_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+          device_admin="${device_admin:-NOT_RECORDED}"
+          selected_app_resumed="$(sed -n 's/^selected_app_resumed=//p' "$result_file" 2>/dev/null | head -n 1)"
+          selected_app_resumed="${selected_app_resumed:-NOT_RECORDED}"
+          temporary_unlock_isolated="$(sed -n 's/^temporary_unlock_isolated=//p' "$result_file" 2>/dev/null | head -n 1)"
+          temporary_unlock_isolated="${temporary_unlock_isolated:-NOT_RECORDED}"
+          {
+            echo "## LockLock physical-device verification"
+            echo
+            echo "- **Result:** \`$result\`"
+            echo "- **Blocker classification:** \`$blocker_category\`"
+            echo "- **Release ref:** \`$release_ref\`"
+            echo "- **Release commit:** \`$release_sha\`"
+            echo "- **Package/version:** \`$package_name\` \`${version_name} (${version_code})\`"
+            echo "- **Signed APK artifact verification:** \`$artifact_verification\`"
+            echo "- **Signed APK SHA-256:** \`$apk_sha256\`"
+            echo "- **Device model:** \`$model\`"
+            echo "- **Selected third-party package:** \`$target\`"
+            echo "- **Accessibility enabled:** \`$accessibility\`"
+            echo "- **Device Administrator enabled:** \`$device_admin\`"
+            echo "- **Permission boundary:** Both permissions are enabled through Android Settings on the phone before the check."
+            echo "- **Selected app resumed after passcode:** \`$selected_app_resumed\`"
+            echo "- **Unrelated protected launch remained locked:** \`$temporary_unlock_isolated\`"
+            echo "- **Coverage:** three launches of the selected app, one-activity duplicate prevention, valid passcode return, and isolation of the temporary unlock"
+            echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence:** download the physical-device artifact from this run"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$result" == "FAIL" ]]; then
+            echo "::error::Physical LockLock selected-app verification failed."
+            exit 1
+          elif [[ "$result" == "BLOCKED" ]]; then
+            echo "::warning::Physical LockLock verification was blocked because the phone runner was unavailable."
+          fi
+
+      - name: Upload physical LockLock evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-app-lock-physical-evidence
+          path: android/app/build/reports/android-locklock-physical/latest
+          if-no-files-found: error
+
   android-ai-shield-physical:
     needs: build-android
     if: >-
@@ -1749,6 +2650,270 @@ jobs:
           path: android/app/build/reports/android-ai-shield-device/${{ matrix.profile }}
           if-no-files-found: warn
 
+  android-internet-share-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_internet_share_physical_validation == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each label identifies a dedicated runner with the named phone
+          # attached. Separate jobs keep Wi-Fi Direct state isolated per OEM.
+          - profile: pixel-android-14
+            runner_label: android-physical-device-pixel
+          - profile: samsung-android-13
+            runner_label: android-physical-device-samsung
+          - profile: motorola-android-12
+            runner_label: android-physical-device-motorola
+    runs-on: [self-hosted, linux, x64, "${{ matrix.runner_label }}"]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      ANDROID_INTERNET_SHARE_DEVICE_PROFILE: ${{ matrix.profile }}
+      ANDROID_INTERNET_SHARE_CLIENT_SERIALS_INPUT: ${{ inputs.android_internet_share_client_serials }}
+      ANDROID_INTERNET_SHARE_OUTPUT_DIR: android/app/build/reports/android-internet-share/${{ matrix.profile }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download release instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run physical-device Internet Share proxy check
+        id: internet-share-smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          client_serial="$(jq -r --arg profile "$ANDROID_INTERNET_SHARE_DEVICE_PROFILE" \
+            '.[$profile] // empty' <<< "${ANDROID_INTERNET_SHARE_CLIENT_SERIALS_INPUT:-{}}" \
+            2>/dev/null || true)"
+          client_serial_args=()
+          if [[ -n "$client_serial" ]]; then
+            client_serial_args=(--client-serial "$client_serial")
+          fi
+          ./scripts/android-internet-share-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --profile "$ANDROID_INTERNET_SHARE_DEVICE_PROFILE" \
+            "${client_serial_args[@]}" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_INTERNET_SHARE_OUTPUT_DIR"
+
+      - name: Publish Internet Share physical-device summary
+        if: always()
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ matrix.profile }}
+          SMOKE_STEP_OUTCOME: ${{ steps.internet-share-smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/android/app/build/reports/android-internet-share/$DEVICE_PROFILE"
+          result_file="$evidence_dir/result.txt"
+          result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          result="${result:-NOT_RECORDED}"
+          profile_status="$(awk -F= '$1 == "profile_status" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          profile_status="${profile_status:-NOT_RECORDED}"
+          apk_sha256="$(awk -F= '$1 == "application_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          apk_sha256="${apk_sha256:-NOT_RECORDED}"
+          instrumentation_apk_sha256="$(awk -F= '$1 == "instrumentation_apk_sha256" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          instrumentation_apk_sha256="${instrumentation_apk_sha256:-NOT_RECORDED}"
+          failure_class="$(awk -F= '$1 == "failure_class" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_class="${failure_class:-NOT_RECORDED}"
+          failure_category="$(awk -F= '$1 == "failure_category" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          failure_category="${failure_category:-NOT_RECORDED}"
+          message="$(awk -F= '$1 == "message" { print substr($0, index($0, "=") + 1); exit }' "$result_file" 2>/dev/null || true)"
+          message="${message:-NOT_RECORDED}"
+          client_target="$(awk -F= '$1 == "client_target" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_target="${client_target:-NOT_RECORDED}"
+          start_result="$(awk -F= '$1 == "start_result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          start_result="${start_result:-NOT_RECORDED}"
+          start_outcome="$(awk -F= '$1 == "start_outcome" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          start_outcome="${start_outcome:-NOT_RECORDED}"
+          stop_result="$(awk -F= '$1 == "stop_result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          stop_result="${stop_result:-NOT_RECORDED}"
+          notification_cleanup="$(awk -F= '$1 == "notification_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          notification_cleanup="${notification_cleanup:-NOT_RECORDED}"
+          group_cleanup="$(awk -F= '$1 == "wifi_direct_group_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          group_cleanup="${group_cleanup:-NOT_RECORDED}"
+          client_connection="$(awk -F= '$1 == "client_connection" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_connection="${client_connection:-NOT_RECORDED}"
+          proxy_configuration="$(awk -F= '$1 == "proxy_configuration" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_configuration="${proxy_configuration:-NOT_RECORDED}"
+          proxy_https_response="$(awk -F= '$1 == "proxy_https_response" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_https_response="${proxy_https_response:-NOT_RECORDED}"
+          proxy_http_diagnostic="$(awk -F= '$1 == "proxy_http_diagnostic" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          proxy_http_diagnostic="${proxy_http_diagnostic:-NOT_RECORDED}"
+          client_proxy_cleanup="$(awk -F= '$1 == "client_proxy_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_proxy_cleanup="${client_proxy_cleanup:-NOT_RECORDED}"
+          client_wifi_cleanup="$(awk -F= '$1 == "client_wifi_cleanup" { print $2; exit }' "$result_file" 2>/dev/null || true)"
+          client_wifi_cleanup="${client_wifi_cleanup:-NOT_RECORDED}"
+          {
+            echo "## Physical Android Internet Share verification"
+            echo
+            echo "- **Device profile:** \`$DEVICE_PROFILE\` (\`$profile_status\`)"
+            echo "- **Result:** \`$result\`"
+            echo "- **Failure classification:** \`$failure_class\` / \`$failure_category\`"
+            echo "- **Details:** \`$message\`"
+            echo "- **Signed application APK SHA-256:** \`$apk_sha256\`"
+            echo "- **Signed instrumentation APK SHA-256:** \`$instrumentation_apk_sha256\`"
+            echo "- **Start result:** \`$start_result\` (\`$start_outcome\`)"
+            echo "- **Stop result:** \`$stop_result\`"
+            echo "- **Foreground notification cleanup:** \`$notification_cleanup\`"
+            echo "- **Wi-Fi Direct group cleanup:** \`$group_cleanup\`"
+            echo "- **Client target:** \`$client_target\`"
+            echo "- **Client connection:** \`$client_connection\`"
+            echo "- **Proxy configuration:** \`$proxy_configuration\`"
+            echo "- **HTTPS proxy response:** \`$proxy_https_response\`"
+            echo "- **HTTP diagnostic response:** \`$proxy_http_diagnostic\`"
+            echo "- **Client cleanup:** proxy \`$client_proxy_cleanup\`; Wi-Fi \`$client_wifi_cleanup\`"
+            echo "- **Smoke step:** \`$SMOKE_STEP_OUTCOME\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            echo "- **Evidence:** download the physical-device artifact from this run"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$failure_class" == "DEVICE_ACCESS" ]]; then
+            echo "::warning::Physical-device Internet Share validation was blocked by host/client access ($failure_category); this is not an application result."
+          elif [[ "$result" != "PASS" ]]; then
+            echo "::error::Physical-device Internet Share lifecycle check did not pass ($result; $failure_category)."
+            exit 1
+          fi
+
+      - name: Upload physical-device Internet Share evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-internet-share-physical-evidence-${{ matrix.profile }}
+          path: android/app/build/reports/android-internet-share/${{ matrix.profile }}
+          if-no-files-found: warn
+
+  android-dns-ddns-physical:
+    needs: build-android
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_dns_ddns_physical_validation == true
+    runs-on: [self-hosted, linux, x64, android-physical-device-dns-ddns]
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      ANDROID_DNS_DDNS_OUTPUT_DIR: android/app/build/reports/android-dns-ddns-physical
+      ANDROID_SMOKE_VALIDATION_MODE: real-device
+      ANDROID_SMOKE_DEVICE_KIND: physical-device
+      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android platform tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install and verify pinned Android SDK
+        shell: bash
+        run: ./scripts/setup-android-sdk.sh
+
+      - name: Download signed release APK from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download signed instrumentation APK from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Run real-device DNS and DDNS validation
+        id: dns-ddns-smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          bash ./scripts/android-dns-ddns-device-test.sh \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$GITHUB_WORKSPACE/$ANDROID_DNS_DDNS_OUTPUT_DIR"
+          status=$?
+          printf 'smoke_exit_status=%s\n' "$status" >> "$GITHUB_WORKSPACE/$ANDROID_DNS_DDNS_OUTPUT_DIR/workflow-result.txt"
+          exit "$status"
+
+      - name: Upload real-device DNS and DDNS evidence
+        id: upload-dns-ddns-evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-dns-ddns-physical-evidence
+          path: android/app/build/reports/android-dns-ddns-physical
+          if-no-files-found: warn
+
+      - name: Publish real-device DNS and DDNS summary
+        if: always()
+        shell: bash
+        env:
+          SMOKE_OUTCOME: ${{ steps.dns-ddns-smoke.outcome }}
+          EVIDENCE_URL: ${{ steps.upload-dns-ddns-evidence.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -u
+          evidence_dir="$GITHUB_WORKSPACE/$ANDROID_DNS_DDNS_OUTPUT_DIR"
+          result_file="$evidence_dir/result.txt"
+          result="BLOCKED"
+          failure_class="INFRASTRUCTURE"
+          failure_category="EVIDENCE_MISSING"
+          if [[ -s "$result_file" ]]; then
+            result="$(sed -n 's/^result=//p' "$result_file" | head -n 1)"
+            failure_class="$(sed -n 's/^failure_class=//p' "$result_file" | head -n 1)"
+            failure_category="$(sed -n 's/^failure_category=//p' "$result_file" | head -n 1)"
+          fi
+          if [[ -z "$result" && "$failure_category" == "PASS" ]]; then
+            result="PASS"
+            failure_class="NONE"
+          fi
+          {
+            echo "## Physical Android DNS/DDNS validation"
+            echo
+            echo "- **Result:** \`$result\`"
+            echo "- **Failure classification:** \`$failure_class\` / \`$failure_category\`"
+            echo "- **Smoke step:** \`$SMOKE_OUTCOME\`"
+            echo "- **DNS resolver UI:** \`$(sed -n 's/^dns_resolver_ui=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **DNS filtering device proof:** \`$(sed -n 's/^dns_filtering=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **DDNS UI:** \`$(sed -n 's/^ddns_ui=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **Internet Share start:** \`$(sed -n 's/^internet_share_start=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **Internet Share stop:** \`$(sed -n 's/^internet_share_stop=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **VPN package surface:** \`$(sed -n 's/^vpn_package_surface=//p' "$result_file" 2>/dev/null | head -n 1 || echo NOT_RECORDED)\`"
+            echo "- **Evidence artifact:** [Download physical-device evidence]($EVIDENCE_URL)"
+            echo "- **Workflow run:** [Open run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$result" == "PASS" ]]; then
+            exit 0
+          fi
+          if [[ "$failure_class" == "INFRASTRUCTURE" || "$result" == "BLOCKED" ]]; then
+            echo "::warning::Physical Android DNS/DDNS validation is blocked by runner or target infrastructure ($failure_category)."
+            exit 0
+          fi
+          echo "::error::Physical Android DNS/DDNS validation failed ($failure_category)."
+          exit 1
+
   release:
     needs: [build-android, android-release-smoke]
     runs-on: ubuntu-latest
@@ -1760,6 +2925,7 @@ jobs:
       needs.android-release-smoke.result == 'failure')
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout release scripts
         uses: actions/checkout@v4
@@ -1883,6 +3049,232 @@ jobs:
           echo "Verified $apk_count signed Android APK installer with versionCode $ANDROID_VERSION_CODE, versionName $ANDROID_VERSION_NAME, and SHA-256 $checksum."
           echo "Verified signed Android instrumentation APK with SHA-256 $test_checksum."
 
+      - name: Resolve matching physical Internet Share evidence
+        id: resolve-physical-internet-share-evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+        run: |
+          set -uo pipefail
+
+          release_dir="artifacts/release"
+          evidence_dir="artifacts/android-internet-share-physical-evidence"
+          report="$release_dir/SafeNet-DNS-Android-internet-share-verification.txt"
+          report_checksum="$release_dir/SafeNet-DNS-Android-internet-share-verification.sha256"
+          mkdir -p "$release_dir"
+          rm -rf "$evidence_dir"
+
+          status="BLOCKED"
+          blocker="INTERNET_SHARE_RUN_MISSING"
+          evidence_run_id="NONE"
+          evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          signed_apk_sha256="NOT_RECORDED"
+          signed_instrumentation_apk_sha256="NOT_RECORDED"
+          if [[ -s artifacts/android/app-release.apk ]]; then
+            signed_apk_sha256="$(sha256sum artifacts/android/app-release.apk | awk '{ print $1 }')"
+          fi
+          if [[ -s artifacts/android-test/app-release-androidTest.apk ]]; then
+            signed_instrumentation_apk_sha256="$(sha256sum artifacts/android-test/app-release-androidTest.apk | awk '{ print $1 }')"
+          fi
+
+          run_json="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow build.yml \
+            --event workflow_dispatch \
+            --commit "$GITHUB_SHA" \
+            --status completed \
+            --json databaseId,url,headSha,headBranch,createdAt \
+            --limit 20 2>/dev/null || printf '[]')"
+          evidence_run_id="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref)) | sort_by(.createdAt) | reverse | .[0].databaseId // empty' <<< "$run_json" 2>/dev/null || true)"
+          evidence_run_url="$(jq -r --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF_NAME" \
+            'map(select(.headSha == $sha and .headBranch == $ref)) | sort_by(.createdAt) | reverse | .[0].url // empty' <<< "$run_json" 2>/dev/null || true)"
+          if [[ -z "$evidence_run_id" ]]; then
+            evidence_run_id="NONE"
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/build.yml?query=workflow_dispatch"
+          elif [[ -z "$evidence_run_url" ]]; then
+            evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/$evidence_run_id"
+          fi
+
+          blockers=()
+          if [[ "$evidence_run_id" != "NONE" ]]; then
+            if ! gh run download "$evidence_run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'SafeNet-DNS-Android-internet-share-physical-evidence-*' \
+              --dir "$evidence_dir" >/dev/null 2>&1; then
+              blockers+=("INTERNET_SHARE_EVIDENCE_DOWNLOAD_FAILED")
+            fi
+          else
+            blockers+=("INTERNET_SHARE_RUN_MISSING")
+          fi
+
+          profiles=(pixel-android-14 samsung-android-13 motorola-android-12)
+          profile_index=0
+          for profile in "${profiles[@]}"; do
+            profile_index=$((profile_index + 1))
+            profile_result="$(find "$evidence_dir" -type f -name result.txt -print 2>/dev/null | grep -F "$profile" | head -n 1 || true)"
+            profile_result_value="NOT_RECORDED"
+            profile_device_profile="$profile"
+            profile_status="NOT_RECORDED"
+            profile_apk_sha256="NOT_RECORDED"
+            profile_instrumentation_apk_sha256="NOT_RECORDED"
+            profile_device_evidence="NOT_RECORDED"
+            profile_physical_evidence="NOT_RECORDED"
+            profile_failure_class="NOT_RECORDED"
+            profile_failure_category="NOT_RECORDED"
+            profile_message="NOT_RECORDED"
+            profile_start_result="NOT_RECORDED"
+            profile_start_outcome="NOT_RECORDED"
+            profile_stop_result="NOT_RECORDED"
+            profile_notification_cleanup="NOT_RECORDED"
+            profile_group_cleanup="NOT_RECORDED"
+             profile_client_connection="NOT_RECORDED"
+             profile_proxy_configuration="NOT_RECORDED"
+             profile_proxy_response="NOT_RECORDED"
+             profile_proxy_https_response="NOT_RECORDED"
+             profile_proxy_http_diagnostic="NOT_RECORDED"
+             profile_client_proxy_cleanup="NOT_RECORDED"
+             profile_client_wifi_cleanup="NOT_RECORDED"
+            profile_cleanup_result="NOT_RECORDED"
+
+            if [[ -n "$profile_result" ]]; then
+              read_result() {
+                awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+                  "$profile_result" 2>/dev/null || true
+              }
+              profile_result_value="$(read_result result)"
+              profile_device_profile="$(read_result device_profile)"
+              profile_status="$(read_result profile_status)"
+              profile_apk_sha256="$(read_result application_apk_sha256)"
+              profile_instrumentation_apk_sha256="$(read_result instrumentation_apk_sha256)"
+              profile_device_evidence="$(read_result device_evidence)"
+              profile_physical_evidence="$(read_result physical_evidence)"
+              profile_failure_class="$(read_result failure_class)"
+              profile_failure_category="$(read_result failure_category)"
+              profile_message="$(read_result message)"
+              profile_start_result="$(read_result start_result)"
+              profile_start_outcome="$(read_result start_outcome)"
+              profile_stop_result="$(read_result stop_result)"
+              profile_notification_cleanup="$(read_result notification_cleanup)"
+              profile_group_cleanup="$(read_result wifi_direct_group_cleanup)"
+               profile_client_connection="$(read_result client_connection)"
+               profile_proxy_configuration="$(read_result proxy_configuration)"
+               profile_proxy_response="$(read_result proxy_response)"
+                profile_proxy_https_response="$(read_result proxy_https_response)"
+                profile_proxy_http_diagnostic="$(read_result proxy_http_diagnostic)"
+               profile_client_proxy_cleanup="$(read_result client_proxy_cleanup)"
+               profile_client_wifi_cleanup="$(read_result client_wifi_cleanup)"
+              if [[ "$profile_stop_result" == "PASS" &&
+                "$profile_notification_cleanup" == "PASS" &&
+                 "$profile_group_cleanup" == "PASS" &&
+                 "$profile_client_proxy_cleanup" == "PASS" &&
+                 "$profile_client_wifi_cleanup" == "PASS" ]]; then
+                profile_cleanup_result="PASS"
+              elif [[ "$profile_stop_result" != "NOT_RECORDED" ||
+                "$profile_notification_cleanup" != "NOT_RECORDED" ||
+                 "$profile_group_cleanup" != "NOT_RECORDED" ||
+                 "$profile_client_proxy_cleanup" != "NOT_RECORDED" ||
+                 "$profile_client_wifi_cleanup" != "NOT_RECORDED" ]]; then
+                profile_cleanup_result="FAIL"
+              fi
+            else
+              blockers+=("INTERNET_SHARE_DEVICE_EVIDENCE_MISSING_${profile}")
+            fi
+
+            if [[ "$profile_device_profile" != "$profile" ]]; then
+              blockers+=("INTERNET_SHARE_DEVICE_PROFILE_MISMATCH_${profile}")
+            fi
+            if [[ "$signed_apk_sha256" == "NOT_RECORDED" ||
+              "$profile_apk_sha256" != "$signed_apk_sha256" ]]; then
+              blockers+=("INTERNET_SHARE_APK_EVIDENCE_MISMATCH_${profile}")
+            fi
+            if [[ "$signed_instrumentation_apk_sha256" == "NOT_RECORDED" ||
+              "$profile_instrumentation_apk_sha256" != "$signed_instrumentation_apk_sha256" ]]; then
+              blockers+=("INTERNET_SHARE_INSTRUMENTATION_APK_EVIDENCE_MISMATCH_${profile}")
+            fi
+            if [[ "$profile_device_evidence" != "PASS" ||
+              "$profile_physical_evidence" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_DEVICE_EVIDENCE_INVALID_${profile}")
+            fi
+            if [[ "$profile_start_result" != "PASS" ||
+              "$profile_start_outcome" == "NOT_RECORDED" ]]; then
+              blockers+=("INTERNET_SHARE_START_NOT_CONFIRMED_${profile}")
+            fi
+            if [[ "$profile_cleanup_result" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_CLEANUP_NOT_CONFIRMED_${profile}")
+            fi
+             if [[ "$profile_client_connection" != "PASS" ]]; then
+               blockers+=("INTERNET_SHARE_CLIENT_CONNECTION_NOT_CONFIRMED_${profile}")
+             fi
+              if [[ "$profile_proxy_configuration" != "PASS" ||
+                "$profile_proxy_https_response" != "PASS" ]]; then
+               blockers+=("INTERNET_SHARE_PROXY_REQUEST_NOT_CONFIRMED_${profile}")
+             fi
+            if [[ "$profile_result_value" != "PASS" ]]; then
+              blockers+=("INTERNET_SHARE_PROXY_CHECK_FAILED_${profile}")
+            fi
+
+            {
+              echo "profile_${profile_index}_name=$profile"
+              echo "profile_${profile_index}_device_profile=$profile_device_profile"
+              echo "profile_${profile_index}_profile_status=${profile_status:-NOT_RECORDED}"
+              echo "profile_${profile_index}_result=$profile_result_value"
+              echo "profile_${profile_index}_application_apk_sha256=${profile_apk_sha256:-NOT_RECORDED}"
+              echo "profile_${profile_index}_instrumentation_apk_sha256=${profile_instrumentation_apk_sha256:-NOT_RECORDED}"
+              echo "profile_${profile_index}_failure_class=${profile_failure_class:-NOT_RECORDED}"
+              echo "profile_${profile_index}_failure_category=${profile_failure_category:-NOT_RECORDED}"
+              echo "profile_${profile_index}_message=${profile_message:-NOT_RECORDED}"
+              echo "profile_${profile_index}_start_result=${profile_start_result:-NOT_RECORDED}"
+              echo "profile_${profile_index}_start_outcome=${profile_start_outcome:-NOT_RECORDED}"
+              echo "profile_${profile_index}_stop_result=${profile_stop_result:-NOT_RECORDED}"
+              echo "profile_${profile_index}_notification_cleanup=${profile_notification_cleanup:-NOT_RECORDED}"
+              echo "profile_${profile_index}_wifi_direct_group_cleanup=${profile_group_cleanup:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_connection=${profile_client_connection:-NOT_RECORDED}"
+               echo "profile_${profile_index}_proxy_configuration=${profile_proxy_configuration:-NOT_RECORDED}"
+               echo "profile_${profile_index}_proxy_response=${profile_proxy_response:-NOT_RECORDED}"
+                echo "profile_${profile_index}_proxy_https_response=${profile_proxy_https_response:-NOT_RECORDED}"
+                echo "profile_${profile_index}_proxy_http_diagnostic=${profile_proxy_http_diagnostic:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_proxy_cleanup=${profile_client_proxy_cleanup:-NOT_RECORDED}"
+               echo "profile_${profile_index}_client_wifi_cleanup=${profile_client_wifi_cleanup:-NOT_RECORDED}"
+              echo "profile_${profile_index}_cleanup_result=$profile_cleanup_result"
+            } >> "$report.profiles"
+          done
+
+          if [[ "${#blockers[@]}" -eq 0 ]]; then
+            status="PASS"
+            blocker="NONE"
+          else
+            IFS=,
+            blocker="${blockers[*]}"
+          fi
+
+          {
+            echo "evidence_schema_version=1"
+            echo "release_ref=$GITHUB_REF_NAME"
+            echo "release_sha=$GITHUB_SHA"
+            echo "signed_apk_sha256=$signed_apk_sha256"
+            echo "signed_instrumentation_apk_sha256=$signed_instrumentation_apk_sha256"
+            echo "signed_apk_artifact_url=${APK_ARTIFACT_URL:-unavailable}"
+            echo "internet_share_evidence_run_id=$evidence_run_id"
+            echo "internet_share_evidence_run_url=$evidence_run_url"
+            echo "verification_status=$status"
+            echo "verification_blocker=$blocker"
+            echo "profile_count=${#profiles[@]}"
+            cat "$report.profiles"
+          } > "$report"
+          rm -f "$report.profiles"
+          printf '%s  %s\n' \
+            "$(sha256sum "$report" | awk '{ print $1 }')" \
+            "$(basename "$report")" > "$report_checksum"
+          {
+            echo "status=$status"
+            echo "blocker=$blocker"
+            echo "run_id=$evidence_run_id"
+            echo "run_url=$evidence_run_url"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish Android release summary
         if: always()
         shell: bash
@@ -1893,22 +3285,75 @@ jobs:
           APK_ARTIFACT_URL: ${{ needs.build-android.outputs.android_apk_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
           INSTRUMENTATION_VERIFICATION_OUTCOME: ${{ steps.verify-android-release-apks.outcome }}
           INSTRUMENTATION_ARTIFACT_URL: ${{ needs.build-android.outputs.android_instrumentation_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          NATIVE_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_compile_outcome || 'not-run' }}
+          NATIVE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_RELEASE_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_release_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_SIGNED_INSTRUMENTATION_COMPILE_OUTCOME: ${{ needs.build-android.outputs.android_native_signed_instrumentation_compile_outcome || 'not-run' }}
+          NATIVE_EVIDENCE_URL: ${{ needs.build-android.outputs.android_native_build_evidence_artifact_url || format('{0}/{1}/actions/runs/{2}#artifacts', github.server_url, github.repository, github.run_id) }}
+          NATIVE_DEBUG_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_debug_failure_category || 'UNAVAILABLE' }}
+          NATIVE_RELEASE_INSTRUMENTATION_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_release_instrumentation_failure_category || 'UNAVAILABLE' }}
+          NATIVE_SIGNED_INSTRUMENTATION_FAILURE_CATEGORY: ${{ needs.build-android.outputs.android_native_signed_instrumentation_failure_category || 'UNAVAILABLE' }}
+          INTERNET_SHARE_VERIFICATION_STATUS: ${{ steps.resolve-physical-internet-share-evidence.outputs.status || 'BLOCKED' }}
+          INTERNET_SHARE_VERIFICATION_BLOCKER: ${{ steps.resolve-physical-internet-share-evidence.outputs.blocker || 'INTERNET_SHARE_RUN_MISSING' }}
+          INTERNET_SHARE_EVIDENCE_RUN_URL: ${{ steps.resolve-physical-internet-share-evidence.outputs.run_url || format('{0}/{1}/actions/workflows/build.yml?query=workflow_dispatch', github.server_url, github.repository) }}
         run: |
           set -euo pipefail
           version_name="${ANDROID_VERSION_NAME:-unresolved}"
           version_code="${ANDROID_VERSION_CODE:-unresolved}"
           apk_outcome="${APK_VERIFICATION_OUTCOME:-unavailable}"
           instrumentation_outcome="${INSTRUMENTATION_VERIFICATION_OUTCOME:-unavailable}"
+          native_compile_outcome="${NATIVE_COMPILE_OUTCOME:-unavailable}"
+          native_instrumentation_compile_outcome="${NATIVE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_release_instrumentation_compile_outcome="${NATIVE_RELEASE_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_signed_instrumentation_compile_outcome="${NATIVE_SIGNED_INSTRUMENTATION_COMPILE_OUTCOME:-unavailable}"
+          native_evidence_url="${NATIVE_EVIDENCE_URL:-unavailable}"
+          native_debug_failure_category="${NATIVE_DEBUG_FAILURE_CATEGORY:-UNAVAILABLE}"
+          native_release_instrumentation_failure_category="${NATIVE_RELEASE_INSTRUMENTATION_FAILURE_CATEGORY:-UNAVAILABLE}"
+          native_signed_instrumentation_failure_category="${NATIVE_SIGNED_INSTRUMENTATION_FAILURE_CATEGORY:-UNAVAILABLE}"
           apk_url="${APK_ARTIFACT_URL:-unavailable}"
           instrumentation_url="${INSTRUMENTATION_ARTIFACT_URL:-unavailable}"
+          internet_share_status="${INTERNET_SHARE_VERIFICATION_STATUS:-BLOCKED}"
+          internet_share_blocker="${INTERNET_SHARE_VERIFICATION_BLOCKER:-INTERNET_SHARE_RUN_MISSING}"
+          internet_share_run_url="${INTERNET_SHARE_EVIDENCE_RUN_URL:-unavailable}"
+          internet_share_report="artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt"
           {
             echo "## Android release verification"
             echo
             echo "- **Resolved versionName:** \`$version_name\`"
             echo "- **Resolved versionCode:** \`$version_code\`"
             echo "- **Expected application package:** \`com.safenet.dns\`"
+            echo "- **Native Android compile:** \`$native_compile_outcome\`"
+            echo "- **Native release instrumentation compile:** \`$native_instrumentation_compile_outcome\`"
+            echo "- **Native release instrumentation preflight:** \`$native_release_instrumentation_compile_outcome\`"
+            echo "- **Native signed instrumentation compile:** \`$native_signed_instrumentation_compile_outcome\`"
+            echo "- **Native compile evidence:** [Download the preserved evidence artifact]($native_evidence_url)"
+            echo "- **Native compile failure categories:** debug \`$native_debug_failure_category\`; release instrumentation preflight \`$native_release_instrumentation_failure_category\`; signed instrumentation \`$native_signed_instrumentation_failure_category\`"
             echo "- **Signed application APK verification:** \`$apk_outcome\` ([preserved APK artifact]($apk_url))"
             echo "- **Signed instrumentation APK verification:** \`$instrumentation_outcome\` ([preserved instrumentation artifact]($instrumentation_url))"
+            echo "- **Physical Internet Share verification:** \`$internet_share_status\` (blocker: \`$internet_share_blocker\`; [matching physical evidence run]($internet_share_run_url))"
+            if [[ -s "$internet_share_report" ]]; then
+              signed_apk_sha256="$(awk -F= '$1 == "signed_apk_sha256" { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+              signed_instrumentation_apk_sha256="$(awk -F= '$1 == "signed_instrumentation_apk_sha256" { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+              profile_count="$(awk -F= '$1 == "profile_count" { print $2; exit }' "$internet_share_report")"
+              for ((profile_index = 1; profile_index <= profile_count; profile_index++)); do
+                profile_name="$(awk -F= -v key="profile_${profile_index}_name" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_digest="$(awk -F= -v key="profile_${profile_index}_application_apk_sha256" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_instrumentation_digest="$(awk -F= -v key="profile_${profile_index}_instrumentation_apk_sha256" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_failure_class="$(awk -F= -v key="profile_${profile_index}_failure_class" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_failure_category="$(awk -F= -v key="profile_${profile_index}_failure_category" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_start="$(awk -F= -v key="profile_${profile_index}_start_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_start_outcome="$(awk -F= -v key="profile_${profile_index}_start_outcome" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                profile_cleanup="$(awk -F= -v key="profile_${profile_index}_cleanup_result" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                 profile_client="$(awk -F= -v key="profile_${profile_index}_client_connection" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                 profile_proxy_config="$(awk -F= -v key="profile_${profile_index}_proxy_configuration" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                  profile_proxy_https_response="$(awk -F= -v key="profile_${profile_index}_proxy_https_response" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                  profile_proxy_http_diagnostic="$(awk -F= -v key="profile_${profile_index}_proxy_http_diagnostic" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$internet_share_report")"
+                  echo "- **Internet Share $profile_name:** failure \`$profile_failure_class/$profile_failure_category\`; signed APK SHA-256 \`$profile_digest\`; instrumentation SHA-256 \`$profile_instrumentation_digest\`; start \`$profile_start\` (\`$profile_start_outcome\`); client \`$profile_client\`; proxy \`$profile_proxy_config\`; HTTPS \`$profile_proxy_https_response\`; HTTP diagnostic \`$profile_proxy_http_diagnostic\`; cleanup \`$profile_cleanup\`"
+              done
+              echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
+              echo "- **Internet Share signed instrumentation APK SHA-256:** \`$signed_instrumentation_apk_sha256\`"
+            fi
+            echo "- **Release claim boundary:** a signed APK is not physically verified unless the matching run reports a real device and observed gateway handshake."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish hosted-only release assurance scope
@@ -1920,6 +3365,7 @@ jobs:
             echo
             echo "- **Hosted Android smoke validation:** completed and its evidence is preserved with this release."
             echo "- **Signed APK and instrumentation APK:** independently verified before publication."
+            echo "- **Physical Internet Share validation:** reported separately; missing runner, client/proxy evidence, or signed APK match is a bounded blocker and does not prevent APK publication."
             echo "- **Dedicated writable-system startup validation:** not run for this hosted-only release path."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -1957,6 +3403,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.android_release_metadata.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: SafeNet Android ${{ steps.android_release_metadata.outputs.release_tag }}
           files: |
             artifacts/android/app-release.apk
             artifacts/android/app-release.apk.sha256
@@ -1965,6 +3414,8 @@ jobs:
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.tar.gz
             artifacts/release/SafeNet-DNS-Android-smoke-result.txt
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
+            artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt
+            artifacts/release/SafeNet-DNS-Android-internet-share-verification.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1991,6 +3442,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Keep the verifier aligned with the build job; "tools" was removed
+          # from the Android SDK repository.
+          packages: 'platform-tools'
 
       - name: Install and verify Android toolchain from Gradle pins
         shell: bash
@@ -2028,6 +3483,8 @@ jobs:
             SafeNet-DNS-Android-smoke-evidence.tar.gz
             SafeNet-DNS-Android-smoke-result.txt
             SafeNet-DNS-Android-smoke-evidence.sha256
+            SafeNet-DNS-Android-internet-share-verification.txt
+            SafeNet-DNS-Android-internet-share-verification.sha256
           )
           for asset in "${assets[@]}"; do
             if ! gh release download "$GITHUB_REF_NAME" \

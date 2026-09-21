@@ -28,16 +28,13 @@ public final class SafeNetProtectionStatus {
 
     public static JSONObject get(Context context) {
         ConnectivitySnapshot snapshot = readConnectivity(context);
-        boolean serviceRunning = SafeNetVpnService.isRunning();
-        String lastError = SafeNetVpnService.getLastError();
-        boolean vpnRevoked = lastError != null
-            && lastError.toLowerCase().contains("revoked");
+        boolean serviceRunning = SafeNetDnsVpnService.isRunning();
         String state = resolveState(
             serviceRunning,
-            snapshot.ownsSafeNetVpn,
+            serviceRunning && snapshot.ownsSafeNetVpn,
             snapshot.otherVpnActive,
             snapshot.activeNetwork,
-            vpnRevoked
+            !serviceRunning && snapshot.otherVpnActive
         );
 
         JSONObject result = new JSONObject();
@@ -45,11 +42,11 @@ public final class SafeNetProtectionStatus {
             result.put("state", state);
             result.put("timestamp", System.currentTimeMillis());
             result.put("safeNetVpnRunning", serviceRunning);
-            result.put("safeNetOwnsActiveVpn", snapshot.ownsSafeNetVpn);
+            result.put("safeNetOwnsActiveVpn", serviceRunning && snapshot.ownsSafeNetVpn);
             result.put("otherVpnActive", snapshot.otherVpnActive);
             result.put("activeNetwork", snapshot.activeNetwork);
-            result.put("vpnRevoked", vpnRevoked);
-            result.put("scope", "DNS requests routed through SafeNet's active Android VPN.");
+            result.put("vpnRevoked", false);
+            result.put("scope", "SafeNet routes DNS requests through its Android DNS filtering VPN.");
             result.put(
                 "message",
                 messageFor(
@@ -68,13 +65,13 @@ public final class SafeNetProtectionStatus {
             result.put("states", states);
             result.put(
                 "proxyMessage",
-                "Embedded browser proxies, encrypted DNS, HTTPS content, and another VPN "
-                    + "cannot be inspected by SafeNet's DNS-only VPN."
+                "SafeNet does not inspect traffic through private browser proxies, encrypted DNS, "
+                    + "HTTPS content, or another VPN."
             );
             JSONArray limitations = new JSONArray();
-            limitations.put("DNS-only filtering; ordinary web traffic is not routed through this VPN.");
+            limitations.put("SafeNet filters DNS requests only; it does not inspect HTTPS content or arbitrary application traffic.");
             limitations.put("A private proxy browser can hide its destination from SafeNet.");
-            limitations.put("Only one Android VPN can own the device path at a time.");
+            limitations.put("Apps using their own encrypted DNS or another VPN can bypass SafeNet DNS filtering.");
             limitations.put("Screen content requires separate, explicit MediaProjection consent.");
             result.put("limitations", limitations);
         } catch (Exception ignored) {
