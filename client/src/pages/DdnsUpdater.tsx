@@ -303,13 +303,16 @@ export default function DdnsUpdater() {
       </CyberCard>
 
       <div className="flex gap-2 justify-end mb-6">
-        <Switch
-          checked={isAutoMode}
-          onCheckedChange={() => void handleAutoModeToggle()}
-          disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
-          aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
-          data-testid="switch-ddns-auto-mode"
-        />
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Automatic Updater</span>
+          <Switch
+            checked={isAutoMode}
+            onCheckedChange={() => void handleAutoModeToggle()}
+            disabled={isSwitchingToAuto || updateUpdater.isPending || !updaters?.length}
+            aria-label={`DDNS auto mode ${isAutoMode ? "On" : "Off"}`}
+            data-testid="switch-ddns-auto-mode"
+          />
+        </div>
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) resetForm();
