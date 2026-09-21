@@ -17,6 +17,10 @@ import org.json.JSONObject;
  * uninspectable instead of being inferred as safe.
  */
 public final class SafeNetProtectionStatus {
+    // These Android Private DNS identifiers are runtime-stable, but are not
+    // exposed as compile-time constants by every pinned SDK platform.
+    private static final String PRIVATE_DNS_MODE = "private_dns_mode";
+    private static final String PRIVATE_DNS_SPECIFIER = "private_dns_specifier";
     public static final String STATE_PROTECTED = "protected";
     public static final String STATE_VPN_REPLACED = "vpn_replaced";
     public static final String STATE_PROXY_UNINSPECTABLE = "proxy_uninspectable";
@@ -187,12 +191,12 @@ public final class SafeNetProtectionStatus {
         try {
             String mode = android.provider.Settings.Global.getString(
                 context.getContentResolver(),
-                android.provider.Settings.Global.PRIVATE_DNS_MODE
+                PRIVATE_DNS_MODE
             );
             snapshot.mode = mode == null ? "unknown" : mode;
             snapshot.hostname = android.provider.Settings.Global.getString(
                 context.getContentResolver(),
-                android.provider.Settings.Global.PRIVATE_DNS_SPECIFIER
+                PRIVATE_DNS_SPECIFIER
             );
             snapshot.active = "hostname".equals(mode)
                 && snapshot.hostname != null

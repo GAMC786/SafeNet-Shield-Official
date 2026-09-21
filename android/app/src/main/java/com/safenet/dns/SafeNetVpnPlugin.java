@@ -42,6 +42,12 @@ import java.util.concurrent.Executors;
     }
 )
 public class SafeNetVpnPlugin extends Plugin {
+    // These Android Private DNS identifiers are runtime-stable, but are not
+    // exposed as compile-time constants by every pinned SDK platform.
+    private static final String PRIVATE_DNS_MODE = "private_dns_mode";
+    private static final String PRIVATE_DNS_SPECIFIER = "private_dns_specifier";
+    private static final String ACTION_PRIVATE_DNS_SETTINGS =
+        "android.settings.PRIVATE_DNS_SETTINGS";
     private ExecutorService apkScannerExecutor;
     private ApkScanner apkScanner;
     private AiShieldManager aiShieldManager;
@@ -390,7 +396,7 @@ public class SafeNetVpnPlugin extends Plugin {
             call.resolve(privateDnsStatus(call.getString("expectedHostname", "")));
             return;
         }
-        Intent settingsIntent = new Intent(Settings.ACTION_PRIVATE_DNS_SETTINGS);
+        Intent settingsIntent = new Intent(ACTION_PRIVATE_DNS_SETTINGS);
         try {
             startActivityForResult(call, settingsIntent, "privateDnsSettingsResult");
         } catch (RuntimeException error) {
@@ -447,11 +453,11 @@ public class SafeNetVpnPlugin extends Plugin {
         try {
             String modeValue = Settings.Global.getString(
                 getContext().getContentResolver(),
-                Settings.Global.PRIVATE_DNS_MODE
+                PRIVATE_DNS_MODE
             );
             String hostname = Settings.Global.getString(
                 getContext().getContentResolver(),
-                Settings.Global.PRIVATE_DNS_SPECIFIER
+                PRIVATE_DNS_SPECIFIER
             );
             String mode = "hostname".equals(modeValue)
                 ? "hostname"
