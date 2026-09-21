@@ -63,6 +63,13 @@ const tetherShareManagerSource = readFileSync(
   ),
   "utf8",
 );
+const tetherShareProxySource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/TetherShareProxy.java",
+  ),
+  "utf8",
+);
 const ddnsHookSource = readFileSync(
   path.join(clientRoot, "src/hooks/use-ddns.ts"),
   "utf8",
@@ -197,9 +204,9 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Open Android Wi-Fi settings/);
   assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);
   assert.match(tetherShareSource, /separate from SafeNet&apos;s VPN tunnel/);
-  assert.match(tetherShareManagerSource, /PROXY_HOST = "192\.168\.49\.1"/);
-  assert.match(tetherShareManagerSource, /PROXY_PORT = 8080/);
-  assert.match(tetherShareManagerSource, /"CONNECT"\.equalsIgnoreCase\(method\)/);
+  assert.match(tetherShareProxySource, /PROXY_HOST = "192\.168\.49\.1"/);
+  assert.match(tetherShareProxySource, /HTTP_PORT = 8228/);
+  assert.match(tetherShareProxySource, /"CONNECT"\.equalsIgnoreCase\(method\)/);
   assert.match(tetherShareManagerSource, /getClientList\(\)/);
 });
 
@@ -419,8 +426,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
     assert.match(ddnsSource, /NextDNS, Control D, OpenDNS, and AdGuard linked-IP setup/);
     assert.match(ddnsSource, /NextDNS, Control D, OpenDNS, or AdGuard linked-IP settings/);
    assert.match(ddnsSource, /provider === "safenet"/);
-  assert.match(tetherShareManagerSource, /candidate\.startsWith\("\["\)/);
-  assert.match(tetherShareManagerSource, /parsePort/);
+  assert.match(tetherShareProxySource, /candidate\.startsWith\("\["\)/);
+  assert.match(tetherShareProxySource, /parsePort/);
   assert.match(antivirusSource, /Threat mix/);
   assert.match(antivirusSource, /Severity profile/);
   assert.match(antivirusSource, /const clamAvVerified = clamAv\.data\?\.verified === true/);

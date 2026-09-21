@@ -650,10 +650,24 @@ export default function TetherShare() {
             </p>
             <div className="space-y-2">
               <CopyValue value={status.proxyHost || "192.168.49.1"} label="Proxy host" />
-              <CopyValue value={String(status.proxyPort || 8080)} label="Proxy port" />
+              <CopyValue
+                value={String(status.httpProxyPort || status.proxyPort || 8228)}
+                label="HTTP proxy port"
+              />
+              <CopyValue
+                value={String(status.socksProxyPort || 8229)}
+                label="SOCKS4/5 proxy port"
+              />
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              HTTPS uses the standard CONNECT tunnel. SafeNet does not inspect encrypted page contents.
+              Use the HTTP port for normal manual proxy settings. Use the SOCKS port for apps
+              that support SOCKS4/5. HTTPS uses the standard CONNECT tunnel; SafeNet does not
+              inspect encrypted page contents.
+            </p>
+            <p className="text-xs leading-5 text-amber-200/80">
+              Internet Share is an explicit proxy, not a full-device VPN. Connected devices
+              must be configured to use one of these endpoints, and SafeNet’s DNS-only VPN
+              protects the phone rather than transparently routing every client app.
             </p>
           </CyberCard>
         </div>

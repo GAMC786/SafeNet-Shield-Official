@@ -16,6 +16,10 @@ export interface TetherShareStatus {
   passphrase?: string | null;
   proxyHost?: string | null;
   proxyPort?: number | null;
+  httpProxyPort?: number | null;
+  socksProxyPort?: number | null;
+  httpProxySupported?: boolean;
+  socksProxySupported?: boolean;
   connectedDevices: TetherShareDevice[];
   groupOwner: boolean;
   permissionGranted?: boolean;

@@ -119,7 +119,7 @@ public final class SafeNetDnsVpnService extends VpnService {
                 return START_NOT_STICKY;
             } catch (Exception error) {
                 lastError = message(error, "Unable to start DNS filtering.");
-                stopVpn(true);
+                stopVpn(false);
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
@@ -129,7 +129,7 @@ public final class SafeNetDnsVpnService extends VpnService {
     @Override
     public void onDestroy() {
         boolean intentional = stopRequested;
-        stopVpn(true);
+        stopVpn(false);
         if (!intentional && lastError == null) {
             lastError = "DNS filtering stopped unexpectedly. Turn it on again to reconnect.";
         }
@@ -153,27 +153,42 @@ public final class SafeNetDnsVpnService extends VpnService {
 
     static void requestStop() {
         SafeNetDnsVpnService service = instance;
-        if (service != null) service.stopVpn(true);
+        if (service != null) {
+            service.stopRequested = true;
+            service.stopVpn(true);
+        }
     }
 
     private void runLoop() {
         ParcelFileDescriptor descriptor = vpnInterface;
         if (descriptor == null) return;
         byte[] packet = new byte[MAX_PACKET];
+        boolean unexpectedExit = false;
         try (
             FileInputStream input = new FileInputStream(descriptor.getFileDescriptor());
             FileOutputStream output = new FileOutputStream(descriptor.getFileDescriptor())
         ) {
             while (running) {
                 int length = input.read(packet);
+                if (length < 0) {
+                    unexpectedExit = running;
+                    if (unexpectedExit && lastError == null) {
+                        lastError = "Android closed the DNS filtering interface unexpectedly.";
+                    }
+                    break;
+                }
                 if (length > 0) handlePacket(packet, length, output);
             }
         } catch (IOException error) {
             if (running) {
+                unexpectedExit = true;
                 lastError = message(error, "The DNS filtering path stopped unexpectedly.");
             }
         } finally {
             running = false;
+            if (unexpectedExit) {
+                stopSelf();
+            }
         }
     }
 

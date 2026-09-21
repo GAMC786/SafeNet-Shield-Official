@@ -49,6 +49,7 @@
  - [Android call-screening role fallback](android-call-screening-role-fallback.md) — role requests need a default-app settings fallback and must return the post-settings role state.
  - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
  - [Android DNS upstream network](android-dns-upstream-network.md) — DNS-only VPN resolver sockets must bind to a non-VPN network and remain protected from the VPN loop.
+- [Android VPN intentional shutdown](android-vpn-intentional-shutdown.md) — mark user-requested VPN stops before closing the interface or onDestroy reports a false unexpected failure.
 - [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.
 - [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.

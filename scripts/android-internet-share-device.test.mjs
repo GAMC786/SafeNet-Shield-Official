@@ -11,6 +11,10 @@ const tetherManager = readFileSync(
   new URL("../android/app/src/main/java/com/safenet/dns/TetherShareManager.java", import.meta.url),
   "utf8",
 );
+const tetherProxy = readFileSync(
+  new URL("../android/app/src/main/java/com/safenet/dns/TetherShareProxy.java", import.meta.url),
+  "utf8",
+);
 const plugin = readFileSync(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java", import.meta.url),
   "utf8",
@@ -107,7 +111,7 @@ test("proxy evidence does not persist the client network secret or request conte
 });
 
 test("the Internet Share proxy emits real HTTP line endings", () => {
-  assert.match(tetherManager, /Connection: close\\r\\n\\r\\n/);
-  assert.doesNotMatch(tetherManager, /Connection: close\\\\r\\\\n\\\\r\\\\n/);
-  assert.match(tetherManager, /200 Connection Established\\r\\n/);
+  assert.match(tetherProxy, /Connection: close\\r\\n\\r\\n/);
+  assert.doesNotMatch(tetherProxy, /Connection: close\\\\r\\\\n\\\\r\\\\n/);
+  assert.match(tetherProxy, /200 Connection Established\\r\\n/);
 });
