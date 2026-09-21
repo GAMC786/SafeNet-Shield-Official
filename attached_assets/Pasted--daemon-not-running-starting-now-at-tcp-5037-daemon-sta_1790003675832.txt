@@ -1,0 +1,85 @@
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe devices -l
+List of devices attached
+
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe devices
+List of devices attached
+
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe devices
+List of devices attached
+38081FDJG00AM5  device
+
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe devices -l
+List of devices attached
+38081FDJG00AM5         device product:husky model:Pixel_8_Pro device:husky transport_id:3
+
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe logcat -c
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe logcat -d -v time -s SafeNetWebView chromium AndroidRuntime Capacitor System.err
+--------- beginning of main
+09-21 11:07:34.921 E/chromium( 6585): [ERROR:net/socket/ssl_client_socket_impl.cc:964] handshake failed; returned -1, SSL error code 1, net_error -103
+09-21 11:07:35.188 W/chromium( 6636): [WARNING:media/filters/ffmpeg_demuxer.cc:1891] PipelineStatus::PIPELINE_ERROR_READ
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe shell pm path com.safenet.dns
+
+package:/data/app/~~yh2n7pDDa6Z8-lsZgcyROA==/com.safenet.dns-LaEvBemlAv71zfmXbQZvcg==/base.apk
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe logcat -c
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe shell am force-stop com.safenet.dns
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe shell monkey -p com.safenet.dns 1
+  bash arg: -p
+  bash arg: com.safenet.dns
+  bash arg: 1
+args: [-p, com.safenet.dns, 1]
+ arg: "-p"
+ arg: "com.safenet.dns"
+ arg: "1"
+data="com.safenet.dns"
+Events injected: 1
+## Network stats: elapsed time=20ms (0ms mobile, 0ms wifi, 20ms not connected)
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools> .\adb.exe logcat -d -v time | Select-String -Pattern "SafeNetWebView|AndroidRuntime|chromium|Capacitor|System.err"
+
+09-21 11:12:05.052 I/ActivityManager( 1491): Killing
+6636:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0a688i481 (adj
+0): isolated not needed
+09-21 11:12:25.438 D/AndroidRuntime(13762): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+09-21 11:12:25.518 I/AndroidRuntime(13762): Using default boot image
+09-21 11:12:25.518 I/AndroidRuntime(13762): Leaving lock profiling enabled
+09-21 11:12:25.905 D/nativeloader(13762): InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi
+.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:li
+bicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpe
+nMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+09-21 11:12:26.259 D/AndroidRuntime(13762): Calling main entry com.android.commands.monkey.Monkey
+09-21 11:12:26.665 I/AndroidRuntime(13762): VM exiting with result code 0.
+09-21 11:12:26.744 D/nativeloader(13789): Load /data/app/~~YZKRd0SKlYhESyKPm-PsNA==/com.google.android.webview-4QEsCpbh
+vl36yZdNlskefg==/base.apk!/lib/arm64-v8a/libwebviewchromium.so using class loader ns clns-10
+(caller=/data/app/~~YZKRd0SKlYhESyKPm-PsNA==/com.google.android.webview-4QEsCpbhvl36yZdNlskefg==/base.apk): ok
+09-21 11:12:26.745 D/nativeloader(13789): Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns
+clns-10 (caller=/data/app/~~YZKRd0SKlYhESyKPm-PsNA==/com.google.android.webview-4QEsCpbhvl36yZdNlskefg==/base.apk): ok
+09-21 11:12:26.776 I/ActivityManager( 1491): Start proc
+13834:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i487 for
+bound-service {com.safenet.dns/org.chromium.content.app.SandboxedProcessService0:0}
+09-21 11:12:26.781 I/Zygote  (13834): Process 13834 created for
+com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+09-21 11:12:26.805 D/Capacitor(13789): Starting BridgeActivity
+09-21 11:12:26.808 I/cr_WebViewApkApp(13834): version=151.0.7922.202 (792220203) minSdkVersion=29
+processName=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+splits=<none>
+09-21 11:12:26.824 I/SafeNetWebView(13789): SafeNet activity created
+09-21 11:12:26.824 I/SafeNetWebView(13789): Capacitor WebView created; url=https://localhost/
+09-21 11:12:26.824 W/chromium(13834): [WARNING:content/app/android/content_main_android.cc:82] android_setCpu already
+initialized
+09-21 11:12:26.834 W/chromium(13834): [WARNING:content/child/runtime_features.cc:542] Fenced frames cannot be enabled
+in this configuration. Use --enable-features=FencedFrames instead.
+09-21 11:12:26.835 W/chromium(13834): [WARNING:content/child/runtime_features.cc:567] Topics cannot be enabled in this
+configuration. Use --enable-features=BrowsingTopics in addition.
+09-21 11:12:26.835 W/chromium(13834): [WARNING:content/child/runtime_features.cc:588] SharedStorage cannot be enabled
+in this configuration. Use --enable-features=SharedStorageAPI in addition.
+09-21 11:12:26.891 I/SafeNetWebView(13789): WebView startup state:
+"pagePainted=false;loaderPresent=false;loaderBusy=none;loaderValue=none;fallbackPresent=false;soundtrackControls=0"
+09-21 11:12:27.895 I/SafeNetWebView(13789): WebView startup state:
+"pagePainted=true;loaderPresent=false;loaderBusy=none;loaderValue=none;fallbackPresent=false;soundtrackControls=1"
+09-21 11:12:27.895 I/SafeNetWebView(13789): WebView startup handoff complete
+09-21 11:12:31.851 I/SafeNetWebView(13789): WebView startup check; url=https://localhost/, title=localhost,
+width=1008, height=2077
+
+
+PS C:\Users\mahmo\OneDrive\Desktop\platform-tools-latest-windows\platform-tools>
