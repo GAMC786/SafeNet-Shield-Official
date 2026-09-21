@@ -23,11 +23,11 @@ export function NetworkStatusBanner() {
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-[100] flex items-center justify-center gap-2 border-b border-amber-400/30 bg-amber-950/95 px-4 py-2 text-center text-xs font-semibold text-amber-100 shadow-lg"
+      className="fixed inset-x-0 top-0 z-[100] flex items-center justify-center gap-2 border-b border-primary/40 bg-primary/15 px-4 py-2 text-center text-xs font-semibold text-primary-foreground shadow-[0_0_18px_hsl(var(--primary)/0.18)] backdrop-blur-sm"
       role="status"
       aria-live="polite"
     >
-      <WifiOff className="h-4 w-4 shrink-0 text-amber-300" />
+      <WifiOff className="h-4 w-4 shrink-0 text-primary" />
       <span>No internet connection. SafeNet will retry network features when connectivity returns.</span>
     </div>
   );
