@@ -114,6 +114,52 @@ export async function registerRoutes(
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
 
+  app.post("/api/speedtest/upload", (req, res) => {
+    const maxUploadBytes = 10 * 1024 * 1024;
+    const advertisedBytes = Number(req.query.bytes);
+    if (!Number.isFinite(advertisedBytes) || advertisedBytes <= 0 || advertisedBytes > maxUploadBytes) {
+      req.resume();
+      return res.status(400).json({ message: "The speed-test upload size is invalid." });
+    }
+
+    if (req.readableEnded || req.body !== undefined) {
+      const receivedBytes = Buffer.isBuffer(req.body)
+        ? req.body.byteLength
+        : typeof req.body === "string"
+          ? Buffer.byteLength(req.body)
+          : 0;
+      if (receivedBytes > maxUploadBytes) {
+        return res.status(413).json({ message: "The speed-test upload is too large." });
+      }
+      return res
+        .set("Cache-Control", "no-store")
+        .set("Server-Timing", "safenetSpeedEdge;dur=0")
+        .status(204)
+        .end();
+    }
+
+    let receivedBytes = 0;
+    let tooLarge = false;
+    req.on("data", (chunk: Buffer | string) => {
+      receivedBytes += Buffer.byteLength(chunk);
+      if (receivedBytes > maxUploadBytes) tooLarge = true;
+    });
+    req.on("end", () => {
+      if (tooLarge) {
+        res.status(413).json({ message: "The speed-test upload is too large." });
+        return;
+      }
+      res
+        .set("Cache-Control", "no-store")
+        .set("Server-Timing", "safenetSpeedEdge;dur=0")
+        .status(204)
+        .end();
+    });
+    req.on("error", () => {
+      if (!res.headersSent) res.status(400).json({ message: "The speed-test upload was interrupted." });
+    });
+  });
+
   app.get("/api/telemetry/glitchtip", (_req, res) => {
     res.json(getGlitchTipClientConfig());
   });

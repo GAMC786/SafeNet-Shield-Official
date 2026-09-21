@@ -7,4 +7,4 @@ Keep mobile Cloudflare upload probes small and treat an upload-only failure as a
 
 **Why:** A real Android/WebView run reached the 1 MB upload endpoint and stopped at the upload phase while earlier measurements were usable.
 
-**How to apply:** Prefer small upload measurements for the Android/WebView speed-test profile, keep completed latency/download results visible, and give the user a clear retryable limitation.
+**How to apply:** Prefer small upload measurements for the Android/WebView speed-test profile, use a bounded same-origin SafeNet upload relay when direct Cloudflare POSTs fail under protection, keep completed latency/download results visible, and give the user a clear retryable limitation.
