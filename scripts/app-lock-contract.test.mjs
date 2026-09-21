@@ -139,6 +139,8 @@ function runWorkflowScript(script, fixture, environment = {}) {
       ...process.env,
       GITHUB_WORKSPACE: fixture.root,
       ANDROID_APP_LOCK_OUTPUT_DIR: "evidence",
+      ANDROID_HOME: fixture.root,
+      ANDROID_SDK_ROOT: fixture.root,
       GITHUB_REF: "refs/tags/v1.0.29",
       GITHUB_SHA: "fixture-sha",
       ...environment,
