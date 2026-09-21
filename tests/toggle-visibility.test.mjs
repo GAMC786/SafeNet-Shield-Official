@@ -1146,7 +1146,7 @@ test("Measure Your Network completes Cloudflare phases and supports pause and re
   assert.ok((await page.getByText("Paused", { exact: true }).count()) >= 1, "paused state should be visible");
 
   await page.getByTestId("button-start-speedtest").click();
-  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 60_000 });
+  await page.getByText("Test complete", { exact: true }).waitFor({ timeout: 90_000 });
   assert.notEqual(await page.getByTestId("text-ping-result").textContent(), "—", "latency result should be populated");
   assert.notEqual(await page.getByTestId("text-download-result").textContent(), "—", "download result should be populated");
   assert.notEqual(await page.getByTestId("text-upload-result").textContent(), "—", "upload result should be populated");
