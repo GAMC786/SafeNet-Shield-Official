@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import {
   chmodSync,
+  symlinkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,6 +93,22 @@ function createRunnerFixture() {
   const evidence = join(root, "evidence");
   mkdirSync(bin);
   mkdirSync(evidence);
+  for (const command of [
+    "awk",
+    "bash",
+    "head",
+    "hostname",
+    "mkdir",
+    "rm",
+    "sed",
+    "sha256sum",
+    "tee",
+    "tr",
+    "uname",
+  ]) {
+    const resolved = execFileSync("which", [command], { encoding: "utf8" }).trim();
+    symlinkSync(resolved, join(bin, command));
+  }
   return { root, bin, evidence };
 }
 
@@ -327,7 +344,7 @@ test("physical LockLock preflight classifies every runner blocker with bounded e
     const result = runWorkflowScript(physicalCheckScript, fixture, {
       PATH:
         scenario.devices === undefined
-          ? scenario.environment.PATH
+          ? fixture.bin
           : `${fixture.bin}:/usr/bin:/bin`,
       ...adbEnvironment,
     });
