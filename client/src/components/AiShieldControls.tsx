@@ -79,6 +79,7 @@ export function AiShieldControls() {
   const screenEnabled = monitoring && activeSource === "screen";
   const protection = shield.protection;
   const protectionIsVerified = protection?.state === "protected";
+  const deepCleerCloudEnabled = shield.deepCleer?.available === true && shield.cloudEnabled;
   const mediaControls = [
     { key: "images", label: "Images", description: "Analyze image frames", icon: ImageIcon },
     { key: "videos", label: "Videos", description: "Analyze video frames", icon: Video },
@@ -305,11 +306,11 @@ export function AiShieldControls() {
               </p>
             </div>
             <Switch
-              checked={shield.cloudEnabled}
+              checked={deepCleerCloudEnabled}
               onCheckedChange={shield.setCloudEnabled}
               disabled={!shield.deepCleer?.available || shield.isBusy || shield.isCloudBusy}
               data-testid="switch-deepcleer-cloud"
-              aria-label={`DeepCleer cloud sharing ${shield.cloudEnabled ? "On" : "Off"}`}
+              aria-label={`DeepCleer cloud sharing ${deepCleerCloudEnabled ? "On" : "Off"}`}
             />
           </div>
 
