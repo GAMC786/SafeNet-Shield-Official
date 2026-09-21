@@ -29,7 +29,7 @@ export function DnsVpnEulaDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            SafeNet DNS VPN agreement
+            SafeNet DNS VPN EULA
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2 text-left text-sm leading-6">
