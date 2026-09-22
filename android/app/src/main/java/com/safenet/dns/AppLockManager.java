@@ -11,6 +11,8 @@ import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
 
+import androidx.biometric.BiometricManager;
+
 import com.getcapacitor.JSObject;
 
 import java.nio.charset.StandardCharsets;
@@ -21,11 +23,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Offline OpenLock-style app protection.
+ * Offline App Lock protection with an Android authentication prompt.
  *
- * OpenLock uses Usage Access plus an overlay instead of Accessibility to
- * observe protected foreground apps. SafeNet stores only salted passcode and
- * recovery hashes and never sends them anywhere.
+ * SafeNet uses Usage Access plus an overlay instead of Accessibility to observe
+ * protected foreground apps. The passcode remains a local fallback and is
+ * never sent anywhere.
  */
 public final class AppLockManager {
     public static final String ACTION_APP_UNLOCKED = "com.safenet.dns.APP_UNLOCKED";
@@ -169,6 +171,29 @@ public final class AppLockManager {
         return isSupported(context) && hasPin(context);
     }
 
+    public static boolean isBiometricAvailable(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false;
+        }
+        return BiometricManager.from(context).canAuthenticate(allowedAuthenticators())
+                == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
+    public static String biometricAvailabilityMessage(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return "Android biometric authentication requires Android 6.0 or newer.";
+        }
+        switch (BiometricManager.from(context).canAuthenticate(allowedAuthenticators())) {
+            case BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE:
+                return "This device has no biometric sensor. Use the SafeNet passcode fallback.";
+            case BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE:
+                return "Android biometric hardware is temporarily unavailable. Use the SafeNet passcode fallback.";
+            case BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED:
+                return "Set up a fingerprint, face, or device credential in Android Settings.";
+            default:
+                return "Android biometric authentication is unavailable. Use the SafeNet passcode fallback.";
+        }
+    }
     public static String availabilityMessage(Context context) {
         if (!isSupported(context)) {
             return "SafeNet App Lock requires Android 7.0 or newer.";
@@ -177,15 +202,18 @@ public final class AppLockManager {
             return "Create an offline passcode to enable SafeNet App Lock.";
         }
         if (!isUsageAccessEnabled(context)) {
-            return "Enable OpenLock Usage Access to monitor protected app launches.";
+            return "Enable App Lock Usage Access to monitor protected app launches.";
         }
         if (!isOverlayPermissionEnabled(context)) {
-            return "Allow OpenLock to display the lock screen over protected apps.";
+            return "Allow App Lock to display the lock screen over protected apps.";
         }
         if (isAntiUninstallEnabled(context) && !isDeviceAdminEnabled(context)) {
-            return "Enable OpenLock Device Administrator in Android Settings for anti-uninstall protection.";
+            return "Enable App Lock Device Administrator in Android Settings for anti-uninstall protection.";
         }
-        return "SafeNet App Lock is ready.";
+        return isBiometricAvailable(context)
+                ? "SafeNet App Lock is ready for Android biometric authentication."
+                : "SafeNet App Lock is ready with a passcode fallback. "
+                        + biometricAvailabilityMessage(context);
     }
 
     public static JSObject status(Context context) {
@@ -197,12 +225,14 @@ public final class AppLockManager {
         boolean overlayEnabled = isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = isDeviceAdminEnabled(context);
         boolean antiUninstall = isAntiUninstallEnabled(context);
+        boolean biometricAvailable = isBiometricAvailable(context);
         boolean bruteForceProtected = getCooldownRemainingMs(context) > 0;
 
         result.put("supported", supported);
         result.put("enabled", enabled);
         result.put("available", supported && configured);
         result.put("configured", configured);
+        result.put("biometricAvailable", biometricAvailable);
         result.put("locked", enabled && !sessionAuthenticated);
         result.put("usageAccessEnabled", usageAccessEnabled);
         result.put("overlayEnabled", overlayEnabled);
@@ -213,10 +243,12 @@ public final class AppLockManager {
                 ? (usageAccessEnabled && overlayEnabled
                     ? (antiUninstall && !deviceAdminEnabled
                         ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
-                        : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
+                        : biometricAvailable
+                            ? "SafeNet App Lock is active. Android biometric authentication is required when SafeNet returns."
+                            : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
                     : !usageAccessEnabled
-                        ? "SafeNet App Lock is enabled. Enable OpenLock Usage Access to monitor protected app launches."
-                        : "SafeNet App Lock is enabled. Allow OpenLock to display the lock screen over protected apps.")
+                        ? "SafeNet App Lock is enabled. Enable App Lock Usage Access to monitor protected app launches."
+                        : "SafeNet App Lock is enabled. Allow App Lock to display the lock screen over protected apps.")
                 : availabilityMessage(context));
         return result;
     }
@@ -344,7 +376,7 @@ public final class AppLockManager {
                 .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent(context))
                 .putExtra(
                         DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        "SafeNet uses OpenLock Device Administrator only to protect SafeNet from unauthorized removal."
+                        "SafeNet uses App Lock Device Administrator only to protect SafeNet from unauthorized removal."
                 );
     }
 
@@ -376,12 +408,21 @@ public final class AppLockManager {
         }
     }
 
+    public static int biometricAuthenticators() {
+        return allowedAuthenticators();
+    }
+
     public static void stopMonitorService(Context context) {
         context.stopService(new Intent(context, OpenLockMonitorService.class));
     }
 
     private static android.content.SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private static int allowedAuthenticators() {
+        return BiometricManager.Authenticators.BIOMETRIC_STRONG
+                | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
     }
 
     private static boolean isValidPin(String pin) {

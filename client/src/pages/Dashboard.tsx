@@ -250,7 +250,7 @@ export default function Dashboard() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                   Offline access protection for SafeNet with OpenLock
+                   Android BiometricPrompt protection with a local passcode fallback
                 </p>
               </div>
             </div>
@@ -271,8 +271,14 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Access method</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Offline passcode</p>
-              <p className="mt-1 text-xs text-muted-foreground">Stored locally on this device</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {appLock.status.biometricAvailable === true ? "Android BiometricPrompt" : "Passcode fallback"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {appLock.status.biometricAvailable === true
+                  ? "Biometric or device credential"
+                  : "Stored locally on this device"}
+              </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Usage Access</p>
@@ -294,7 +300,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
               <p className="mt-1 text-[11px] text-muted-foreground/80">
-                 SafeNet stores only salted local hashes. OpenLock permissions are opt-in Android controls.
+                 SafeNet stores salted local hashes for the passcode fallback on-device. Usage Access, overlay, and Device Administrator permissions remain opt-in Android controls.
               </p>
             </div>
             {appLock.status.enabled && appLock.supported && (

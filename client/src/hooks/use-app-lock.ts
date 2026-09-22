@@ -9,6 +9,7 @@ export interface AppLockStatus {
   available: boolean;
   locked: boolean;
   message: string;
+  biometricAvailable?: boolean;
   configured?: boolean;
   usageAccessEnabled?: boolean;
   overlayEnabled?: boolean;
@@ -34,7 +35,7 @@ export function useAppLock() {
           enabled: false,
           available: false,
           locked: false,
-            message: "Checking OpenLock protection support…",
+            message: "Checking Android biometric protection support…",
         }
       : browserStatus,
   );

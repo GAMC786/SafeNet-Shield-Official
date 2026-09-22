@@ -18,6 +18,7 @@ const readSource = (path) =>
   readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 const [
+  appGradle,
   manager,
   activity,
   service,
@@ -29,6 +30,7 @@ const [
   plugin,
   dashboard,
 ] = await Promise.all([
+  readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockActivity.java"),
   readSource("android/app/src/main/java/com/safenet/dns/OpenLockMonitorService.java"),
@@ -173,14 +175,20 @@ function assertBlockedEvidence(fixture, expectedCategory) {
   return fields;
 }
 
-test("OpenLock stores offline hashes and applies brute-force cooldowns", () => {
-  assert.match(manager, /salted passcode[\s\S]*recovery hashes/);
+test("App Lock keeps a local passcode fallback and uses Android biometric authentication", () => {
+  assert.match(appGradle, /androidx\.biometric:biometric:\$androidxBiometricVersion/);
+  assert.match(manager, /local fallback/);
+  assert.match(manager, /PREF_RECOVERY_HASH/);
   assert.match(manager, /HASH_ROUNDS = 100_000/);
   assert.match(manager, /verifyPin\(Context context, String pin\)/);
   assert.match(manager, /attempts >= 5/);
   assert.match(manager, /PREF_COOLDOWN_UNTIL/);
   assert.match(manager, /verifyRecoveryAnswer/);
-  assert.doesNotMatch(manager, /BiometricPrompt/);
+  assert.match(manager, /BiometricManager/);
+  assert.match(manager, /BIOMETRIC_STRONG/);
+  assert.match(activity, /BiometricPrompt/);
+  assert.match(activity, /onAuthenticationSucceeded/);
+  assert.match(activity, /setAllowedAuthenticators/);
 });
 
 test("OpenLock uses explicit Usage Access, overlay, and Device Admin boundaries", () => {
@@ -196,25 +204,28 @@ test("OpenLock uses explicit Usage Access, overlay, and Device Admin boundaries"
   assert.match(manifest, /QUERY_ALL_PACKAGES/);
 });
 
-test("enabling, disabling, and recovery use the native LockLock activity", () => {
+test("enabling, disabling, recovery, and biometric unlock use the native App Lock activity", () => {
   assert.match(plugin, /MODE_SETUP/);
   assert.match(plugin, /MODE_DISABLE/);
   assert.match(plugin, /startActivityForResult\(call, intent, "appLockActivityResult"\)/);
   assert.match(plugin, /appLockActivityResult/);
-  assert.match(activity, /Save passcode and enable OpenLock/);
+  assert.match(activity, /Save passcode and enable App Lock/);
+  assert.match(activity, /Use Android biometric/);
+  assert.match(activity, /Use passcode fallback/);
   assert.match(activity, /Forgot passcode/);
   assert.match(activity, /verifyRecoveryAnswer/);
   assert.match(activity, /Open Usage Access Settings/);
-  assert.match(activity, /Allow OpenLock Overlay/);
+  assert.match(activity, /Allow App Lock Overlay/);
   assert.match(activity, /Open Device Administrator Settings/);
+  assert.match(manifest, /USE_BIOMETRIC/);
 });
 
-test("the lock surface and dashboard use the SafeNet product label", () => {
+test("the lock surface and dashboard identify Android BiometricPrompt", () => {
   assert.match(nativeView, /SafeNet App Lock/);
-  assert.match(nativeView, /Offline protection for SafeNet/);
+  assert.match(nativeView, /Android BiometricPrompt/);
   assert.match(dashboard, /App Lock Protection/);
-  assert.match(dashboard, /Offline access protection for SafeNet with OpenLock/);
-  assert.match(dashboard, /salted local hashes/);
+  assert.match(dashboard, /Android BiometricPrompt protection/);
+  assert.match(dashboard, /Android BiometricPrompt/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
 

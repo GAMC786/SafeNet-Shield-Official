@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.widget.Toast;
 
 /**
- * OpenLock anti-uninstall administration boundary.
+ * App Lock anti-uninstall administration boundary.
  *
  * The user must explicitly activate this receiver from Android Settings.
  * Device Admin does not grant SafeNet access to credentials or other apps.
@@ -14,7 +14,7 @@ import android.widget.Toast;
 public final class LockLockDeviceAdminReceiver extends DeviceAdminReceiver {
     @Override
     public CharSequence onDisableRequested(Context context, Intent intent) {
-        return "Disabling OpenLock Device Administrator removes SafeNet anti-uninstall protection.";
+        return "Disabling App Lock Device Administrator removes SafeNet anti-uninstall protection.";
     }
 
     @Override

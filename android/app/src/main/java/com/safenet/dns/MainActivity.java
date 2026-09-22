@@ -211,7 +211,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         if (appLockActivityActive) {
-            appLockView.setMessage("The SafeNet passcode screen is already open.");
+            appLockView.setMessage("The SafeNet authentication screen is already open.");
             return;
         }
 
@@ -223,8 +223,8 @@ public class MainActivity extends BridgeActivity {
                 : AppLockManager.MODE_SETUP;
         appLockView.setMessage(
                 AppLockManager.hasPin(this)
-                        ? "Enter your offline SafeNet passcode to continue."
-                        : "Set up your offline SafeNet passcode and Android permissions."
+                        ? "Authenticate with Android BiometricPrompt to continue."
+                        : "Set up App Lock and Android authentication."
         );
         startActivityForResult(
                 new Intent(this, LockLockActivity.class)
@@ -275,7 +275,7 @@ public class MainActivity extends BridgeActivity {
             }
         } else if (appLockView != null && AppLockManager.isEnabled(this)) {
             appLockView.setVisibility(View.VISIBLE);
-            appLockView.setMessage("Enter your OpenLock passcode to continue.");
+            appLockView.setMessage("Authenticate with Android BiometricPrompt to continue.");
         }
     }
 

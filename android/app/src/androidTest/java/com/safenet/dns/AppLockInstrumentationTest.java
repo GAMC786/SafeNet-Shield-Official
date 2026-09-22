@@ -114,20 +114,20 @@ public class AppLockInstrumentationTest {
         List<UiObject2> setupFields = waitForFields(4);
         fill(setupFields.get(0), PIN);
         fill(setupFields.get(1), "0000");
-        scrollToText("Save passcode and enable OpenLock").click();
+        scrollToText("Save passcode and enable App Lock").click();
         assertVisibleText("The passcodes do not match.");
 
         scrollToTop();
         fill(setupFields.get(1), PIN);
-        scrollToText("Save passcode and enable OpenLock").click();
+        scrollToText("Save passcode and enable App Lock").click();
         assertVisibleText("A recovery question and answer are required.");
 
         scrollToTop();
         fill(setupFields.get(2), "What is the recovery answer?");
         fill(setupFields.get(3), "offline answer");
-        scrollToText("Save passcode and enable OpenLock").click();
+        scrollToText("Save passcode and enable App Lock").click();
         assertVisibleText(
-                "Passcode saved. Enable OpenLock Usage Access to monitor SafeNet launches."
+                "Passcode saved. Enable App Lock Usage Access to monitor SafeNet launches."
         );
         assertTrue("Setup must enable OpenLock protection.", AppLockManager.isEnabled(context));
 
@@ -165,7 +165,7 @@ public class AppLockInstrumentationTest {
         List<UiObject2> disableFields = waitForFields(1);
         fill(disableFields.get(0), RESET_PIN);
         scrollToText("Disable protection").click();
-        assertVisibleText("OpenLock protection disabled.");
+        assertVisibleText("App Lock protection disabled.");
         waitForActivityToFinish(disableActivity);
         assertFalse("Disable flow must turn off OpenLock protection.",
                 AppLockManager.isEnabled(context));
@@ -237,7 +237,7 @@ public class AppLockInstrumentationTest {
 
         enableOpenLockPermissions();
         waitFor(
-                "OpenLock Usage Access and overlay permissions to become enabled",
+                "App Lock Usage Access and overlay permissions to become enabled",
                 () -> AppLockManager.isUsageAccessEnabled(context)
                         && AppLockManager.isOverlayPermissionEnabled(context)
         );
@@ -307,7 +307,7 @@ public class AppLockInstrumentationTest {
         boolean overlayEnabled = AppLockManager.isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = AppLockManager.isDeviceAdminEnabled(context);
         assertTrue(
-                "Enable OpenLock Usage Access before this physical check.",
+                "Enable App Lock Usage Access before this physical check.",
                 usageAccessEnabled
         );
         assertTrue(
@@ -327,7 +327,7 @@ public class AppLockInstrumentationTest {
             shell("am force-stop " + targetPackage);
             shell("am start -W -n " + launchComponent.flattenToShortString());
             waitForLockActivity();
-            waitForButton("Unlock SafeNet");
+            waitForButton("Use passcode fallback");
             Log.i(
                     TAG,
                     "LOCKLOCK_PHYSICAL_APP cycle=" + (cycle + 1) +
@@ -346,7 +346,7 @@ public class AppLockInstrumentationTest {
         AppLockManager.clearSession();
         unlockCurrentLockScreen(PIN);
         waitFor(
-                "the selected app to resume after entering the LockLock passcode",
+                "the selected app to resume after entering the App Lock passcode fallback",
                 () -> isForegroundPackage(targetPackage)
         );
         assertFalse(
@@ -362,7 +362,7 @@ public class AppLockInstrumentationTest {
 
         launchSafeNet();
         waitForLockActivity();
-        waitForButton("Unlock SafeNet");
+        waitForButton("Use passcode fallback");
         assertTrue(
                 "Launching unrelated protected SafeNet must show LockLock after the selected "
                         + "app was temporarily unlocked.",
@@ -390,10 +390,10 @@ public class AppLockInstrumentationTest {
                 .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, context.getPackageName());
         Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
         waitForButton(AppLockManager.MODE_SETUP.equals(mode)
-                ? "Save passcode and enable OpenLock"
+                ? "Save passcode and enable App Lock"
                 : AppLockManager.MODE_DISABLE.equals(mode)
-                    ? "Disable protection"
-                    : "Unlock SafeNet");
+                    ? "Disable with passcode"
+                    : "Use passcode fallback");
         assertVisibleText(
                 AppLockManager.MODE_DISABLE.equals(mode)
                         ? "Disable SafeNet App Lock"
@@ -583,7 +583,7 @@ public class AppLockInstrumentationTest {
     private void unlockCurrentLockScreen(String pin) throws Exception {
         List<UiObject2> fields = waitForFields(1);
         fill(fields.get(0), pin);
-        waitForButton("Unlock SafeNet").click();
+        waitForButton("Use passcode fallback").click();
         waitFor(
                 "LockLockActivity to finish after a valid passcode",
                 () -> !shell("dumpsys activity activities")

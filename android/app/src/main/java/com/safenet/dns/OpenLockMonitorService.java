@@ -17,11 +17,11 @@ import android.os.IBinder;
 import android.os.Looper;
 
 /**
- * OpenLock-style foreground monitor.
+ * App Lock foreground monitor.
  *
- * OpenLock uses Usage Access plus an overlay instead of an Accessibility
- * service. This native monitor follows the same boundary while keeping
- * SafeNet's existing local PIN and recovery storage.
+ * SafeNet uses Usage Access plus an overlay instead of an Accessibility
+ * service. This native monitor keeps the selected-app protection boundary
+ * while the native authentication surface uses Android BiometricPrompt.
  */
 public final class OpenLockMonitorService extends Service {
     private static final String CHANNEL_ID = "safenet_openlock_monitor";
@@ -115,7 +115,7 @@ public final class OpenLockMonitorService extends Service {
         }
 
         if (current.equals(lastForegroundPackage)) {
-            // Keep the OpenLock-style debounce stable while the same app stays
+                // Keep the App Lock debounce stable while the same app stays
             // in the foreground.
         }
         lastForegroundPackage = current;
@@ -172,7 +172,7 @@ public final class OpenLockMonitorService extends Service {
                     "App lock protection",
                     NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("Shown while OpenLock protects selected apps.");
+            channel.setDescription("Shown while SafeNet App Lock protects selected apps.");
             channel.setShowBadge(false);
             manager.createNotificationChannel(channel);
         }
@@ -189,7 +189,7 @@ public final class OpenLockMonitorService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
-        builder.setContentTitle("OpenLock is protecting your apps")
+        builder.setContentTitle("SafeNet App Lock is protecting your apps")
                 .setContentText("Locked apps stay behind your SafeNet passcode.")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setOngoing(true);

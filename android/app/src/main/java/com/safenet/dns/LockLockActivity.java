@@ -17,6 +17,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
+
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ResolveInfo;
 
@@ -24,14 +28,16 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
 /**
- * Offline OpenLock-compatible passcode surface.
+ * Native App Lock authentication surface.
  *
  * The screen is intentionally native and opaque while the WebView or another
- * protected launch is blocked. Passcodes and recovery answers stay local.
+ * protected launch is blocked. BiometricPrompt is primary; passcodes and
+ * recovery answers stay local as a fallback.
  */
-public final class LockLockActivity extends Activity {
+public final class LockLockActivity extends FragmentActivity {
     private static final int RESULT_LOCKLOCK_SUCCESS = Activity.RESULT_OK;
     private static final int PADDING_DP = 24;
     private String mode;
@@ -41,6 +47,8 @@ public final class LockLockActivity extends Activity {
     private boolean setupSaved;
     private CheckBox antiUninstallCheck;
     private LinearLayout appList;
+    private BiometricPrompt biometricPrompt;
+    private boolean biometricPromptActive;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,6 +66,7 @@ public final class LockLockActivity extends Activity {
             showSetup();
         } else {
             showUnlock();
+            content.post(this::launchBiometricPrompt);
         }
     }
 
@@ -72,7 +81,7 @@ public final class LockLockActivity extends Activity {
     private void showSetup() {
         content = baseContent(
                 "SafeNet App Lock",
-                "Create an offline passcode for SafeNet. OpenLock never sends your passcode or recovery answer anywhere."
+                "Create an offline passcode fallback for SafeNet. Android BiometricPrompt will be used first when available."
         );
 
         EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
@@ -88,7 +97,7 @@ public final class LockLockActivity extends Activity {
         TextView protectedAppsLabel = SafeNetLockBrand.eyebrow(this, "PROTECTED APPS");
         content.addView(protectedAppsLabel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
         TextView protectedAppsHelp = bodyText(
-                "SafeNet is always protected. Select any other launchable apps that should use the same offline passcode."
+                "SafeNet is always protected. Select other launchable apps that should use the same Android authentication and local fallback."
         );
         content.addView(protectedAppsHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 4));
         appList = new LinearLayout(this);
@@ -103,7 +112,7 @@ public final class LockLockActivity extends Activity {
         content.addView(appList, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 6));
         loadProtectedApps();
 
-        Button save = primaryButton("Save passcode and enable OpenLock");
+        Button save = primaryButton("Save passcode and enable App Lock");
         content.addView(save, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
         statusView = bodyText("");
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
@@ -112,7 +121,7 @@ public final class LockLockActivity extends Activity {
         usageAccess.setOnClickListener(view -> startActivity(AppLockManager.usageAccessSettingsIntent()));
         content.addView(usageAccess, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
 
-        Button overlay = secondaryButton("Allow OpenLock Overlay");
+        Button overlay = secondaryButton("Allow App Lock Overlay");
         overlay.setOnClickListener(view -> startActivity(AppLockManager.overlayPermissionIntent(this)));
         content.addView(overlay, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
 
@@ -206,15 +215,15 @@ public final class LockLockActivity extends Activity {
         boolean adminNeeded = AppLockManager.isAntiUninstallEnabled(this);
         boolean adminEnabled = AppLockManager.isDeviceAdminEnabled(this);
         if (!usageAccessEnabled) {
-            showStatus("Passcode saved. Enable OpenLock Usage Access to monitor SafeNet launches.");
+            showStatus("Passcode saved. Enable App Lock Usage Access to monitor SafeNet launches.");
             return;
         }
         if (!overlayEnabled) {
-            showStatus("Usage Access is enabled. Allow OpenLock to display the lock screen over protected apps.");
+            showStatus("Usage Access is enabled. Allow App Lock to display the lock screen over protected apps.");
             return;
         }
         if (adminNeeded && !adminEnabled) {
-            showStatus("OpenLock permissions are enabled. Activate Device Administrator to protect SafeNet from removal.");
+            showStatus("App Lock permissions are enabled. Activate Device Administrator to protect SafeNet from removal.");
             return;
         }
         AppLockManager.startMonitorServiceIfReady(this);
@@ -226,20 +235,23 @@ public final class LockLockActivity extends Activity {
                 ? "Disable SafeNet App Lock"
                 : "SafeNet App Lock";
         String description = AppLockManager.MODE_DISABLE.equals(mode)
-                ? "Enter your offline passcode to disable SafeNet protection."
-                : "Enter your offline passcode to continue. Repeated failures trigger a cooldown.";
+                ? "Authenticate with Android BiometricPrompt or the offline passcode fallback to disable SafeNet protection."
+                : "Android BiometricPrompt will authenticate you first. Use the offline passcode fallback if needed.";
         content = baseContent(title, description);
-        EditText pin = field("Passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        Button unlock = primaryButton(
-                AppLockManager.MODE_DISABLE.equals(mode) ? "Disable protection" : "Unlock SafeNet"
+        Button biometric = primaryButton("Use Android biometric");
+        content.addView(biometric, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
+        EditText pin = field("Fallback passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        Button unlock = secondaryButton(
+                AppLockManager.MODE_DISABLE.equals(mode) ? "Disable with passcode" : "Use passcode fallback"
         );
-        content.addView(unlock, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
+        content.addView(unlock, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
         statusView = statusText();
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
         Button forgot = secondaryButton("Forgot passcode");
         forgot.setOnClickListener(view -> showRecovery());
         content.addView(forgot, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
 
+        biometric.setOnClickListener(view -> launchBiometricPrompt());
         unlock.setOnClickListener(view -> {
             AppLockManager.PinResult result =
                     AppLockManager.verifyPin(this, pin.getText().toString());
@@ -248,30 +260,82 @@ public final class LockLockActivity extends Activity {
                 pin.setText("");
                 return;
             }
-            if (AppLockManager.MODE_DISABLE.equals(mode)) {
-                AppLockManager.setEnabled(this, false);
-                AppLockManager.setAntiUninstallEnabled(this, false);
-                Toast.makeText(this, "OpenLock protection disabled.", Toast.LENGTH_SHORT).show();
-            } else if ("enable".equals(mode)) {
-                AppLockManager.setEnabled(this, true);
-                AppLockManager.markAuthenticated();
-            } else {
-                AppLockManager.markAuthenticated();
-                AppLockManager.allowTemporaryUnlock(this, lockedPackage);
-            }
-            if (getIntent().getBooleanExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, false)) {
-                try {
-                    startActivity(
-                        new Intent("android.settings.PRIVATE_DNS_SETTINGS")
-                    );
-                } catch (RuntimeException ignored) {
-                    // The tile's settings fallback is handled by the system
-                    // when Private DNS settings are unavailable.
-                }
-            }
-            finishSuccess();
+            completeAuthentication();
         });
         setContentView(scrollRoot(content));
+    }
+
+    private void launchBiometricPrompt() {
+        if (biometricPromptActive) {
+            return;
+        }
+        if (!AppLockManager.isBiometricAvailable(this)) {
+            showStatus(AppLockManager.biometricAvailabilityMessage(this)
+                    + " Use the passcode fallback below.");
+            return;
+        }
+
+        Executor executor = ContextCompat.getMainExecutor(this);
+        biometricPromptActive = true;
+        biometricPrompt = new BiometricPrompt(
+                this,
+                executor,
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(
+                            BiometricPrompt.AuthenticationResult result
+                    ) {
+                        biometricPromptActive = false;
+                        completeAuthentication();
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        showStatus("Android biometric not recognized. Try again or use the passcode fallback.");
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode, CharSequence errString) {
+                        biometricPromptActive = false;
+                        showStatus("Android authentication ended. "
+                                + "Use the passcode fallback if you cannot authenticate.");
+                    }
+                }
+        );
+        biometricPrompt.authenticate(
+                new BiometricPrompt.PromptInfo.Builder()
+                        .setTitle(
+                                AppLockManager.MODE_DISABLE.equals(mode)
+                                        ? "Disable SafeNet App Lock"
+                                        : "Unlock SafeNet App Lock"
+                        )
+                        .setSubtitle("Android BiometricPrompt")
+                        .setDescription("Use your enrolled biometric or Android device credential.")
+                        .setAllowedAuthenticators(AppLockManager.biometricAuthenticators())
+                        .build()
+        );
+    }
+
+    private void completeAuthentication() {
+        if (AppLockManager.MODE_DISABLE.equals(mode)) {
+            AppLockManager.setEnabled(this, false);
+            AppLockManager.setAntiUninstallEnabled(this, false);
+            Toast.makeText(this, "App Lock protection disabled.", Toast.LENGTH_SHORT).show();
+        } else if ("enable".equals(mode)) {
+            AppLockManager.setEnabled(this, true);
+            AppLockManager.markAuthenticated();
+        } else {
+            AppLockManager.markAuthenticated();
+            AppLockManager.allowTemporaryUnlock(this, lockedPackage);
+        }
+        if (getIntent().getBooleanExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, false)) {
+            try {
+                startActivity(new Intent("android.settings.PRIVATE_DNS_SETTINGS"));
+            } catch (RuntimeException ignored) {
+                // The tile's settings fallback is handled by the system.
+            }
+        }
+        finishSuccess();
     }
 
     private void showRecovery() {
@@ -485,6 +549,6 @@ public final class LockLockActivity extends Activity {
             super.onBackPressed();
             return;
         }
-        Toast.makeText(this, "Enter your passcode to continue.", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Use Android biometric or the passcode fallback to continue.", Toast.LENGTH_SHORT).show();
     }
 }
