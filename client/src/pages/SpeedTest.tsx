@@ -353,7 +353,9 @@ export default function SpeedTest() {
     speedTest.onError = (message) => {
       if (runId !== runIdRef.current || pausedRef.current) return;
       const uploadMeasurement = /upload|__up(?:\?|$)/i.test(message);
-      const partialMeasurement = uploadMeasurement || /packet loss|turn|ice|credential/i.test(message);
+      const packetLossMeasurement = /packet loss/i.test(message);
+      const networkQualityMeasurement = packetLossMeasurement || /turn|ice|credential/i.test(message);
+      const partialMeasurement = uploadMeasurement || networkQualityMeasurement;
       if (uploadMeasurement && isAndroidApp) {
         void finishSpeedTest(cloudflareResultsToSpeedResults(speedTest.results));
         return;
@@ -361,7 +363,9 @@ export default function SpeedTest() {
       const userMessage = partialMeasurement
         ? uploadMeasurement
           ? "The upload probe was unavailable; latency and download results are still available."
-          : "Packet-loss measurement was unavailable; latency and throughput results will still be reported."
+          : packetLossMeasurement
+            ? "The packet-loss probe was unavailable; latency and throughput results will still be reported."
+            : "A network-quality probe was unavailable; latency and throughput results will still be reported."
         : message;
       setError(userMessage);
       if (partialMeasurement) {
