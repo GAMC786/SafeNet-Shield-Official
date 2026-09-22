@@ -86,3 +86,4 @@
 - [LockLock app protection boundary](androidx-secure-app-lock.md) — offline selected-app locking uses explicit Accessibility/Device Admin opt-ins, salted hashes, recovery, and brute-force cooldowns.
 - [Release completion signal](android-release-completion-signal.md) — trust the release and post-publication verification jobs plus the GitHub Release assets; optional queued validation jobs can leave the overall run queued.
 - [Android resource cleanup](android-resource-cleanup.md) — removing a native component must remove its obsolete resources; hosted AAPT can reject stale string entries during release builds.
+- [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
