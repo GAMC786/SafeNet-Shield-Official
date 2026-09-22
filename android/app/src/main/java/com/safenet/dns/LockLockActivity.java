@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -19,6 +20,10 @@ import android.widget.Toast;
 
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.FragmentActivity;
 
 import android.content.pm.ApplicationInfo;
@@ -54,6 +59,7 @@ public final class LockLockActivity extends FragmentActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(SafeNetLockBrand.BACKGROUND);
         window.setNavigationBarColor(SafeNetLockBrand.BACKGROUND);
         mode = getIntent().getStringExtra(AppLockManager.EXTRA_MODE);
@@ -183,6 +189,12 @@ public final class LockLockActivity extends FragmentActivity {
             }
             CheckBox appCheck = new CheckBox(this);
             appCheck.setText(applicationInfo.loadLabel(getPackageManager()));
+            Drawable appIcon = applicationInfo.loadIcon(getPackageManager());
+            int iconSize = dp(24);
+            appIcon.setBounds(0, 0, iconSize, iconSize);
+            appCheck.setCompoundDrawablesRelative(appIcon, null, null, null);
+            appCheck.setCompoundDrawablePadding(dp(8));
+            appCheck.setGravity(Gravity.CENTER_VERTICAL);
             SafeNetLockBrand.styleCheckBox(appCheck);
             appCheck.setTag(applicationInfo.packageName);
             appCheck.setChecked(selected.contains(applicationInfo.packageName));
@@ -518,6 +530,15 @@ public final class LockLockActivity extends FragmentActivity {
         scrollView.setBackgroundColor(SafeNetLockBrand.BACKGROUND);
         scrollView.setClipToPadding(false);
         scrollView.addView(child);
+        ViewCompat.setOnApplyWindowInsetsListener(scrollView, (view, insets) -> {
+            Insets systemBars = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars()
+                            | WindowInsetsCompat.Type.displayCutout()
+            );
+            view.setPadding(0, systemBars.top, 0, systemBars.bottom);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(scrollView);
         return scrollView;
     }
 

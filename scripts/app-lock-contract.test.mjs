@@ -223,6 +223,14 @@ test("enabling, disabling, recovery, and biometric unlock use the native App Loc
   assert.match(manifest, /USE_BIOMETRIC/);
 });
 
+test("App Lock setup respects system bars and shows launcher icons beside app checks", () => {
+  assert.match(activity, /WindowCompat\.setDecorFitsSystemWindows\(window, false\)/);
+  assert.match(activity, /ViewCompat\.setOnApplyWindowInsetsListener\(scrollView/);
+  assert.match(activity, /WindowInsetsCompat\.Type\.systemBars\(\)/);
+  assert.match(activity, /applicationInfo\.loadIcon\(getPackageManager\(\)\)/);
+  assert.match(activity, /setCompoundDrawablesRelative\(appIcon, null, null, null\)/);
+});
+
 test("the lock surface and dashboard identify Android BiometricPrompt", () => {
   assert.match(nativeView, /SafeNet App Lock/);
   assert.match(nativeView, /Android BiometricPrompt/);
