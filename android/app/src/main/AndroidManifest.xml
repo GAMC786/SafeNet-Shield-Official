@@ -61,13 +61,6 @@
             android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBarLaunch" />
 
-        <activity
-            android:name=".VpnProxyBrowserBlockerActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:theme="@style/AppTheme.NoActionBarLaunch" />
-
         <service
             android:name=".LockLockAccessibilityService"
             android:description="@string/locklock_accessibility_description"

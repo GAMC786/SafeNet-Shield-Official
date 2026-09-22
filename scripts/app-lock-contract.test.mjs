@@ -215,6 +215,13 @@ test("the lock surface and dashboard use the SafeNet product label", () => {
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
 
+test("VPN and proxy browser blocking is removed from the Android surface", () => {
+  assert.doesNotMatch(plugin, /VpnProxyBrowserBlocker/);
+  assert.doesNotMatch(service, /VpnProxyBrowserBlocker/);
+  assert.doesNotMatch(manifest, /VpnProxyBrowserBlocker/);
+  assert.doesNotMatch(dashboard, /VPN &amp; Proxy Browser Blocker/);
+});
+
 test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {
   for (const marker of [
     "setupRecoveryCooldownResetAndDisabledAdminStatus",

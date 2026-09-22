@@ -411,9 +411,9 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
 test("the Dashboard exposes only the Android Private DNS control", () => {
   assert.match(dashboardSource, /SafeNet Private DNS/);
   assert.match(dashboardSource, /switch-safe-net-private-dns/);
-  assert.match(dashboardSource, /VPN &amp; Proxy Browser Blocker/);
-  assert.match(dashboardSource, /switch-vpn-proxy-browser-blocker/);
-  assert.match(dashboardSource, /button-configure-vpn-proxy-browser-blocker/);
+  assert.doesNotMatch(dashboardSource, /VPN &amp; Proxy Browser Blocker/);
+  assert.doesNotMatch(dashboardSource, /switch-vpn-proxy-browser-blocker/);
+  assert.doesNotMatch(dashboardSource, /button-configure-vpn-proxy-browser-blocker/);
   assert.match(dashboardSource, /<Switch[\s\S]*?switch-safe-net-private-dns/);
   assert.match(
     dashboardSource,
