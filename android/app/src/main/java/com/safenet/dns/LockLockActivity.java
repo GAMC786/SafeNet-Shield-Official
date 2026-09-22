@@ -17,6 +17,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.CookieManager;
 
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
@@ -29,11 +30,24 @@ import androidx.fragment.app.FragmentActivity;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ResolveInfo;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Native App Lock authentication surface.
@@ -54,6 +68,7 @@ public final class LockLockActivity extends FragmentActivity {
     private LinearLayout appList;
     private BiometricPrompt biometricPrompt;
     private boolean biometricPromptActive;
+    private final ExecutorService recoveryExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,6 +109,11 @@ public final class LockLockActivity extends FragmentActivity {
         EditText confirm = field("Confirm passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         EditText question = field("Recovery question", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         EditText answer = field("Recovery answer", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        TextView emailRecoveryHelp = bodyText(
+                "After setup, Email-assisted recovery can send a one-time code to your verified "
+                        + "SafeNet account email. It resets the local passcode only and never unlocks App Lock by itself."
+        );
+        content.addView(emailRecoveryHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 2));
         antiUninstallCheck = new CheckBox(this);
         antiUninstallCheck.setText("Enable anti-uninstall protection");
         SafeNetLockBrand.styleCheckBox(antiUninstallCheck);
@@ -369,6 +389,14 @@ public final class LockLockActivity extends FragmentActivity {
         content.addView(reset, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
         statusView = statusText();
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
+        TextView emailHelp = bodyText(
+                "Need another option? Use your verified SafeNet account email to reset the local passcode. "
+                        + "Email recovery does not unlock App Lock by itself."
+        );
+        content.addView(emailHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
+        Button emailRecovery = secondaryButton("Email-assisted recovery");
+        emailRecovery.setOnClickListener(view -> showEmailRecovery());
+        content.addView(emailRecovery, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
         Button back = secondaryButton("Back to passcode");
         back.setOnClickListener(view -> showUnlock());
         content.addView(back, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
@@ -398,6 +426,199 @@ public final class LockLockActivity extends FragmentActivity {
                 showStatus(error.getMessage());
             }
         });
+    }
+
+    private void showEmailRecovery() {
+        content.removeAllViews();
+        addHeading(
+                content,
+                "Email-assisted recovery",
+                "Request a one-time code at your verified SafeNet account email, then reset the local passcode."
+        );
+        TextView warning = bodyText(
+                "This process resets the passcode only. You must still authenticate with Android biometric "
+                        + "or the new passcode afterward."
+        );
+        content.addView(warning, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
+
+        Button requestCode = secondaryButton("Send recovery code");
+        content.addView(requestCode, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        EditText code = field("Six-digit email recovery code", InputType.TYPE_CLASS_NUMBER);
+        EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        EditText confirm = field(
+                "Confirm new passcode",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        );
+        Button reset = primaryButton("Verify code and reset passcode");
+        content.addView(reset, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
+        statusView = statusText();
+        content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
+        Button back = secondaryButton("Back to passcode recovery");
+        back.setOnClickListener(view -> showRecovery());
+        content.addView(back, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+
+        requestCode.setOnClickListener(view -> {
+            requestCode.setEnabled(false);
+            showStatus("Requesting a one-time recovery code…");
+            recoveryExecutor.execute(() -> {
+                RecoveryResponse response = postRecovery(
+                        "/api/app-lock/recovery/request",
+                        new JSONObject()
+                );
+                runOnUiThread(() -> {
+                    requestCode.setEnabled(true);
+                    showStatus(response.message);
+                });
+            });
+        });
+
+        reset.setOnClickListener(view -> {
+            String codeValue = code.getText().toString().trim();
+            String pinValue = pin.getText().toString();
+            if (!codeValue.matches("\\d{6}")) {
+                showStatus("Enter the six-digit recovery code from your email.");
+                return;
+            }
+            if (!pinValue.equals(confirm.getText().toString())) {
+                showStatus("The new passcodes do not match.");
+                return;
+            }
+            reset.setEnabled(false);
+            showStatus("Verifying the recovery code…");
+            recoveryExecutor.execute(() -> {
+                JSONObject payload = new JSONObject();
+                try {
+                    payload.put("code", codeValue);
+                } catch (Exception ignored) {
+                    // The literal code value cannot fail JSONObject encoding.
+                }
+                RecoveryResponse response = postRecovery(
+                        "/api/app-lock/recovery/verify",
+                        payload
+                );
+                runOnUiThread(() -> {
+                    reset.setEnabled(true);
+                    if (!response.success) {
+                        showStatus(response.message);
+                        return;
+                    }
+                    try {
+                        AppLockManager.resetPin(this, pinValue);
+                        AppLockManager.clearSession();
+                        showUnlock();
+                        showStatus("Passcode reset. Authenticate with Android biometric or the new passcode to continue.");
+                    } catch (IllegalArgumentException error) {
+                        showStatus(error.getMessage());
+                    }
+                });
+            });
+        });
+    }
+
+    private RecoveryResponse postRecovery(String path, JSONObject payload) {
+        HttpURLConnection connection = null;
+        try {
+            String apiOrigin = getConfigApiOrigin();
+            if (apiOrigin.isEmpty()) {
+                return RecoveryResponse.failure("Email-assisted recovery is unavailable in this build.");
+            }
+            URI origin = URI.create(apiOrigin);
+            if (!"https".equalsIgnoreCase(origin.getScheme())
+                    || origin.getHost() == null
+                    || (origin.getRawPath() != null
+                    && !origin.getRawPath().isEmpty()
+                    && !"/".equals(origin.getRawPath()))
+                    || origin.getRawQuery() != null
+                    || origin.getRawFragment() != null) {
+                return RecoveryResponse.failure("SafeNet account recovery is unavailable.");
+            }
+            URL endpoint = new URL(apiOrigin.replaceAll("/+$", "") + path);
+            connection = (HttpURLConnection) endpoint.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(7000);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Origin", "https://localhost");
+            String cookie = CookieManager.getInstance().getCookie(apiOrigin);
+            if (cookie != null && !cookie.trim().isEmpty()) {
+                connection.setRequestProperty("Cookie", cookie);
+            }
+            byte[] requestBody = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(requestBody);
+            }
+            int responseCode = connection.getResponseCode();
+            InputStream responseStream = responseCode >= 400
+                    ? connection.getErrorStream()
+                    : connection.getInputStream();
+            String responseBody = readResponse(responseStream);
+            String message = new JSONObject(responseBody).optString(
+                    "message",
+                    responseCode >= 400
+                            ? "Email-assisted recovery could not be completed."
+                            : "Recovery email sent."
+            );
+            return new RecoveryResponse(responseCode >= 200 && responseCode < 300, message);
+        } catch (Exception error) {
+            return RecoveryResponse.failure(
+                    "Email-assisted recovery could not reach the SafeNet account service."
+            );
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String readResponse(InputStream input) {
+        if (input == null) {
+            return "";
+        }
+        StringBuilder response = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                input,
+                StandardCharsets.UTF_8
+        ))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line);
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+        return response.toString();
+    }
+
+    private String getConfigApiOrigin() {
+        try (InputStream input = getAssets().open("public/mobile-build.json");
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = input.read(buffer)) != -1) {
+                output.write(buffer, 0, length);
+            }
+            return new JSONObject(output.toString(StandardCharsets.UTF_8.name()))
+                    .optString("apiOrigin", "")
+                    .trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static final class RecoveryResponse {
+        private final boolean success;
+        private final String message;
+
+        private RecoveryResponse(boolean success, String message) {
+            this.success = success;
+            this.message = message;
+        }
+
+        private static RecoveryResponse failure(String message) {
+            return new RecoveryResponse(false, message);
+        }
     }
 
     private LinearLayout baseContent(String title, String description) {
@@ -577,5 +798,11 @@ public final class LockLockActivity extends FragmentActivity {
             return;
         }
         Toast.makeText(this, "Use Android biometric or the passcode fallback to continue.", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        recoveryExecutor.shutdownNow();
+        super.onDestroy();
     }
 }

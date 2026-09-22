@@ -29,6 +29,7 @@ const [
   nativeView,
   plugin,
   dashboard,
+  recoveryService,
 ] = await Promise.all([
   readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
@@ -43,6 +44,7 @@ const [
   readSource("android/app/src/main/java/com/safenet/dns/NativeAppLockView.java"),
   readSource("android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java"),
   readSource("client/src/pages/Dashboard.tsx"),
+  readSource("server/app-lock-recovery.ts"),
 ]);
 
 const repositoryRoot = new URL("..", import.meta.url);
@@ -229,6 +231,21 @@ test("App Lock setup respects system bars and shows launcher icons beside app ch
   assert.match(activity, /WindowInsetsCompat\.Type\.systemBars\(\)/);
   assert.match(activity, /applicationInfo\.loadIcon\(getPackageManager\(\)\)/);
   assert.match(activity, /setCompoundDrawablesRelative\(appIcon, null, null, null\)/);
+});
+
+test("email-assisted App Lock recovery resets locally without unlocking directly", () => {
+  assert.match(activity, /Email-assisted recovery/);
+  assert.match(activity, /\/api\/app-lock\/recovery\/request/);
+  assert.match(activity, /\/api\/app-lock\/recovery\/verify/);
+  assert.match(activity, /AppLockManager\.resetPin\(this, pinValue\)/);
+  assert.match(activity, /AppLockManager\.clearSession\(\)/);
+  assert.match(activity, /showUnlock\(\)/);
+  assert.match(manager, /public static void resetPin\(Context context, String pin\)/);
+  assert.match(manager, /Passcode must contain 4 to 12 digits/);
+  assert.match(recoveryService, /CODE_TTL_MS = 10 \* 60 \* 1000/);
+  assert.match(recoveryService, /MAX_ATTEMPTS = 5/);
+  assert.match(recoveryService, /clerkClient\(\)\.emails\.create/);
+  assert.match(recoveryService, /to: \{ userId \}/);
 });
 
 test("the lock surface and dashboard identify Android BiometricPrompt", () => {

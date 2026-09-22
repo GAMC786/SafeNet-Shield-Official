@@ -7,7 +7,7 @@ export function getRequestUserId(req: Request): string | null {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!getRequestUserId(req)) {
-    return res.status(401).json({ message: "Sign in is required for billing actions." });
+    return res.status(401).json({ message: "Sign in is required to continue." });
   }
   return next();
 }

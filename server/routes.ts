@@ -31,6 +31,11 @@ import {
   lookupCallReputation,
   reportCall,
 } from "./call-reputation";
+import { getRequestUserId, requireAuth } from "./auth";
+import {
+  requestAppLockEmailRecovery,
+  verifyAppLockEmailRecovery,
+} from "./app-lock-recovery";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -405,6 +410,42 @@ export async function registerRoutes(
       res.json(publicSettings(settings));
     } catch (err) {
       throw err;
+    }
+  });
+
+  app.post("/api/app-lock/recovery/request", requireAuth, async (req, res) => {
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Sign in is required to request App Lock recovery." });
+    }
+    try {
+      const result = await requestAppLockEmailRecovery(userId);
+      return res.status(result.sent ? 200 : 429).json(result);
+    } catch (error) {
+      console.error("App Lock email recovery request failed:", error);
+      return res.status(503).json({
+        message: "Email-assisted App Lock recovery is temporarily unavailable.",
+      });
+    }
+  });
+
+  app.post("/api/app-lock/recovery/verify", requireAuth, async (req, res) => {
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Sign in is required to verify App Lock recovery." });
+    }
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: "Enter the six-digit recovery code from your email." });
+    }
+    try {
+      const result = await verifyAppLockEmailRecovery(userId, code);
+      return res.status(result.verified ? 200 : 400).json(result);
+    } catch (error) {
+      console.error("App Lock email recovery verification failed:", error);
+      return res.status(503).json({
+        message: "Email-assisted App Lock recovery is temporarily unavailable.",
+      });
     }
   });
 

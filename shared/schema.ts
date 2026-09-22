@@ -71,6 +71,16 @@ export const appSettings = pgTable("app_settings", {
   theme: text("theme").default("red-gray-blue"),
 });
 
+export const appLockRecoveryChallenges = pgTable("app_lock_recovery_challenges", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+});
+
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
@@ -223,6 +233,8 @@ export type InsertAccessLog = z.infer<typeof insertAccessLogSchema>;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type PublicAppSettings = z.infer<typeof publicAppSettingsSchema>;
 export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
+
+export type AppLockRecoveryChallenge = typeof appLockRecoveryChallenges.$inferSelect;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;

@@ -293,6 +293,20 @@ public final class AppLockManager {
                 .apply();
     }
 
+    public static void resetPin(Context context, String pin) {
+        if (!isValidPin(pin)) {
+            throw new IllegalArgumentException("Passcode must contain 4 to 12 digits.");
+        }
+        byte[] pinSalt = randomBytes();
+        prefs(context).edit()
+                .putString(PREF_PIN_SALT, encode(pinSalt))
+                .putString(PREF_PIN_HASH, encode(hash(pin, pinSalt)))
+                .remove(PREF_FAILED_ATTEMPTS)
+                .remove(PREF_COOLDOWN_UNTIL)
+                .remove(PREF_COOLDOWN_LEVEL)
+                .apply();
+    }
+
     public static String recoveryQuestion(Context context) {
         return prefs(context).getString(
                 PREF_RECOVERY_QUESTION,

@@ -27,6 +27,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.0.0",
+    "@clerk/backend": "^3.18.1",
     "@clerk/express": "^2.1.69",
     "@clerk/react": "^6.16.1",
     "@clerk/shared": "^4.33.0",
