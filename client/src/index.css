@@ -31,6 +31,7 @@
 
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
+  --safenet-status-bar-inset: env(safe-area-inset-top, 0px);
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Rajdhani', sans-serif;
   --font-mono: 'Space Mono', monospace;
@@ -125,6 +126,21 @@
 }
 
 @layer utilities {
+  .safenet-system-navigation {
+    top: var(--safenet-status-bar-inset);
+    height: calc(5rem + var(--safenet-status-bar-inset));
+  }
+
+  .safenet-main-content {
+    padding-top: calc(6rem + var(--safenet-status-bar-inset)) !important;
+  }
+
+  @media (min-width: 640px) {
+    .safenet-main-content {
+      padding-top: calc(7rem + var(--safenet-status-bar-inset)) !important;
+    }
+  }
+
   .text-shadow-glow {
     text-shadow: 0 0 20px hsl(var(--primary) / 0.5);
   }

@@ -115,9 +115,20 @@ public class MainActivity extends BridgeActivity {
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
             );
             target.setPadding(0, systemBars.top, 0, systemBars.bottom);
+            if (target instanceof WebView) {
+                setWebViewStatusBarInset((WebView) target, systemBars.top);
+            }
             return insets;
         });
         ViewCompat.requestApplyInsets(view);
+    }
+
+    private void setWebViewStatusBarInset(WebView webView, int topInset) {
+        webView.evaluateJavascript(
+                "(function(){document.documentElement.style.setProperty(" +
+                        "'--safenet-status-bar-inset','" + topInset + "px');})();",
+                null
+        );
     }
 
     private void restoreSystemBars() {

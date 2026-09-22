@@ -72,7 +72,7 @@ function MainLayout() {
       />
 
       <PullToRefresh
-        className="min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
+        className="safenet-main-content min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
         onRefresh={refreshActivePage}
       >
         <Switch>
