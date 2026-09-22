@@ -128,7 +128,7 @@
 @layer utilities {
   .safenet-system-navigation {
     top: var(--safenet-status-bar-inset);
-    height: calc(5rem + var(--safenet-status-bar-inset));
+    height: 5rem;
   }
 
   .safenet-main-content {
