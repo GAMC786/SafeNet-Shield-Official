@@ -327,6 +327,14 @@ test("Android 12+ launch surface does not show the Shield Logo", () => {
   assert.match(launchStyleSource, /splash_transparent/);
 });
 
+test("Android App Lock applies live system-bar insets to the native overlay", () => {
+  assert.match(androidMainActivity, /applySystemBarInsets\(appLockView\)/);
+  assert.match(androidMainActivity, /applySystemBarInsets\(startupFallback\)/);
+  assert.match(androidMainActivity, /applySystemBarInsets\(webView\)/);
+  assert.match(androidMainActivity, /target\.setPadding\(0, systemBars\.top, 0, systemBars\.bottom\)/);
+  assert.doesNotMatch(androidMainActivity, /setOnApplyWindowInsetsListener\(container/);
+});
+
 test("Android keeps a visible black status bar with white icons", () => {
   assert.match(androidColorsSource, /<color name="status_bar">#000000<\/color>/);
   assert.match(launchStyleSource, /android:statusBarColor">@color\/status_bar/);

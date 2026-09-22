@@ -7,4 +7,4 @@ Use the offline LockLock-based passcode flow only with explicit user opt-in to A
 
 **Why:** The product requirement changed from a SafeNet-only Android credential prompt to LockLock features: selected-app locking, anti-uninstall protection, brute-force cooldowns, and offline recovery. Accessibility and Device Admin are materially broader permissions and must remain visible and user-controlled.
 
-**How to apply:** Keep the native lock surface opaque, de-duplicate foreground events, require a passcode before enable/disable/unlock and protected Quick Settings actions, keep anti-uninstall opt-in, and verify the permission handoff and recovery flow on a real Android device before release.
+**How to apply:** Keep the native lock surface opaque, apply live status/navigation bar insets directly to every native overlay when the activity uses edge-to-edge, de-duplicate foreground events, require a passcode before enable/disable/unlock and protected Quick Settings actions, keep anti-uninstall opt-in, and verify the permission handoff and recovery flow on a real Android device before release.
