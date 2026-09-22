@@ -70,6 +70,24 @@ public final class LockLockAccessibilityService extends AccessibilityService {
         }
         lastOpenedPackage = openedPackage;
 
+        if (VpnProxyBrowserBlockerManager.shouldBlockPackage(this, openedPackage)
+                && !isBlockerActivity(event)) {
+            Intent blockerIntent = new Intent(this, VpnProxyBrowserBlockerActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                            | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                    .putExtra(
+                            VpnProxyBrowserBlockerManager.EXTRA_MODE,
+                            VpnProxyBrowserBlockerManager.MODE_BLOCKED
+                    )
+                    .putExtra(
+                            VpnProxyBrowserBlockerManager.EXTRA_BLOCKED_PACKAGE,
+                            openedPackage
+                    );
+            startActivity(blockerIntent);
+            return;
+        }
+
         if (!AppLockManager.shouldLockPackage(this, openedPackage)
                 || isLockActivity(event)
                 || isUnlockTemporarilyAllowed(openedPackage)) {
@@ -89,6 +107,12 @@ public final class LockLockAccessibilityService extends AccessibilityService {
         CharSequence className = event.getClassName();
         return className != null
                 && className.toString().equals(LockLockActivity.class.getName());
+    }
+
+    private boolean isBlockerActivity(AccessibilityEvent event) {
+        CharSequence className = event.getClassName();
+        return className != null
+                && className.toString().equals(VpnProxyBrowserBlockerActivity.class.getName());
     }
 
     private void blockSafeNetUninstallIfVisible(AccessibilityNodeInfo node) {
