@@ -106,6 +106,14 @@ public final class AppLockManager {
 
     public static void setAntiUninstallEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(PREF_ANTI_UNINSTALL, enabled).apply();
+        if (!enabled) {
+            removeActiveDeviceAdmin(context);
+        }
+    }
+
+    public static boolean disableAntiUninstall(Context context) {
+        prefs(context).edit().putBoolean(PREF_ANTI_UNINSTALL, false).apply();
+        return removeActiveDeviceAdmin(context);
     }
 
     public static Set<String> getLockedPackages(Context context) {
@@ -239,8 +247,9 @@ public final class AppLockManager {
         result.put("deviceAdminEnabled", deviceAdminEnabled);
         result.put("antiUninstall", antiUninstall);
         result.put("bruteForceProtected", bruteForceProtected);
-        result.put("message", enabled
-                ? (usageAccessEnabled && overlayEnabled
+        String message;
+        if (enabled) {
+            message = usageAccessEnabled && overlayEnabled
                     ? (antiUninstall && !deviceAdminEnabled
                         ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
                         : biometricAvailable
@@ -248,8 +257,13 @@ public final class AppLockManager {
                             : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
                     : !usageAccessEnabled
                         ? "SafeNet App Lock is enabled. Enable App Lock Usage Access to monitor protected app launches."
-                        : "SafeNet App Lock is enabled. Allow App Lock to display the lock screen over protected apps.")
-                : availabilityMessage(context));
+                        : "SafeNet App Lock is enabled. Allow App Lock to display the lock screen over protected apps.";
+        } else if (deviceAdminEnabled) {
+            message = "SafeNet App Lock is off. Deactivate SafeNet Device Administrator to remove anti-uninstall protection.";
+        } else {
+            message = availabilityMessage(context);
+        }
+        result.put("message", message);
         return result;
     }
 
@@ -418,6 +432,24 @@ public final class AppLockManager {
 
     private static android.content.SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private static boolean removeActiveDeviceAdmin(Context context) {
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            return false;
+        }
+        ComponentName component = adminComponent(context);
+        if (!manager.isAdminActive(component)) {
+            return true;
+        }
+        try {
+            manager.removeActiveAdmin(component);
+        } catch (SecurityException error) {
+            return false;
+        }
+        return !manager.isAdminActive(component);
     }
 
     private static int allowedAuthenticators() {

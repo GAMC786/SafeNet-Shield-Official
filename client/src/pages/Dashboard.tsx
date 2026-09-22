@@ -290,9 +290,17 @@ export default function Dashboard() {
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                {appLock.status.antiUninstall === true ? "Enabled" : "Optional"}
+                {appLock.status.antiUninstall === true
+                  ? "Enabled"
+                  : appLock.status.deviceAdminEnabled === true
+                    ? "Active"
+                    : "Optional"}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Device Administrator protection</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {appLock.status.deviceAdminEnabled === true
+                  ? "Device Administrator is still active"
+                  : "Device Administrator protection"}
+              </p>
             </div>
           </div>
 

@@ -319,8 +319,14 @@ public final class LockLockActivity extends FragmentActivity {
     private void completeAuthentication() {
         if (AppLockManager.MODE_DISABLE.equals(mode)) {
             AppLockManager.setEnabled(this, false);
-            AppLockManager.setAntiUninstallEnabled(this, false);
-            Toast.makeText(this, "App Lock protection disabled.", Toast.LENGTH_SHORT).show();
+            boolean adminRemoved = AppLockManager.disableAntiUninstall(this);
+            Toast.makeText(
+                    this,
+                    adminRemoved
+                            ? "App Lock protection disabled."
+                            : "App Lock disabled. Deactivate SafeNet Device Administrator in Android Settings.",
+                    Toast.LENGTH_LONG
+            ).show();
         } else if ("enable".equals(mode)) {
             AppLockManager.setEnabled(this, true);
             AppLockManager.markAuthenticated();

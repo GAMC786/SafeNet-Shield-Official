@@ -186,9 +186,12 @@ test("App Lock keeps a local passcode fallback and uses Android biometric authen
   assert.match(manager, /verifyRecoveryAnswer/);
   assert.match(manager, /BiometricManager/);
   assert.match(manager, /BIOMETRIC_STRONG/);
+  assert.match(manager, /disableAntiUninstall/);
+  assert.match(manager, /removeActiveAdmin/);
   assert.match(activity, /BiometricPrompt/);
   assert.match(activity, /onAuthenticationSucceeded/);
   assert.match(activity, /setAllowedAuthenticators/);
+  assert.match(activity, /disableAntiUninstall/);
 });
 
 test("OpenLock uses explicit Usage Access, overlay, and Device Admin boundaries", () => {
