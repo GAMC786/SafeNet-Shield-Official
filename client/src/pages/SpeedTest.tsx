@@ -133,6 +133,31 @@ function prepareResourceTimingBuffer() {
   performance.clearResourceTimings();
 }
 
+async function measureUploadWithElapsedTime(uploadUrl: string) {
+  const payloadSizes = [100_000, 100_000, 1_000_000, 1_000_000, 1_000_000];
+  const samples: number[] = [];
+
+  for (const bytes of payloadSizes) {
+    const startedAt = performance.now();
+    const response = await fetch(`${uploadUrl}?bytes=${bytes}&probe=${Math.round(startedAt)}`, {
+      method: "POST",
+      body: "0".repeat(bytes),
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    });
+    if (!response.ok) {
+      throw new Error(`Upload probe returned HTTP ${response.status}.`);
+    }
+    await response.text();
+    const elapsedMs = Math.max(performance.now() - startedAt, 1);
+    samples.push((bytes * 8) / (elapsedMs / 1000));
+  }
+
+  samples.sort((left, right) => left - right);
+  return samples[Math.floor(samples.length / 2)] / 1_000_000;
+}
+
 function WaveChart({ points, progress, phase }: { points: number[]; progress: number; phase: TestPhase }) {
   const chartPoints = points.length ? points : initialWavePoints;
   const line = chartPoints
@@ -261,6 +286,45 @@ export default function SpeedTest() {
         : {}),
     });
     cloudflareSpeedTestRef.current = speedTest;
+    let uploadRecoveryStarted = false;
+    const completeSpeedTest = (nextResults: SpeedResults, limitedMessage?: string) => {
+      if (runId !== runIdRef.current) return;
+      setResults(nextResults);
+      setProgress(100);
+      setPhase("complete");
+      setIsRunning(false);
+      if (limitedMessage) {
+        setError(limitedMessage);
+        toast({ title: "Speed test completed with limited measurements", description: limitedMessage });
+      } else {
+        setError(null);
+        toast({ title: "Speed test complete", description: "Cloudflare edge latency and throughput results are ready below." });
+      }
+    };
+    const finishSpeedTest = async (nextResults: SpeedResults) => {
+      if (runId !== runIdRef.current || uploadRecoveryStarted) return;
+      const uploadNeedsRecovery =
+        isAndroidApp && (nextResults.upload === null || nextResults.upload <= 0.01);
+      if (!uploadNeedsRecovery) {
+        completeSpeedTest(nextResults);
+        return;
+      }
+
+      uploadRecoveryStarted = true;
+      setError(null);
+      setPhase("upload");
+      setProgress((current) => Math.max(current, phaseProgress.upload));
+      setIsRunning(true);
+      try {
+        const upload = await measureUploadWithElapsedTime(resolveApiUrl("/api/speedtest/upload"));
+        completeSpeedTest({ ...nextResults, upload });
+      } catch {
+        completeSpeedTest(
+          nextResults,
+          "The upload probe could not be measured reliably on this Android network; latency and download results are still available.",
+        );
+      }
+    };
     const updateResults = (results: Results) => {
       if (runId !== runIdRef.current) return;
       const nextResults = cloudflareResultsToSpeedResults(results);
@@ -284,16 +348,16 @@ export default function SpeedTest() {
     speedTest.onResultsChange = () => updateResults(speedTest.results);
     speedTest.onFinish = (results) => {
       if (runId !== runIdRef.current) return;
-      updateResults(results);
-      setProgress(100);
-      setPhase("complete");
-      setIsRunning(false);
-      toast({ title: "Speed test complete", description: "Cloudflare edge latency and throughput results are ready below." });
+      void finishSpeedTest(cloudflareResultsToSpeedResults(results));
     };
     speedTest.onError = (message) => {
       if (runId !== runIdRef.current || pausedRef.current) return;
       const uploadMeasurement = /upload|__up(?:\?|$)/i.test(message);
       const partialMeasurement = uploadMeasurement || /packet loss|turn|ice|credential/i.test(message);
+      if (uploadMeasurement && isAndroidApp) {
+        void finishSpeedTest(cloudflareResultsToSpeedResults(speedTest.results));
+        return;
+      }
       const userMessage = partialMeasurement
         ? uploadMeasurement
           ? "The upload probe was unavailable; latency and download results are still available."
@@ -301,10 +365,7 @@ export default function SpeedTest() {
         : message;
       setError(userMessage);
       if (partialMeasurement) {
-        setProgress(100);
-        setPhase("complete");
-        setIsRunning(false);
-        toast({ title: "Speed test completed with limited measurements", description: userMessage });
+        completeSpeedTest(cloudflareResultsToSpeedResults(speedTest.results), userMessage);
       } else {
         setPhase("error");
         setIsRunning(false);

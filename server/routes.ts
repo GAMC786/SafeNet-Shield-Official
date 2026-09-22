@@ -134,8 +134,9 @@ export async function registerRoutes(
       return res
         .set("Cache-Control", "no-store")
         .set("Server-Timing", "safenetSpeedEdge;dur=0")
-        .status(204)
-        .end();
+        .status(200)
+        .type("text/plain")
+        .send("ok");
     }
 
     let receivedBytes = 0;
@@ -152,8 +153,9 @@ export async function registerRoutes(
       res
         .set("Cache-Control", "no-store")
         .set("Server-Timing", "safenetSpeedEdge;dur=0")
-        .status(204)
-        .end();
+        .status(200)
+        .type("text/plain")
+        .send("ok");
     });
     req.on("error", () => {
       if (!res.headersSent) res.status(400).json({ message: "The speed-test upload was interrupted." });
