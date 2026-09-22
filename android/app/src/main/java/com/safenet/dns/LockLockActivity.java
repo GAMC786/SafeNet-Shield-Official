@@ -2,7 +2,6 @@ package com.safenet.dns;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -715,54 +714,51 @@ public final class LockLockActivity extends FragmentActivity {
 
     private void addHeading(LinearLayout root, String title, String description) {
         LinearLayout heading = new LinearLayout(this);
-        heading.setOrientation(LinearLayout.HORIZONTAL);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.setPadding(dp(14), dp(14), dp(14), dp(14));
-        heading.setBackground(SafeNetLockBrand.roundedBackground(
-                SafeNetLockBrand.SURFACE,
-                Color.rgb(37, 99, 235),
-                14,
-                this
-        ));
+        heading.setOrientation(LinearLayout.VERTICAL);
+        heading.setPadding(0, 0, 0, dp(16));
 
-        heading.addView(
-                SafeNetLockBrand.shieldBadge(this, 56),
-                new LinearLayout.LayoutParams(dp(56), dp(56))
-        );
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView slash = bodyText("/");
+        slash.setTextColor(SafeNetLockBrand.PRIMARY);
+        slash.setTextSize(24);
+        slash.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
+        titleRow.addView(slash, new LinearLayout.LayoutParams(dp(18), -2));
 
-        LinearLayout headingText = new LinearLayout(this);
-        headingText.setOrientation(LinearLayout.VERTICAL);
-        headingText.setPadding(dp(14), 0, 0, 0);
-        headingText.addView(
-                SafeNetLockBrand.eyebrow(this, "SAFENET  /  APP LOCK"),
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-        );
-
-        TextView titleView = bodyText(title);
+        TextView titleView = bodyText(title.toUpperCase(Locale.US));
         titleView.setTextSize(23);
         titleView.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
         titleView.setTextColor(SafeNetLockBrand.TEXT);
         titleView.setLetterSpacing(0.02f);
-        headingText.addView(titleView, marginParams(
+        titleRow.addView(titleView, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+        ));
+        heading.addView(titleRow, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView descriptionView = SafeNetLockBrand.eyebrow(
+                this,
+                description.toUpperCase(Locale.US)
+        );
+        descriptionView.setTextColor(SafeNetLockBrand.MUTED);
+        descriptionView.setTextSize(10);
+        descriptionView.setLineSpacing(0, 1.15f);
+        heading.addView(descriptionView, marginParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 -2,
                 4
         ));
 
-        TextView descriptionView = bodyText(description);
-        descriptionView.setTextColor(SafeNetLockBrand.BODY);
-        headingText.addView(descriptionView, marginParams(
+        View divider = new View(this);
+        divider.setBackgroundColor(SafeNetLockBrand.BORDER);
+        heading.addView(divider, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                -2,
-                6
-        ));
-        heading.addView(headingText, new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
+                dp(1)
         ));
         root.addView(heading, marginParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

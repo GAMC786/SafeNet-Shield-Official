@@ -248,6 +248,17 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(recoveryService, /to: \{ userId \}/);
 });
 
+test("App Lock setup uses the SafeNet dashboard visual hierarchy", () => {
+  assert.match(activity, /"App Lock Configuration"/);
+  assert.match(activity, /sectionLabel\("PASSCODE FALLBACK"\)/);
+  assert.match(activity, /sectionLabel\("OFFLINE RECOVERY"\)/);
+  assert.match(activity, /sectionLabel\("PROTECTED APPS"\)/);
+  assert.match(activity, /sectionLabel\("ANDROID PERMISSIONS"\)/);
+  assert.match(activity, /private LinearLayout sectionCard\(\)/);
+  assert.match(activity, /title\.toUpperCase\(Locale\.US\)/);
+  assert.match(activity, /description\.toUpperCase\(Locale\.US\)/);
+});
+
 test("the lock surface and dashboard identify Android BiometricPrompt", () => {
   assert.match(nativeView, /SafeNet App Lock/);
   assert.match(nativeView, /Android BiometricPrompt/);
