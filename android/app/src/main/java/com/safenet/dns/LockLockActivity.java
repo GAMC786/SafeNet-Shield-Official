@@ -44,6 +44,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -101,34 +102,89 @@ public final class LockLockActivity extends FragmentActivity {
 
     private void showSetup() {
         content = baseContent(
-                "SafeNet App Lock",
+                "App Lock Configuration",
                 "Create an offline passcode fallback for SafeNet. Android BiometricPrompt will be used first when available."
         );
 
-        EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        EditText confirm = field("Confirm passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        EditText question = field("Recovery question", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        EditText answer = field("Recovery answer", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        content.addView(sectionLabel("PASSCODE FALLBACK"), marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                18
+        ));
+        LinearLayout passcodeCard = sectionCard();
+        content.addView(passcodeCard, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                6
+        ));
+        EditText pin = field(
+                passcodeCard,
+                "New passcode",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        );
+        EditText confirm = field(
+                passcodeCard,
+                "Confirm passcode",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        );
+
+        content.addView(sectionLabel("OFFLINE RECOVERY"), marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                16
+        ));
+        LinearLayout recoveryCard = sectionCard();
+        content.addView(recoveryCard, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                6
+        ));
+        EditText question = field(
+                recoveryCard,
+                "Recovery question",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        );
+        EditText answer = field(
+                recoveryCard,
+                "Recovery answer",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
+        );
         TextView emailRecoveryHelp = bodyText(
                 "After setup, Email-assisted recovery can send a one-time code to your verified "
                         + "SafeNet account email. It resets the local passcode only and never unlocks App Lock by itself."
         );
-        content.addView(emailRecoveryHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 2));
+        recoveryCard.addView(emailRecoveryHelp, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                10
+        ));
+
         antiUninstallCheck = new CheckBox(this);
         antiUninstallCheck.setText("Enable anti-uninstall protection");
         SafeNetLockBrand.styleCheckBox(antiUninstallCheck);
         antiUninstallCheck.setChecked(true);
-        content.addView(antiUninstallCheck, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
+        recoveryCard.addView(antiUninstallCheck, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                52,
+                4
+        ));
 
-        TextView protectedAppsLabel = SafeNetLockBrand.eyebrow(this, "PROTECTED APPS");
-        content.addView(protectedAppsLabel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
+        content.addView(sectionLabel("PROTECTED APPS"), marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                16
+        ));
         TextView protectedAppsHelp = bodyText(
                 "SafeNet is always protected. Select other launchable apps that should use the same Android authentication and local fallback."
         );
-        content.addView(protectedAppsHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 4));
+        content.addView(protectedAppsHelp, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                6
+        ));
         appList = new LinearLayout(this);
         appList.setOrientation(LinearLayout.VERTICAL);
-        appList.setPadding(dp(10), dp(4), dp(10), dp(4));
+        appList.setPadding(dp(10), dp(8), dp(10), dp(8));
         appList.setBackground(SafeNetLockBrand.roundedBackground(
                 SafeNetLockBrand.SURFACE,
                 SafeNetLockBrand.BORDER,
@@ -139,21 +195,44 @@ public final class LockLockActivity extends FragmentActivity {
         loadProtectedApps();
 
         Button save = primaryButton("Save passcode and enable App Lock");
-        content.addView(save, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
+        content.addView(save, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 20));
         statusView = bodyText("");
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
 
+        content.addView(sectionLabel("ANDROID PERMISSIONS"), marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                16
+        ));
+        LinearLayout permissionsCard = sectionCard();
+        content.addView(permissionsCard, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                -2,
+                6
+        ));
         Button usageAccess = secondaryButton("Open Usage Access Settings");
         usageAccess.setOnClickListener(view -> startActivity(AppLockManager.usageAccessSettingsIntent()));
-        content.addView(usageAccess, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        permissionsCard.addView(usageAccess, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48,
+                0
+        ));
 
         Button overlay = secondaryButton("Allow App Lock Overlay");
         overlay.setOnClickListener(view -> startActivity(AppLockManager.overlayPermissionIntent(this)));
-        content.addView(overlay, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        permissionsCard.addView(overlay, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48,
+                8
+        ));
 
         Button deviceAdmin = secondaryButton("Open Device Administrator Settings");
         deviceAdmin.setOnClickListener(view -> startActivity(AppLockManager.deviceAdminIntent(this)));
-        content.addView(deviceAdmin, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        permissionsCard.addView(deviceAdmin, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48,
+                8
+        ));
 
         save.setOnClickListener(view -> {
             String pinValue = pin.getText().toString();
@@ -693,13 +772,17 @@ public final class LockLockActivity extends FragmentActivity {
     }
 
     private EditText field(String hint, int inputType) {
+        return field(content, hint, inputType);
+    }
+
+    private EditText field(LinearLayout parent, String hint, int inputType) {
         EditText input = new EditText(this);
         input.setHint(hint);
         input.setSingleLine(true);
         input.setInputType(inputType);
         input.setPadding(dp(14), 0, dp(14), 0);
         SafeNetLockBrand.styleInput(input, this);
-        content.addView(input, marginParams(
+        parent.addView(input, marginParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 54,
                 8
@@ -729,6 +812,25 @@ public final class LockLockActivity extends FragmentActivity {
         view.setTypeface(SafeNetLockBrand.bodyTypeface());
         view.setLineSpacing(0, 1.08f);
         return view;
+    }
+
+    private TextView sectionLabel(String text) {
+        TextView label = SafeNetLockBrand.eyebrow(this, text);
+        label.setTextSize(10);
+        return label;
+    }
+
+    private LinearLayout sectionCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(8), dp(12), dp(12));
+        card.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.SURFACE,
+                SafeNetLockBrand.BORDER,
+                10,
+                this
+        ));
+        return card;
     }
 
     private TextView statusText() {

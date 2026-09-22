@@ -48,6 +48,7 @@ final class SafeNetLockBrand {
         button.setTextColor(TEXT);
         button.setTextSize(14);
         button.setTypeface(displayTypeface(), Typeface.BOLD);
+        button.setLetterSpacing(0.02f);
         button.setMinHeight(0);
         button.setMinWidth(0);
         button.setPadding(dp(context, 16), 0, dp(context, 16), 0);
@@ -57,8 +58,9 @@ final class SafeNetLockBrand {
     static void styleSecondaryButton(Button button, Context context) {
         button.setAllCaps(false);
         button.setTextColor(ACCENT);
-        button.setTextSize(14);
+        button.setTextSize(13);
         button.setTypeface(displayTypeface(), Typeface.BOLD);
+        button.setLetterSpacing(0.02f);
         button.setMinHeight(0);
         button.setMinWidth(0);
         button.setPadding(dp(context, 14), 0, dp(context, 14), 0);
