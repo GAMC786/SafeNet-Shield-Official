@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Offline LockLock-style passcode surface.
+ * Offline OpenLock-compatible passcode surface.
  *
  * The screen is intentionally native and opaque while the WebView or another
  * protected launch is blocked. Passcodes and recovery answers stay local.
@@ -72,7 +72,7 @@ public final class LockLockActivity extends Activity {
     private void showSetup() {
         content = baseContent(
                 "SafeNet App Lock",
-                "Create an offline passcode for SafeNet. LockLock never sends your passcode or recovery answer anywhere."
+                "Create an offline passcode for SafeNet. OpenLock never sends your passcode or recovery answer anywhere."
         );
 
         EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
@@ -103,14 +103,18 @@ public final class LockLockActivity extends Activity {
         content.addView(appList, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 6));
         loadProtectedApps();
 
-        Button save = primaryButton("Save passcode and enable LockLock");
+        Button save = primaryButton("Save passcode and enable OpenLock");
         content.addView(save, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
         statusView = bodyText("");
         content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
 
-        Button accessibility = secondaryButton("Open Accessibility Settings");
-        accessibility.setOnClickListener(view -> startActivity(AppLockManager.accessibilitySettingsIntent()));
-        content.addView(accessibility, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        Button usageAccess = secondaryButton("Open Usage Access Settings");
+        usageAccess.setOnClickListener(view -> startActivity(AppLockManager.usageAccessSettingsIntent()));
+        content.addView(usageAccess, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+
+        Button overlay = secondaryButton("Allow OpenLock Overlay");
+        overlay.setOnClickListener(view -> startActivity(AppLockManager.overlayPermissionIntent(this)));
+        content.addView(overlay, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
 
         Button deviceAdmin = secondaryButton("Open Device Administrator Settings");
         deviceAdmin.setOnClickListener(view -> startActivity(AppLockManager.deviceAdminIntent(this)));
@@ -197,17 +201,23 @@ public final class LockLockActivity extends Activity {
     }
 
     private void updateSetupStatus() {
-        boolean accessibilityEnabled = AppLockManager.isAccessibilityEnabled(this);
+        boolean usageAccessEnabled = AppLockManager.isUsageAccessEnabled(this);
+        boolean overlayEnabled = AppLockManager.isOverlayPermissionEnabled(this);
         boolean adminNeeded = AppLockManager.isAntiUninstallEnabled(this);
         boolean adminEnabled = AppLockManager.isDeviceAdminEnabled(this);
-        if (!accessibilityEnabled) {
-            showStatus("Passcode saved. Enable LockLock Accessibility to monitor SafeNet launches.");
+        if (!usageAccessEnabled) {
+            showStatus("Passcode saved. Enable OpenLock Usage Access to monitor SafeNet launches.");
+            return;
+        }
+        if (!overlayEnabled) {
+            showStatus("Usage Access is enabled. Allow OpenLock to display the lock screen over protected apps.");
             return;
         }
         if (adminNeeded && !adminEnabled) {
-            showStatus("Accessibility is enabled. Activate Device Administrator to protect SafeNet from removal.");
+            showStatus("OpenLock permissions are enabled. Activate Device Administrator to protect SafeNet from removal.");
             return;
         }
+        AppLockManager.startMonitorServiceIfReady(this);
         finishSuccess();
     }
 
@@ -241,13 +251,13 @@ public final class LockLockActivity extends Activity {
             if (AppLockManager.MODE_DISABLE.equals(mode)) {
                 AppLockManager.setEnabled(this, false);
                 AppLockManager.setAntiUninstallEnabled(this, false);
-                Toast.makeText(this, "LockLock protection disabled.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "OpenLock protection disabled.", Toast.LENGTH_SHORT).show();
             } else if ("enable".equals(mode)) {
                 AppLockManager.setEnabled(this, true);
                 AppLockManager.markAuthenticated();
             } else {
                 AppLockManager.markAuthenticated();
-                sendUnlockedBroadcast();
+                AppLockManager.allowTemporaryUnlock(this, lockedPackage);
             }
             if (getIntent().getBooleanExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, false)) {
                 try {
@@ -299,7 +309,7 @@ public final class LockLockActivity extends Activity {
                 );
                 AppLockManager.setEnabled(this, true);
                 AppLockManager.markAuthenticated();
-                sendUnlockedBroadcast();
+                AppLockManager.allowTemporaryUnlock(this, lockedPackage);
                 Toast.makeText(this, "Passcode reset successfully.", Toast.LENGTH_SHORT).show();
                 finishSuccess();
             } catch (IllegalArgumentException error) {

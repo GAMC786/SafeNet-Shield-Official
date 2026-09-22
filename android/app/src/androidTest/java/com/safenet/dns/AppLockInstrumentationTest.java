@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
 
 @RunWith(AndroidJUnit4.class)
 public class AppLockInstrumentationTest {
-    private static final String TAG = "SafeNetLockLockTest";
+    private static final String TAG = "SafeNetOpenLockTest";
     private static final String SETTINGS_PACKAGE = "com.android.settings";
     private static final String TEST_PACKAGE_NAME = "com.safenet.dns.test";
     private static final String PIN = "2468";
@@ -65,8 +65,8 @@ public class AppLockInstrumentationTest {
             InstrumentationRegistry.getInstrumentation().getUiAutomation();
     private final UiDevice device =
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-    private String originalAccessibilityServices;
-    private String originalAccessibilityEnabled;
+    private String originalUsageAccessMode;
+    private String originalOverlayMode;
 
     @Rule
     public final TestWatcher uiDiagnostics = new TestWatcher() {
@@ -77,14 +77,14 @@ public class AppLockInstrumentationTest {
     };
 
     @Before
-    public void resetLockLockState() throws Exception {
-        originalAccessibilityServices = secureSetting("enabled_accessibility_services");
-        originalAccessibilityEnabled = secureSetting("accessibility_enabled");
+    public void resetOpenLockState() throws Exception {
+        originalUsageAccessMode = appOpMode("GET_USAGE_STATS");
+        originalOverlayMode = appOpMode("SYSTEM_ALERT_WINDOW");
         if (!isPhysicalDeviceRun()) {
-            disableLockLockAccessibilityService();
+            disableOpenLockPermissions();
             disableDeviceAdminIfPresent();
         }
-        context.getSharedPreferences("safenet_locklock", Context.MODE_PRIVATE)
+        context.getSharedPreferences("safenet_openlock", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
                 .commit();
@@ -92,55 +92,49 @@ public class AppLockInstrumentationTest {
     }
 
     @After
-    public void restoreLockLockState() throws Exception {
+    public void restoreOpenLockState() throws Exception {
         AppLockManager.setEnabled(context, false);
         AppLockManager.setAntiUninstallEnabled(context, false);
         AppLockManager.clearSession();
-        context.getSharedPreferences("safenet_locklock", Context.MODE_PRIVATE)
+        context.getSharedPreferences("safenet_openlock", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
                 .commit();
         if (!isPhysicalDeviceRun()) {
-            restoreSecureSetting(
-                    "enabled_accessibility_services",
-                    originalAccessibilityServices
-            );
-            restoreSecureSetting(
-                    "accessibility_enabled",
-                    originalAccessibilityEnabled
-            );
+            restoreAppOp("GET_USAGE_STATS", originalUsageAccessMode);
+            restoreAppOp("SYSTEM_ALERT_WINDOW", originalOverlayMode);
         }
         shell("am force-stop " + context.getPackageName());
         shell("am force-stop " + SETTINGS_PACKAGE);
     }
 
     @Test
-    public void lockLockActivityDrivesSetupRecoveryAndDisableUi() throws Exception {
+    public void openLockActivityDrivesSetupRecoveryAndDisableUi() throws Exception {
         Activity setupActivity = launchLockLock(AppLockManager.MODE_SETUP);
         List<UiObject2> setupFields = waitForFields(4);
         fill(setupFields.get(0), PIN);
         fill(setupFields.get(1), "0000");
-        scrollToText("Save passcode and enable LockLock").click();
+        scrollToText("Save passcode and enable OpenLock").click();
         assertVisibleText("The passcodes do not match.");
 
         scrollToTop();
         fill(setupFields.get(1), PIN);
-        scrollToText("Save passcode and enable LockLock").click();
+        scrollToText("Save passcode and enable OpenLock").click();
         assertVisibleText("A recovery question and answer are required.");
 
         scrollToTop();
         fill(setupFields.get(2), "What is the recovery answer?");
         fill(setupFields.get(3), "offline answer");
-        scrollToText("Save passcode and enable LockLock").click();
+        scrollToText("Save passcode and enable OpenLock").click();
         assertVisibleText(
-                "Passcode saved. Enable LockLock Accessibility to monitor SafeNet launches."
+                "Passcode saved. Enable OpenLock Usage Access to monitor SafeNet launches."
         );
-        assertTrue("Setup must enable LockLock protection.", AppLockManager.isEnabled(context));
+        assertTrue("Setup must enable OpenLock protection.", AppLockManager.isEnabled(context));
 
-        scrollToText("Open Accessibility Settings").click();
+        scrollToText("Open Usage Access Settings").click();
         waitForPackage(SETTINGS_PACKAGE);
         device.pressBack();
-        assertVisibleText("Open Accessibility Settings");
+        assertVisibleText("Open Usage Access Settings");
         scrollToText("Open Device Administrator Settings").click();
         waitForPackage(SETTINGS_PACKAGE);
         device.pressBack();
@@ -171,9 +165,9 @@ public class AppLockInstrumentationTest {
         List<UiObject2> disableFields = waitForFields(1);
         fill(disableFields.get(0), RESET_PIN);
         scrollToText("Disable protection").click();
-        assertVisibleText("LockLock protection disabled.");
+        assertVisibleText("OpenLock protection disabled.");
         waitForActivityToFinish(disableActivity);
-        assertFalse("Disable flow must turn off LockLock protection.",
+        assertFalse("Disable flow must turn off OpenLock protection.",
                 AppLockManager.isEnabled(context));
         Log.i(
                 TAG,
@@ -222,7 +216,7 @@ public class AppLockInstrumentationTest {
     }
 
     @Test
-    public void accessibilityLocksSafeNetAndSecondPackageWithoutDuplicateActivities()
+    public void usageAccessLocksSafeNetAndSecondPackageWithoutDuplicateActivities()
             throws Exception {
         assertNotNull(
                 "The dedicated Android runner must include the Settings package.",
@@ -241,10 +235,11 @@ public class AppLockInstrumentationTest {
         AppLockManager.setLockedPackages(context, lockedPackages);
         AppLockManager.markAuthenticated();
 
-        enableAccessibilityService();
+        enableOpenLockPermissions();
         waitFor(
-                "LockLock Accessibility service to become enabled",
-                () -> AppLockManager.isAccessibilityEnabled(context)
+                "OpenLock Usage Access and overlay permissions to become enabled",
+                () -> AppLockManager.isUsageAccessEnabled(context)
+                        && AppLockManager.isOverlayPermissionEnabled(context)
         );
 
         launchSafeNet();
@@ -267,7 +262,7 @@ public class AppLockInstrumentationTest {
                 1,
                 countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
         );
-        Log.i(TAG, "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1");
+        Log.i(TAG, "OPENLOCK_USAGE_ACCESS result=PASS activity_records=1");
     }
 
     @Test
@@ -308,11 +303,12 @@ public class AppLockInstrumentationTest {
         AppLockManager.setEnabled(context, true);
         AppLockManager.clearSession();
 
-        boolean accessibilityEnabled = AppLockManager.isAccessibilityEnabled(context);
+        boolean usageAccessEnabled = AppLockManager.isUsageAccessEnabled(context);
+        boolean overlayEnabled = AppLockManager.isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = AppLockManager.isDeviceAdminEnabled(context);
         assertTrue(
-                "Enable LockLock Accessibility in Android Settings before this physical check.",
-                accessibilityEnabled
+                "Enable OpenLock Usage Access before this physical check.",
+                usageAccessEnabled
         );
         assertTrue(
                 "Enable LockLock Device Administrator in Android Settings before this physical check.",
@@ -320,8 +316,9 @@ public class AppLockInstrumentationTest {
         );
         Log.i(
                 TAG,
-                "LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS accessibility=" +
-                        accessibilityEnabled + " device_admin=" + deviceAdminEnabled +
+                "OPENLOCK_PHYSICAL_PERMISSIONS result=PASS usage_access=" +
+                        usageAccessEnabled + " overlay=" + overlayEnabled +
+                        " device_admin=" + deviceAdminEnabled +
                         " device_model=" + deviceModel() + " target_package=" + targetPackage
         );
 
@@ -381,7 +378,7 @@ public class AppLockInstrumentationTest {
                 TAG,
                 "LOCKLOCK_PHYSICAL result=PASS device_model=" + deviceModel() +
                         " target_package=" + targetPackage +
-                        " accessibility=true device_admin=true activity_records=1" +
+                        " usage_access=true overlay=true device_admin=true activity_records=1" +
                         " selected_app_resumed=true temporary_unlock_isolated=true"
         );
     }
@@ -393,7 +390,7 @@ public class AppLockInstrumentationTest {
                 .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, context.getPackageName());
         Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
         waitForButton(AppLockManager.MODE_SETUP.equals(mode)
-                ? "Save passcode and enable LockLock"
+                ? "Save passcode and enable OpenLock"
                 : AppLockManager.MODE_DISABLE.equals(mode)
                     ? "Disable protection"
                     : "Unlock SafeNet");
@@ -539,30 +536,9 @@ public class AppLockInstrumentationTest {
         waitFor("LockLock activity to finish", activity::isFinishing);
     }
 
-    private void disableLockLockAccessibilityService() throws Exception {
-        String service = new ComponentName(
-                context,
-                LockLockAccessibilityService.class
-        ).flattenToString();
-        String configured = originalAccessibilityServices;
-        if (configured == null || configured.isEmpty() || "null".equals(configured)) {
-            return;
-        }
-        StringBuilder remaining = new StringBuilder();
-        for (String entry : configured.split(":")) {
-            if (!service.equalsIgnoreCase(entry)) {
-                if (remaining.length() > 0) {
-                    remaining.append(':');
-                }
-                remaining.append(entry);
-            }
-        }
-        if (remaining.length() == 0) {
-            shell("settings delete secure enabled_accessibility_services");
-            shell("settings put secure accessibility_enabled 0");
-        } else {
-            shell("settings put secure enabled_accessibility_services " + remaining);
-        }
+    private void disableOpenLockPermissions() throws Exception {
+        shell("appops set " + context.getPackageName() + " GET_USAGE_STATS deny");
+        shell("appops set " + context.getPackageName() + " SYSTEM_ALERT_WINDOW deny");
     }
 
     private void captureUiDiagnostics(String methodName) {
@@ -581,19 +557,9 @@ public class AppLockInstrumentationTest {
         }
     }
 
-    private void enableAccessibilityService() throws Exception {
-        String service = new ComponentName(
-                context,
-                LockLockAccessibilityService.class
-        ).flattenToString();
-        String configured = originalAccessibilityServices;
-        if (configured == null || configured.isEmpty() || "null".equals(configured)) {
-            configured = service;
-        } else if (!configured.contains(service)) {
-            configured = configured + ":" + service;
-        }
-        shell("settings put secure enabled_accessibility_services " + configured);
-        shell("settings put secure accessibility_enabled 1");
+    private void enableOpenLockPermissions() throws Exception {
+        shell("appops set " + context.getPackageName() + " GET_USAGE_STATS allow");
+        shell("appops set " + context.getPackageName() + " SYSTEM_ALERT_WINDOW allow");
     }
 
     private void launchSafeNet() throws Exception {
@@ -662,16 +628,13 @@ public class AppLockInstrumentationTest {
         throw new AssertionError(description + " did not become true.");
     }
 
-    private String secureSetting(String key) throws Exception {
-        return shell("settings get secure " + key).trim();
+    private String appOpMode(String operation) throws Exception {
+        return shell("appops get " + context.getPackageName() + " " + operation).trim();
     }
 
-    private void restoreSecureSetting(String key, String value) throws Exception {
-        if (value == null || value.isEmpty() || "null".equals(value)) {
-            shell("settings delete secure " + key);
-        } else {
-            shell("settings put secure " + key + " " + value);
-        }
+    private void restoreAppOp(String operation, String value) throws Exception {
+        String mode = value != null && value.contains("allow") ? "allow" : "deny";
+        shell("appops set " + context.getPackageName() + " " + operation + " " + mode);
     }
 
     private void disableDeviceAdminIfPresent() throws Exception {

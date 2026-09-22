@@ -5,8 +5,8 @@
     <string name="call_screening_app_label">SafeNet Spam CallerID</string>
     <string name="package_name">com.safenet.dns</string>
     <string name="custom_url_scheme">com.safenet.dns</string>
-    <string name="locklock_service_label">LockLock App Protection</string>
-    <string name="locklock_accessibility_description">Monitors SafeNet launches to show its offline LockLock passcode screen.</string>
+    <string name="locklock_service_label">OpenLock App Protection</string>
+    <string name="locklock_accessibility_description">OpenLock app protection uses Usage Access and an overlay to show SafeNet's offline passcode screen.</string>
     <string name="locklock_device_admin_description">Protects SafeNet from unauthorized removal when anti-uninstall protection is enabled.</string>
     <string name="private_dns_tile_label">SafeNet Private DNS</string>
     <string name="private_dns_tile_active">Active</string>

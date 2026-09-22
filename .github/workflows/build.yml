@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       android_startup_validation:
-        description: "Run signed APK startup and physical LockLock selected-app checks"
+        description: "Run signed APK startup and physical OpenLock selected-app checks"
         required: true
         default: false
         type: boolean
@@ -2289,7 +2289,7 @@ jobs:
           done
           test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = "1"
 
-      - name: Run LockLock instrumentation checks
+      - name: Run OpenLock instrumentation checks
         id: android-app-lock-check
         shell: bash
         run: |
@@ -2314,7 +2314,7 @@ jobs:
             kill "$(cat "$RUNNER_TEMP/safenet-android-app-lock-emulator.pid")" >/dev/null 2>&1 || true
           fi
 
-      - name: Publish LockLock instrumentation summary
+      - name: Publish OpenLock instrumentation summary
         if: always()
         shell: bash
         env:
@@ -2326,17 +2326,17 @@ jobs:
           result="$(awk -F= '$1 == "result" { print $2; exit }' "$result_file" 2>/dev/null || true)"
           result="${result:-NOT_RECORDED}"
           {
-            echo "## LockLock Android instrumentation"
+            echo "## OpenLock Android instrumentation"
             echo
             echo "- **Runner:** \`dedicated writable-system Android runner\`"
             echo "- **Result:** \`$result\`"
             echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
             echo "- **Coverage:** native setup validation and permission handoff, incorrect recovery, successful reset, disable flow, cooldown, disabled-admin status, SafeNet and Settings foreground events, duplicate activity prevention"
-            echo "- **Failure evidence:** bounded logcat/activity/accessibility diagnostics plus a LockLock screenshot and UI hierarchy when the form flow fails."
+            echo "- **Failure evidence:** bounded logcat/activity/Usage Access diagnostics plus an OpenLock screenshot and UI hierarchy when the form flow fails."
             echo "- **Evidence:** [Download bounded device diagnostics]($RUN_URL#artifacts)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload LockLock instrumentation evidence
+      - name: Upload OpenLock instrumentation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -2354,7 +2354,7 @@ jobs:
     permissions:
       contents: read
     env:
-      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-locklock-physical/latest
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-openlock-physical/latest
     steps:
       - name: Checkout code
         id: checkout
@@ -2392,7 +2392,7 @@ jobs:
           name: SafeNet-DNS-Android-instrumentation
           path: artifacts/android-test
 
-      - name: Run LockLock selected-app proof on physical phone
+      - name: Run OpenLock selected-app proof on physical phone
         id: android-app-lock-physical-check
         continue-on-error: true
         shell: bash
@@ -2405,7 +2405,7 @@ jobs:
             bash ./scripts/android-app-lock-device-test.sh \
               --physical --blocked \
               --blocker ADB_UNAVAILABLE \
-              --message "adb is unavailable on the physical LockLock runner." \
+              --message "adb is unavailable on the physical OpenLock runner." \
               --release-ref "$GITHUB_REF" \
               --release-sha "$GITHUB_SHA" \
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
@@ -2420,7 +2420,7 @@ jobs:
             bash ./scripts/android-app-lock-device-test.sh \
               --physical --blocked \
               --blocker ADB_DEVICE_DISCOVERY_FAILED \
-              --message "ADB device discovery failed on the physical LockLock runner (exit $device_listing_status)." \
+              --message "ADB device discovery failed on the physical OpenLock runner (exit $device_listing_status)." \
               --release-ref "$GITHUB_REF" \
               --release-sha "$GITHUB_SHA" \
               --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
@@ -2434,10 +2434,10 @@ jobs:
             if printf '%s\n' "$device_listing" |
               awk 'NR > 1 && $2 == "device" { found=1 } END { exit(found ? 0 : 1) }'; then
               blocker="NO_PHYSICAL_PHONE"
-              message="Only emulator or non-physical Android targets were available on the LockLock runner."
+              message="Only emulator or non-physical Android targets were available on the OpenLock runner."
             else
               blocker="NO_READY_PHYSICAL_PHONE"
-              message="No ready physical Android phone was attached to the LockLock runner."
+              message="No ready physical Android phone was attached to the OpenLock runner."
             fi
             bash ./scripts/android-app-lock-device-test.sh \
               --physical --blocked \
@@ -2463,7 +2463,7 @@ jobs:
             >> "$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR/workflow-result.txt"
           exit "$status"
 
-      - name: Record blocked LockLock evidence when the physical runner is unavailable
+      - name: Record blocked OpenLock evidence when the physical runner is unavailable
         if: always()
         shell: bash
         env:
@@ -2483,7 +2483,7 @@ jobs:
             exit 0
           fi
           blocker="RUNNER_PREFLIGHT_FAILED"
-          message="The physical LockLock runner was unavailable before device discovery."
+          message="The physical OpenLock runner was unavailable before device discovery."
           for outcome in \
             "${CHECKOUT_OUTCOME:-success}" \
             "${JAVA_OUTCOME:-success}" \
@@ -2492,13 +2492,13 @@ jobs:
             "${APK_DOWNLOAD_OUTCOME:-success}" \
             "${TEST_APK_DOWNLOAD_OUTCOME:-success}"; do
             if [[ "$outcome" != "success" ]]; then
-              message="The physical LockLock runner preflight did not complete (step outcome: $outcome)."
+              message="The physical OpenLock runner preflight did not complete (step outcome: $outcome)."
               break
             fi
           done
-          if [[ "$message" == "The physical LockLock runner was unavailable before device discovery." ]]; then
+          if [[ "$message" == "The physical OpenLock runner was unavailable before device discovery." ]]; then
             blocker="DEVICE_DISCOVERY_FAILED"
-            message="The physical LockLock device check did not produce a result during device discovery."
+            message="The physical OpenLock device check did not produce a result during device discovery."
           fi
           bash ./scripts/android-app-lock-device-test.sh \
             --physical --blocked \
@@ -2519,7 +2519,7 @@ jobs:
             printf 'workflow_check_outcome=%s\n' "${CHECK_OUTCOME:-NOT_RECORDED}"
           } >> "$result_file"
 
-      - name: Publish physical LockLock summary
+      - name: Publish physical OpenLock summary
         if: always()
         shell: bash
         env:
@@ -2550,8 +2550,10 @@ jobs:
           apk_sha256="${apk_sha256:-NOT_RECORDED}"
           artifact_verification="$(sed -n 's/^artifact_verification=//p' "$result_file" 2>/dev/null | head -n 1)"
           artifact_verification="${artifact_verification:-NOT_RECORDED}"
-          accessibility="$(sed -n 's/^accessibility_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
-          accessibility="${accessibility:-NOT_RECORDED}"
+           usage_access="$(sed -n 's/^usage_access_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+           usage_access="${usage_access:-NOT_RECORDED}"
+           overlay="$(sed -n 's/^overlay_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
+           overlay="${overlay:-NOT_RECORDED}"
           device_admin="$(sed -n 's/^device_admin_enabled=//p' "$result_file" 2>/dev/null | head -n 1)"
           device_admin="${device_admin:-NOT_RECORDED}"
           selected_app_resumed="$(sed -n 's/^selected_app_resumed=//p' "$result_file" 2>/dev/null | head -n 1)"
@@ -2559,7 +2561,7 @@ jobs:
           temporary_unlock_isolated="$(sed -n 's/^temporary_unlock_isolated=//p' "$result_file" 2>/dev/null | head -n 1)"
           temporary_unlock_isolated="${temporary_unlock_isolated:-NOT_RECORDED}"
           {
-            echo "## LockLock physical-device verification"
+             echo "## OpenLock physical-device verification"
             echo
             echo "- **Result:** \`$result\`"
             echo "- **Blocker classification:** \`$blocker_category\`"
@@ -2570,7 +2572,8 @@ jobs:
             echo "- **Signed APK SHA-256:** \`$apk_sha256\`"
             echo "- **Device model:** \`$model\`"
             echo "- **Selected third-party package:** \`$target\`"
-            echo "- **Accessibility enabled:** \`$accessibility\`"
+             echo "- **Usage Access enabled:** \`$usage_access\`"
+             echo "- **Overlay enabled:** \`$overlay\`"
             echo "- **Device Administrator enabled:** \`$device_admin\`"
             echo "- **Permission boundary:** Both permissions are enabled through Android Settings on the phone before the check."
             echo "- **Selected app resumed after passcode:** \`$selected_app_resumed\`"
@@ -2581,18 +2584,18 @@ jobs:
             echo "- **Evidence:** download the physical-device artifact from this run"
           } >> "$GITHUB_STEP_SUMMARY"
           if [[ "$result" == "FAIL" ]]; then
-            echo "::error::Physical LockLock selected-app verification failed."
+             echo "::error::Physical OpenLock selected-app verification failed."
             exit 1
           elif [[ "$result" == "BLOCKED" ]]; then
-            echo "::warning::Physical LockLock verification was blocked because the phone runner was unavailable."
+             echo "::warning::Physical OpenLock verification was blocked because the phone runner was unavailable."
           fi
 
-      - name: Upload physical LockLock evidence
+      - name: Upload physical OpenLock evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: SafeNet-DNS-Android-app-lock-physical-evidence
-          path: android/app/build/reports/android-locklock-physical/latest
+          path: android/app/build/reports/android-openlock-physical/latest
           if-no-files-found: error
 
   android-ai-shield-physical:

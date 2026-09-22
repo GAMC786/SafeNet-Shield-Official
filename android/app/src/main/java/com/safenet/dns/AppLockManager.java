@@ -1,9 +1,12 @@
 package com.safenet.dns;
 
+import android.app.AppOpsManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Process;
 import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -18,11 +21,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Offline LockLock-style app protection.
+ * Offline OpenLock-style app protection.
  *
- * Adapted from LockLock (https://github.com/nethical6/LockLock), GPL-3.0.
- * SafeNet stores only salted passcode/recovery hashes and never sends them
- * anywhere. Accessibility and Device Admin are explicit user opt-ins.
+ * OpenLock uses Usage Access plus an overlay instead of Accessibility to
+ * observe protected foreground apps. SafeNet stores only salted passcode and
+ * recovery hashes and never sends them anywhere.
  */
 public final class AppLockManager {
     public static final String ACTION_APP_UNLOCKED = "com.safenet.dns.APP_UNLOCKED";
@@ -34,7 +37,7 @@ public final class AppLockManager {
     public static final String MODE_UNLOCK = "unlock";
     public static final String MODE_DISABLE = "disable";
 
-    private static final String PREFS_NAME = "safenet_locklock";
+    private static final String PREFS_NAME = "safenet_openlock";
     private static final String PREF_ENABLED = "enabled";
     private static final String PREF_ANTI_UNINSTALL = "anti_uninstall";
     private static final String PREF_PIN_HASH = "pin_hash";
@@ -93,6 +96,9 @@ public final class AppLockManager {
         prefs(context).edit().putBoolean(PREF_ENABLED, enabled).apply();
         if (!enabled) {
             sessionAuthenticated = false;
+            stopMonitorService(context);
+        } else {
+            startMonitorServiceIfReady(context);
         }
     }
 
@@ -135,22 +141,22 @@ public final class AppLockManager {
         sessionAuthenticated = false;
     }
 
-    public static boolean isAccessibilityEnabled(Context context) {
-        String enabledServices = Settings.Secure.getString(
-                context.getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        );
-        if (TextUtils.isEmpty(enabledServices)) {
+    public static boolean isUsageAccessEnabled(Context context) {
+        AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
+        if (appOps == null) {
             return false;
         }
-        String expected = new ComponentName(context, LockLockAccessibilityService.class)
-                .flattenToString();
-        for (String entry : enabledServices.split(":")) {
-            if (expected.equalsIgnoreCase(entry)) {
-                return true;
-            }
-        }
-        return false;
+        int mode = appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.getPackageName()
+        );
+        return mode == AppOpsManager.MODE_ALLOWED;
+    }
+
+    public static boolean isOverlayPermissionEnabled(Context context) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || Settings.canDrawOverlays(context);
     }
 
     public static boolean isDeviceAdminEnabled(Context context) {
@@ -170,11 +176,14 @@ public final class AppLockManager {
         if (!hasPin(context)) {
             return "Create an offline passcode to enable SafeNet App Lock.";
         }
-        if (!isAccessibilityEnabled(context)) {
-            return "Enable LockLock Accessibility in Android Settings to monitor protected app launches.";
+        if (!isUsageAccessEnabled(context)) {
+            return "Enable OpenLock Usage Access to monitor protected app launches.";
+        }
+        if (!isOverlayPermissionEnabled(context)) {
+            return "Allow OpenLock to display the lock screen over protected apps.";
         }
         if (isAntiUninstallEnabled(context) && !isDeviceAdminEnabled(context)) {
-            return "Enable LockLock Device Administrator in Android Settings for anti-uninstall protection.";
+            return "Enable OpenLock Device Administrator in Android Settings for anti-uninstall protection.";
         }
         return "SafeNet App Lock is ready.";
     }
@@ -184,7 +193,8 @@ public final class AppLockManager {
         boolean supported = isSupported(context);
         boolean enabled = isEnabled(context);
         boolean configured = hasPin(context);
-        boolean accessibilityEnabled = isAccessibilityEnabled(context);
+        boolean usageAccessEnabled = isUsageAccessEnabled(context);
+        boolean overlayEnabled = isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = isDeviceAdminEnabled(context);
         boolean antiUninstall = isAntiUninstallEnabled(context);
         boolean bruteForceProtected = getCooldownRemainingMs(context) > 0;
@@ -194,16 +204,19 @@ public final class AppLockManager {
         result.put("available", supported && configured);
         result.put("configured", configured);
         result.put("locked", enabled && !sessionAuthenticated);
-        result.put("accessibilityEnabled", accessibilityEnabled);
+        result.put("usageAccessEnabled", usageAccessEnabled);
+        result.put("overlayEnabled", overlayEnabled);
         result.put("deviceAdminEnabled", deviceAdminEnabled);
         result.put("antiUninstall", antiUninstall);
         result.put("bruteForceProtected", bruteForceProtected);
         result.put("message", enabled
-                ? (accessibilityEnabled
+                ? (usageAccessEnabled && overlayEnabled
                     ? (antiUninstall && !deviceAdminEnabled
                         ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
                         : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
-                    : "SafeNet App Lock is enabled. Enable LockLock Accessibility to monitor protected app launches.")
+                    : !usageAccessEnabled
+                        ? "SafeNet App Lock is enabled. Enable OpenLock Usage Access to monitor protected app launches."
+                        : "SafeNet App Lock is enabled. Allow OpenLock to display the lock screen over protected apps.")
                 : availabilityMessage(context));
         return result;
     }
@@ -315,8 +328,15 @@ public final class AppLockManager {
         return remaining;
     }
 
-    public static Intent accessibilitySettingsIntent() {
-        return new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+    public static Intent usageAccessSettingsIntent() {
+        return new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+    }
+
+    public static Intent overlayPermissionIntent(Context context) {
+        return new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + context.getPackageName())
+        );
     }
 
     public static Intent deviceAdminIntent(Context context) {
@@ -324,7 +344,7 @@ public final class AppLockManager {
                 .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent(context))
                 .putExtra(
                         DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        "SafeNet uses LockLock Device Administrator only to protect SafeNet from unauthorized removal."
+                        "SafeNet uses OpenLock Device Administrator only to protect SafeNet from unauthorized removal."
                 );
     }
 
@@ -335,7 +355,29 @@ public final class AppLockManager {
     public static boolean shouldLockPackage(Context context, String packageName) {
         return isEnabled(context)
                 && getLockedPackages(context).contains(packageName)
-                && !LockLockAccessibilityService.isUnlockTemporarilyAllowed(packageName);
+                && !(context.getPackageName().equals(packageName) && sessionAuthenticated)
+                && !OpenLockMonitorService.isUnlockTemporarilyAllowed(packageName);
+    }
+
+    public static void allowTemporaryUnlock(Context context, String packageName) {
+        OpenLockMonitorService.allowTemporaryUnlock(packageName);
+    }
+
+    public static void startMonitorServiceIfReady(Context context) {
+        if (!isEnabled(context) || !hasPin(context)
+                || !isUsageAccessEnabled(context) || !isOverlayPermissionEnabled(context)) {
+            return;
+        }
+        Intent intent = new Intent(context, OpenLockMonitorService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
+    }
+
+    public static void stopMonitorService(Context context) {
+        context.stopService(new Intent(context, OpenLockMonitorService.class));
     }
 
     private static android.content.SharedPreferences prefs(Context context) {

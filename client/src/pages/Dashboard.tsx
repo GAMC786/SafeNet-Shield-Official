@@ -250,7 +250,7 @@ export default function Dashboard() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Offline access protection for SafeNet with LockLock API
+                   Offline access protection for SafeNet with OpenLock
                 </p>
               </div>
             </div>
@@ -275,11 +275,11 @@ export default function Dashboard() {
               <p className="mt-1 text-xs text-muted-foreground">Stored locally on this device</p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Accessibility</p>
+               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Usage Access</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                {appLock.status.accessibilityEnabled === true ? "Connected" : "Setup required"}
+                 {appLock.status.usageAccessEnabled === true && appLock.status.overlayEnabled === true ? "Connected" : "Setup required"}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Monitors protected launches</p>
+               <p className="mt-1 text-xs text-muted-foreground">Monitors launches with an overlay</p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
@@ -294,7 +294,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
               <p className="mt-1 text-[11px] text-muted-foreground/80">
-                SafeNet stores only salted local hashes. LockLock permissions are opt-in Android controls.
+                 SafeNet stores only salted local hashes. OpenLock permissions are opt-in Android controls.
               </p>
             </div>
             {appLock.status.enabled && appLock.supported && (

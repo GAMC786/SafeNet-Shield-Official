@@ -76,7 +76,7 @@ public final class NativeAppLockView extends FrameLayout {
 
         unlockButton = new Button(context);
         unlockButton.setText("Enter passcode");
-        unlockButton.setContentDescription("Enter your LockLock passcode to open SafeNet");
+        unlockButton.setContentDescription("Enter your OpenLock passcode to open SafeNet");
         SafeNetLockBrand.stylePrimaryButton(unlockButton, context);
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -86,8 +86,8 @@ public final class NativeAppLockView extends FrameLayout {
         content.addView(unlockButton, buttonParams);
 
         settingsButton = new Button(context);
-        settingsButton.setText("Open LockLock setup");
-        settingsButton.setContentDescription("Open LockLock setup and Android permission settings");
+        settingsButton.setText("Open OpenLock setup");
+        settingsButton.setContentDescription("Open OpenLock setup and Android permission settings");
         SafeNetLockBrand.styleSecondaryButton(settingsButton, context);
         LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

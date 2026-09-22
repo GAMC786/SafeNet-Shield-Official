@@ -31,7 +31,7 @@ const [
 ] = await Promise.all([
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockActivity.java"),
-  readSource("android/app/src/main/java/com/safenet/dns/LockLockAccessibilityService.java"),
+  readSource("android/app/src/main/java/com/safenet/dns/OpenLockMonitorService.java"),
   readSource(
     "android/app/src/androidTest/java/com/safenet/dns/AppLockInstrumentationTest.java",
   ),
@@ -69,10 +69,10 @@ function extractWorkflowRunBlock(stepName) {
 }
 
 const physicalCheckScript = extractWorkflowRunBlock(
-  "Run LockLock selected-app proof on physical phone",
+  "Run OpenLock selected-app proof on physical phone",
 );
 const blockedFallbackScript = extractWorkflowRunBlock(
-  "Record blocked LockLock evidence when the physical runner is unavailable",
+  "Record blocked OpenLock evidence when the physical runner is unavailable",
 );
 
 function readFields(path) {
@@ -173,8 +173,8 @@ function assertBlockedEvidence(fixture, expectedCategory) {
   return fields;
 }
 
-test("LockLock stores offline hashes and applies brute-force cooldowns", () => {
-  assert.match(manager, /salted passcode\/recovery hashes/);
+test("OpenLock stores offline hashes and applies brute-force cooldowns", () => {
+  assert.match(manager, /salted passcode[\s\S]*recovery hashes/);
   assert.match(manager, /HASH_ROUNDS = 100_000/);
   assert.match(manager, /verifyPin\(Context context, String pin\)/);
   assert.match(manager, /attempts >= 5/);
@@ -183,13 +183,15 @@ test("LockLock stores offline hashes and applies brute-force cooldowns", () => {
   assert.doesNotMatch(manager, /BiometricPrompt/);
 });
 
-test("LockLock uses explicit Accessibility and Device Admin boundaries", () => {
-  assert.match(manager, /isAccessibilityEnabled/);
+test("OpenLock uses explicit Usage Access, overlay, and Device Admin boundaries", () => {
+  assert.match(manager, /isUsageAccessEnabled/);
+  assert.match(manager, /isOverlayPermissionEnabled/);
   assert.match(manager, /isDeviceAdminEnabled/);
-  assert.match(service, /AccessibilityService/);
+  assert.match(service, /UsageStatsManager/);
   assert.match(service, /LockLockActivity.class/);
-  assert.match(service, /blockSafeNetUninstallIfVisible/);
-  assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+  assert.doesNotMatch(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+  assert.match(manifest, /PACKAGE_USAGE_STATS/);
+  assert.match(manifest, /SYSTEM_ALERT_WINDOW/);
   assert.match(manifest, /BIND_DEVICE_ADMIN/);
   assert.match(manifest, /QUERY_ALL_PACKAGES/);
 });
@@ -199,10 +201,11 @@ test("enabling, disabling, and recovery use the native LockLock activity", () =>
   assert.match(plugin, /MODE_DISABLE/);
   assert.match(plugin, /startActivityForResult\(call, intent, "appLockActivityResult"\)/);
   assert.match(plugin, /appLockActivityResult/);
-  assert.match(activity, /Save passcode and enable LockLock/);
+  assert.match(activity, /Save passcode and enable OpenLock/);
   assert.match(activity, /Forgot passcode/);
   assert.match(activity, /verifyRecoveryAnswer/);
-  assert.match(activity, /Open Accessibility Settings/);
+  assert.match(activity, /Open Usage Access Settings/);
+  assert.match(activity, /Allow OpenLock Overlay/);
   assert.match(activity, /Open Device Administrator Settings/);
 });
 
@@ -210,7 +213,7 @@ test("the lock surface and dashboard use the SafeNet product label", () => {
   assert.match(nativeView, /SafeNet App Lock/);
   assert.match(nativeView, /Offline protection for SafeNet/);
   assert.match(dashboard, /App Lock Protection/);
-  assert.match(dashboard, /Offline access protection for SafeNet with LockLock API/);
+  assert.match(dashboard, /Offline access protection for SafeNet with OpenLock/);
   assert.match(dashboard, /salted local hashes/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
@@ -225,9 +228,9 @@ test("VPN and proxy browser blocking is removed from the Android surface", () =>
 test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {
   for (const marker of [
     "setupRecoveryCooldownResetAndDisabledAdminStatus",
-    "accessibilityLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
+     "usageAccessLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
     "physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities",
-    "settings put secure enabled_accessibility_services",
+     "appops set ",
     "dpm remove-active-admin",
     "com.android.settings",
     "dumpsys activity activities",
@@ -237,7 +240,7 @@ test("instrumentation covers lifecycle, permissions, duplicate activity protecti
     "LOCKLOCK_PHYSICAL_RETURN result=PASS",
     "LOCKLOCK_PHYSICAL_OTHER_APP result=PASS",
     "LOCKLOCK_LIFECYCLE result=PASS",
-    "LOCKLOCK_ACCESSIBILITY result=PASS activity_records=1",
+     "OPENLOCK_USAGE_ACCESS result=PASS activity_records=1",
   ]) {
     assert.match(instrumentation, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -265,7 +268,7 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     "apk_sha256=",
     "logcat -d -t 800",
     "dumpsys activity activities",
-    "dumpsys accessibility",
+    "appops get ",
     "dumpsys package",
     "shell getprop",
     "package-state.txt",
@@ -302,14 +305,14 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     workflow,
     /name: SafeNet-DNS-Android-app-lock-evidence[\s\S]+android-app-lock\/latest/,
   );
-  assert.match(workflow, /android-locklock-physical\/latest/);
+  assert.match(workflow, /android-openlock-physical\/latest/);
   assert.match(
     workflow,
-    /Record blocked LockLock evidence when the physical runner is unavailable[\s\S]+if: always\(\)/,
+    /Record blocked OpenLock evidence when the physical runner is unavailable[\s\S]+if: always\(\)/,
   );
   assert.match(workflow, /--blocker "\$blocker"[\s\S]+--message "\$message"/);
   assert.match(workflow, /NO_READY_PHYSICAL_PHONE|NO_PHYSICAL_PHONE/);
-  assert.match(workflow, /## LockLock Android instrumentation/);
+  assert.match(workflow, /## OpenLock Android instrumentation/);
 });
 
 test("physical LockLock preflight classifies every runner blocker with bounded evidence", () => {

@@ -431,12 +431,13 @@ capture_bounded() {
 
 capture_bounded "$output_dir/logcat.txt" logcat -d -t 800
 capture_bounded "$output_dir/activity-stack.txt" shell dumpsys activity activities
-capture_bounded "$output_dir/accessibility.txt" shell dumpsys accessibility
+capture_bounded "$output_dir/usage-access.txt" shell appops get "$PACKAGE_NAME" GET_USAGE_STATS
 capture_bounded "$output_dir/device-properties.txt" shell getprop
 if [[ "$physical_device" == true ]]; then
     capture_bounded "$output_dir/device-policy.txt" shell dumpsys device_policy
     {
-        adb_run shell settings get secure enabled_accessibility_services
+        adb_run shell appops get "$PACKAGE_NAME" GET_USAGE_STATS
+        adb_run shell appops get "$PACKAGE_NAME" SYSTEM_ALERT_WINDOW
         adb_run shell dpm list active-admins
     } 2>&1 | head -c 200000 > "$output_dir/permission-state.txt" || true
 fi
@@ -462,12 +463,16 @@ if [[ "$physical_device" == true ]]; then
     if [[ -n "$detected_target" ]]; then
         target_package="$detected_target"
     fi
-    accessibility_state="$(
-        sed -n 's/.*LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS.*accessibility=\([^ ]*\).*/\1/p' \
+    usage_access_state="$(
+        sed -n 's/.*OPENLOCK_PHYSICAL_PERMISSIONS result=PASS.*usage_access=\([^ ]*\).*/\1/p' \
+            "$output_dir/logcat.txt" | tail -n 1
+    )"
+    overlay_state="$(
+        sed -n 's/.*OPENLOCK_PHYSICAL_PERMISSIONS result=PASS.*overlay=\([^ ]*\).*/\1/p' \
             "$output_dir/logcat.txt" | tail -n 1
     )"
     device_admin_state="$(
-        sed -n 's/.*LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS.*device_admin=\([^ ]*\).*/\1/p' \
+        sed -n 's/.*OPENLOCK_PHYSICAL_PERMISSIONS result=PASS.*device_admin=\([^ ]*\).*/\1/p' \
             "$output_dir/logcat.txt" | tail -n 1
     )"
     {
@@ -482,7 +487,7 @@ if [[ "$physical_device" == true ]]; then
     if [[ "$instrumentation_status" -eq 0 ]] &&
         ! grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
             "$output_dir/instrumentation.log" &&
-        grep -Fq 'LOCKLOCK_PHYSICAL_PERMISSIONS result=PASS' "$output_dir/logcat.txt" &&
+        grep -Fq 'OPENLOCK_PHYSICAL_PERMISSIONS result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=1' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=2' "$output_dir/logcat.txt" &&
@@ -497,7 +502,7 @@ elif [[ "$instrumentation_status" -eq 0 ]] &&
     ! grep -Eiq 'FAILURES!!!|INSTRUMENTATION_CODE: -1|INSTRUMENTATION_RESULT: shortMsg=' \
         "$output_dir/instrumentation.log" &&
     grep -Fq 'LOCKLOCK_LIFECYCLE result=PASS' "$output_dir/logcat.txt" &&
-    grep -Fq 'LOCKLOCK_ACCESSIBILITY result=PASS' "$output_dir/logcat.txt" &&
+    grep -Fq 'OPENLOCK_USAGE_ACCESS result=PASS' "$output_dir/logcat.txt" &&
     grep -Fq 'LOCKLOCK_UI result=PASS' "$output_dir/logcat.txt"; then
     result="PASS"
 else
@@ -514,8 +519,9 @@ fi
     printf 'apk=%s\ntest_apk=%s\ntarget_package=%s\n' \
         "$apk_path" "$test_apk_path" "${target_package:-AUTO_DETECTED}"
     if [[ "$physical_device" == true ]]; then
-        printf 'accessibility_enabled=%s\ndevice_admin_enabled=%s\n' \
-            "${accessibility_state:-NOT_RECORDED}" "${device_admin_state:-NOT_RECORDED}"
+        printf 'usage_access_enabled=%s\noverlay_enabled=%s\ndevice_admin_enabled=%s\n' \
+            "${usage_access_state:-NOT_RECORDED}" "${overlay_state:-NOT_RECORDED}" \
+            "${device_admin_state:-NOT_RECORDED}"
         if grep -Fq 'LOCKLOCK_PHYSICAL_RETURN result=PASS' "$output_dir/logcat.txt"; then
             printf 'selected_app_resumed=true\n'
         else
@@ -528,7 +534,7 @@ fi
         fi
     fi
     printf 'instrumentation_status=%s\nresult=%s\n' "$instrumentation_status" "$result"
-    printf 'diagnostics=logcat.txt,activity-stack.txt,accessibility.txt,device-properties.txt'
+    printf 'diagnostics=logcat.txt,activity-stack.txt,usage-access.txt,device-properties.txt'
     if [[ "$physical_device" == true ]]; then
         printf ',device-policy.txt,permission-state.txt,package-state.txt'
     fi
@@ -537,7 +543,7 @@ fi
 } | tee "$output_dir/result.txt"
 
 if [[ "$result" != "PASS" ]]; then
-    echo "Android LockLock instrumentation failed. Evidence: $output_dir" >&2
+    echo "Android OpenLock instrumentation failed. Evidence: $output_dir" >&2
     exit 1
 fi
 echo "Android LockLock instrumentation passed. Evidence: $output_dir"

@@ -70,6 +70,7 @@
 - [Protection status coordination](protection-status-coordination.md) — protection indicators require verified browser dependencies or an exact normalized SafeNet Private DNS match.
 - [Caller reputation provider boundary](caller-reputation-provider-boundary.md) — approved endpoint and credentials must be workspace-supplied; missing or invalid reputation data stays fail-open.
 - [Android call-screening response validity](android-call-screening-response.md) — allowed silenced calls cannot carry Android's disallowed-call notification flags.
+- [OpenLock app protection boundary](openlock-app-protection.md) — use Usage Access plus an overlay monitor in SafeNet; OpenLock is not a drop-in hosted API.
 - [CallShield evaluation](callshield-evaluation.md) — standalone MIT Android app and local feed, not a hosted reputation API; code and data licensing must be reviewed separately.
 - [Spam provider selection](spam-provider-selection.md) — Hiya Protect is the best fit with partner access; Call Control Identify is the easier fallback but needs SafeNet policy mapping.
 - [RevenueCat connector API actions](revenuecat-connector-api.md) — product relationships mutate through generated SDK action routes, not collection POST endpoints.

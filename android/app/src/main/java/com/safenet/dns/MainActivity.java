@@ -275,7 +275,7 @@ public class MainActivity extends BridgeActivity {
             }
         } else if (appLockView != null && AppLockManager.isEnabled(this)) {
             appLockView.setVisibility(View.VISIBLE);
-            appLockView.setMessage("Enter your LockLock passcode to continue.");
+            appLockView.setMessage("Enter your OpenLock passcode to continue.");
         }
     }
 
@@ -366,6 +366,7 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         restoreSystemBars();
         resumeSoundtrack();
+        AppLockManager.startMonitorServiceIfReady(this);
         if (!appLockHasResumed) {
             appLockHasResumed = true;
             appLockNeedsUnlockOnResume = AppLockManager.isEnabled(this)

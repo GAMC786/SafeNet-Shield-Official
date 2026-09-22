@@ -10,7 +10,8 @@ export interface AppLockStatus {
   locked: boolean;
   message: string;
   configured?: boolean;
-  accessibilityEnabled?: boolean;
+  usageAccessEnabled?: boolean;
+  overlayEnabled?: boolean;
   deviceAdminEnabled?: boolean;
   antiUninstall?: boolean;
   bruteForceProtected?: boolean;
@@ -33,7 +34,7 @@ export function useAppLock() {
           enabled: false,
           available: false,
           locked: false,
-           message: "Checking LockLock protection support…",
+            message: "Checking OpenLock protection support…",
         }
       : browserStatus,
   );
