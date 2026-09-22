@@ -298,7 +298,7 @@ test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser eng
   assert.doesNotMatch(speedTestSource, /Math\.random/);
   assert.doesNotMatch(speedTestSource, /button-official-cloudflare-speedtest|Open Official Test/);
   assert.match(speedTestSource, /turnServerCredsApiUrl: resolveApiUrl\("\/api\/speedtest\/turn-creds"\)/);
-  assert.match(speedTestSource, /uploadApiUrl: resolveApiUrl\("\/api\/speedtest\/upload"\)/);
+  assert.match(speedTestSource, /uploadApiUrl: cloudflareUploadApiUrl/);
   assert.match(speedTestSource, /__up\(\?:\\\?\|\$\)/);
   assert.match(routesSource, /speed\.cloudflare\.com\/turn-creds/);
   assert.match(routesSource, /Origin: "https:\/\/speed\.cloudflare\.com"/);
@@ -325,6 +325,14 @@ test("GlitchTip error reporting is initialized without reviving the dismissed Se
 test("Android 12+ launch surface does not show the Shield Logo", () => {
   assert.match(launchStyleSource, /windowSplashScreenAnimatedIcon/);
   assert.match(launchStyleSource, /splash_transparent/);
+});
+
+test("Android App Lock applies live system-bar insets to the native overlay", () => {
+  assert.match(androidMainActivity, /applySystemBarInsets\(appLockView\)/);
+  assert.match(androidMainActivity, /applySystemBarInsets\(startupFallback\)/);
+  assert.match(androidMainActivity, /applySystemBarInsets\(webView\)/);
+  assert.match(androidMainActivity, /target\.setPadding\(0, systemBars\.top, 0, systemBars\.bottom\)/);
+  assert.doesNotMatch(androidMainActivity, /setOnApplyWindowInsetsListener\(container/);
 });
 
 test("Android keeps a visible black status bar with white icons", () => {
@@ -394,6 +402,9 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
 test("the Dashboard exposes only the Android Private DNS control", () => {
   assert.match(dashboardSource, /SafeNet Private DNS/);
   assert.match(dashboardSource, /switch-safe-net-private-dns/);
+  assert.match(dashboardSource, /VPN &amp; Proxy Browser Blocker/);
+  assert.match(dashboardSource, /switch-vpn-proxy-browser-blocker/);
+  assert.match(dashboardSource, /button-configure-vpn-proxy-browser-blocker/);
   assert.match(dashboardSource, /<Switch[\s\S]*?switch-safe-net-private-dns/);
   assert.match(
     dashboardSource,

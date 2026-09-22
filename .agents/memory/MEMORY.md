@@ -61,6 +61,7 @@
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
 - [Local ClamAV sidecar](local-clamav-sidecar.md) — when no external service is available, run token-protected clamd locally but re-verify on every fresh autoscale instance.
 - [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
+- [Diverged release branch strategy](diverged-release-branch-strategy.md) — when GitHub main is older than the workspace, dispatch the signed release workflow from a versioned release branch instead of force-pushing main.
 - [WireGuard release secret boundary](wireguard-release-secret-boundary.md) — tagged Android builds fail closed until all protected WireGuard values exist as GitHub Actions secrets.
 - [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
 - [GlitchTip Sentry-compatible reporting](glitchtip-sentry-compatible-reporting.md) — deliver the browser DSN through a redacted config route and use direct Express error middleware when tracing is off.
@@ -78,5 +79,6 @@
 - [Android Internet Share failure boundary](android-internet-share-failure-boundary.md) — native Wi-Fi Direct and foreground-service failures must become visible errors instead of crashing the APK.
 - [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.
 - [Android VPN scope](android-vpn-removal-boundary.md) — SafeNet may use a DNS-only VPN for resolver filtering, but must not imply arbitrary HTTPS traffic inspection or restore WireGuard.
+- [VPN and proxy browser blocker](vpn-proxy-browser-blocker.md) — block selected VPN/proxy browser apps at launch through opt-in Accessibility; do not claim encrypted tunnel inspection.
 - [LockLock app protection boundary](androidx-secure-app-lock.md) — offline selected-app locking uses explicit Accessibility/Device Admin opt-ins, salted hashes, recovery, and brute-force cooldowns.
 - [Release completion signal](android-release-completion-signal.md) — trust the release and post-publication verification jobs plus the GitHub Release assets; optional queued validation jobs can leave the overall run queued.

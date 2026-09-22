@@ -844,6 +844,25 @@ test("editable Dashboard and security form values survive returning to the page"
   await page.close();
 });
 
+test("Dashboard exposes the dedicated VPN and proxy browser blocker", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/`);
+  await page.getByRole("heading", { name: "Command Center" }).waitFor();
+  await page.getByRole("heading", { name: "VPN & Proxy Browser Blocker" }).waitFor();
+  assert.equal(
+    await page.getByRole("switch", { name: /VPN and proxy browser blocking/ }).count(),
+    1,
+    "the dedicated blocker switch should be visible",
+  );
+  assert.equal(
+    await page.getByText(/Stop selected VPN and proxy browsers, including UPX Browser/).count(),
+    1,
+    "the blocker should explain that it targets selected browser apps",
+  );
+  await page.close();
+});
+
 test("Antivirus dashboard toggles protection status and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);

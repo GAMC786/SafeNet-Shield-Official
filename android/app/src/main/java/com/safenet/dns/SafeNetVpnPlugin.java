@@ -108,6 +108,55 @@ public class SafeNetVpnPlugin extends Plugin {
         call.resolve(AppLockManager.status(getContext()));
     }
 
+    @PluginMethod
+    public void getVpnProxyBrowserBlockerStatus(PluginCall call) {
+        call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+    }
+
+    @PluginMethod
+    public void setVpnProxyBrowserBlockerEnabled(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", false);
+        if (!enabled) {
+            VpnProxyBrowserBlockerManager.setEnabled(getContext(), false);
+            call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+            return;
+        }
+        startVpnProxyBrowserBlockerActivity(call);
+    }
+
+    @PluginMethod
+    public void openVpnProxyBrowserBlockerSettings(PluginCall call) {
+        startVpnProxyBrowserBlockerActivity(call);
+    }
+
+    private void startVpnProxyBrowserBlockerActivity(PluginCall call) {
+        if (getActivity() == null) {
+            call.reject("VPN and proxy browser blocker is unavailable.", "VPN_PROXY_BLOCKER_UNAVAILABLE");
+            return;
+        }
+        Intent intent = new Intent(getContext(), VpnProxyBrowserBlockerActivity.class)
+                .putExtra(
+                        VpnProxyBrowserBlockerManager.EXTRA_MODE,
+                        VpnProxyBrowserBlockerManager.MODE_CONFIGURE
+                );
+        startActivityForResult(call, intent, "vpnProxyBrowserBlockerActivityResult");
+    }
+
+    @ActivityCallback
+    private void vpnProxyBrowserBlockerActivityResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        if (result.getResultCode() == Activity.RESULT_OK) {
+            call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+        } else {
+            call.reject(
+                    "VPN and proxy browser blocker was not changed.",
+                    "VPN_PROXY_BLOCKER_NOT_CHANGED"
+            );
+        }
+    }
+
     private void startAppLockActivity(PluginCall call, String mode) {
         if (getActivity() == null) {
             call.reject("Secure App Lock is unavailable.", "APP_LOCK_UNAVAILABLE");

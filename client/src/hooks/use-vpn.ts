@@ -80,6 +80,15 @@ export interface ProtectionStatus {
   limitations: string[];
 }
 
+export interface VpnProxyBrowserBlockerStatus {
+  supported: boolean;
+  enabled: boolean;
+  accessibilityEnabled: boolean;
+  blockedPackageCount: number;
+  ready: boolean;
+  message: string;
+}
+
 export type AiShieldState =
   | "safe"
   | "nudity_detected"
@@ -155,6 +164,9 @@ interface SafeNetVpnPlugin {
   setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
   unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
   lockAppNow(): Promise<import("./use-app-lock").AppLockStatus>;
+  getVpnProxyBrowserBlockerStatus(): Promise<VpnProxyBrowserBlockerStatus>;
+  setVpnProxyBrowserBlockerEnabled(options: { enabled: boolean }): Promise<VpnProxyBrowserBlockerStatus>;
+  openVpnProxyBrowserBlockerSettings(): Promise<VpnProxyBrowserBlockerStatus>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
   startTetherShare(options?: { mode?: import("./use-tether-share").TetherShareMode }): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;

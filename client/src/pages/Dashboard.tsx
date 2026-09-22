@@ -6,7 +6,7 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power, Ban } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
+import { useVpnProxyBrowserBlocker } from "@/hooks/use-vpn-proxy-browser-blocker";
 import { useToast } from "@/hooks/use-toast";
 import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
 import {
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
+  const vpnProxyBrowserBlocker = useVpnProxyBrowserBlocker();
   const { toast } = useToast();
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
@@ -308,6 +310,98 @@ export default function Dashboard() {
               >
                 <LockKeyhole className="mr-2 h-4 w-4" />
                 Lock app now
+              </Button>
+            )}
+          </div>
+        </div>
+      </CyberCard>
+
+      <CyberCard className="col-span-1 sm:col-span-2 border-amber-400/20 bg-gradient-to-r from-amber-400/5 to-transparent">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-300">
+                <Ban className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-display text-lg font-bold text-white">VPN &amp; Proxy Browser Blocker</h3>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] font-bold tracking-wider ${
+                      !vpnProxyBrowserBlocker.supported
+                        ? "border-primary/30 bg-primary/10 text-primary"
+                        : vpnProxyBrowserBlocker.status.ready
+                          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                          : "border-amber-400/40 bg-amber-400/10 text-amber-300"
+                    }`}
+                  >
+                    {!vpnProxyBrowserBlocker.supported
+                      ? "ANDROID ONLY"
+                      : vpnProxyBrowserBlocker.status.ready
+                        ? "ACTIVE"
+                        : "SETUP REQUIRED"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Stop selected VPN and proxy browsers, including UPX Browser, before they open.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-3 self-end rounded-lg border border-white/10 bg-background/30 px-3 py-2 sm:self-start">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Blocking</span>
+              <Switch
+                checked={vpnProxyBrowserBlocker.status.enabled}
+                onCheckedChange={(enabled) => {
+                  void vpnProxyBrowserBlocker.setEnabled(enabled).catch(() => undefined);
+                }}
+                disabled={!vpnProxyBrowserBlocker.supported || vpnProxyBrowserBlocker.isBusy}
+                aria-label={`VPN and proxy browser blocking ${vpnProxyBrowserBlocker.status.enabled ? "On" : "Off"}`}
+                data-testid="switch-vpn-proxy-browser-blocker"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Blocked apps</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {vpnProxyBrowserBlocker.status.blockedPackageCount || "None selected"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Selected on this device</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Enforcement</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Launch blocking</p>
+              <p className="mt-1 text-xs text-muted-foreground">Stops selected apps from opening</p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-background/30 p-3">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Accessibility</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {vpnProxyBrowserBlocker.status.accessibilityEnabled ? "Connected" : "Setup required"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Required for launch enforcement</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-muted-foreground">{vpnProxyBrowserBlocker.status.message}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground/80">
+                This blocks selected app launches. It cannot inspect encrypted proxy or VPN traffic.
+              </p>
+            </div>
+            {vpnProxyBrowserBlocker.supported && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void vpnProxyBrowserBlocker.openSettings()}
+                disabled={vpnProxyBrowserBlocker.isBusy}
+                data-testid="button-configure-vpn-proxy-browser-blocker"
+                className="shrink-0 border-amber-400/30 text-amber-300 hover:border-amber-400 hover:bg-amber-400/10"
+              >
+                <Ban className="mr-2 h-4 w-4" />
+                Configure blocked apps
               </Button>
             )}
           </div>

@@ -100,15 +100,24 @@ public class MainActivity extends BridgeActivity {
         if (webView.getParent() instanceof ViewGroup) {
             ViewGroup container = (ViewGroup) webView.getParent();
             container.setBackgroundColor(Color.BLACK);
-            ViewCompat.setOnApplyWindowInsetsListener(container, (view, insets) -> {
-                Insets systemBars = insets.getInsets(
-                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
-                );
-                view.setPadding(0, systemBars.top, 0, systemBars.bottom);
-                return insets;
-            });
-            ViewCompat.requestApplyInsets(container);
         }
+        applySystemBarInsets(webView);
+        applySystemBarInsets(startupFallback);
+        applySystemBarInsets(appLockView);
+    }
+
+    private void applySystemBarInsets(View view) {
+        if (view == null) {
+            return;
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(view, (target, insets) -> {
+            Insets systemBars = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            target.setPadding(0, systemBars.top, 0, systemBars.bottom);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(view);
     }
 
     private void restoreSystemBars() {
