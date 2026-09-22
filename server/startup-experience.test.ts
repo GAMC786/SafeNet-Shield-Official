@@ -298,7 +298,7 @@ test("Measure Your Network keeps ISP profiling and uses Cloudflare's browser eng
   assert.doesNotMatch(speedTestSource, /Math\.random/);
   assert.doesNotMatch(speedTestSource, /button-official-cloudflare-speedtest|Open Official Test/);
   assert.match(speedTestSource, /turnServerCredsApiUrl: resolveApiUrl\("\/api\/speedtest\/turn-creds"\)/);
-  assert.match(speedTestSource, /uploadApiUrl: resolveApiUrl\("\/api\/speedtest\/upload"\)/);
+  assert.match(speedTestSource, /uploadApiUrl: cloudflareUploadApiUrl/);
   assert.match(speedTestSource, /__up\(\?:\\\?\|\$\)/);
   assert.match(routesSource, /speed\.cloudflare\.com\/turn-creds/);
   assert.match(routesSource, /Origin: "https:\/\/speed\.cloudflare\.com"/);

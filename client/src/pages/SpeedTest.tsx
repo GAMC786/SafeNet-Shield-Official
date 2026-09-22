@@ -60,16 +60,7 @@ const phaseProgress: Record<TestPhase, number> = {
 };
 
 const initialWavePoints = [0.38, 0.48, 0.42, 0.57, 0.5, 0.66, 0.54, 0.7, 0.61, 0.76, 0.64, 0.72];
-const androidSpeedTestMeasurements = [
-  { type: "latency" as const, numPackets: 2 },
-  { type: "download" as const, bytes: 100_000, count: 1, bypassMinDuration: true },
-  { type: "latency" as const, numPackets: 10 },
-  { type: "download" as const, bytes: 1_000_000, count: 3 },
-  { type: "latency" as const, numPackets: 2 },
-  { type: "upload" as const, bytes: 100_000, count: 2 },
-  { type: "upload" as const, bytes: 1_000_000, count: 3 },
-  { type: "latency" as const, numPackets: 2 },
-];
+const cloudflareUploadApiUrl = "https://speed.cloudflare.com/__up";
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -278,12 +269,10 @@ export default function SpeedTest() {
       logMeasurementApiUrl: null,
       logAimApiUrl: null,
       turnServerCredsApiUrl: resolveApiUrl("/api/speedtest/turn-creds"),
-      ...(isAndroidApp
-        ? {
-            uploadApiUrl: resolveApiUrl("/api/speedtest/upload"),
-            measurements: androidSpeedTestMeasurements,
-          }
-        : {}),
+      // Keep Android on the same Cloudflare edge endpoint and default ramp-up
+      // sequence as speed.cloudflare.com. The WebView-specific recovery below
+      // only supplies timing when Resource Timing omits upload samples.
+      uploadApiUrl: cloudflareUploadApiUrl,
     });
     cloudflareSpeedTestRef.current = speedTest;
     let uploadRecoveryStarted = false;
@@ -316,7 +305,7 @@ export default function SpeedTest() {
       setProgress((current) => Math.max(current, phaseProgress.upload));
       setIsRunning(true);
       try {
-        const upload = await measureUploadWithElapsedTime(resolveApiUrl("/api/speedtest/upload"));
+        const upload = await measureUploadWithElapsedTime(cloudflareUploadApiUrl);
         completeSpeedTest({ ...nextResults, upload });
       } catch {
         completeSpeedTest(
