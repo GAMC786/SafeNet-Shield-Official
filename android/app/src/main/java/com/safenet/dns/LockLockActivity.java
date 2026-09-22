@@ -6,12 +6,14 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -285,18 +287,36 @@ public final class LockLockActivity extends FragmentActivity {
             if (applicationInfo == null || !addedPackages.add(applicationInfo.packageName)) {
                 continue;
             }
-            CheckBox appCheck = new CheckBox(this);
-            appCheck.setText(applicationInfo.loadLabel(getPackageManager()));
+            String appLabel = applicationInfo.loadLabel(getPackageManager()).toString();
             Drawable appIcon = applicationInfo.loadIcon(getPackageManager());
-            int iconSize = dp(24);
-            appIcon.setBounds(0, 0, iconSize, iconSize);
-            appCheck.setCompoundDrawablesRelative(appIcon, null, null, null);
-            appCheck.setCompoundDrawablePadding(dp(8));
+            LinearLayout appRow = new LinearLayout(this);
+            appRow.setOrientation(LinearLayout.HORIZONTAL);
+            appRow.setGravity(Gravity.CENTER_VERTICAL);
+            appRow.setPadding(dp(4), 0, dp(4), 0);
+
+            CheckBox appCheck = new CheckBox(this);
+            appCheck.setText(appLabel);
             appCheck.setGravity(Gravity.CENTER_VERTICAL);
+            appCheck.setMaxLines(1);
+            appCheck.setEllipsize(TextUtils.TruncateAt.END);
+            appCheck.setMinWidth(0);
+            appCheck.setPadding(0, 0, dp(8), 0);
             SafeNetLockBrand.styleCheckBox(appCheck);
             appCheck.setTag(applicationInfo.packageName);
             appCheck.setChecked(selected.contains(applicationInfo.packageName));
-            appList.addView(appCheck, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 44, 0));
+
+            ImageView appIconView = new ImageView(this);
+            appIconView.setImageDrawable(appIcon);
+            appIconView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            appIconView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+            appRow.addView(appCheck, new LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1f
+            ));
+            appRow.addView(appIconView, new LinearLayout.LayoutParams(dp(40), -1));
+            appList.addView(appRow, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 44, 0));
         }
     }
 

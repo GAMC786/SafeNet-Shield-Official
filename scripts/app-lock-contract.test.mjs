@@ -225,12 +225,15 @@ test("enabling, disabling, recovery, and biometric unlock use the native App Loc
   assert.match(manifest, /USE_BIOMETRIC/);
 });
 
-test("App Lock setup respects system bars and shows launcher icons beside app checks", () => {
+test("App Lock setup respects system bars and keeps launcher icons in a separate right column", () => {
   assert.match(activity, /WindowCompat\.setDecorFitsSystemWindows\(window, false\)/);
   assert.match(activity, /ViewCompat\.setOnApplyWindowInsetsListener\(scrollView/);
   assert.match(activity, /WindowInsetsCompat\.Type\.systemBars\(\)/);
   assert.match(activity, /applicationInfo\.loadIcon\(getPackageManager\(\)\)/);
-  assert.match(activity, /setCompoundDrawablesRelative\(appIcon, null, null, null\)/);
+  assert.match(activity, /appRow\.setOrientation\(LinearLayout\.HORIZONTAL\)/);
+  assert.match(activity, /appCheck\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
+  assert.match(activity, /appRow\.addView\(appCheck, new LinearLayout\.LayoutParams\(\s*0,\s*LinearLayout\.LayoutParams\.MATCH_PARENT,\s*1f/);
+  assert.match(activity, /appRow\.addView\(appIconView, new LinearLayout\.LayoutParams\(dp\(40\), -1\)\)/);
 });
 
 test("email-assisted App Lock recovery resets locally without unlocking directly", () => {
