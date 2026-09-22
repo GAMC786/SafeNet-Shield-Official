@@ -151,13 +151,26 @@ public final class LockLockActivity extends FragmentActivity {
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
         );
         TextView emailRecoveryHelp = bodyText(
-                "After setup, Email-assisted recovery can send a one-time code to your verified "
-                        + "SafeNet account email. It resets the local passcode only and never unlocks App Lock by itself."
+                "Use your verified SafeNet account email to reset the local passcode. "
+                        + "Email recovery never unlocks App Lock by itself."
         );
         recoveryCard.addView(emailRecoveryHelp, marginParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 -2,
                 10
+        ));
+        Button emailRecovery = secondaryButton("Use email sign-in recovery");
+        emailRecovery.setOnClickListener(view -> {
+            if (!AppLockManager.hasPin(this)) {
+                showStatus("Save a passcode before using email-assisted recovery.");
+                return;
+            }
+            showEmailRecovery();
+        });
+        recoveryCard.addView(emailRecovery, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48,
+                8
         ));
 
         antiUninstallCheck = new CheckBox(this);
@@ -328,8 +341,12 @@ public final class LockLockActivity extends FragmentActivity {
         }
         for (int index = 0; index < appList.getChildCount(); index++) {
             View child = appList.getChildAt(index);
-            if (child instanceof CheckBox && ((CheckBox) child).isChecked()) {
-                Object tag = child.getTag();
+            View checkView = child;
+            if (child instanceof LinearLayout && ((LinearLayout) child).getChildCount() > 0) {
+                checkView = ((LinearLayout) child).getChildAt(0);
+            }
+            if (checkView instanceof CheckBox && ((CheckBox) checkView).isChecked()) {
+                Object tag = checkView.getTag();
                 if (tag instanceof String) {
                     selected.add((String) tag);
                 }

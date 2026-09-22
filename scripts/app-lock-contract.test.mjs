@@ -30,6 +30,7 @@ const [
   plugin,
   dashboard,
   recoveryService,
+  strings,
 ] = await Promise.all([
   readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
@@ -45,6 +46,7 @@ const [
   readSource("android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java"),
   readSource("client/src/pages/Dashboard.tsx"),
   readSource("server/app-lock-recovery.ts"),
+  readSource("android/app/src/main/res/values/strings.xml"),
 ]);
 
 const repositoryRoot = new URL("..", import.meta.url);
@@ -225,6 +227,11 @@ test("enabling, disabling, recovery, and biometric unlock use the native App Loc
   assert.match(manifest, /USE_BIOMETRIC/);
 });
 
+test("App Lock identifies SafeNet in Android Device Administrator settings", () => {
+  assert.match(strings, /<string name="locklock_service_label">SafeNet App Lock<\/string>/);
+  assert.doesNotMatch(strings, /OpenLock App Protection/);
+});
+
 test("App Lock setup respects system bars and keeps launcher icons in a separate right column", () => {
   assert.match(activity, /WindowCompat\.setDecorFitsSystemWindows\(window, false\)/);
   assert.match(activity, /ViewCompat\.setOnApplyWindowInsetsListener\(scrollView/);
@@ -234,6 +241,13 @@ test("App Lock setup respects system bars and keeps launcher icons in a separate
   assert.match(activity, /appCheck\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
   assert.match(activity, /appRow\.addView\(appCheck, new LinearLayout\.LayoutParams\(\s*0,\s*LinearLayout\.LayoutParams\.MATCH_PARENT,\s*1f/);
   assert.match(activity, /appRow\.addView\(appIconView, new LinearLayout\.LayoutParams\(dp\(40\), -1\)\)/);
+  assert.match(activity, /child instanceof LinearLayout && \(\(LinearLayout\) child\)\.getChildCount\(\) > 0/);
+});
+
+test("App Lock setup exposes verified email recovery", () => {
+  assert.match(activity, /Use email sign-in recovery/);
+  assert.match(activity, /showEmailRecovery\(\)/);
+  assert.match(activity, /Save a passcode before using email-assisted recovery/);
 });
 
 test("email-assisted App Lock recovery resets locally without unlocking directly", () => {
