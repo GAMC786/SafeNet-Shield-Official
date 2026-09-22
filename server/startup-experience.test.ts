@@ -344,9 +344,13 @@ test("Android keeps a visible black status bar with white icons", () => {
   assert.match(indexHtml, /name="theme-color" content="#000000"/);
 });
 
-test("Android publishes the live status-bar inset to the WebView layout", () => {
-  assert.match(androidMainActivity, /setWebViewStatusBarInset\(\(WebView\) target, systemBars\.top\)/);
+test("Android publishes live system-bar insets to the WebView layout", () => {
+  assert.match(
+    androidMainActivity,
+    /setWebViewSystemBarInsets\(\s*\(WebView\) target,\s*systemBars\.top,\s*systemBars\.bottom/,
+  );
   assert.match(androidMainActivity, /--safenet-status-bar-inset/);
+  assert.match(androidMainActivity, /--safenet-navigation-bar-inset/);
 });
 
 test("updated web assets refresh without clearing app storage", () => {

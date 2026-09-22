@@ -69,7 +69,7 @@ export function Navigation() {
   const [location] = useLocation();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 h-20 rounded-t-2xl glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:rounded-t-none md:rounded-r-2xl md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
+    <nav className="safenet-bottom-navigation fixed left-0 right-0 z-50 rounded-t-2xl glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:rounded-t-none md:rounded-r-2xl md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
       <div className="hidden md:flex flex-col items-center mb-12">
         <a href="https://safenetinc.ca" target="_blank" rel="noopener noreferrer">
           <img 

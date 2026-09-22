@@ -32,6 +32,7 @@
 :root {
   /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
   --safenet-status-bar-inset: env(safe-area-inset-top, 0px);
+  --safenet-navigation-bar-inset: env(safe-area-inset-bottom, 0px);
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Rajdhani', sans-serif;
   --font-mono: 'Space Mono', monospace;
@@ -131,13 +132,30 @@
     height: 5rem;
   }
 
+  .safenet-bottom-navigation {
+    bottom: var(--safenet-navigation-bar-inset);
+    height: 5rem;
+  }
+
   .safenet-main-content {
     padding-top: calc(6rem + var(--safenet-status-bar-inset)) !important;
+    padding-bottom: calc(6rem + var(--safenet-navigation-bar-inset)) !important;
   }
 
   @media (min-width: 640px) {
     .safenet-main-content {
       padding-top: calc(7rem + var(--safenet-status-bar-inset)) !important;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .safenet-bottom-navigation {
+      bottom: auto;
+      height: 100vh;
+    }
+
+    .safenet-main-content {
+      padding-bottom: 2rem !important;
     }
   }
 

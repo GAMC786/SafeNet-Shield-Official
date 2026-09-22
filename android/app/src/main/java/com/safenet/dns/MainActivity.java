@@ -116,17 +116,23 @@ public class MainActivity extends BridgeActivity {
             );
             target.setPadding(0, systemBars.top, 0, systemBars.bottom);
             if (target instanceof WebView) {
-                setWebViewStatusBarInset((WebView) target, systemBars.top);
+                setWebViewSystemBarInsets(
+                        (WebView) target,
+                        systemBars.top,
+                        systemBars.bottom
+                );
             }
             return insets;
         });
         ViewCompat.requestApplyInsets(view);
     }
 
-    private void setWebViewStatusBarInset(WebView webView, int topInset) {
+    private void setWebViewSystemBarInsets(WebView webView, int topInset, int bottomInset) {
         webView.evaluateJavascript(
                 "(function(){document.documentElement.style.setProperty(" +
-                        "'--safenet-status-bar-inset','" + topInset + "px');})();",
+                        "'--safenet-status-bar-inset','" + topInset + "px');" +
+                        "document.documentElement.style.setProperty(" +
+                        "'--safenet-navigation-bar-inset','" + bottomInset + "px');})();",
                 null
         );
     }

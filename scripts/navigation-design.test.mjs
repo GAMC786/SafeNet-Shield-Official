@@ -28,3 +28,7 @@ test("top navigation active indicator is centered on the front lower tab edge", 
 test("top navigation reserves the Android status-bar inset", () => {
   assert.match(source, /className="safenet-system-navigation glass-panel fixed/);
 });
+
+test("bottom navigation reserves the Android navigation-bar inset", () => {
+  assert.match(source, /className="safenet-bottom-navigation fixed/);
+});
