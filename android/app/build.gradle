@@ -201,6 +201,7 @@ apply from: 'capacitor.build.gradle'
 // dependency graph also exposes the Amazon Appstore SDK, whose 3.0.5 bytecode
 // is rejected by D8 on the pinned hosted Android toolchain.
 configurations.configureEach {
+    exclude group: "com.revenuecat.purchases", module: "purchases-store-amazon"
     exclude group: "com.amazon.device", module: "amazon-appstore-sdk"
 }
 
