@@ -3,6 +3,7 @@ package com.safenet.dns;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -178,7 +179,7 @@ public final class VpnProxyBrowserBlockerActivity extends Activity {
         try {
             ApplicationInfo info = getPackageManager().getApplicationInfo(packageName, 0);
             appName = getPackageManager().getApplicationLabel(info).toString();
-        } catch (RuntimeException ignored) {
+        } catch (PackageManager.NameNotFoundException ignored) {
             // Keep the package name when the app was removed during the handoff.
         }
         content = baseContent(
