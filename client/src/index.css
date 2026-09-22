@@ -138,14 +138,8 @@
   }
 
   .safenet-main-content {
-    padding-top: calc(6rem + var(--safenet-status-bar-inset)) !important;
+    padding-top: calc(5.5rem + var(--safenet-status-bar-inset)) !important;
     padding-bottom: calc(6rem + var(--safenet-navigation-bar-inset)) !important;
-  }
-
-  @media (min-width: 640px) {
-    .safenet-main-content {
-      padding-top: calc(7rem + var(--safenet-status-bar-inset)) !important;
-    }
   }
 
   @media (min-width: 768px) {
