@@ -114,13 +114,18 @@ public class MainActivity extends BridgeActivity {
             Insets systemBars = insets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
             );
-            target.setPadding(0, systemBars.top, 0, systemBars.bottom);
             if (target instanceof WebView) {
+                // The web shell owns system-bar spacing for its fixed menus and
+                // scroll content. Padding the WebView here would apply those
+                // insets a second time.
+                target.setPadding(0, 0, 0, 0);
                 setWebViewSystemBarInsets(
                         (WebView) target,
                         systemBars.top,
                         systemBars.bottom
                 );
+            } else {
+                target.setPadding(0, systemBars.top, 0, systemBars.bottom);
             }
             return insets;
         });
