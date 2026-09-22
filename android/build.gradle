@@ -24,6 +24,16 @@ allprojects {
     }
 }
 
+// SafeNet ships the Google Play RevenueCat path. Exclude RevenueCat's optional
+// Amazon store module from every Android subproject because its Amazon SDK
+// dependency contains bytecode rejected by the pinned D8 toolchain.
+subprojects {
+    configurations.configureEach {
+        exclude group: "com.revenuecat.purchases", module: "purchases-store-amazon"
+        exclude group: "com.amazon.device", module: "amazon-appstore-sdk"
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
