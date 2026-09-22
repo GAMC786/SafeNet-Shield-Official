@@ -197,6 +197,13 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+// The Android app uses RevenueCat with Google Play. RevenueCat's shared
+// dependency graph also exposes the Amazon Appstore SDK, whose 3.0.5 bytecode
+// is rejected by D8 on the pinned hosted Android toolchain.
+configurations.configureEach {
+    exclude group: "com.amazon.device", module: "amazon-appstore-sdk"
+}
+
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
