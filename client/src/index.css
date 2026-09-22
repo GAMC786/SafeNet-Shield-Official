@@ -149,13 +149,8 @@
   }
 
   @media (min-width: 768px) {
-    .safenet-bottom-navigation {
-      bottom: auto;
-      height: 100vh;
-    }
-
     .safenet-main-content {
-      padding-bottom: 2rem !important;
+      padding-bottom: calc(6rem + var(--safenet-navigation-bar-inset)) !important;
     }
   }
 

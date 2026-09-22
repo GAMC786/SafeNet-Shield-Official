@@ -2,7 +2,6 @@ import { Link, useLocation } from "wouter";
 import { Shield, Activity, Share2, Settings, Globe, Wifi, Bug, Gauge, CreditCard, PhoneCall } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import logoImage from "@assets/SafeNet_Shield_Logo_1766348594367.png";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: Activity },
@@ -32,7 +31,7 @@ export function SystemNavigation() {
   return (
     <nav
       aria-label="System services"
-      className="safenet-system-navigation glass-panel fixed inset-x-0 z-40 rounded-b-2xl border-b border-white/5 bg-black/80 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:left-20 md:px-6"
+      className="safenet-system-navigation glass-panel fixed inset-x-0 z-40 rounded-b-2xl border-b border-white/5 bg-black/80 px-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl md:px-6"
     >
       <div className="mx-auto grid h-full w-full max-w-7xl grid-cols-5">
         {systemServiceItems.map((item) => {
@@ -69,18 +68,8 @@ export function Navigation() {
   const [location] = useLocation();
 
   return (
-    <nav className="safenet-bottom-navigation fixed left-0 right-0 z-50 rounded-t-2xl glass-panel border-t border-white/5 md:top-0 md:bottom-auto md:w-20 md:h-screen md:rounded-t-none md:rounded-r-2xl md:border-r md:border-t-0 md:flex md:flex-col md:items-center md:py-8 bg-black/80 backdrop-blur-xl">
-      <div className="hidden md:flex flex-col items-center mb-12">
-        <a href="https://safenetinc.ca" target="_blank" rel="noopener noreferrer">
-          <img 
-            src={logoImage} 
-            alt="SafeNet DNS" 
-            className="w-14 h-14 object-contain rounded-lg hover:opacity-80 transition-opacity"
-          />
-        </a>
-      </div>
-
-      <div className="grid h-full w-full grid-cols-5 md:flex md:h-auto md:flex-col md:space-y-4 md:px-2">
+    <nav className="safenet-bottom-navigation fixed inset-x-0 z-50 rounded-t-2xl glass-panel border-t border-white/5 bg-black/80 backdrop-blur-xl">
+      <div className="grid h-full w-full grid-cols-5">
         {navItems.map((item) => {
           const isActive = location === item.path;
           const Icon = item.icon;
@@ -90,24 +79,18 @@ export function Navigation() {
               <div 
                 className={cn(
                   navItemClass,
-                  "md:p-4",
                   isActive ? "text-primary bg-primary/10" : navInactiveClass,
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute -top-1 md:top-auto md:left-0 md:h-8 md:w-1 w-8 h-1 bg-primary rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
                 <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
-                <span className={cn(navLabelClass, "md:hidden")}>{item.label}</span>
-                
-                {/* Tooltip for desktop */}
-                <span className="hidden md:block absolute left-16 bg-card border border-border px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  {item.label}
-                </span>
+                <span className={cn(navLabelClass, "text-center leading-tight")}>{item.label}</span>
               </div>
             </Link>
           );

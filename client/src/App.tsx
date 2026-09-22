@@ -55,7 +55,7 @@ function MainLayout() {
   );
 
   return (
-    <div className="flex h-screen min-h-0 h-[100dvh] flex-col overflow-hidden bg-background text-foreground safe-area-inset md:pl-20">
+    <div className="flex h-screen min-h-0 h-[100dvh] flex-col overflow-hidden bg-background text-foreground safe-area-inset">
       <NetworkStatusBanner />
       <SystemNavigation />
       <Navigation />
