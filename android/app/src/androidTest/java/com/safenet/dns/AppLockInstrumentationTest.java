@@ -225,6 +225,99 @@ public class AppLockInstrumentationTest {
     }
 
     @Test
+    public void appLockDashboardCreatesPasscodeSelectsAppsAndReturnsFromSettings()
+            throws Exception {
+        AppLockManager.setEnabled(context, true);
+        AppLockManager.markAuthenticated();
+
+        Activity mainActivity = launchMainActivity();
+        waitForButton("Open App Lock setup").click();
+        waitForButton("Set passcode and enable AppLock");
+        assertEquals(
+                "SafeNet security settings must open exactly one AppLock dashboard activity.",
+                1,
+                countActivityRecords(
+                        shell("dumpsys activity activities"),
+                        "com.safenet.dns/.AppLockActivity"
+                )
+        );
+
+        List<UiObject2> setupFields = waitForFields(4);
+        fill(setupFields.get(0), PIN);
+        fill(setupFields.get(1), PIN);
+        fill(setupFields.get(2), "What is the recovery answer?");
+        fill(setupFields.get(3), "offline answer");
+        scrollToText("Set passcode and enable AppLock").click();
+        assertTrue("The dashboard must save a local passcode.", AppLockManager.hasPin(context));
+        assertTrue("The dashboard must enable AppLock protection.", AppLockManager.isEnabled(context));
+        assertVisibleText("Add protected apps");
+
+        scrollToText("Add protected apps").click();
+        assertVisibleText("Select Apps");
+        UiObject2 search = waitForFields(1).get(0);
+        search.setText(SETTINGS_PACKAGE);
+        assertVisibleText(SETTINGS_PACKAGE);
+        UiObject2 settingsCheckbox = device.wait(
+                Until.findObject(By.desc(Pattern.compile("^Protect .+"))),
+                UI_TIMEOUT_MS
+        );
+        assertNotNull("The app picker must expose a selectable Settings row.", settingsCheckbox);
+        settingsCheckbox.click();
+        scrollToText("Protect selected apps").click();
+        waitFor("Settings must be selected as a protected package",
+                () -> AppLockManager.getLockedPackages(context).contains(SETTINGS_PACKAGE));
+
+        scrollToText("Allow overlay").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        shell("appops set " + context.getPackageName() + " SYSTEM_ALERT_WINDOW allow");
+        device.pressBack();
+        waitForPackage(context.getPackageName());
+        assertTrue(
+                "The dashboard must reflect the returned overlay permission.",
+                AppLockManager.isOverlayPermissionEnabled(context)
+        );
+
+        scrollToText("Open Accessibility Settings").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        enableAccessibilityService();
+        device.pressBack();
+        waitForPackage(context.getPackageName());
+        waitFor(
+                "The dashboard must reflect the returned Accessibility permission.",
+                () -> AppLockManager.isAccessibilityServiceEnabled(context)
+        );
+
+        scrollToText("Enable anti-uninstall protection").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        device.pressBack();
+        waitForPackage(context.getPackageName());
+        assertVisibleText("Open Device Administrator");
+        scrollToText("Open Device Administrator").click();
+        waitForPackage(SETTINGS_PACKAGE);
+        device.pressBack();
+        waitForPackage(context.getPackageName());
+
+        scrollToText("Open passcode and recovery settings").click();
+        assertVisibleText("Use email sign-in recovery");
+        scrollToText("Use email sign-in recovery").click();
+        assertVisibleText("Email-assisted recovery");
+        assertVisibleText("This process resets the passcode only.");
+        scrollToText("Back to passcode recovery").click();
+        assertVisibleText("Recover your passcode");
+        device.pressBack();
+        waitForPackage(context.getPackageName());
+        assertVisibleText("Add protected apps");
+
+        finishActivity(mainActivity);
+        Log.i(
+                TAG,
+                "APPLOCK_DASHBOARD result=PASS setup=PASS picker=PASS " +
+                        "overlay=PASS accessibility=PASS device_admin_return=PASS " +
+                        "email_recovery=PASS"
+        );
+    }
+
+    @Test
     public void accessibilityServiceLocksSafeNetAndSecondPackageWithoutDuplicateActivities()
             throws Exception {
         assertNotNull(
@@ -423,6 +516,14 @@ public class AppLockInstrumentationTest {
                         ? "Disable SafeNet App Lock"
                         : "SafeNet App Lock"
         );
+        return activity;
+    }
+
+    private Activity launchMainActivity() throws Exception {
+        Intent intent = new Intent(context, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
+        waitForButton("Open App Lock setup");
         return activity;
     }
 

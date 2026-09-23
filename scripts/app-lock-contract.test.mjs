@@ -319,6 +319,8 @@ test("VPN and proxy browser blocking is removed from the Android surface", () =>
 
 test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {
   for (const marker of [
+    "appLockDashboardCreatesPasscodeSelectsAppsAndReturnsFromSettings",
+    "APPLOCK_DASHBOARD result=PASS",
     "setupRecoveryCooldownResetAndDisabledAdminStatus",
       "accessibilityServiceLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
     "physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities",
@@ -368,6 +370,7 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     "accessibility_enabled=",
     "selected_app_resumed=",
     "temporary_unlock_isolated=",
+    "APPLOCK_DASHBOARD result=PASS",
     "result.txt",
   ]) {
     assert.match(

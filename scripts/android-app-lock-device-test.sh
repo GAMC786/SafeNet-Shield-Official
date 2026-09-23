@@ -506,6 +506,7 @@ elif [[ "$instrumentation_status" -eq 0 ]] &&
         "$output_dir/instrumentation.log" &&
     grep -Fq 'LOCKLOCK_LIFECYCLE result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'OPENLOCK_ACCESSIBILITY result=PASS' "$output_dir/logcat.txt" &&
+    grep -Fq 'APPLOCK_DASHBOARD result=PASS' "$output_dir/logcat.txt" &&
     grep -Fq 'LOCKLOCK_UI result=PASS' "$output_dir/logcat.txt"; then
     result="PASS"
 else

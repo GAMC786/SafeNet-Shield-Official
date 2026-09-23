@@ -2331,7 +2331,7 @@ jobs:
             echo "- **Runner:** \`dedicated writable-system Android runner\`"
             echo "- **Result:** \`$result\`"
             echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
-            echo "- **Coverage:** native setup validation and permission handoff, incorrect recovery, successful reset, email-recovery handoff, disable flow, cooldown, disabled-admin status, SafeNet and Settings foreground events, duplicate activity prevention"
+            echo "- **Coverage:** AppLock dashboard setup from SafeNet security settings, local passcode creation, app search/selection, overlay/accessibility/device-admin permission return, email-recovery handoff, compatibility recovery/reset, disable flow, cooldown, SafeNet and Settings foreground events, duplicate activity prevention"
             echo "- **Failure evidence:** bounded logcat/activity/Accessibility diagnostics plus an OpenLock screenshot and UI hierarchy when the form flow fails."
             echo "- **Evidence:** [Download bounded device diagnostics]($RUN_URL#artifacts)"
           } >> "$GITHUB_STEP_SUMMARY"
