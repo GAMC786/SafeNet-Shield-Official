@@ -3,12 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("persistent Headscale proof bundle keeps state and public mesh ports", async () => {
-  const [compose, headscaleConfig, headplaneConfig, caddyfile, runbook] = await Promise.all([
+  const [compose, headscaleConfig, headplaneConfig, caddyfile, runbook, backupChecker, identityChecker] = await Promise.all([
     readFile("ops/headscale/compose.yaml", "utf8"),
     readFile("ops/headscale/headscale/config.yaml.example", "utf8"),
     readFile("ops/headscale/headplane/config.yaml.example", "utf8"),
     readFile("ops/headscale/Caddyfile", "utf8"),
     readFile("ops/headscale/README.md", "utf8"),
+    readFile("ops/headscale/backup-restore-check.sh", "utf8"),
+    readFile("ops/headscale/verify-restored-identities.sh", "utf8"),
   ]);
 
   assert.match(compose, /headscale\/lib:\/var\/lib\/headscale/);
@@ -29,4 +31,11 @@ test("persistent Headscale proof bundle keeps state and public mesh ports", asyn
   assert.match(caddyfile, /reverse_proxy headplane:3000/);
   assert.match(runbook, /approved peer/);
   assert.match(runbook, /safenet-phone/);
+  assert.match(runbook, /restore-check/);
+  assert.match(runbook, /caddy\/data/);
+  assert.match(backupChecker, /android_node_identity=RETAINED_IN_MANIFEST/);
+  assert.match(backupChecker, /target must not already exist/);
+  assert.match(identityChecker, /Authorization: Bearer/);
+  assert.match(identityChecker, /raw_response=REMOVED/);
+  assert.match(identityChecker, /approved_peer_identity=PASS/);
 });

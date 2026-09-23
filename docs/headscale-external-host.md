@@ -13,6 +13,16 @@ DERP/STUN ports that a physical Tailscale-compatible client needs. It is not a
 replacement for an externally reachable host; Replit and Railway TCP proxy
 traffic do not provide the required UDP/STUN or WireGuard data-plane path.
 
+Persistence is not recovery proof. The bundle's backup and disposable-host
+restore drill is documented in
+[`ops/headscale/README.md`](../ops/headscale/README.md#backup-and-host-replacement-restore-drill).
+It archives `headscale/lib`, `headplane/data`, and `caddy/data` through the
+operator's encrypted storage system, verifies the archive and public node
+identities after restore, and then requires the physical Android mesh proof.
+Use [`docs/headscale-restore-evidence.md`](headscale-restore-evidence.md) to
+record the storage snapshot, identity comparison, mesh result, and any secret
+rotation. A filesystem restore or a newly registered node is not a PASS.
+
 ## Host requirements
 
 Use a Linux host with:

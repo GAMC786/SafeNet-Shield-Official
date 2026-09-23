@@ -22,6 +22,8 @@
     "android:setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android-sdk.ps1",
     "android:check": "./scripts/check-android-native-build.sh",
     "headscale:android:evidence": "./scripts/headscale-android-mesh-evidence.sh",
+    "headscale:backup:check": "bash ops/headscale/backup-restore-check.sh",
+    "headscale:restore:identity": "bash ops/headscale/verify-restored-identities.sh",
     "headplane:install": "pnpm --dir headplane install --frozen-lockfile",
     "headplane:dev": "node scripts/start-headplane.mjs dev",
     "headplane:build": "pnpm --dir headplane build",

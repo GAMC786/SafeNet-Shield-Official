@@ -23,3 +23,18 @@ reachability as end-to-end proof would create a false release signal.
 **How to apply:** Use the bounded Android mesh evidence probe and preserve its
 endpoint, node ownership, client build, route, and peer-probe fields with the
 run evidence.
+
+For host replacement recovery, preserve Headscale's SQLite state and noise
+identity together, then require a live node-identity comparison and physical
+approved-peer probe after restore. An archive checksum or copied manifest alone
+is not mesh proof. If the old host or backup may be exposed, rotate API and
+Headplane session credentials but keep the Headscale noise identity during an
+ordinary restore.
+
+**Why:** Re-registering an Android node can look healthy while changing its
+control-plane identity, and rotating the noise key changes the control-plane
+identity itself.
+
+**How to apply:** Treat filesystem restore as a prerequisite, not a PASS; use
+the restore evidence template and mark recovery successful only after the
+live identity and physical mesh checks pass.
