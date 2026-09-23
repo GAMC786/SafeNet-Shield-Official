@@ -11,6 +11,7 @@ import {
   activityLogSchema,
   firewallConfigSchema,
 } from './schema';
+import { wgEasyStatusSchema } from './wg-easy';
 
 export const errorSchemas = {
   validation: z.object({
@@ -165,6 +166,15 @@ export const api = {
       path: '/api/ddns',
       responses: {
         200: z.array(publicDdnsUpdaterSchema),
+      },
+    },
+  },
+  wgEasy: {
+    status: {
+      method: 'GET' as const,
+      path: '/api/wg-easy/status',
+      responses: {
+        200: wgEasyStatusSchema,
       },
     },
   },

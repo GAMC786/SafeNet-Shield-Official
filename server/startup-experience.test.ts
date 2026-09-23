@@ -253,12 +253,28 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard exposes a persisted WG-Easy wrapper toggle", () => {
-  assert.match(dashboardSource, /WG_EASY_ENABLED_STORAGE_KEY/);
-  assert.match(dashboardSource, /https:\/\/github\.com\/wg-easy\/wg-easy/);
-  assert.match(dashboardSource, /data-testid="switch-wg-easy"/);
-  assert.match(dashboardSource, /aria-label=\{`WG-Easy \$\{wgEasyEnabled \? "On" : "Off"\}`\}/);
-  assert.match(dashboardSource, /localStorage\.setItem\(WG_EASY_ENABLED_STORAGE_KEY/);
+test("the Dashboard reports and opens a real WG-Easy connection", () => {
+  const wgEasyHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-wg-easy.ts"),
+    "utf8",
+  );
+  const wgEasyServiceSource = readFileSync(
+    path.resolve(process.cwd(), "server/wg-easy-service.ts"),
+    "utf8",
+  );
+  assert.match(dashboardSource, /useWgEasyStatus/);
+  assert.match(dashboardSource, /Open admin UI/);
+  assert.match(dashboardSource, /NOT CONFIGURED/);
+  assert.match(dashboardSource, /Set up a real WireGuard host/);
+  assert.match(dashboardSource, /WG_EASY_WIREGUARD_ENDPOINT/);
+  assert.doesNotMatch(
+    dashboardSource,
+    /WG_EASY_ENABLED_STORAGE_KEY|switch-wg-easy|Wrapper enabled for this device/,
+  );
+  assert.match(wgEasyHookSource, /\/api\/wg-easy\/status/);
+  assert.match(wgEasyServiceSource, /WG_EASY_URL/);
+  assert.match(wgEasyServiceSource, /WG_EASY_WIREGUARD_ENDPOINT/);
+  assert.match(routesSource, /api\.wgEasy\.status\.path/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {

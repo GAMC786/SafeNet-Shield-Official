@@ -39,6 +39,7 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
+import { getWgEasyStatus } from "./wg-easy-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -404,6 +405,10 @@ export async function registerRoutes(
   app.get(api.settings.get.path, async (req, res) => {
     const settings = await storage.getSettings();
     res.json(publicSettings(settings));
+  });
+
+  app.get(api.wgEasy.status.path, async (_req, res) => {
+    res.json(await getWgEasyStatus());
   });
 
   app.put(api.settings.update.path, async (req, res) => {

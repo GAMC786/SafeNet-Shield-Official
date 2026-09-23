@@ -75,6 +75,12 @@ Preferred communication style: Simple, everyday language.
 ### External APIs
 - ipify.org: Public IP detection for DDNS updates
 
+### WG-Easy
+- SafeNet reports and opens a separately hosted WG-Easy instance through the Dashboard.
+- Configure `WG_EASY_URL` with the WG-Easy web-admin URL and `WG_EASY_WIREGUARD_ENDPOINT` with the public `host:port` used by WireGuard.
+- WG-Easy must run on a compatible Linux/Docker host with persistent `/etc/wireguard` storage and public UDP 51820. The SafeNet web service and Railway TCP proxy are not the VPN host.
+- `scripts/install-wg-easy.sh` downloads the official compose file and starts WG-Easy on that compatible host.
+
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
 - p-limit and p-retry for batch processing rate limiting
