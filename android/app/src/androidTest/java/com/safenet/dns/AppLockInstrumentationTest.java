@@ -138,6 +138,12 @@ public class AppLockInstrumentationTest {
         waitForPackage(SETTINGS_PACKAGE);
         device.pressBack();
         assertVisibleText("Open Accessibility Settings");
+        scrollToText("Use email sign-in recovery").click();
+        assertVisibleText("Email-assisted recovery");
+        assertVisibleText("Send recovery code");
+        assertVisibleText("This process resets the passcode only.");
+        scrollToText("Back to passcode recovery").click();
+        assertVisibleText("Recover your passcode");
         scrollToText("Open Device Administrator Settings").click();
         waitForPackage(SETTINGS_PACKAGE);
         device.pressBack();
@@ -314,6 +320,10 @@ public class AppLockInstrumentationTest {
                 accessibilityEnabled
         );
         assertTrue(
+                "Allow App Lock to display the lock screen over protected apps before this physical check.",
+                overlayEnabled
+        );
+        assertTrue(
                 "Enable LockLock Device Administrator in Android Settings before this physical check.",
                 deviceAdminEnabled
         );
@@ -324,6 +334,17 @@ public class AppLockInstrumentationTest {
                         " device_admin=" + deviceAdminEnabled +
                         " device_model=" + deviceModel() + " target_package=" + targetPackage
         );
+
+        String uninstallAttempt = shell("pm uninstall --user 0 " + context.getPackageName());
+        assertTrue(
+                "Device Administrator must reject an uninstall attempt: " + uninstallAttempt,
+                uninstallAttempt.contains("Failure")
+        );
+        assertNotNull(
+                "SafeNet must remain installed after the rejected uninstall attempt.",
+                context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
+        );
+        Log.i(TAG, "LOCKLOCK_PHYSICAL_ANTI_UNINSTALL result=PASS");
 
         for (int cycle = 0; cycle < 3; cycle++) {
             AppLockManager.clearSession();
