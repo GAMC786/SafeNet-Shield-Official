@@ -274,6 +274,9 @@ test("the Dashboard reports and opens a real WG-Easy connection", () => {
   assert.match(wgEasyHookSource, /\/api\/wg-easy\/status/);
   assert.match(wgEasyServiceSource, /WG_EASY_URL/);
   assert.match(wgEasyServiceSource, /WG_EASY_WIREGUARD_ENDPOINT/);
+  assert.match(wgEasyServiceSource, /WG_EASY_TUNNEL_RESULT_FILE/);
+  assert.match(dashboardSource, /WireGuard UDP tunnel/);
+  assert.match(dashboardSource, /NOT VERIFIED/);
   assert.match(routesSource, /api\.wgEasy\.status\.path/);
 });
 

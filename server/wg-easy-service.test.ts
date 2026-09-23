@@ -25,6 +25,16 @@ test("returns a valid not-configured response when no WG-Easy host is set", asyn
     status: "not-configured",
     checkedAt: null,
     message: "Connect a WG-Easy host to enable the VPN administration panel.",
+    tunnelVerification: {
+      status: "not-run",
+      checkedAt: null,
+      peerCreated: false,
+      peerDeleted: false,
+      peerHandshakeAt: null,
+      hostHandshakeAt: null,
+      message:
+        "The admin UI check does not prove UDP connectivity. Run the disposable-peer verifier on the WG-Easy host.",
+    },
   });
 });
 
@@ -58,5 +68,7 @@ test("reports a reachable WG-Easy host and preserves the public endpoint", async
   assert.equal(status.adminUrl, "https://wg.example.test");
   assert.equal(status.wireguardEndpoint, "vpn.example.test:51820");
   assert.equal(status.status, "online");
+  assert.equal(status.tunnelVerification.status, "not-run");
+  assert.match(status.message, /UDP tunnel connectivity is reported separately/);
   assert.match(status.checkedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
 });

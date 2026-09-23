@@ -6,6 +6,9 @@ PROJECT_NAME="${WG_EASY_PROJECT_NAME:-wg-easy}"
 COMPOSE_URL="${WG_EASY_COMPOSE_URL:-https://raw.githubusercontent.com/wg-easy/wg-easy/master/docker-compose.yml}"
 COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
 CONFIGURE_FIREWALL="${WG_EASY_CONFIGURE_FIREWALL:-1}"
+VERIFY_TUNNEL="${WG_EASY_VERIFY_TUNNEL:-0}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+VERIFY_SCRIPT="${INSTALL_DIR}/verify-wg-easy-peer.sh"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "WG-Easy must be installed on a Linux host with Docker networking support." >&2
@@ -53,6 +56,12 @@ for required_mapping in '51820:51820/udp' '51821:51821/tcp'; do
 done
 
 install -m 600 "${temporary_compose}" "${COMPOSE_FILE}"
+if [[ -f "${SCRIPT_DIR}/verify-wg-easy-peer.sh" ]]; then
+  install -m 700 "${SCRIPT_DIR}/verify-wg-easy-peer.sh" "${VERIFY_SCRIPT}"
+else
+  echo "The disposable-peer verifier is missing next to the installer." >&2
+  exit 1
+fi
 
 compose() {
   docker compose \
@@ -97,6 +106,14 @@ if [[ ! "${admin_status}" =~ ^[23][0-9][0-9]$ ]]; then
   exit 1
 fi
 
+if [[ "${VERIFY_TUNNEL}" == "1" ]]; then
+  if ! WG_EASY_RESULT_FILE="${WG_EASY_RESULT_FILE:-${INSTALL_DIR}/safenet-tunnel-check.json}" \
+    "${VERIFY_SCRIPT}"; then
+    echo "WG-Easy admin UI is reachable, but the WireGuard UDP tunnel verification failed." >&2
+    exit 1
+  fi
+fi
+
 cat <<EOF
 WG-Easy is running with persistent WireGuard state.
 
@@ -105,8 +122,17 @@ WireGuard endpoint: <server-address>:51820/udp
 Persistent configuration: ${INSTALL_DIR}
 Docker volume: ${volume_name}
 
-Verify that the host provider also allows UDP 51820 and TCP 51821. Then set these
-SafeNet workspace variables and restart SafeNet:
+Verify that the host provider also allows UDP 51820 and TCP 51821. The admin UI check
+does not prove the UDP tunnel. To create a disposable peer, verify a real handshake,
+and delete the peer automatically, export these variables and run:
+  WG_EASY_URL=http://127.0.0.1:51821
+  WG_EASY_WIREGUARD_ENDPOINT=<your-vpn-host>:51820
+  WG_EASY_ADMIN_USERNAME=<wg-easy-admin-user>
+  WG_EASY_ADMIN_PASSWORD=<wg-easy-admin-password>
+  ${VERIFY_SCRIPT}
+
+Then set these SafeNet workspace variables and restart SafeNet:
   WG_EASY_URL=https://<your-admin-host>
   WG_EASY_WIREGUARD_ENDPOINT=<your-vpn-host>:51820
+  WG_EASY_TUNNEL_RESULT_FILE=${INSTALL_DIR}/safenet-tunnel-check.json
 EOF

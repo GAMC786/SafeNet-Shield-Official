@@ -138,6 +138,31 @@ export default function Dashboard() {
                     : "NOT CONFIGURED"}
               </Badge>
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-background/20 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">WireGuard UDP tunnel</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {wgEasy.data?.tunnelVerification.message ??
+                    "Waiting for a disposable-peer verification from the WG-Easy host."}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={
+                  wgEasy.data?.tunnelVerification.status === "verified"
+                    ? "shrink-0 border-emerald-400/40 bg-emerald-400/10 text-[10px] text-emerald-300"
+                    : wgEasy.data?.tunnelVerification.status === "failed"
+                      ? "shrink-0 border-amber-400/40 bg-amber-400/10 text-[10px] text-amber-300"
+                      : "shrink-0 border-white/15 bg-white/5 text-[10px] text-muted-foreground"
+                }
+              >
+                {wgEasy.data?.tunnelVerification.status === "verified"
+                  ? "VERIFIED"
+                  : wgEasy.data?.tunnelVerification.status === "failed"
+                    ? "FAILED"
+                    : "NOT VERIFIED"}
+              </Badge>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {wgEasy.data?.adminUrl ? (
                 <Button asChild size="sm" variant="outline">
@@ -191,10 +216,18 @@ export default function Dashboard() {
                 </div>
               </details>
             ) : wgEasy.data.wireguardEndpoint ? (
-              <p className="text-[11px] text-muted-foreground">
-                VPN endpoint:{" "}
-                <span className="font-mono text-foreground">{wgEasy.data.wireguardEndpoint}</span>
-              </p>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground">
+                  VPN endpoint:{" "}
+                  <span className="font-mono text-foreground">{wgEasy.data.wireguardEndpoint}/udp</span>
+                </p>
+                {wgEasy.data.tunnelVerification.status === "not-run" ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Run <code className="text-foreground">/opt/wg-easy/verify-wg-easy-peer.sh</code> on
+                    the WG-Easy host with its admin credentials supplied through environment variables.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </CyberCard>
