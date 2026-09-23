@@ -26,6 +26,13 @@ test("Headscale Android evidence requires every external and client prerequisite
   assert.match(script, /CLIENT_NOT_INSTALLED/);
   assert.match(script, /VPN_INTERFACE_MISSING/);
   assert.match(script, /PEER_ROUTE_NOT_MESH/);
+  assert.match(script, /HEADPLANE_NODE_API_URL/);
+  assert.match(script, /HEADPLANE_NODE_API_TOKEN/);
+  assert.match(script, /HEADPLANE_NODE_API_AUTH_FAILED/);
+  assert.match(script, /HEADPLANE_NODE_API_UNSUPPORTED/);
+  assert.match(script, /HEADPLANE_NODE_NOT_VISIBLE/);
+  assert.doesNotMatch(script, /HEADSCALE_HEADPLANE_NODE_STATUS/);
+  assert.doesNotMatch(script, /HEADSCALE_HEADPLANE_NODE_OWNER/);
   assert.match(script, /result=BLOCKED/);
   assert.match(script, /result=PASS/);
   assert.doesNotMatch(script, /printf .*HEADSCALE_API_KEY/);
@@ -52,10 +59,10 @@ test("configured URLs without an API key block before making network calls", () 
     HEADSCALE_URL: "https://headscale.example.test",
     HEADPLANE_URL: "https://headplane.example.test",
     HEADSCALE_DERP_URL: "https://derp.example.test",
+    HEADPLANE_NODE_API_URL: "https://headplane.example.test/api/safenet/node-status",
+    HEADPLANE_NODE_API_TOKEN: "test-headplane-token",
     HEADSCALE_ANDROID_NODE_NAME: "phone",
     HEADSCALE_ANDROID_PEER_ADDRESS: "100.64.0.2",
-    HEADSCALE_HEADPLANE_NODE_STATUS: "pass",
-    HEADSCALE_HEADPLANE_NODE_OWNER: "safenet",
     HEADSCALE_ANDROID_LOGIN_SERVER_CONFIRMED: "pass",
     HEADSCALE_PERSISTENT_STATE_CONFIRMED: "pass",
   });
@@ -64,7 +71,7 @@ test("configured URLs without an API key block before making network calls", () 
     const evidence = readFileSync(join(output, "result.txt"), "utf8");
     assert.match(evidence, /^failure_category=CONTROL_PLANE_API_KEY_MISSING$/m);
     assert.match(evidence, /^headscale_url=https:\/\/headscale\.example\.test$/m);
-    assert.doesNotMatch(evidence, /test-api-key|Bearer/);
+    assert.doesNotMatch(evidence, /test-api-key|test-headplane-token|Bearer/);
   } finally {
     rmSync(output, { recursive: true, force: true });
   }

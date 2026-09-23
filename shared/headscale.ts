@@ -4,6 +4,7 @@ export const headscaleStatusSchema = z.object({
   configured: z.boolean(),
   headscaleUrl: z.string().nullable(),
   headplaneUrl: z.string().nullable(),
+  headplaneNodeApiConfigured: z.boolean(),
   status: z.enum(["not-configured", "online", "unavailable"]),
   checkedAt: z.string().nullable(),
   nodeCount: z.number().int().nonnegative().nullable(),

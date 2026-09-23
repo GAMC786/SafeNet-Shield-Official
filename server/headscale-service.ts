@@ -2,7 +2,9 @@ import { headscaleStatusSchema, type HeadscaleStatus } from "@shared/headscale";
 
 const CHECK_TIMEOUT_MS = 5000;
 
-function getConfiguredUrl(name: "HEADSCALE_URL" | "HEADPLANE_URL") {
+function getConfiguredUrl(
+  name: "HEADSCALE_URL" | "HEADPLANE_URL" | "HEADPLANE_NODE_API_URL",
+) {
   const value = process.env[name]?.trim();
   if (!value) return null;
 
@@ -29,6 +31,7 @@ function baseStatus(overrides: Partial<HeadscaleStatus> = {}): HeadscaleStatus {
     configured: false,
     headscaleUrl: null,
     headplaneUrl: null,
+    headplaneNodeApiConfigured: false,
     status: "not-configured",
     checkedAt: null,
     nodeCount: null,
@@ -40,6 +43,9 @@ function baseStatus(overrides: Partial<HeadscaleStatus> = {}): HeadscaleStatus {
 export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
   const headscaleUrl = getConfiguredUrl("HEADSCALE_URL");
   const headplaneUrl = getConfiguredUrl("HEADPLANE_URL");
+  const headplaneNodeApiUrl = getConfiguredUrl("HEADPLANE_NODE_API_URL");
+  const headplaneNodeApiToken = process.env.HEADPLANE_NODE_API_TOKEN?.trim();
+  const headplaneNodeApiConfigured = Boolean(headplaneNodeApiUrl && headplaneNodeApiToken);
 
   if (process.env.HEADSCALE_URL && !headscaleUrl) {
     return baseStatus({
@@ -52,8 +58,19 @@ export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
       message: "HEADPLANE_URL must be an HTTP or HTTPS URL without embedded credentials.",
     });
   }
+  if (process.env.HEADPLANE_NODE_API_URL && !headplaneNodeApiUrl) {
+    return baseStatus({
+      headscaleUrl,
+      headplaneUrl,
+      message: "HEADPLANE_NODE_API_URL must be an HTTP or HTTPS URL without embedded credentials.",
+    });
+  }
   if (!headscaleUrl || !headplaneUrl) {
-    return baseStatus({ headscaleUrl, headplaneUrl });
+    return baseStatus({
+      headscaleUrl,
+      headplaneUrl,
+      headplaneNodeApiConfigured,
+    });
   }
 
   const apiKey = process.env.HEADSCALE_API_KEY?.trim();
@@ -61,6 +78,7 @@ export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
     return baseStatus({
       headscaleUrl,
       headplaneUrl,
+      headplaneNodeApiConfigured,
       message: "Headscale URLs are configured, but HEADSCALE_API_KEY is missing.",
     });
   }
@@ -83,6 +101,7 @@ export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
         configured: true,
         headscaleUrl,
         headplaneUrl,
+        headplaneNodeApiConfigured,
         status: "unavailable",
         checkedAt: new Date().toISOString(),
         message: response.status === 401 || response.status === 403
@@ -96,6 +115,7 @@ export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
       configured: true,
       headscaleUrl,
       headplaneUrl,
+      headplaneNodeApiConfigured,
       status: "online",
       checkedAt: new Date().toISOString(),
       nodeCount: getNodeCount(payload),
@@ -106,6 +126,7 @@ export async function getHeadscaleStatus(): Promise<HeadscaleStatus> {
       configured: true,
       headscaleUrl,
       headplaneUrl,
+      headplaneNodeApiConfigured,
       status: "unavailable",
       checkedAt: new Date().toISOString(),
       message: error instanceof Error && error.name === "AbortError"

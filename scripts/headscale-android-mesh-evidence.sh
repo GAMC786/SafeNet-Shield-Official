@@ -11,8 +11,9 @@ serial="${HEADSCALE_ANDROID_SERIAL:-${ANDROID_SERIAL:-}}"
 client_package="${HEADSCALE_ANDROID_CLIENT_PACKAGE:-$DEFAULT_CLIENT_PACKAGE}"
 node_name="${HEADSCALE_ANDROID_NODE_NAME:-}"
 peer_address="${HEADSCALE_ANDROID_PEER_ADDRESS:-}"
-headplane_node_status="${HEADSCALE_HEADPLANE_NODE_STATUS:-}"
-headplane_node_owner="${HEADSCALE_HEADPLANE_NODE_OWNER:-}"
+headplane_node_visibility=""
+headplane_node_status=""
+headplane_node_owner=""
 login_server_confirmed="${HEADSCALE_ANDROID_LOGIN_SERVER_CONFIRMED:-}"
 persistent_state_confirmed="${HEADSCALE_PERSISTENT_STATE_CONFIRMED:-}"
 vpn_interface="${HEADSCALE_ANDROID_VPN_INTERFACE:-}"
@@ -29,7 +30,11 @@ another compatible Android client on the selected phone first.
 Required environment:
   HEADSCALE_URL                 Headscale API/login-server URL
   HEADPLANE_URL                 Headplane URL
+  HEADPLANE_NODE_API_URL        Authenticated read-only node endpoint
+                                (queried with ?node=<selected-node-name>)
   HEADSCALE_API_KEY             Server-side API key (never written to evidence)
+  HEADPLANE_NODE_API_TOKEN      Read-only node endpoint bearer token
+                                (never written to evidence)
   HEADSCALE_DERP_URL            Public DERP health URL or DERP map endpoint
   HEADSCALE_ANDROID_NODE_NAME   Registered Headscale node name
   HEADSCALE_ANDROID_PEER_ADDRESS
@@ -37,10 +42,9 @@ Required environment:
   HEADSCALE_PERSISTENT_STATE_CONFIRMED=pass
                                 External Headscale config/database is persistent
 
-The operator must also confirm the Headplane node view and the Android
-login-server setting. Pass those confirmations with:
-  --headplane-node-status pass
-  --headplane-node-owner OWNER
+The configured Headplane node endpoint supplies the selected node's visibility,
+owner, and status. The operator must still confirm the Android login-server
+setting with:
   --login-server-confirmed pass
 
 Options:
@@ -49,8 +53,6 @@ Options:
   --node-name NAME             Registered Headscale node name
   --peer-address ADDRESS       Approved peer to probe through the mesh
   --vpn-interface NAME         Expected VPN interface (otherwise auto-detected)
-  --headplane-node-status pass Confirm Headplane shows the node and status
-  --headplane-node-owner OWNER Owner shown for the node in Headplane
   --login-server-confirmed pass
                                Confirm the client is configured for HEADSCALE_URL
   --persistent-state-confirmed pass
@@ -85,16 +87,6 @@ while [[ $# -gt 0 ]]; do
         --vpn-interface)
             [[ $# -ge 2 ]] || { echo "ERROR: --vpn-interface requires an interface name." >&2; exit 2; }
             vpn_interface="$2"
-            shift 2
-            ;;
-        --headplane-node-status)
-            [[ $# -ge 2 ]] || { echo "ERROR: --headplane-node-status requires pass." >&2; exit 2; }
-            headplane_node_status="$2"
-            shift 2
-            ;;
-        --headplane-node-owner)
-            [[ $# -ge 2 ]] || { echo "ERROR: --headplane-node-owner requires an owner." >&2; exit 2; }
-            headplane_node_owner="$2"
             shift 2
             ;;
         --login-server-confirmed)
@@ -161,6 +153,8 @@ write_blocked_result() {
         printf 'client_package=%s\n' "$client_package"
         printf 'target=%s\n' "${serial:-unavailable}"
         printf 'peer_address=%s\n' "${peer_address:-NOT_CONFIGURED}"
+        printf 'headplane_node_api_url=%s\n' "${HEADPLANE_NODE_API_URL:-NOT_CONFIGURED}"
+        printf 'headplane_node_visibility=%s\n' "${headplane_node_visibility:-NOT_RECORDED}"
         printf 'headplane_node_status=%s\n' "${headplane_node_status:-NOT_RECORDED}"
         printf 'headplane_node_owner=%s\n' "${headplane_node_owner:-NOT_RECORDED}"
         printf 'login_server_confirmed=%s\n' "${login_server_confirmed:-NOT_RECORDED}"
@@ -210,18 +204,19 @@ block() {
     block "CONTROL_PLANE_UNCONFIGURED" "HEADSCALE_URL is required for the custom Headscale login server."
 [[ -n "${HEADPLANE_URL:-}" ]] ||
     block "HEADPLANE_UNCONFIGURED" "HEADPLANE_URL is required to verify the node administration view."
+[[ -n "${HEADPLANE_NODE_API_URL:-}" ]] ||
+    block "HEADPLANE_NODE_API_UNCONFIGURED" "HEADPLANE_NODE_API_URL is required for automatic node visibility and ownership evidence."
 [[ -n "${HEADSCALE_API_KEY:-}" ]] ||
     block "CONTROL_PLANE_API_KEY_MISSING" "HEADSCALE_API_KEY is required for authenticated node evidence."
+headplane_node_api_token="${HEADPLANE_NODE_API_TOKEN:-}"
+[[ -n "$headplane_node_api_token" ]] ||
+    block "HEADPLANE_NODE_API_TOKEN_MISSING" "HEADPLANE_NODE_API_TOKEN is required for the authenticated read-only Headplane node endpoint."
 [[ -n "${HEADSCALE_DERP_URL:-}" ]] ||
     block "DERP_ENDPOINT_UNCONFIGURED" "HEADSCALE_DERP_URL is required before an encrypted path can be claimed."
 [[ -n "$node_name" ]] ||
     block "ANDROID_NODE_UNCONFIGURED" "HEADSCALE_ANDROID_NODE_NAME identifies the Android node to verify."
 [[ -n "$peer_address" ]] ||
     block "PEER_UNCONFIGURED" "HEADSCALE_ANDROID_PEER_ADDRESS identifies the approved mesh peer to probe."
-[[ "$headplane_node_status" == "pass" ]] ||
-    block "HEADPLANE_NODE_UNCONFIRMED" "Headplane must visibly show the Android node and its current status."
-[[ -n "$headplane_node_owner" ]] ||
-    block "HEADPLANE_OWNER_UNCONFIRMED" "Headplane ownership must be recorded for the Android node."
 [[ "$login_server_confirmed" == "pass" ]] ||
     block "LOGIN_SERVER_UNCONFIRMED" "The Android client must be confirmed against the configured custom login server."
 [[ "$persistent_state_confirmed" == "pass" ]] ||
@@ -240,6 +235,8 @@ url_is_http "$HEADSCALE_URL" ||
     block "CONTROL_PLANE_URL_INVALID" "HEADSCALE_URL must be an HTTP or HTTPS URL."
 url_is_http "$HEADPLANE_URL" ||
     block "HEADPLANE_URL_INVALID" "HEADPLANE_URL must be an HTTP or HTTPS URL."
+url_is_http "$HEADPLANE_NODE_API_URL" ||
+    block "HEADPLANE_NODE_API_URL_INVALID" "HEADPLANE_NODE_API_URL must be an HTTP or HTTPS URL."
 url_is_http "$HEADSCALE_DERP_URL" ||
     block "DERP_URL_INVALID" "HEADSCALE_DERP_URL must be an HTTP or HTTPS URL."
 
@@ -247,12 +244,15 @@ headscale_url="${HEADSCALE_URL%/}"
 headplane_url="${HEADPLANE_URL%/}"
 derp_url="${HEADSCALE_DERP_URL%/}"
 node_response="$output_dir/.headscale-node-response.json"
+headplane_node_response="$output_dir/.headplane-node-response.json"
 
 http_status() {
     local url="$1"
     shift
-    curl --silent --show-error --location --connect-timeout 5 \
-        --max-time "$CURL_TIMEOUT_SECONDS" -o /dev/null -w '%{http_code}' "$@" "$url" 2>/dev/null || printf '000'
+    local status
+    status="$(curl --silent --show-error --location --connect-timeout 5 \
+        --max-time "$CURL_TIMEOUT_SECONDS" -o /dev/null -w '%{http_code}' "$@" "$url" 2>/dev/null || true)"
+    [[ "$status" =~ ^[0-9]{3}$ ]] && printf '%s' "$status" || printf '000'
 }
 
 headscale_status="$(http_status "$headscale_url/api/v1/node" \
@@ -299,7 +299,7 @@ const fields = [
   ["node_last_seen", node.lastSeen || "UNKNOWN"],
 ];
 for (const [key, value] of fields) {
-  process.stdout.write(`${key}=${String(value).replace(/[\\r\\n]/g, " ")}\n`);
+  process.stdout.write(`${key}=${String(value).replace(/[\r\n]/g, " ")}\n`);
 }
 ' "$node_response" "$node_name" > "$node_summary" || node_parse_status=$?
 rm -f "$node_response"
@@ -312,8 +312,91 @@ node_owner="$(awk -F= '$1 == "node_owner" { print substr($0, index($0, "=") + 1)
     block "ANDROID_NODE_OFFLINE" "The registered Android node is not online in Headscale."
 [[ -n "$node_owner" && "$node_owner" != "UNKNOWN" ]] ||
     block "ANDROID_NODE_OWNER_MISSING" "Headscale did not report an owner for the registered Android node."
-[[ "$node_owner" == "$headplane_node_owner" ]] ||
+
+headplane_node_block() {
+    rm -f "$headplane_node_response"
+    block "$1" "$2"
+}
+
+headplane_node_http_status="$(
+    curl --silent --show-error --location --connect-timeout 5 \
+        --max-time "$CURL_TIMEOUT_SECONDS" --get \
+        --data-urlencode "node=$node_name" \
+        -H "Accept: application/json" \
+        -H "Authorization: Bearer $headplane_node_api_token" \
+        -o "$headplane_node_response" -w '%{http_code}' \
+        "$HEADPLANE_NODE_API_URL" 2>/dev/null || true
+)"
+[[ "$headplane_node_http_status" =~ ^[0-9]{3}$ ]] ||
+    headplane_node_http_status="000"
+if [[ "$headplane_node_http_status" == "401" || "$headplane_node_http_status" == "403" ]]; then
+    headplane_node_block "HEADPLANE_NODE_API_AUTH_FAILED" \
+        "The authenticated Headplane node endpoint rejected its read-only token (HTTP $headplane_node_http_status)."
+fi
+if [[ "$headplane_node_http_status" == "404" || "$headplane_node_http_status" == "405" ||
+    "$headplane_node_http_status" == "501" ]]; then
+    headplane_node_block "HEADPLANE_NODE_API_UNSUPPORTED" \
+        "The configured Headplane endpoint does not support the documented read-only node contract (HTTP $headplane_node_http_status)."
+fi
+[[ "$headplane_node_http_status" =~ ^2[0-9][0-9]$ ]] ||
+    headplane_node_block "HEADPLANE_NODE_API_UNAVAILABLE" \
+        "The authenticated Headplane node endpoint did not return a successful response (HTTP $headplane_node_http_status)."
+
+headplane_node_summary="$output_dir/headplane-node-summary.txt"
+headplane_node_parse_status=0
+# The JavaScript is single-quoted so Bash cannot expand its template literals.
+# shellcheck disable=SC2016
+node \
+    -e '
+const fs = require("node:fs");
+const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const node = payload && typeof payload === "object" && payload.node &&
+  typeof payload.node === "object" ? payload.node : payload;
+if (!node || typeof node !== "object") process.exit(4);
+const owner = typeof node.owner === "string"
+  ? node.owner
+  : (node.owner && (node.owner.name || node.owner.displayName || node.owner.id)) || "";
+const visibility = node.visibility === "visible" || node.visible === true
+  ? "visible"
+  : node.visibility === "hidden" || node.visible === false
+    ? "hidden"
+    : "";
+const status = typeof node.status === "string"
+  ? node.status.toLowerCase()
+  : node.online === true
+    ? "online"
+    : node.online === false
+      ? "offline"
+      : "";
+const name = typeof node.name === "string" ? node.name : "";
+if (!name || !visibility || !owner || !status) process.exit(4);
+for (const [key, value] of [
+  ["headplane_node_name", name],
+  ["headplane_node_visibility", visibility],
+  ["headplane_node_owner", owner],
+  ["headplane_node_status", status],
+]) {
+  process.stdout.write(`${key}=${String(value).replace(/[\r\n]/g, " ")}\n`);
+}
+' "$headplane_node_response" > "$headplane_node_summary" || headplane_node_parse_status=$?
+rm -f "$headplane_node_response"
+[[ "$headplane_node_parse_status" -eq 0 ]] ||
+    block "HEADPLANE_NODE_API_UNSUPPORTED" "Headplane returned JSON outside the documented read-only node contract."
+
+headplane_node_name="$(awk -F= '$1 == "headplane_node_name" { print substr($0, index($0, "=") + 1); exit }' "$headplane_node_summary")"
+headplane_node_visibility="$(awk -F= '$1 == "headplane_node_visibility" { print $2; exit }' "$headplane_node_summary")"
+headplane_node_owner="$(awk -F= '$1 == "headplane_node_owner" { print substr($0, index($0, "=") + 1); exit }' "$headplane_node_summary")"
+headplane_node_status="$(awk -F= '$1 == "headplane_node_status" { print $2; exit }' "$headplane_node_summary")"
+[[ "$headplane_node_name" == "$node_name" ]] ||
+    block "HEADPLANE_NODE_MISMATCH" "Headplane returned a different node than the authenticated Headscale record."
+[[ "$headplane_node_visibility" == "visible" ]] ||
+    block "HEADPLANE_NODE_NOT_VISIBLE" "Headplane did not report the selected Android node as visible."
+[[ -n "$headplane_node_owner" ]] ||
+    block "HEADPLANE_OWNER_MISSING" "Headplane did not report an owner for the selected Android node."
+[[ "$headplane_node_owner" == "$node_owner" ]] ||
     block "HEADPLANE_OWNER_MISMATCH" "Headplane ownership does not match the authenticated Headscale node record."
+[[ "$headplane_node_status" == "online" ]] ||
+    block "HEADPLANE_STATUS_MISMATCH" "Headplane status does not match the online Headscale node record."
 
 adb start-server > "$output_dir/adb-start-server.txt" 2>&1 ||
     block "ADB_UNAVAILABLE" "adb could not start its server."
@@ -377,8 +460,8 @@ grep -Eq '[0-9]+ packets transmitted, [0-9]+ (packets )?received' "$ping_output"
     printf 'headscale_http_status=%s\nheadplane_http_status=%s\nderp_http_status=%s\n' \
         "$headscale_status" "$headplane_status" "$derp_status"
     printf 'node_name=%s\nnode_owner=%s\nnode_online=%s\n' "$node_name" "$node_owner" "$node_online"
-    printf 'headplane_node_status=%s\nheadplane_node_owner=%s\n' \
-        "$headplane_node_status" "$headplane_node_owner"
+    printf 'headplane_node_visibility=%s\nheadplane_node_status=%s\nheadplane_node_owner=%s\n' \
+        "$headplane_node_visibility" "$headplane_node_status" "$headplane_node_owner"
     printf 'login_server_confirmed=%s\n' "$login_server_confirmed"
     printf 'persistent_state_confirmed=%s\n' "$persistent_state_confirmed"
     printf 'client_package=%s\nclient_build=%s\n' "$client_package" "$client_build"
