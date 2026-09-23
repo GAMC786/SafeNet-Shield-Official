@@ -1,8 +1,9 @@
-# Headscale and Headplane external-host setup
+# Headscale and Headplane setup
 
-SafeNet treats Headscale and Headplane as external services. The SafeNet web
-deployment only checks the control plane and opens the Headplane UI; it does
-not host the WireGuard data plane.
+SafeNet treats Headscale as the external control plane and includes the
+upstream Headplane application as an isolated companion service. Headplane is
+not merged into the SafeNet Express/Vite bundle. SafeNet and Headplane still do
+not host the WireGuard data plane; Headscale and its clients do that.
 
 ## Host requirements
 
@@ -11,7 +12,8 @@ Use a Linux host with:
 - Docker or Podman
 - Persistent Headscale configuration and database storage
 - A stable HTTPS hostname for Headscale
-- A stable HTTPS hostname for Headplane
+- A stable HTTPS hostname for Headplane when running the companion outside the
+  local development workflow
 - Network access for the Tailscale-compatible clients and any DERP/STUN
   configuration required by the deployment
 
@@ -19,30 +21,45 @@ Headscale's container guidance is maintained at:
 
 https://headscale.net/stable/setup/install/container/
 
-Headplane's installation and configuration guide is maintained at:
+The vendored Headplane source is in `headplane/` and its SafeNet launcher and
+environment contract are documented at `headplane/README.safenet.md`.
+
+Headplane's upstream installation guide is maintained at:
 
 https://headplane.net/install/
 
 Headscale does not include a built-in web UI. Headplane is a separate,
-community-maintained administration UI:
+community-maintained administration UI, preserved in this repository under its
+MIT license:
 
 https://github.com/tale/headplane
 
 ## SafeNet configuration
 
-Set these server-side environment variables:
+Set these server-side environment variables for SafeNet and the companion
+launcher:
 
 ```text
 HEADSCALE_URL=https://headscale.example.com
-HEADPLANE_URL=https://headplane.example.com
+HEADPLANE_URL=https://headplane.example.com/admin
 HEADSCALE_API_KEY=<server-side-api-key>
+HEADPLANE_COOKIE_SECRET=<exactly-32-character-secret>
 ```
 
 `HEADSCALE_API_KEY` is never sent to the browser. SafeNet uses it to query
 Headscale's authenticated node endpoint and reports only bounded status and
 node-count information.
 
-After setting the values, restart SafeNet. The Dashboard will show:
+Install and start the companion from the repository:
+
+```sh
+npm run headplane:install
+npm run headplane:dev
+```
+
+For a production bundle, use `npm run headplane:build` followed by
+`npm run headplane:start`. After setting the values and starting both services,
+the SafeNet Dashboard will show:
 
 - Headscale control-plane status
 - Registered node count when the API returns it
@@ -51,7 +68,8 @@ After setting the values, restart SafeNet. The Dashboard will show:
 
 Headplane remains responsible for node, network, ACL, and DNS administration.
 SafeNet does not proxy Headplane credentials or duplicate its administration
-surface.
+surface. The launcher shares `HEADSCALE_API_KEY` with Headplane server-side and
+generates an ignored, owner-only runtime config.
 
 ## Client model
 

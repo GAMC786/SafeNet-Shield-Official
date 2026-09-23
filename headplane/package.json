@@ -49,7 +49,7 @@
     "react-dom": "19.2.8",
     "react-error-boundary": "^6.1.3",
     "react-router": "^8.3.0",
-    "restty": "0.2.6",
+    "restty": "file:vendor/restty",
     "tailwind-merge": "3.6.0",
     "ulidx": "2.4.1",
     "undici": "8.10.0",

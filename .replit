@@ -1,10 +1,14 @@
-modules = ["web", "nodejs-22", "python-base-3.13", "java-graalvm22.3", "postgresql-16"]
+modules = ["web", "python-base-3.13", "java-graalvm22.3", "postgresql-16", "nodejs-24"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
 packages = ["actionlint", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "freetype", "glib", "gumbo", "harfbuzz", "jbig2dec", "libdrm", "libjpeg_turbo", "libxkbcommon", "mesa", "mupdf", "nspr", "nss", "openjpeg", "shellcheck", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "android-tools", "clamav", "fetchutils"]
+
+[[ports]]
+localPort = 3000
+externalPort = 5000
 
 [[ports]]
 localPort = 4173
@@ -61,6 +65,7 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -69,6 +74,18 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Headplane"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run headplane:dev"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 integrations = ["javascript_openai_ai_integrations:2.0.0"]

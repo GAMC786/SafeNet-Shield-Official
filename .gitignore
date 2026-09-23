@@ -8,3 +8,4 @@ vite.config.ts.*
 .auth/
 tmp.*/preflight-ca.crt
 tmp.*/preflight-ca.key
+headplane/.runtime/

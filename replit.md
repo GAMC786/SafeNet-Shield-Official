@@ -76,11 +76,12 @@ Preferred communication style: Simple, everyday language.
 - ipify.org: Public IP detection for DDNS updates
 
 ### Headscale and Headplane
-- SafeNet reports the external Headscale control plane and opens a separately hosted Headplane administration UI through the Dashboard.
-- Configure `HEADSCALE_URL` with the Headscale API URL, `HEADPLANE_URL` with the Headplane URL, and `HEADSCALE_API_KEY` with a server-side Headscale API key.
-- Headscale and Headplane must run on a compatible external Linux/Docker host. The SafeNet web service and Railway TCP proxy are not the WireGuard data plane.
+- SafeNet includes the upstream Headplane source under `headplane/` as an isolated companion service; it does not merge Headplane routes into the SafeNet Express/Vite app.
+- Run the companion with `npm run headplane:dev` or `npm run headplane:start` after `npm run headplane:install`.
+- Configure `HEADSCALE_URL` with the Headscale API URL, `HEADPLANE_URL` with the Headplane `/admin` URL, `HEADSCALE_API_KEY` with a server-side Headscale API key, and `HEADPLANE_COOKIE_SECRET` with an exactly 32-character session secret.
+- Headscale must run on a compatible external Linux/Docker host. The SafeNet web service and Railway TCP proxy are not the WireGuard data plane.
 - Headscale coordinates a Tailscale-compatible private mesh; Android users need a compatible Tailscale client rather than a standard WG-Easy QR workflow.
-- See `docs/headscale-external-host.md` for the external-host setup boundary and official installation references.
+- See `headplane/README.safenet.md` and `docs/headscale-external-host.md` for the companion-service boundary and external Headscale setup.
 
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
