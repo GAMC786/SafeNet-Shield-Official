@@ -6,32 +6,18 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Power } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
-import { useToast } from "@/hooks/use-toast";
-import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
 import {
-  SAFE_NET_PRIVATE_DNS_EULA_VERSION,
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { isProtectionActive } from "@/lib/protection-status";
-
-const PRIVATE_DNS_EULA_STORAGE_KEY = "safenet-private-dns-eula-version";
-
-function hasAcceptedPrivateDnsEula() {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(PRIVATE_DNS_EULA_STORAGE_KEY) === SAFE_NET_PRIVATE_DNS_EULA_VERSION;
-  } catch {
-    return false;
-  }
-}
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -44,11 +30,8 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
-  const { toast } = useToast();
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
-  const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
-  const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected = isProtectionActive({
     platform: privateDns.supported ? "android" : "web",
@@ -69,40 +52,6 @@ export default function Dashboard() {
       ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
   
-  const openPrivateDnsSettings = async () => {
-    if (!activeDns || !privateDns.supported || privateDns.isBusy || !privateDns.expectedHostname) return;
-    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
-      setPrivateDnsEulaOpen(true);
-      return;
-    }
-    try {
-      const nextStatus = await privateDns.openSettings();
-      toast({
-        title: "Android Private DNS settings opened",
-        description: nextStatus?.expectedHostname
-          ? `Select ${nextStatus.expectedHostname} as the Private DNS provider, then return to SafeNet.`
-          : "Select the SafeNet Private DNS provider, then return to SafeNet.",
-      });
-    } catch {
-      toast({
-        title: "Private DNS settings could not be opened",
-        description: "Android did not expose the system Private DNS settings.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handlePrivateDnsEulaAccept = () => {
-    try {
-      window.localStorage.setItem(PRIVATE_DNS_EULA_STORAGE_KEY, SAFE_NET_PRIVATE_DNS_EULA_VERSION);
-    } catch {
-      // Acceptance still applies for this session if local storage is unavailable.
-    }
-    setPrivateDnsEulaAccepted(true);
-    setPrivateDnsEulaOpen(false);
-    void openPrivateDnsSettings();
-  };
-
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
     ? Math.round((stats.blockedQueries / stats.totalQueries) * 100)
@@ -139,13 +88,6 @@ export default function Dashboard() {
         status={isProtected ? "active" : "unprotected"}
       />
 
-      <PrivateDnsEulaDialog
-        open={privateDnsEulaOpen}
-        onOpenChange={setPrivateDnsEulaOpen}
-        onAccept={handlePrivateDnsEulaAccept}
-        onCancel={() => setPrivateDnsEulaOpen(false)}
-      />
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <CyberCard className="flex min-h-[104px] items-center">
           <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
@@ -165,38 +107,6 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex min-h-[104px] items-center">
-          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Power className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-sm font-medium text-foreground">SafeNet Private DNS</p>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {privateDns.status?.error
-                  || (!privateDns.supported
-                    ? "Android app only"
-                    : !activeDns
-                      ? "Select an active DNS resolver first."
-                      : !privateDns.expectedHostname
-                        ? "Choose a DNS-over-TLS or DNS-over-HTTPS resolver with a hostname."
-                        : privateDns.status?.message || `Use ${privateDns.expectedHostname} in Android Private DNS settings.`)}
-              </p>
-            </div>
-            <Switch
-              checked={privateDns.status?.running === true}
-              onCheckedChange={() => void openPrivateDnsSettings()}
-              disabled={!privateDns.supported || !activeDns || !privateDns.expectedHostname || privateDns.isBusy}
-              aria-label={`SafeNet Private DNS ${privateDns.status?.running ? "On" : "Off"}`}
-              title={privateDns.supported ? "Open Android Private DNS settings" : "Available in the Android app"}
-              data-testid="switch-safe-net-private-dns"
-              className={privateDns.status?.running
-                ? "border-emerald-300 bg-emerald-400/25 shadow-[0_0_18px_rgba(52,211,153,0.24)] data-[state=checked]:border-emerald-300 data-[state=checked]:bg-emerald-400/40"
-                : "border-primary bg-primary/20 shadow-[0_0_18px_rgba(59,130,246,0.28)]"
-              }
-            />
-          </div>
-        </CyberCard>
       </div>
 
       {/* Connection Status Bar */}

@@ -408,13 +408,12 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
-test("the Dashboard exposes only the Android Private DNS control", () => {
-  assert.match(dashboardSource, /SafeNet Private DNS/);
-  assert.match(dashboardSource, /switch-safe-net-private-dns/);
+test("the Dashboard leaves Private DNS management to DNS Servers", () => {
+  assert.doesNotMatch(dashboardSource, /SafeNet Private DNS/);
+  assert.doesNotMatch(dashboardSource, /switch-safe-net-private-dns/);
   assert.doesNotMatch(dashboardSource, /VPN &amp; Proxy Browser Blocker/);
   assert.doesNotMatch(dashboardSource, /switch-vpn-proxy-browser-blocker/);
   assert.doesNotMatch(dashboardSource, /button-configure-vpn-proxy-browser-blocker/);
-  assert.match(dashboardSource, /<Switch[\s\S]*?switch-safe-net-private-dns/);
   assert.match(
     dashboardSource,
     /const isProtected = isProtectionActive\(\{[\s\S]*privateDnsRunning: privateDns\.status\?\.running === true/,
@@ -427,15 +426,13 @@ test("the Dashboard exposes only the Android Private DNS control", () => {
 test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dashboardSource, /DNS Resolver Active/);
   assert.match(dashboardSource, /text-emerald-300/);
-  assert.match(dashboardSource, /SafeNet Private DNS/);
-  assert.match(dashboardSource, /switch-safe-net-private-dns/);
-  assert.match(dashboardSource, /openPrivateDnsSettings/);
   assert.match(dnsSettingsSource, /ipVersion/);
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
   assert.match(dnsSettingsSource, /SafeNet Private DNS/);
   assert.match(dnsSettingsSource, /Open Android settings/);
+  assert.match(dnsSettingsSource, /openPrivateDnsSettings/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Active Cloudflare zone required/);
