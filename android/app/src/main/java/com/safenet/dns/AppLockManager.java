@@ -21,7 +21,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Offline App Lock protection modeled on the MIT-licensed AppLock project.
+ * Offline App Lock protection used by SafeNet's LockLock-derived
+ * configuration surface.
  *
  * SafeNet uses Android's explicit Accessibility Service and an opaque lock
  * activity to observe protected foreground apps. The passcode remains local,

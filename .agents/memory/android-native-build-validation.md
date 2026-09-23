@@ -21,6 +21,12 @@ The hosted release compiler can still catch Java-only errors that local TypeScri
 
 **How to apply:** Treat the hosted native compile result as authoritative when the local workspace has no Android SDK, and do not bypass it to publish an APK.
 
+Compose and Kotlin build configuration can be validated during Gradle configuration even when the local workspace has no Android SDK, but source compilation still requires the hosted pinned-SDK lane.
+
+**Why:** Gradle loaded the Kotlin and Compose plugins locally, then stopped before Kotlin compilation because the SDK directory was absent.
+
+**How to apply:** Do not treat plugin configuration or web tests as native proof; run the hosted Android compile and UI lane before publishing a Compose-based APK.
+
 Release instrumentation compilation exercises the full Android test-source graph, including retained UI tests that may be excluded from the normal app build. Removing a native feature must not leave active test calls pointing at helpers hidden inside obsolete comment blocks.
 
 **Why:** The hosted release test compile caught both a missing standard-library import and retained non-VPN UI-test helpers that had been commented out during VPN removal.

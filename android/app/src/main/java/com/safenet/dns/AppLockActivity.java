@@ -27,6 +27,7 @@ import android.widget.Toast;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.compose.ui.platform.ComposeView;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,14 +36,13 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * SafeNet's embedded AppLock experience, adapted from the MIT-licensed
- * aload0/AppLock flow.
+ * SafeNet's embedded AppLock experience. The configuration surface is
+ * adapted from GPLv3+-licensed LockLock; the native lock and recovery
+ * contracts remain SafeNet-specific.
  *
- * This is deliberately implemented with the Android view toolkit already used
- * by SafeNet. It keeps the application identity, Capacitor bridge, local
- * passcode storage, and SafeNet permission boundaries while providing the
- * upstream experience: a protected-app dashboard, add-apps picker, status
- * control, and actionable permission warning.
+ * It keeps the application identity, Capacitor bridge, local passcode storage,
+ * and SafeNet permission boundaries while preserving the existing activity
+ * contract used by the accessibility monitor and Capacitor bridge.
  */
 public final class AppLockActivity extends LockLockActivity {
     private static final int PADDING_DP = 20;
@@ -59,6 +59,7 @@ public final class AppLockActivity extends LockLockActivity {
     private boolean pickerVisible;
     private boolean rendering;
     private boolean setupCompletedThisSession;
+    private boolean dashboardResumed;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,24 +80,18 @@ public final class AppLockActivity extends LockLockActivity {
     }
 
     private void showAppLockDashboard() {
-        if (rendering) {
-            return;
-        }
-        rendering = true;
-        selectedPackages = new HashSet<>(AppLockManager.getLockedPackages(this));
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(PADDING_DP), dp(16), dp(PADDING_DP), dp(28));
-        addHeader();
-        if (pickerVisible) {
-            addAppPicker();
-        } else {
-            addPermissionBanner();
-            addProtectedAppsSection();
-            addSecuritySection();
-        }
-        setContentView(scrollRoot(content));
-        rendering = false;
+        ComposeView composeView = new ComposeView(this);
+        LockLockComposeUi.render(this, composeView, this::markComposeSetupSaved);
+        setContentView(composeView);
+    }
+
+    public void markComposeSetupSaved() {
+        setupCompletedThisSession = true;
+        finishSetupIfReady();
+    }
+
+    public void openHostedSignInFromCompose(String provider) {
+        openHostedSignIn(provider);
     }
 
     @Override
@@ -723,9 +718,13 @@ public final class AppLockActivity extends LockLockActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (AppLockManager.MODE_SETUP.equals(mode) && content != null && !pickerVisible) {
-            showAppLockDashboard();
-            finishSetupIfReady();
+        if (AppLockManager.MODE_SETUP.equals(mode)) {
+            if (dashboardResumed) {
+                showAppLockDashboard();
+                finishSetupIfReady();
+            } else {
+                dashboardResumed = true;
+            }
         }
     }
 

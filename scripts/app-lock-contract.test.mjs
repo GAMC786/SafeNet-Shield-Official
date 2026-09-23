@@ -33,6 +33,8 @@ const [
   dashboard,
   recoveryService,
   strings,
+  composeUi,
+  lockLockNotice,
 ] = await Promise.all([
   readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
@@ -51,6 +53,8 @@ const [
   readSource("client/src/pages/Dashboard.tsx"),
   readSource("server/app-lock-recovery.ts"),
   readSource("android/app/src/main/res/values/strings.xml"),
+  readSource("android/app/src/main/java/com/safenet/dns/LockLockComposeUi.kt"),
+  readSource("android/third_party/locklock/NOTICE.md"),
 ]);
 const clientApp = await readSource("client/src/App.tsx");
 
@@ -235,6 +239,20 @@ test("the embedded AppLock dashboard covers setup, app selection, and permission
   assert.match(appLock, /onAuthenticationSucceeded/);
   assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
   assert.match(manifest, /android:name="\.AppLockActivity"/);
+});
+
+test("the active AppLock configuration is the LockLock Compose integration", () => {
+  assert.match(appLock, /LockLockComposeUi\.render/);
+  assert.match(appLock, /openHostedSignInFromCompose/);
+  assert.match(appGradle, /org\.jetbrains\.kotlin\.android/);
+  assert.match(appGradle, /org\.jetbrains\.kotlin\.plugin\.compose/);
+  assert.match(appGradle, /androidx\.compose\.material3:material3/);
+  assert.match(composeUi, /https:\/\/github\.com\/nethical6\/LockLock/);
+  assert.match(composeUi, /Select Apps/);
+  assert.match(composeUi, /LockLockRecoveryDialog/);
+  assert.match(composeUi, /LockLockAppSelectionItem/);
+  assert.match(lockLockNotice, /GNU General Public License v3\.0/);
+  assert.match(lockLockNotice, /github\.com\/nethical6\/LockLock/);
 });
 
 test("configured users authenticate before opening AppLock management", () => {
