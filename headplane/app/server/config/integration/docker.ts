@@ -1,0 +1,308 @@
+import { access, constants } from "node:fs/promises";
+import { setTimeout } from "node:timers/promises";
+
+import { type } from "arktype";
+import { Client } from "undici";
+
+import type { Headscale } from "~/server/headscale/api";
+import log from "~/utils/log";
+
+import { Integration } from "./abstract";
+
+interface DockerContainer {
+  Id: string;
+  Names: string[];
+}
+
+interface DockerVersionInfo {
+  ApiVersion?: string;
+  MinAPIVersion?: string;
+}
+
+const TARGET_DOCKER_API_VERSION = "1.44";
+const MIN_DOCKER_API_VERSION = "1.24";
+
+function compareApiVersions(current: string, required: string) {
+  const currentParts = current.split(".").map(Number);
+  const requiredParts = required.split(".").map(Number);
+
+  if (
+    currentParts.some((part) => Number.isNaN(part)) ||
+    requiredParts.some((part) => Number.isNaN(part))
+  ) {
+    throw new Error("Invalid Docker API version format");
+  }
+
+  const length = Math.max(currentParts.length, requiredParts.length);
+
+  for (let index = 0; index < length; index++) {
+    const currentPart = currentParts[index] ?? 0;
+    const requiredPart = requiredParts[index] ?? 0;
+
+    if (currentPart > requiredPart) {
+      return 1;
+    }
+
+    if (currentPart < requiredPart) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+function isSupportedDockerApiVersion(apiVersion: string) {
+  return compareApiVersions(apiVersion, MIN_DOCKER_API_VERSION) >= 0;
+}
+
+function clampApiVersion(target: string, min: string, max: string) {
+  if (compareApiVersions(target, max) > 0) {
+    return max;
+  }
+
+  if (compareApiVersions(target, min) < 0) {
+    return min;
+  }
+
+  return target;
+}
+
+const configSchema = {
+  full: type({
+    enabled: "boolean",
+    container_name: "string?",
+    container_label: 'string = "me.tale.headplane.target=headscale"',
+    socket: 'string = "unix:///var/run/docker.sock"',
+  }),
+
+  partial: type({
+    enabled: "boolean?",
+    container_name: "string?",
+    container_label: "string?",
+    socket: "string?",
+  }).partial(),
+};
+
+export default class DockerIntegration extends Integration<typeof configSchema.full.infer> {
+  private maxAttempts = 10;
+  private client: Client | undefined;
+  private containerId: string | undefined;
+  private apiVersion: string | undefined;
+
+  get name() {
+    return "Docker";
+  }
+
+  static get configSchema() {
+    return configSchema;
+  }
+
+  async isAvailable() {
+    log.info("config", "Requiring Docker API version %s or newer", MIN_DOCKER_API_VERSION);
+
+    // Basic configuration check, the name overrides the container_label
+    // selector because of legacy support.
+    const { container_name, container_label } = this.context;
+    if (container_name?.length === 0 && container_label.length === 0) {
+      log.error("config", "Missing a Docker `container_name` or `container_label`");
+      return false;
+    }
+
+    // Verify that Docker socket is reachable
+    let url: URL | undefined;
+    try {
+      url = new URL(this.context.socket);
+    } catch {
+      log.error("config", "Invalid Docker socket path: %s", this.context.socket);
+      return false;
+    }
+
+    if (url.protocol !== "tcp:" && url.protocol !== "unix:") {
+      log.error("config", "Invalid Docker socket protocol: %s", url.protocol);
+      return false;
+    }
+
+    // The API is available as an HTTP endpoint and this
+    // will simplify the fetching logic in undici
+    if (url.protocol === "tcp:") {
+      // Apparently setting url.protocol doesn't work anymore?
+      const fetchU = url.href.replace(url.protocol, "http:");
+
+      try {
+        log.info("config", "Checking API: %s", fetchU);
+        await fetch(new URL("/version", fetchU).href);
+      } catch (error) {
+        log.error("config", "Failed to connect to Docker API: %s", error);
+        log.debug("config", "Connection error: %o", error);
+        return false;
+      }
+
+      this.client = new Client(fetchU);
+    }
+
+    // Check if the socket is accessible
+    if (url.protocol === "unix:") {
+      try {
+        log.info("config", "Checking socket: %s", url.pathname);
+        await access(url.pathname, constants.R_OK);
+      } catch (error) {
+        log.error("config", "Failed to access Docker socket: %s", url.pathname);
+        log.debug("config", "Access error: %o", error);
+        return false;
+      }
+
+      this.client = new Client("http://localhost", {
+        socketPath: url.pathname,
+      });
+    }
+
+    if (this.client === undefined) {
+      log.error("config", "Failed to create Docker client");
+      return false;
+    }
+
+    try {
+      const versionRes = await this.client.request({
+        method: "GET",
+        path: "/version",
+      });
+
+      if (versionRes.statusCode !== 200) {
+        log.error("config", "Could not request Docker API version");
+        log.debug("config", "Error Details: %o", await versionRes.body.json());
+        return false;
+      }
+
+      const versionInfo = (await versionRes.body.json()) as DockerVersionInfo;
+      if (!versionInfo.ApiVersion) {
+        log.error("config", "Docker API version response is missing `ApiVersion`");
+        return false;
+      }
+
+      log.info("config", "Detected Docker API version %s", versionInfo.ApiVersion);
+
+      if (!isSupportedDockerApiVersion(versionInfo.ApiVersion)) {
+        log.error(
+          "config",
+          "Docker API version %s is too old, require %s or newer",
+          versionInfo.ApiVersion,
+          MIN_DOCKER_API_VERSION,
+        );
+        return false;
+      }
+
+      this.apiVersion = clampApiVersion(
+        TARGET_DOCKER_API_VERSION,
+        versionInfo.MinAPIVersion ?? MIN_DOCKER_API_VERSION,
+        versionInfo.ApiVersion,
+      );
+
+      log.info("config", "Using Docker API version %s", this.apiVersion);
+    } catch (error) {
+      log.error("config", "Failed to validate Docker API version: %s", error);
+      log.debug("config", "Version check error: %o", error);
+      return false;
+    }
+
+    const qp = new URLSearchParams({
+      filters: JSON.stringify(
+        container_name != null && container_name.length > 0
+          ? { name: [container_name] }
+          : { label: [container_label] },
+      ),
+    });
+
+    log.debug("config", "Requesting Docker containers with filters: %s", qp.toString());
+    const res = await this.client.request({
+      method: "GET",
+      path: `/v${this.apiVersion}/containers/json?${qp.toString()}`,
+    });
+
+    if (res.statusCode !== 200) {
+      log.error("config", "Could not request available Docker containers");
+      log.debug("config", "Error Details: %o", await res.body.json());
+      return false;
+    }
+
+    const data = (await res.body.json()) as DockerContainer[];
+    if (data.length > 1) {
+      if (container_name != null && container_name.length > 0) {
+        log.error("config", `Found multiple containers with name ${container_name}`);
+      } else {
+        log.error("config", `Found multiple containers with label ${container_label}`);
+      }
+
+      return false;
+    }
+
+    if (data.length === 0) {
+      if (container_name != null && container_name.length > 0) {
+        log.error("config", `No container found with the name ${container_name}`);
+      } else {
+        log.error("config", `No container found with the label ${container_label}`);
+      }
+
+      return false;
+    }
+
+    this.containerId = data[0].Id;
+    log.info("config", "Using container: %s (ID: %s)", data[0].Names[0], this.containerId);
+
+    return this.client !== undefined && this.containerId !== undefined;
+  }
+
+  async onConfigChange(headscale: Headscale) {
+    if (!this.client || !this.apiVersion) {
+      return;
+    }
+
+    log.info("config", "Restarting Headscale via Docker");
+
+    let attempts = 0;
+    while (attempts <= this.maxAttempts) {
+      log.debug("config", "Restarting container: %s (attempt %d)", this.containerId, attempts);
+
+      const response = await this.client.request({
+        method: "POST",
+        path: `/v${this.apiVersion}/containers/${this.containerId}/restart`,
+      });
+
+      if (response.statusCode !== 204) {
+        if (attempts < this.maxAttempts) {
+          attempts++;
+          await setTimeout(1000);
+          continue;
+        }
+
+        const stringCode = response.statusCode.toString();
+        const body = await response.body.text();
+        throw new Error(`API request failed: ${stringCode} ${body}`);
+      }
+
+      break;
+    }
+
+    attempts = 0;
+    while (attempts <= this.maxAttempts) {
+      try {
+        log.debug("config", "Checking Headscale status (attempt %d)", attempts);
+        const status = await headscale.health();
+        if (status === false) {
+          throw new Error("Headscale is not running");
+        }
+
+        log.info("config", "Headscale is up and running");
+        return;
+      } catch {
+        if (attempts < this.maxAttempts) {
+          attempts++;
+          await setTimeout(1000);
+          continue;
+        }
+
+        log.error("config", "Missed restart deadline for %s", this.containerId);
+        return;
+      }
+    }
+  }
+}

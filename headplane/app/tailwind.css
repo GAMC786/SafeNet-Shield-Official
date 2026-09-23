@@ -1,0 +1,295 @@
+@import "tailwindcss";
+
+@plugin "tailwindcss-animate";
+
+/* Dark mode: respect an explicit `.dark` / `.light` class on <html>, and fall
+ * back to the user's OS preference when neither is set (i.e. "system"). */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(html:not(.light):not(.dark)),
+    &:where(html:not(.light):not(.dark) *) {
+      @slot;
+    }
+  }
+}
+
+@theme {
+  --blur-xs: 2px;
+
+  --height-editor: calc(100vh - 20rem);
+
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --transition-duration-25: 25ms;
+  --transition-duration-50: 50ms;
+
+  /* Design tokens: border-radius */
+  --radius-sm: 0.375rem; /* 6px — chips, badges, inline elements */
+  --radius-md: 0.5rem; /* 8px — buttons, inputs, interactive controls */
+  --radius-lg: 0.75rem; /* 12px — cards, panels, dialogs, popovers */
+
+  /* Design tokens: box-shadow */
+  --shadow-surface: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  --shadow-overlay: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 6px -1px rgb(0 0 0 / 0.06);
+
+  --animate-loading: loader 0.8s infinite ease-in-out;
+
+  @keyframes loader {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 1rem;
+  width: 100%;
+  max-width: 96rem; /* 1536px - constrain on large displays */
+
+  @media (width >= theme(--breakpoint-sm)) {
+    padding-inline: 2rem;
+  }
+  @media (width >= theme(--breakpoint-lg)) {
+    padding-inline: 4rem;
+  }
+
+  @media (width >= theme(--breakpoint-xl)) {
+    padding-inline: 5rem;
+  }
+
+  @media (width >= theme(--breakpoint-2xl)) {
+    padding-inline: 6rem;
+  }
+}
+
+@layer base {
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 5px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
+body {
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  --cm-bg: var(--color-white);
+  --cm-fg: var(--color-mist-900);
+  --cm-caret: var(--color-mist-900);
+  --cm-selection: var(--color-indigo-100);
+  --cm-selection-match: var(--color-indigo-50);
+  --cm-line-highlight: var(--color-mist-100);
+  --cm-gutter-bg: var(--color-mist-50);
+  --cm-gutter-fg: var(--color-mist-400);
+  --cm-gutter-fg-active: var(--color-mist-700);
+  --cm-gutter-border: var(--color-mist-200);
+  --cm-comment: var(--color-mist-500);
+  --cm-keyword: var(--color-purple-600);
+  --cm-string: var(--color-emerald-700);
+  --cm-type: var(--color-indigo-600);
+  --cm-definition: var(--color-blue-600);
+  --cm-name: var(--color-mist-800);
+  --cm-variable: var(--color-cyan-700);
+  --cm-property: var(--color-violet-600);
+  --cm-atom: var(--color-orange-600);
+  --cm-number: var(--color-orange-600);
+  --cm-link: var(--color-blue-600);
+  --cm-bracket: var(--color-mist-500);
+}
+
+/* CodeMirror dark token vars — applied for explicit .dark or system preference
+ * when no explicit class is set. Mirrors the dark variant above. */
+.dark {
+  --cm-bg: var(--color-mist-950);
+  --cm-fg: var(--color-mist-100);
+  --cm-caret: var(--color-mist-100);
+  --cm-selection: var(--color-indigo-900);
+  --cm-selection-match: var(--color-indigo-950);
+  --cm-line-highlight: oklch(18% 0.006 224 / 0.5);
+  --cm-gutter-bg: var(--color-mist-950);
+  --cm-gutter-fg: var(--color-mist-500);
+  --cm-gutter-fg-active: var(--color-mist-300);
+  --cm-gutter-border: var(--color-mist-800);
+  --cm-comment: var(--color-mist-400);
+  --cm-keyword: var(--color-purple-400);
+  --cm-string: var(--color-emerald-400);
+  --cm-type: var(--color-indigo-400);
+  --cm-definition: var(--color-blue-400);
+  --cm-name: var(--color-mist-200);
+  --cm-variable: var(--color-cyan-400);
+  --cm-property: var(--color-violet-400);
+  --cm-atom: var(--color-orange-400);
+  --cm-number: var(--color-orange-400);
+  --cm-link: var(--color-blue-400);
+  --cm-bracket: var(--color-mist-400);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not(.light):not(.dark) {
+    --cm-bg: var(--color-mist-950);
+    --cm-fg: var(--color-mist-100);
+    --cm-caret: var(--color-mist-100);
+    --cm-selection: var(--color-indigo-900);
+    --cm-selection-match: var(--color-indigo-950);
+    --cm-line-highlight: oklch(18% 0.006 224 / 0.5);
+    --cm-gutter-bg: var(--color-mist-950);
+    --cm-gutter-fg: var(--color-mist-500);
+    --cm-gutter-fg-active: var(--color-mist-300);
+    --cm-gutter-border: var(--color-mist-800);
+    --cm-comment: var(--color-mist-400);
+    --cm-keyword: var(--color-purple-400);
+    --cm-string: var(--color-emerald-400);
+    --cm-type: var(--color-indigo-400);
+    --cm-definition: var(--color-blue-400);
+    --cm-name: var(--color-mist-200);
+    --cm-variable: var(--color-cyan-400);
+    --cm-property: var(--color-violet-400);
+    --cm-atom: var(--color-orange-400);
+    --cm-number: var(--color-orange-400);
+    --cm-link: var(--color-blue-400);
+    --cm-bracket: var(--color-mist-400);
+  }
+}
+
+.cm-merge-theme,
+.cm-mergeView,
+.cm-mergeViewEditor {
+  height: 100% !important;
+}
+
+.cm-mergeViewEditors {
+  height: 100%;
+}
+
+.toast-viewport {
+  position: fixed;
+  z-index: 50;
+  bottom: 2rem;
+  right: 1rem;
+  left: auto;
+  top: auto;
+  width: 20rem;
+}
+
+.toast-root {
+  --gap: 0.75rem;
+  --peek: 0.75rem;
+  --scale: calc(max(0, 1 - (var(--toast-index) * 0.1)));
+  --shrink: calc(1 - var(--scale));
+  --height: var(--toast-frontmost-height, var(--toast-height));
+  --offset-y: calc(
+    var(--toast-offset-y) * -1 + (var(--toast-index) * var(--gap) * -1) +
+      var(--toast-swipe-movement-y)
+  );
+
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: 100%;
+  height: var(--height);
+  z-index: calc(1000 - var(--toast-index));
+  transform-origin: bottom center;
+  user-select: none;
+
+  transform: translateX(var(--toast-swipe-movement-x))
+    translateY(
+      calc(
+        var(--toast-swipe-movement-y) - (var(--toast-index) * var(--peek)) -
+          (var(--shrink) * var(--height))
+      )
+    )
+    scale(var(--scale));
+
+  transition:
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.5s,
+    height 0.15s;
+
+  &[data-expanded] {
+    transform: translateX(var(--toast-swipe-movement-x)) translateY(var(--offset-y));
+    height: var(--toast-height);
+  }
+
+  &[data-starting-style] {
+    transform: translateY(150%);
+  }
+
+  &[data-ending-style] {
+    opacity: 0;
+    transform: translateY(150%);
+
+    &[data-swipe-direction="up"] {
+      transform: translateY(calc(var(--toast-swipe-movement-y) - 150%));
+    }
+    &[data-swipe-direction="down"] {
+      transform: translateY(calc(var(--toast-swipe-movement-y) + 150%));
+    }
+    &[data-swipe-direction="left"] {
+      transform: translateX(calc(var(--toast-swipe-movement-x) - 150%)) translateY(var(--offset-y));
+    }
+    &[data-swipe-direction="right"] {
+      transform: translateX(calc(var(--toast-swipe-movement-x) + 150%)) translateY(var(--offset-y));
+    }
+  }
+
+  &[data-limited] {
+    opacity: 0;
+  }
+
+  /* Invisible hit area to bridge hover gap between toasts */
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    height: calc(var(--gap) + 1px);
+  }
+}
+
+.toast-content {
+  overflow: hidden;
+  transition: opacity 0.25s;
+
+  &[data-behind] {
+    opacity: 0;
+  }
+
+  &[data-expanded] {
+    opacity: 1;
+  }
+}
+
+.cm-mergeView .cm-editor,
+.cm-mergeView .cm-editor .cm-scroller {
+  height: 100% !important;
+}
+
+.cm-mergeViewEditors {
+  scrollbar-color: var(--cm-gutter-border) transparent;
+  scrollbar-width: auto;
+}

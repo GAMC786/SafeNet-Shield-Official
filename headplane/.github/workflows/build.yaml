@@ -1,0 +1,74 @@
+name: Build
+on:
+  push:
+    paths-ignore:
+      - "assets/**"
+      - "docs/**"
+      - "CHANGELOG.md"
+      - "README.md"
+    branches:
+      - "main"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  ci:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: ./build.sh --skip-pnpm-prune
+
+      - name: Run unit tests
+        run: pnpm run test:unit
+
+      - name: Run integration tests
+        run: pnpm run test:integration
+
+  nix:
+    name: Nix Flake Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Check flake inputs
+        uses: DeterminateSystems/flake-checker-action@main
+
+      - name: Check flake outputs
+        run: nix flake check
