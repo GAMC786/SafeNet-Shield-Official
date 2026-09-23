@@ -431,6 +431,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
   assert.match(dnsSettingsSource, /SafeNet Private DNS/);
+  assert.match(dnsSettingsSource, /Available in the Android app/);
   assert.match(dnsSettingsSource, /Open Android settings/);
   assert.match(dnsSettingsSource, /openPrivateDnsSettings/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);

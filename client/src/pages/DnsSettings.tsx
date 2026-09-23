@@ -338,6 +338,48 @@ export default function DnsSettings() {
       />
       <Header title="DNS Servers" subtitle="Manage Resolvers" />
 
+      <CyberCard className={privateDns.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
+              SafeNet Private DNS
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {!privateDns.supported
+                ? "Available in the Android app. SafeNet uses Android Private DNS for encrypted DNS-over-TLS without creating a VPN."
+                : privateDns.status?.error
+                  || privateDns.status?.message
+                  || "Android Private DNS uses encrypted DNS-over-TLS without creating a VPN."}
+            </p>
+          </div>
+          {privateDns.status?.running ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={privateDns.isBusy}
+              onClick={() => void privateDns.openSettings()}
+            >
+              Change Private DNS
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              disabled={!privateDns.supported || privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
+              onClick={() => {
+                if (activeDns) void handleStartFiltering(activeDns);
+              }}
+            >
+              {privateDns.supported ? "Open Android settings" : "Android app only"}
+            </Button>
+          )}
+        </div>
+        {privateDns.supported && !privateDns.expectedHostname && (
+          <p className="mt-2 text-xs text-destructive">
+            The selected resolver does not expose a hostname Android Private DNS can use. Choose a DNS-over-TLS or DNS-over-HTTPS resolver.
+          </p>
+        )}
+      </CyberCard>
+
       <CyberCard className="border-primary/20">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -510,47 +552,6 @@ export default function DnsSettings() {
         </CyberCard>
       ) : (
         <div className="space-y-4">
-          {privateDns.supported && (
-            <CyberCard className={privateDns.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
-                    SafeNet Private DNS
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {privateDns.status?.error
-                      || privateDns.status?.message
-                      || "Android Private DNS uses encrypted DNS-over-TLS without creating a VPN."}
-                  </p>
-                </div>
-                {privateDns.status?.running ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={privateDns.isBusy}
-                    onClick={() => void privateDns.openSettings()}
-                  >
-                    Change Private DNS
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    disabled={privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
-                    onClick={() => {
-                      if (activeDns) void handleStartFiltering(activeDns);
-                    }}
-                  >
-                    Open Android settings
-                  </Button>
-                )}
-              </div>
-              {!privateDns.expectedHostname && (
-                <p className="mt-2 text-xs text-destructive">
-                  The selected resolver does not expose a hostname Android Private DNS can use. Choose a DNS-over-TLS or DNS-over-HTTPS resolver.
-                </p>
-              )}
-            </CyberCard>
-          )}
           <div className="grid grid-cols-1 gap-4">
           {servers.map((server) => (
             <CyberCard
