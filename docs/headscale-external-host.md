@@ -5,6 +5,14 @@ upstream Headplane application as an isolated companion service. Headplane is
 not merged into the SafeNet Express/Vite bundle. SafeNet and Headplane still do
 not host the WireGuard data plane; Headscale and its clients do that.
 
+The repository includes a deployable persistent-host bundle in
+`ops/headscale/`. It is the canonical starting point for a Linux/Docker host:
+Headscale's SQLite state, Headplane's database, and Caddy's certificate data
+are all mounted outside the containers. The bundle also exposes the embedded
+DERP/STUN ports that a physical Tailscale-compatible client needs. It is not a
+replacement for an externally reachable host; Replit and Railway TCP proxy
+traffic do not provide the required UDP/STUN or WireGuard data-plane path.
+
 ## Host requirements
 
 Use a Linux host with:
@@ -23,6 +31,10 @@ https://headscale.net/stable/setup/install/container/
 
 The vendored Headplane source is in `headplane/` and its SafeNet launcher and
 environment contract are documented at `headplane/README.safenet.md`.
+
+For a ready-to-run external host, follow `ops/headscale/README.md`. Do not
+commit the generated YAML, the `secrets/` files, or any Headscale node/API
+response from that host.
 
 Headplane's upstream installation guide is maintained at:
 
@@ -44,7 +56,7 @@ HEADSCALE_URL=https://headscale.example.com
 HEADPLANE_URL=https://headplane.example.com/admin
 HEADSCALE_API_KEY=<server-side-api-key>
 HEADPLANE_COOKIE_SECRET=<exactly-32-character-secret>
-HEADPLANE_NODE_API_URL=https://headplane.example.com/api/safenet/node-status
+HEADPLANE_NODE_API_URL=https://api.example.com/api/headscale/node-status
 HEADPLANE_NODE_API_TOKEN=<server-side-read-only-token>
 ```
 
@@ -113,10 +125,10 @@ relay or peer traffic works.
 The Android proof does not scrape the Headplane HTML page or accept a manually
 entered owner. Configure `HEADPLANE_NODE_API_URL` to a supported,
 authentication-protected read-only endpoint in the Headplane deployment (or
-its documented integration adapter). The endpoint must accept:
+the SafeNet adapter at `/api/headscale/node-status`). The endpoint must accept:
 
 ```http
-GET /api/safenet/node-status?node=safenet-phone
+GET /api/headscale/node-status?node=safenet-phone
 Authorization: Bearer <read-only-token>
 Accept: application/json
 ```
@@ -167,3 +179,11 @@ Headscale, Headplane, DERP, Android client, registration, login-server
 confirmation, device, or peer prerequisites produce `result=BLOCKED` with an
 uppercase `failure_category` and exit status 78. A hosted emulator is also
 blocked because it does not provide the required physical-client evidence.
+
+The private runner values are templated in
+`docs/headscale-verification.env.example`. The expected Android node name is
+`safenet-phone`; the approved peer must be the address of the separately
+registered always-on node selected by the operator. Replace the peer
+placeholder only after Headscale reports that node as online. A live PASS
+still requires the runner to supply the server-side API key and token through
+its secret store; neither value belongs in the evidence directory.

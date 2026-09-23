@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { getHeadscaleStatus } from "./headscale-service";
+import { getHeadscaleNodeStatus, getHeadscaleStatus } from "./headscale-service";
 
 const originalHeadscaleUrl = process.env.HEADSCALE_URL;
 const originalHeadplaneUrl = process.env.HEADPLANE_URL;
@@ -103,4 +103,34 @@ test("rejects a Headplane node endpoint with embedded credentials", async () => 
   assert.equal(status.status, "not-configured");
   assert.match(status.message, /HEADPLANE_NODE_API_URL/);
   assert.equal(fetchCalled, false);
+});
+
+test("returns only bounded node fields for the physical proof adapter", async () => {
+  process.env.HEADSCALE_URL = "https://headscale.example.test";
+  process.env.HEADSCALE_API_KEY = "test-api-key";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://headscale.example.test/api/v1/node");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-api-key");
+    return new Response(JSON.stringify({
+      nodes: [{
+        name: "safenet-phone",
+        user: { name: "safenet", id: 7 },
+        online: true,
+        ipAddresses: ["100.64.0.1"],
+        lastSeen: "sensitive-value",
+      }],
+    }), { status: 200 });
+  };
+
+  const status = await getHeadscaleNodeStatus("safenet-phone");
+
+  assert.deepEqual(status, {
+    node: {
+      name: "safenet-phone",
+      visibility: "visible",
+      owner: "safenet",
+      status: "online",
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(status), /test-api-key|100\.64\.0\.1|sensitive-value/);
 });

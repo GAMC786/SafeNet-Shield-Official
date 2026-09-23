@@ -1,0 +1,11 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$HEADSCALE_DOMAIN} {
+	reverse_proxy headscale:8080
+}
+
+{$HEADPLANE_DOMAIN} {
+	reverse_proxy headplane:3000
+}

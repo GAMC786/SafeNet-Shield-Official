@@ -1,6 +1,7 @@
 import { headscaleStatusSchema, type HeadscaleStatus } from "@shared/headscale";
 
 const CHECK_TIMEOUT_MS = 5000;
+const NODE_STATUS_TIMEOUT_MS = 5000;
 
 function getConfiguredUrl(
   name: "HEADSCALE_URL" | "HEADPLANE_URL" | "HEADPLANE_NODE_API_URL",
@@ -24,6 +25,70 @@ function getNodeCount(payload: unknown) {
     return (payload as { nodes: unknown[] }).nodes.length;
   }
   return null;
+}
+
+function getNodes(payload: unknown) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray((payload as { nodes?: unknown }).nodes)) {
+    return (payload as { nodes: unknown[] }).nodes;
+  }
+  return [];
+}
+
+function getNodeOwner(node: Record<string, unknown>) {
+  const user = node.user;
+  if (typeof user === "string") return user;
+  if (user && typeof user === "object") {
+    const record = user as { name?: unknown; displayName?: unknown; id?: unknown };
+    return [record.name, record.displayName, record.id].find(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    ) ?? "";
+  }
+  return "";
+}
+
+export async function getHeadscaleNodeStatus(nodeName: string) {
+  const headscaleUrl = getConfiguredUrl("HEADSCALE_URL");
+  const apiKey = process.env.HEADSCALE_API_KEY?.trim();
+  if (!headscaleUrl || !apiKey || !nodeName) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NODE_STATUS_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${headscaleUrl}/api/v1/node`, {
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    if (!response.ok) return null;
+
+    const payload = await response.json().catch(() => null);
+    const node = getNodes(payload).find((candidate): candidate is Record<string, unknown> => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const record = candidate as Record<string, unknown>;
+      return [record.name, record.hostname, record.givenName].some((value) => value === nodeName);
+    });
+    if (!node) return null;
+
+    const owner = getNodeOwner(node);
+    const online = node.online === true;
+    return {
+      node: {
+        name: typeof node.name === "string" ? node.name : nodeName,
+        visibility: "visible" as const,
+        owner,
+        status: online ? "online" as const : "offline" as const,
+      },
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function baseStatus(overrides: Partial<HeadscaleStatus> = {}): HeadscaleStatus {

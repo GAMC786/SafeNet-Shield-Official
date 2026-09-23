@@ -1,0 +1,24 @@
+---
+server:
+  host: 0.0.0.0
+  port: 3000
+  base_url: https://<HEADPLANE_DOMAIN>
+  cookie_secret_path: /run/secrets/headplane_cookie_secret
+  cookie_secure: true
+  data_path: /var/lib/headplane
+
+headscale:
+  url: http://headscale:8080
+  public_url: https://<HEADSCALE_DOMAIN>
+  config_path: /etc/headscale/config.yaml
+  api_key_path: /run/secrets/headscale_api_key
+
+integration:
+  agent:
+    enabled: false
+  docker:
+    enabled: false
+  kubernetes:
+    enabled: false
+  proc:
+    enabled: false

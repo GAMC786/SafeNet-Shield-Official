@@ -1,0 +1,69 @@
+name: safenet-headscale
+
+services:
+  headscale:
+    image: docker.io/headscale/headscale:0.29.2
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/run/headscale
+    expose:
+      - "8080"
+    ports:
+      - "3478:3478/udp"
+    volumes:
+      - ./headscale/config:/etc/headscale:ro
+      - ./headscale/lib:/var/lib/headscale
+    command: serve
+    healthcheck:
+      test: ["CMD", "headscale", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - mesh
+
+  headplane:
+    image: ghcr.io/tale/headplane:0.7.1
+    restart: unless-stopped
+    depends_on:
+      headscale:
+        condition: service_healthy
+    expose:
+      - "3000"
+    volumes:
+      - ./headplane/config.yaml:/etc/headplane/config.yaml:ro
+      - ./headscale/config:/etc/headscale:ro
+      - ./headplane/data:/var/lib/headplane
+      - ./secrets/headscale_api_key:/run/secrets/headscale_api_key:ro
+      - ./secrets/headplane_cookie_secret:/run/secrets/headplane_cookie_secret:ro
+    environment:
+      HEADPLANE_CONFIG_PATH: /etc/headplane/config.yaml
+    networks:
+      - mesh
+
+  caddy:
+    image: docker.io/library/caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      headscale:
+        condition: service_healthy
+      headplane:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL for automatic HTTPS certificates}
+      HEADSCALE_DOMAIN: ${HEADSCALE_DOMAIN:?Set HEADSCALE_DOMAIN to the public Headscale hostname}
+      HEADPLANE_DOMAIN: ${HEADPLANE_DOMAIN:?Set HEADPLANE_DOMAIN to the public Headplane hostname}
+    networks:
+      - mesh
+
+networks:
+  mesh:
+    name: safenet-headscale

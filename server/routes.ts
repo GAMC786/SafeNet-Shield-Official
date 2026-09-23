@@ -39,7 +39,7 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
-import { getHeadscaleStatus } from "./headscale-service";
+import { getHeadscaleNodeStatus, getHeadscaleStatus } from "./headscale-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -409,6 +409,31 @@ export async function registerRoutes(
 
   app.get(api.headscale.status.path, async (_req, res) => {
     res.json(await getHeadscaleStatus());
+  });
+
+  // This is a deliberately small, server-to-server adapter for the physical
+  // mesh proof. It never exposes the Headscale API key or raw node payload.
+  app.get("/api/headscale/node-status", async (req, res) => {
+    const configuredToken = process.env.HEADPLANE_NODE_API_TOKEN?.trim();
+    const authorization = req.get("authorization");
+    if (!configuredToken) {
+      return res.status(503).json({ message: "Headscale node-status adapter is not configured." });
+    }
+    if (authorization !== `Bearer ${configuredToken}`) {
+      return res.status(401).json({ message: "A valid node-status bearer token is required." });
+    }
+
+    const nodeName = typeof req.query.node === "string" ? req.query.node.trim() : "";
+    if (!nodeName || nodeName.length > 128) {
+      return res.status(400).json({ message: "A single node query value is required." });
+    }
+
+    const status = await getHeadscaleNodeStatus(nodeName);
+    if (!status) {
+      return res.status(404).json({ message: "The requested Headscale node was not found." });
+    }
+    res.set("Cache-Control", "no-store");
+    return res.json(status);
   });
 
   app.put(api.settings.update.path, async (req, res) => {
