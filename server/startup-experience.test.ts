@@ -253,6 +253,14 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
+test("the Dashboard exposes a persisted WG-Easy wrapper toggle", () => {
+  assert.match(dashboardSource, /WG_EASY_ENABLED_STORAGE_KEY/);
+  assert.match(dashboardSource, /https:\/\/github\.com\/wg-easy\/wg-easy/);
+  assert.match(dashboardSource, /data-testid="switch-wg-easy"/);
+  assert.match(dashboardSource, /aria-label=\{`WG-Easy \$\{wgEasyEnabled \? "On" : "Off"\}`\}/);
+  assert.match(dashboardSource, /localStorage\.setItem\(WG_EASY_ENABLED_STORAGE_KEY/);
+});
+
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {
   assert.match(
     androidInstrumentationSource,
@@ -419,7 +427,7 @@ test("the Dashboard leaves Private DNS management to DNS Servers", () => {
     /const isProtected = isProtectionActive\(\{[\s\S]*privateDnsRunning: privateDns\.status\?\.running === true/,
   );
   assert.match(dashboardSource, /status=\{isProtected \? "active" : "unprotected"\}/);
-  assert.doesNotMatch(dashboardSource, /WireGuard|VpnService|DNS VPN/);
+  assert.doesNotMatch(dashboardSource, /VpnService|DNS VPN/);
   assert.doesNotMatch(settingsSource, /DNS Protection VPN/);
 });
 

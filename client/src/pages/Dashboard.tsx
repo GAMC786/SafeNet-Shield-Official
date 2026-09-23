@@ -6,11 +6,11 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, ExternalLink } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
@@ -18,6 +18,8 @@ import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { isProtectionActive } from "@/lib/protection-status";
+
+const WG_EASY_ENABLED_STORAGE_KEY = "safenet-wg-easy-enabled";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -30,6 +32,14 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
+  const [wgEasyEnabled, setWgEasyEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(WG_EASY_ENABLED_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -80,6 +90,15 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
+  const handleWgEasyToggle = (enabled: boolean) => {
+    setWgEasyEnabled(enabled);
+    try {
+      window.localStorage.setItem(WG_EASY_ENABLED_STORAGE_KEY, String(enabled));
+    } catch {
+      // The toggle remains usable for this session if storage is unavailable.
+    }
+  };
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <Header 
@@ -103,6 +122,35 @@ export default function Dashboard() {
               onCheckedChange={soundtrack.setEnabled}
               aria-label={`Soundtrack ${soundtrack.enabled ? "On" : "Off"}`}
               data-testid="switch-soundtrack"
+            />
+          </div>
+        </CyberCard>
+
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Radio className="h-4 w-4 shrink-0 text-primary" />
+                <p className="text-sm font-medium text-foreground">WG-Easy</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {wgEasyEnabled ? "Wrapper enabled for this device" : "WireGuard server management wrapper"}
+              </p>
+              <a
+                href="https://github.com/wg-easy/wg-easy"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary underline-offset-4 hover:underline"
+              >
+                View WG-Easy
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              </a>
+            </div>
+            <Switch
+              checked={wgEasyEnabled}
+              onCheckedChange={handleWgEasyToggle}
+              aria-label={`WG-Easy ${wgEasyEnabled ? "On" : "Off"}`}
+              data-testid="switch-wg-easy"
             />
           </div>
         </CyberCard>
