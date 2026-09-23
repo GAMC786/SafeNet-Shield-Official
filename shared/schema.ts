@@ -74,6 +74,7 @@ export const appSettings = pgTable("app_settings", {
 export const appLockRecoveryChallenges = pgTable("app_lock_recovery_challenges", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
+  purpose: text("purpose", { enum: ["email", "oauth_handoff"] }).notNull().default("email"),
   codeHash: text("code_hash").notNull(),
   attempts: integer("attempts").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),

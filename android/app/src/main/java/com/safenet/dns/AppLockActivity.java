@@ -438,11 +438,15 @@ public final class AppLockActivity extends LockLockActivity {
             showStatus("SafeNet account sign-in is unavailable in this build.");
             return;
         }
-        String signInUrl = apiOrigin.replaceAll("/+$", "")
-                + "/sign-in?provider="
-                + Uri.encode(provider.toLowerCase(Locale.US));
+        String nonce = AppLockManager.createRecoveryNonce(this);
+        Uri signInUri = Uri.parse(apiOrigin.replaceAll("/+$", "") + "/sign-in")
+                .buildUpon()
+                .appendQueryParameter("provider", provider.toLowerCase(Locale.US))
+                .appendQueryParameter("recovery_nonce", nonce)
+                .appendQueryParameter("return_uri", "safenet://app-lock/recovery")
+                .build();
         try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(signInUrl)));
+            startActivity(new Intent(Intent.ACTION_VIEW, signInUri));
         } catch (RuntimeException error) {
             showStatus("SafeNet account sign-in could not be opened.");
         }

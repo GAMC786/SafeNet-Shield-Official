@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
 import android.content.Intent;
+import android.net.Uri;
 import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
@@ -56,6 +57,7 @@ public class MainActivity extends BridgeActivity {
         webSettings.setMediaPlaybackRequiresUserGesture(false);
         installNativeFallback(webView);
         installAppLock(webView);
+        handleAppLockRecoveryIntent(getIntent());
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -68,6 +70,41 @@ public class MainActivity extends BridgeActivity {
         );
 
         configureSystemBars(webView);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleAppLockRecoveryIntent(intent);
+    }
+
+    private void handleAppLockRecoveryIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return;
+        }
+        Uri data = intent.getData();
+        if (data == null
+                || !"safenet".equalsIgnoreCase(data.getScheme())
+                || !"app-lock".equalsIgnoreCase(data.getHost())
+                || !"/recovery".equals(data.getPath())) {
+            return;
+        }
+        String handoff = data.getQueryParameter("handoff");
+        String nonce = data.getQueryParameter("nonce");
+        if (handoff == null
+                || handoff.trim().isEmpty()
+                || !AppLockManager.hasPendingRecoveryNonce(this, nonce)) {
+            Log.w(TAG, "Ignoring an App Lock recovery link without a matching local request.");
+            return;
+        }
+        startActivity(
+                new Intent(this, AppLockActivity.class)
+                        .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_ACCOUNT_RECOVERY)
+                        .putExtra(AppLockManager.EXTRA_RECOVERY_HANDOFF, handoff)
+                        .putExtra(AppLockManager.EXTRA_RECOVERY_NONCE, nonce)
+                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName())
+        );
     }
 
     private void configureSystemBars(WebView webView) {

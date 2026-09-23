@@ -33,6 +33,9 @@ import {
 } from "./call-reputation";
 import { getRequestUserId, requireAuth } from "./auth";
 import {
+  createAppLockRecoveryHandoff,
+  exchangeAppLockRecoveryHandoff,
+  isAppLockRecoveryReturnUri,
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
@@ -445,6 +448,37 @@ export async function registerRoutes(
       console.error("App Lock email recovery verification failed:", error);
       return res.status(503).json({
         message: "Email-assisted App Lock recovery is temporarily unavailable.",
+      });
+    }
+  });
+
+  app.post("/api/app-lock/recovery/handoff/start", requireAuth, async (req, res) => {
+    const userId = getRequestUserId(req);
+    const nonce = typeof req.body?.nonce === "string" ? req.body.nonce.trim() : "";
+    const returnUri = typeof req.body?.returnUri === "string" ? req.body.returnUri : "";
+    if (!userId || !/^[A-Za-z0-9_-]{32,128}$/.test(nonce) || !isAppLockRecoveryReturnUri(returnUri)) {
+      return res.status(400).json({ message: "Invalid App Lock recovery handoff." });
+    }
+    try {
+      return res.json(await createAppLockRecoveryHandoff(userId, nonce, returnUri));
+    } catch (error) {
+      console.error("App Lock recovery handoff creation failed:", error);
+      return res.status(503).json({
+        message: "SafeNet account recovery is temporarily unavailable.",
+      });
+    }
+  });
+
+  app.post("/api/app-lock/recovery/handoff/exchange", async (req, res) => {
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const nonce = typeof req.body?.nonce === "string" ? req.body.nonce.trim() : "";
+    try {
+      const result = await exchangeAppLockRecoveryHandoff(token, nonce);
+      return res.status(result.verified ? 200 : 400).json(result);
+    } catch (error) {
+      console.error("App Lock recovery handoff exchange failed:", error);
+      return res.status(503).json({
+        message: "SafeNet account recovery is temporarily unavailable.",
       });
     }
   });

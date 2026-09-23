@@ -5,6 +5,7 @@ import {
   ClerkProvider,
   SignIn,
   SignUp,
+  useAuth,
   useClerk,
   useSignIn,
 } from "@clerk/react";
@@ -22,6 +23,7 @@ import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { ArrowLeft } from "lucide-react";
 import { useCallback } from "react";
+import { apiFetch } from "./lib/api";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -38,6 +40,7 @@ import SpamCallBlocker from "@/pages/SpamCallBlocker";
 import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+const APP_LOCK_RETURN_URI = "safenet://app-lock/recovery";
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
@@ -109,14 +112,23 @@ function AppContent() {
 
 function SignInPage() {
   const [, setLocation] = useLocation();
-  const provider = new URLSearchParams(window.location.search).get("provider");
+  const searchParams = new URLSearchParams(window.location.search);
+  const provider = searchParams.get("provider");
+  const recoveryNonce = searchParams.get("recovery_nonce") || "";
+  const recoveryReturnUri = searchParams.get("return_uri") || "";
   const providerConfig =
     provider && provider in signInProviders
       ? signInProviders[provider as keyof typeof signInProviders]
       : undefined;
 
   if (providerConfig) {
-    return <ProviderSignInPage provider={providerConfig} />;
+    return (
+      <ProviderSignInPage
+        provider={providerConfig}
+        recoveryNonce={recoveryNonce}
+        recoveryReturnUri={recoveryReturnUri}
+      />
+    );
   }
 
   return (
@@ -148,7 +160,15 @@ const signInProviders = {
 
 type SignInProvider = (typeof signInProviders)[keyof typeof signInProviders];
 
-function ProviderSignInPage({ provider }: { provider: SignInProvider }) {
+function ProviderSignInPage({
+  provider,
+  recoveryNonce,
+  recoveryReturnUri,
+}: {
+  provider: SignInProvider;
+  recoveryNonce?: string;
+  recoveryReturnUri?: string;
+}) {
   const [, setLocation] = useLocation();
   const { fetchStatus, signIn } = useSignIn();
   const [isStarting, setIsStarting] = useState(false);
@@ -159,10 +179,25 @@ function ProviderSignInPage({ provider }: { provider: SignInProvider }) {
     setIsStarting(true);
     setError("");
     try {
+      const isRecovery =
+        /^[A-Za-z0-9_-]{32,128}$/.test(recoveryNonce || "") &&
+        recoveryReturnUri === APP_LOCK_RETURN_URI;
+      const recoveryParams = isRecovery
+        ? new URLSearchParams({
+            recovery_nonce: recoveryNonce!,
+            return_uri: APP_LOCK_RETURN_URI,
+          })
+        : null;
+      const completionPath = isRecovery
+        ? `${basePath}/sign-in/app-lock-recovery-complete?${recoveryParams!.toString()}`
+        : `${basePath}/`;
+      const callbackPath = `${window.location.origin}${basePath}/sign-in/sso-callback${
+        recoveryParams ? `?${recoveryParams.toString()}` : ""
+      }`;
       const result = await signIn.sso({
         strategy: provider.strategy as Parameters<typeof signIn.sso>[0]["strategy"],
-        redirectUrl: `${basePath}/`,
-        redirectCallbackUrl: `${window.location.origin}${basePath}/sign-in/sso-callback`,
+        redirectUrl: completionPath,
+        redirectCallbackUrl: callbackPath,
       });
       if (result.error) {
         throw new Error(result.error.message);
@@ -225,6 +260,81 @@ function ProviderSignInPage({ provider }: { provider: SignInProvider }) {
         >
           Use another SafeNet sign-in option
         </button>
+      </div>
+    </div>
+  );
+}
+
+function AppLockRecoveryCompletePage() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const searchParams = new URLSearchParams(window.location.search);
+  const nonce = searchParams.get("recovery_nonce") || "";
+  const returnUri = searchParams.get("return_uri") || "";
+  const [state, setState] = useState<"waiting" | "working" | "error">("waiting");
+  const [message, setMessage] = useState("Preparing the secure Android handoff…");
+  const [redirectUri, setRedirectUri] = useState("");
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!isLoaded || started.current) return;
+    if (!isSignedIn) {
+      setState("error");
+      setMessage("SafeNet sign-in did not complete. Return to the sign-in page and try again.");
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(nonce) || returnUri !== APP_LOCK_RETURN_URI) {
+      setState("error");
+      setMessage("This App Lock recovery link is invalid or expired.");
+      return;
+    }
+    started.current = true;
+    setState("working");
+    void (async () => {
+      try {
+        const response = await apiFetch("/api/app-lock/recovery/handoff/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nonce, returnUri }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || typeof result.redirectUri !== "string") {
+          throw new Error(result.message || "SafeNet could not prepare the Android handoff.");
+        }
+        setRedirectUri(result.redirectUri);
+        setMessage("Account verified. Returning to SafeNet…");
+        window.location.assign(result.redirectUri);
+      } catch (error) {
+        setState("error");
+        setMessage(error instanceof Error ? error.message : "SafeNet could not complete recovery.");
+      }
+    })();
+  }, [isLoaded, isSignedIn, nonce, returnUri]);
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-md rounded-2xl border border-primary/20 bg-slate-900/90 p-6 text-center shadow-2xl shadow-primary/10">
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-primary">
+          SAFENET / APP LOCK RECOVERY
+        </p>
+        <h1 className="mt-3 text-2xl font-bold text-white">
+          {state === "error" ? "Recovery needs attention" : "Returning to SafeNet"}
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-slate-300">{message}</p>
+        {state === "error" ? (
+          <a
+            href={`${basePath}/sign-in`}
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+          >
+            Return to SafeNet sign-in
+          </a>
+        ) : redirectUri ? (
+          <a
+            href={redirectUri}
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+          >
+            Open SafeNet
+          </a>
+        ) : null}
       </div>
     </div>
   );
@@ -349,6 +459,10 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <Switch>
+          <Route
+            path="/sign-in/app-lock-recovery-complete"
+            component={AppLockRecoveryCompletePage}
+          />
           <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />

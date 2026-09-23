@@ -34,9 +34,12 @@ public final class AppLockManager {
     public static final String EXTRA_AFTER_UNLOCK_PRIVATE_DNS = "after_unlock_private_dns";
     public static final String EXTRA_MODE = "mode";
     public static final String EXTRA_OPEN_DASHBOARD_AFTER_AUTH = "open_dashboard_after_auth";
+    public static final String EXTRA_RECOVERY_HANDOFF = "recovery_handoff";
+    public static final String EXTRA_RECOVERY_NONCE = "recovery_nonce";
     public static final String MODE_SETUP = "setup";
     public static final String MODE_UNLOCK = "unlock";
     public static final String MODE_DISABLE = "disable";
+    public static final String MODE_ACCOUNT_RECOVERY = "account_recovery";
 
     private static final String PREFS_NAME = "safenet_openlock";
     private static final String PREF_ENABLED = "enabled";
@@ -50,6 +53,7 @@ public final class AppLockManager {
     private static final String PREF_COOLDOWN_UNTIL = "cooldown_until";
     private static final String PREF_COOLDOWN_LEVEL = "cooldown_level";
     private static final String PREF_LOCKED_PACKAGES = "locked_packages";
+    private static final String PREF_RECOVERY_NONCE = "recovery_nonce";
     private static final int HASH_ROUNDS = 100_000;
     private static final int MAX_PIN_LENGTH = 12;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -149,6 +153,33 @@ public final class AppLockManager {
 
     public static void clearSession() {
         sessionAuthenticated = false;
+    }
+
+    public static String createRecoveryNonce(Context context) {
+        byte[] nonce = new byte[32];
+        RANDOM.nextBytes(nonce);
+        String encoded = android.util.Base64.encodeToString(
+                nonce,
+                android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING
+        );
+        prefs(context).edit().putString(PREF_RECOVERY_NONCE, encoded).apply();
+        return encoded;
+    }
+
+    public static boolean hasPendingRecoveryNonce(Context context, String nonce) {
+        return !TextUtils.isEmpty(nonce)
+                && MessageDigest.isEqual(
+                        nonce.getBytes(StandardCharsets.UTF_8),
+                        prefs(context).getString(PREF_RECOVERY_NONCE, "").getBytes(StandardCharsets.UTF_8)
+                );
+    }
+
+    public static boolean consumeRecoveryNonce(Context context, String nonce) {
+        if (!hasPendingRecoveryNonce(context, nonce)) {
+            return false;
+        }
+        prefs(context).edit().remove(PREF_RECOVERY_NONCE).apply();
+        return true;
     }
 
     public static synchronized boolean isLockActivityActive() {

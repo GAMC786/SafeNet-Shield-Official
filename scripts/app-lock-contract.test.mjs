@@ -52,6 +52,7 @@ const [
   readSource("server/app-lock-recovery.ts"),
   readSource("android/app/src/main/res/values/strings.xml"),
 ]);
+const clientApp = await readSource("client/src/App.tsx");
 
 const repositoryRoot = new URL("..", import.meta.url);
 
@@ -294,6 +295,23 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(recoveryService, /MAX_ATTEMPTS = 5/);
   assert.match(recoveryService, /clerkClient\(\)\.emails\.create/);
   assert.match(recoveryService, /to: \{ userId \}/);
+});
+
+test("provider recovery returns through a one-time Android handoff", () => {
+  assert.match(manager, /EXTRA_RECOVERY_HANDOFF/);
+  assert.match(appLock, /safenet:\/\/app-lock\/recovery/);
+  assert.match(activity, /MODE_ACCOUNT_RECOVERY/);
+  assert.match(activity, /handoff\/exchange/);
+  assert.match(activity, /consumeRecoveryNonce/);
+  assert.match(manager, /createRecoveryNonce/);
+  assert.match(manager, /hasPendingRecoveryNonce/);
+  assert.match(manifest, /android:scheme="safenet"/);
+  assert.match(mainActivity, /handleAppLockRecoveryIntent/);
+  assert.match(recoveryService, /createAppLockRecoveryHandoff/);
+  assert.match(recoveryService, /exchangeAppLockRecoveryHandoff/);
+  assert.match(recoveryService, /oauth_handoff/);
+  assert.match(clientApp, /app-lock-recovery-complete/);
+  assert.match(clientApp, /handoff\/start/);
 });
 
 test("App Lock setup uses the SafeNet dashboard visual hierarchy", () => {

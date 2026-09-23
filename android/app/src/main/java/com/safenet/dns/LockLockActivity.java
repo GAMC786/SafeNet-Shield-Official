@@ -73,6 +73,8 @@ public class LockLockActivity extends FragmentActivity {
     private boolean setupSaved;
     private CheckBox antiUninstallCheck;
     private LinearLayout appList;
+    private String recoveryHandoff;
+    private String recoveryNonce;
     private final ExecutorService recoveryExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -87,6 +89,13 @@ public class LockLockActivity extends FragmentActivity {
         lockedPackage = getIntent().getStringExtra(AppLockManager.EXTRA_LOCKED_PACKAGE);
         if (mode == null) {
             mode = AppLockManager.MODE_UNLOCK;
+        }
+
+        if (AppLockManager.MODE_ACCOUNT_RECOVERY.equals(mode)) {
+            recoveryHandoff = getIntent().getStringExtra(AppLockManager.EXTRA_RECOVERY_HANDOFF);
+            recoveryNonce = getIntent().getStringExtra(AppLockManager.EXTRA_RECOVERY_NONCE);
+            showAccountRecovery();
+            return;
         }
 
         if (AppLockManager.MODE_SETUP.equals(mode) && useEmbeddedAppLockDashboard()) {
@@ -508,6 +517,79 @@ public class LockLockActivity extends FragmentActivity {
                 showStatus(error.getMessage());
             }
         });
+    }
+
+    private void showAccountRecovery() {
+        content = baseContent(
+                "Finish App Lock recovery",
+                "Your SafeNet account is verified. Choose a new local passcode for this device."
+        );
+        TextView explanation = bodyText(
+                "This one-time handoff resets the Android-local passcode only. "
+                        + "You must enter the new passcode before SafeNet opens protected apps."
+        );
+        content.addView(explanation, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
+        EditText pin = field(
+                "New local passcode",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        );
+        EditText confirm = field(
+                "Confirm new passcode",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        );
+        Button reset = primaryButton("Verify account and reset passcode");
+        content.addView(reset, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
+        statusView = statusText();
+        content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
+        Button cancel = secondaryButton("Cancel recovery");
+        cancel.setOnClickListener(view -> finish());
+        content.addView(cancel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        reset.setOnClickListener(view -> {
+            String pinValue = pin.getText().toString();
+            if (!pinValue.equals(confirm.getText().toString())) {
+                showStatus("The new passcodes do not match.");
+                return;
+            }
+            if (TextUtils.isEmpty(recoveryHandoff) || TextUtils.isEmpty(recoveryNonce)) {
+                showStatus("This recovery link is missing or expired. Start again from SafeNet sign-in.");
+                return;
+            }
+            reset.setEnabled(false);
+            showStatus("Verifying your SafeNet account…");
+            recoveryExecutor.execute(() -> {
+                JSONObject payload = new JSONObject();
+                try {
+                    payload.put("token", recoveryHandoff);
+                    payload.put("nonce", recoveryNonce);
+                } catch (Exception ignored) {
+                    // Literal recovery values cannot fail JSONObject encoding.
+                }
+                RecoveryResponse response = postRecovery(
+                        "/api/app-lock/recovery/handoff/exchange",
+                        payload
+                );
+                runOnUiThread(() -> {
+                    reset.setEnabled(true);
+                    if (!response.success) {
+                        showStatus(response.message);
+                        return;
+                    }
+                    if (!AppLockManager.consumeRecoveryNonce(this, recoveryNonce)) {
+                        showStatus("This recovery request is no longer valid. Start again from SafeNet sign-in.");
+                        return;
+                    }
+                    try {
+                        AppLockManager.resetPin(this, pinValue);
+                        AppLockManager.clearSession();
+                        showUnlock();
+                        showStatus("Passcode reset. Enter the new passcode to continue.");
+                    } catch (IllegalArgumentException error) {
+                        showStatus(error.getMessage());
+                    }
+                });
+            });
+        });
+        setContentView(scrollRoot(content));
     }
 
     private void showEmailRecovery() {
