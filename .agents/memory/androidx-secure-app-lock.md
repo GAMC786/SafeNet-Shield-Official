@@ -14,3 +14,9 @@ Use aload0/AppLock as an architecture reference, not as an embedded application 
 **Why:** The product requirement changed from a SafeNet-only Android credential prompt to LockLock features: selected-app locking, anti-uninstall protection, brute-force cooldowns, and offline recovery. Accessibility and Device Admin are materially broader permissions and must remain visible and user-controlled.
 
 **How to apply:** Keep the native lock surface opaque, apply live status/navigation bar insets directly to every native overlay when the activity uses edge-to-edge, de-duplicate foreground events, require a passcode before enable/disable/unlock and protected Quick Settings actions, keep anti-uninstall opt-in, and verify the permission handoff and recovery flow on a real Android device before release.
+
+Foreground lock launches must record the relaunch timestamp only after `startActivity` succeeds. If Android rejects a background launch during a window transition, coalesce repeated events and retry the same package after a short delay.
+
+**Why:** Recording the package as handled before Android accepts the launch can suppress every later foreground event while the selected app remains visible, leaving the user-facing protection silently bypassed.
+
+**How to apply:** Keep failed launches retryable, guard duplicate activity instances separately from launch-attempt timestamps, and validate this path on a hosted or physical Android runner.

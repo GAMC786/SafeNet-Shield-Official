@@ -2,6 +2,7 @@ package com.safenet.dns;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ResolveInfo;
 import android.graphics.Typeface;
@@ -113,33 +114,67 @@ public final class AppLockActivity extends LockLockActivity {
     }
 
     private void addHeader() {
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout hero = sectionCard();
+        hero.setPadding(dp(16), dp(16), dp(16), dp(16));
+        hero.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.SURFACE_ALT,
+                SafeNetLockBrand.PRIMARY,
+                18,
+                this
+        ));
+
+        LinearLayout identityRow = new LinearLayout(this);
+        identityRow.setOrientation(LinearLayout.HORIZONTAL);
+        identityRow.setGravity(Gravity.CENTER_VERTICAL);
+        identityRow.addView(SafeNetLockBrand.shieldBadge(this, 62), new LinearLayout.LayoutParams(
+                dp(62),
+                dp(62)
+        ));
 
         LinearLayout titleGroup = new LinearLayout(this);
         titleGroup.setOrientation(LinearLayout.VERTICAL);
-        TextView eyebrow = SafeNetLockBrand.eyebrow(this, "SAFENET  /  APPLOCK");
+        titleGroup.setPadding(dp(14), 0, 0, 0);
+        TextView eyebrow = SafeNetLockBrand.eyebrow(this, "SAFENET  /  APP LOCK");
         titleGroup.addView(eyebrow);
         TextView title = bodyText("AppLock");
-        title.setTextSize(28);
+        title.setTextSize(27);
         title.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
         title.setTextColor(SafeNetLockBrand.TEXT);
         titleGroup.addView(title, marginParams(-1, -2, 2));
-        header.addView(titleGroup, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView subtitle = bodyText("Private access for the apps you choose.");
+        subtitle.setTextSize(12);
+        subtitle.setTextColor(SafeNetLockBrand.BODY);
+        titleGroup.addView(subtitle, marginParams(-1, -2, 2));
+        identityRow.addView(titleGroup, new LinearLayout.LayoutParams(0, -2, 1f));
+        hero.addView(identityRow);
+
+        LinearLayout statusRow = new LinearLayout(this);
+        statusRow.setOrientation(LinearLayout.HORIZONTAL);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setPadding(dp(12), dp(10), dp(12), dp(10));
+        statusRow.setBackground(SafeNetLockBrand.roundedBackground(
+                SafeNetLockBrand.BACKGROUND,
+                SafeNetLockBrand.BORDER,
+                12,
+                this
+        ));
+        TextView status = bodyText(AppLockManager.isEnabled(this)
+                ? "Protection is active"
+                : "Protection is ready to configure");
+        status.setTextColor(AppLockManager.isEnabled(this)
+                ? SafeNetLockBrand.SUCCESS
+                : SafeNetLockBrand.BODY);
+        status.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
+        statusRow.addView(status, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Switch protection = new Switch(this);
         protection.setText(AppLockManager.isEnabled(this) ? "ON" : "OFF");
-        protection.setTextColor(
-                AppLockManager.isEnabled(this)
-                        ? SafeNetLockBrand.SUCCESS
-                        : SafeNetLockBrand.MUTED
-        );
-        protection.setContentDescription(
-                AppLockManager.isEnabled(this)
-                        ? "AppLock protection on"
-                        : "AppLock protection off"
-        );
+        protection.setTextColor(AppLockManager.isEnabled(this)
+                ? SafeNetLockBrand.SUCCESS
+                : SafeNetLockBrand.MUTED);
+        protection.setContentDescription(AppLockManager.isEnabled(this)
+                ? "AppLock protection on"
+                : "AppLock protection off");
         protection.setChecked(AppLockManager.isEnabled(this));
         protection.setOnCheckedChangeListener((button, checked) -> {
             if (button.isPressed() && !checked && AppLockManager.isEnabled(this)) {
@@ -157,20 +192,27 @@ public final class AppLockActivity extends LockLockActivity {
                 button.setText("ON");
             }
         });
-        header.addView(protection, new LinearLayout.LayoutParams(-2, -2));
-        content.addView(header, marginParams(-1, -2, 0));
+        statusRow.addView(protection, new LinearLayout.LayoutParams(-2, -2));
+        hero.addView(statusRow, marginParams(-1, -2, 14));
 
-        TextView description = SafeNetLockBrand.eyebrow(
-                this,
-                "SELECT APPS TO PROTECT WITH YOUR LOCAL SAFENET PASSCODE"
+        TextView description = bodyText(
+                "Choose protected apps, finish the Android permission handoff, and keep recovery tied to your SafeNet account."
         );
-        description.setTextColor(SafeNetLockBrand.MUTED);
-        description.setTextSize(10);
-        description.setLineSpacing(0, 1.2f);
-        content.addView(description, marginParams(-1, -2, 8));
-        View divider = new View(this);
-        divider.setBackgroundColor(SafeNetLockBrand.BORDER);
-        content.addView(divider, marginParams(-1, dp(1), 0));
+        description.setTextColor(SafeNetLockBrand.BODY);
+        description.setTextSize(13);
+        hero.addView(description, marginParams(-1, -2, 12));
+        content.addView(hero, marginParams(-1, -2, 0));
+
+        TextView stepHint = SafeNetLockBrand.eyebrow(
+                this,
+                AppLockManager.hasPin(this)
+                        ? "CONFIGURE  /  SELECT APPS  /  VERIFY PERMISSIONS"
+                        : "1  CREATE PASSCODE   2  SELECT APPS   3  VERIFY PERMISSIONS"
+        );
+        stepHint.setTextColor(SafeNetLockBrand.MUTED);
+        stepHint.setTextSize(9);
+        stepHint.setLineSpacing(0, 1.2f);
+        content.addView(stepHint, marginParams(-1, -2, 14));
     }
 
     private void addPermissionBanner() {
@@ -222,7 +264,7 @@ public final class AppLockActivity extends LockLockActivity {
         TextView section = sectionLabel("PROTECTED APPS");
         content.addView(section, marginParams(-1, -2, 16));
         TextView help = bodyText(
-                "Protected apps are monitored before they open. SafeNet is always protected."
+                "SafeNet checks each selected launch before the app opens. SafeNet itself is always protected."
         );
         help.setTextColor(SafeNetLockBrand.MUTED);
         content.addView(help, marginParams(-1, -2, 6));
@@ -311,6 +353,8 @@ public final class AppLockActivity extends LockLockActivity {
         statusView.setTextSize(12);
         content.addView(statusView, marginParams(-1, -2, 10));
 
+        addAccountSignInSection();
+
         if (AppLockManager.hasPin(this) && !AppLockManager.isEnabled(this)) {
             Button enable = primaryButton("Enable AppLock protection");
             enable.setOnClickListener(view -> {
@@ -318,6 +362,89 @@ public final class AppLockActivity extends LockLockActivity {
                 showAppLockDashboard();
             });
             content.addView(enable, marginParams(-1, 50, 8));
+        }
+    }
+
+    private void addAccountSignInSection() {
+        content.addView(sectionLabel("ACCOUNT SIGN-IN"), marginParams(-1, -2, 16));
+        LinearLayout card = sectionCard();
+        TextView title = bodyText("Recovery through your SafeNet account");
+        title.setTextSize(16);
+        title.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
+        title.setTextColor(SafeNetLockBrand.TEXT);
+        card.addView(title);
+
+        TextView detail = bodyText(
+                "Use the hosted SafeNet sign-in page for your account provider. " +
+                        "App Lock never asks for an email password or provider credential inside Android."
+        );
+        detail.setTextColor(SafeNetLockBrand.BODY);
+        card.addView(detail, marginParams(-1, -2, 4));
+
+        LinearLayout firstRow = new LinearLayout(this);
+        firstRow.setOrientation(LinearLayout.HORIZONTAL);
+        firstRow.setGravity(Gravity.CENTER_VERTICAL);
+        firstRow.addView(providerButton("Google"), new LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+        ));
+        LinearLayout.LayoutParams secondButtonParams = new LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+        );
+        secondButtonParams.leftMargin = dp(8);
+        firstRow.addView(providerButton("Microsoft"), secondButtonParams);
+        card.addView(firstRow, marginParams(-1, 48, 10));
+
+        LinearLayout secondRow = new LinearLayout(this);
+        secondRow.setOrientation(LinearLayout.HORIZONTAL);
+        secondRow.setGravity(Gravity.CENTER_VERTICAL);
+        secondRow.addView(providerButton("Yahoo"), new LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+        ));
+        LinearLayout.LayoutParams appleParams = new LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+        );
+        appleParams.leftMargin = dp(8);
+        secondRow.addView(providerButton("Apple"), appleParams);
+        card.addView(secondRow, marginParams(-1, 48, 8));
+
+        TextView note = bodyText(
+                "These options open SafeNet's secure web sign-in. Email recovery resets the local passcode only; it never unlocks an app by itself."
+        );
+        note.setTextColor(SafeNetLockBrand.MUTED);
+        note.setTextSize(11);
+        card.addView(note, marginParams(-1, -2, 10));
+        content.addView(card, marginParams(-1, -2, 6));
+    }
+
+    private Button providerButton(String provider) {
+        Button button = secondaryButton(provider);
+        button.setTextSize(12);
+        button.setContentDescription("Open SafeNet sign-in with " + provider);
+        button.setOnClickListener(view -> openHostedSignIn(provider));
+        return button;
+    }
+
+    private void openHostedSignIn(String provider) {
+        String apiOrigin = getConfigApiOrigin();
+        if (apiOrigin.isEmpty()) {
+            showStatus("SafeNet account sign-in is unavailable in this build.");
+            return;
+        }
+        String signInUrl = apiOrigin.replaceAll("/+$", "")
+                + "/sign-in?provider="
+                + Uri.encode(provider.toLowerCase(Locale.US));
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(signInUrl)));
+        } catch (RuntimeException error) {
+            showStatus("SafeNet account sign-in could not be opened.");
         }
     }
 

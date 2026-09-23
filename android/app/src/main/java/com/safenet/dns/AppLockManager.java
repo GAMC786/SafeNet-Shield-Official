@@ -54,6 +54,7 @@ public final class AppLockManager {
     private static final int MAX_PIN_LENGTH = 12;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static volatile boolean sessionAuthenticated;
+    private static int lockActivityCount;
 
     private AppLockManager() {}
 
@@ -148,6 +149,18 @@ public final class AppLockManager {
 
     public static void clearSession() {
         sessionAuthenticated = false;
+    }
+
+    public static synchronized boolean isLockActivityActive() {
+        return lockActivityCount > 0;
+    }
+
+    public static synchronized void markLockActivityActive() {
+        lockActivityCount++;
+    }
+
+    public static synchronized void clearLockActivityActive() {
+        lockActivityCount = Math.max(0, lockActivityCount - 1);
     }
 
     public static boolean isAccessibilityServiceEnabled(Context context) {

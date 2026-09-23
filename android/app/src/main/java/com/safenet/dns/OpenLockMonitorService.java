@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
@@ -19,13 +21,22 @@ import android.view.accessibility.AccessibilityEvent;
 public final class OpenLockMonitorService extends AccessibilityService {
     private static final long RELAUNCH_GUARD_MS = 1_500L;
     private static final long TEMPORARY_UNLOCK_MS = 15_000L;
+    private static final long RETRY_DELAY_MS = 350L;
 
     private static volatile String temporarilyUnlockedPackage = "";
     private static volatile long temporarilyUnlockedUntil;
 
-    private String lastForegroundPackage;
     private String lastLaunchedPackage;
     private long lastLaunchAt;
+    private String pendingPackage;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable retryPendingLaunch = () -> {
+        String packageName = pendingPackage;
+        pendingPackage = null;
+        if (packageName != null) {
+            requestLock(packageName);
+        }
+    };
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
@@ -95,22 +106,22 @@ public final class OpenLockMonitorService extends AccessibilityService {
             return;
         }
 
-        if (packageName.equals(lastForegroundPackage)) {
+        requestLock(packageName);
+    }
+
+    private void requestLock(String packageName) {
+        if (!AppLockManager.shouldLockPackage(this, packageName)
+                || AppLockManager.isLockActivityActive()) {
             return;
         }
-        lastForegroundPackage = packageName;
-
-        if (!AppLockManager.shouldLockPackage(this, packageName)) {
+        if (packageName.equals(pendingPackage)) {
             return;
         }
-
         long now = System.currentTimeMillis();
         if (packageName.equals(lastLaunchedPackage)
                 && now - lastLaunchAt < RELAUNCH_GUARD_MS) {
             return;
         }
-        lastLaunchedPackage = packageName;
-        lastLaunchAt = now;
 
         Intent lockIntent = new Intent(this, AppLockActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
@@ -120,9 +131,15 @@ public final class OpenLockMonitorService extends AccessibilityService {
                 .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, packageName);
         try {
             startActivity(lockIntent);
-        } catch (RuntimeException ignored) {
+            lastLaunchedPackage = packageName;
+            lastLaunchAt = System.currentTimeMillis();
+        } catch (RuntimeException error) {
             // Android may briefly reject a background activity launch during a
-            // window transition. The next distinct window event retries it.
+            // window transition. Retry the same package instead of waiting for
+            // another distinct foreground event.
+            pendingPackage = packageName;
+            mainHandler.removeCallbacks(retryPendingLaunch);
+            mainHandler.postDelayed(retryPendingLaunch, RETRY_DELAY_MS);
         }
     }
 
@@ -133,6 +150,7 @@ public final class OpenLockMonitorService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        mainHandler.removeCallbacks(retryPendingLaunch);
         try {
             unregisterReceiver(screenReceiver);
         } catch (IllegalArgumentException ignored) {

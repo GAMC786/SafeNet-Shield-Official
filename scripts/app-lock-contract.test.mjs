@@ -206,6 +206,12 @@ test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries"
   assert.match(service, /AccessibilityService/);
   assert.match(service, /TYPE_WINDOW_STATE_CHANGED/);
   assert.match(service, /AppLockActivity.class/);
+  assert.match(service, /postDelayed\(retryPendingLaunch, RETRY_DELAY_MS\)/);
+  assert.match(service, /packageName\.equals\(pendingPackage\)/);
+  assert.match(
+    service,
+    /startActivity\(lockIntent\);[\s\S]*lastLaunchedPackage = packageName;/,
+  );
   assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
   assert.doesNotMatch(manifest, /PACKAGE_USAGE_STATS/);
   assert.match(manifest, /SYSTEM_ALERT_WINDOW/);

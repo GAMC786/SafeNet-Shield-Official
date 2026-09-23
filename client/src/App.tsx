@@ -1,6 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
-import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
+import {
+  AuthenticateWithRedirectCallback,
+  ClerkProvider,
+  SignIn,
+  SignUp,
+  useClerk,
+  useSignIn,
+} from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
@@ -102,6 +109,15 @@ function AppContent() {
 
 function SignInPage() {
   const [, setLocation] = useLocation();
+  const provider = new URLSearchParams(window.location.search).get("provider");
+  const providerConfig =
+    provider && provider in signInProviders
+      ? signInProviders[provider as keyof typeof signInProviders]
+      : undefined;
+
+  if (providerConfig) {
+    return <ProviderSignInPage provider={providerConfig} />;
+  }
 
   return (
     <div className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4">
@@ -119,6 +135,105 @@ function SignInPage() {
         path={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
       />
+    </div>
+  );
+}
+
+const signInProviders = {
+  google: { label: "Google", strategy: "oauth_google" as const },
+  microsoft: { label: "Microsoft", strategy: "oauth_microsoft" as const },
+  yahoo: { label: "Yahoo", strategy: "oauth_yahoo" as const },
+  apple: { label: "Apple", strategy: "oauth_apple" as const },
+} as const;
+
+type SignInProvider = (typeof signInProviders)[keyof typeof signInProviders];
+
+function ProviderSignInPage({ provider }: { provider: SignInProvider }) {
+  const [, setLocation] = useLocation();
+  const { fetchStatus, signIn } = useSignIn();
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState("");
+
+  const startProviderSignIn = async () => {
+    if (fetchStatus === "fetching") return;
+    setIsStarting(true);
+    setError("");
+    try {
+      const result = await signIn.sso({
+        strategy: provider.strategy as Parameters<typeof signIn.sso>[0]["strategy"],
+        redirectUrl: `${basePath}/`,
+        redirectCallbackUrl: `${window.location.origin}${basePath}/sign-in/sso-callback`,
+      });
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+    } catch (providerError) {
+      setIsStarting(false);
+      setError(
+        providerError instanceof Error
+          ? providerError.message
+          : `${provider.label} sign-in is not enabled for this SafeNet account.`,
+      );
+    }
+  };
+
+  return (
+    <div className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-12">
+      <button
+        type="button"
+        aria-label="Back to SafeNet sign-in"
+        title="Back to SafeNet sign-in"
+        onClick={() => setLocation(`${basePath}/sign-in`)}
+        className="absolute left-4 top-4 z-50 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-900/80 text-slate-200 shadow-lg transition-colors hover:border-primary/50 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:left-6 sm:top-6"
+      >
+        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+      </button>
+      <div className="w-full max-w-md rounded-2xl border border-primary/20 bg-slate-900/90 p-6 shadow-2xl shadow-primary/10">
+        <div className="mb-6 space-y-2">
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-primary">
+            SAFENET / APP LOCK RECOVERY
+          </p>
+          <h1 className="text-2xl font-bold text-white">
+            Continue with {provider.label}
+          </h1>
+          <p className="text-sm leading-6 text-slate-300">
+            Authenticate with your provider on its secure page. SafeNet does not
+            collect your provider password.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void startProviderSignIn()}
+          disabled={fetchStatus === "fetching" || isStarting}
+          className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+          data-testid={`button-provider-sign-in-${provider.label.toLowerCase()}`}
+        >
+          {isStarting ? "Opening secure sign-in…" : `Sign in with ${provider.label}`}
+        </button>
+        {error ? (
+          <p
+            className="mt-4 rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm leading-5 text-red-200"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setLocation(`${basePath}/sign-in`)}
+          className="mt-4 w-full rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:border-primary/50 hover:bg-slate-800"
+        >
+          Use another SafeNet sign-in option
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SignInSsoCallbackPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 text-sm text-slate-300">
+      <AuthenticateWithRedirectCallback />
     </div>
   );
 }
@@ -234,6 +349,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <Switch>
+          <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route component={AppContent} />

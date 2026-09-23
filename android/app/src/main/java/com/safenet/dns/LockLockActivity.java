@@ -78,6 +78,7 @@ public class LockLockActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AppLockManager.markLockActivityActive();
         Window window = getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(SafeNetLockBrand.BACKGROUND);
@@ -672,7 +673,7 @@ public class LockLockActivity extends FragmentActivity {
         return response.toString();
     }
 
-    private String getConfigApiOrigin() {
+    protected String getConfigApiOrigin() {
         try (InputStream input = getAssets().open("public/mobile-build.json");
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[1024];
@@ -904,6 +905,7 @@ public class LockLockActivity extends FragmentActivity {
     @Override
     protected void onDestroy() {
         recoveryExecutor.shutdownNow();
+        AppLockManager.clearLockActivityActive();
         super.onDestroy();
     }
 }
