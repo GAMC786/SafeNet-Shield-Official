@@ -253,28 +253,28 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard opens the standard WireGuard UI from a Radix switch", () => {
-  const wgEasyHookSource = readFileSync(
-    path.join(clientRoot, "src/hooks/use-wg-easy.ts"),
+test("the Dashboard opens Headplane and reports Headscale control-plane status", () => {
+  const headscaleHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-headscale.ts"),
     "utf8",
   );
-  const wgEasyServiceSource = readFileSync(
-    path.resolve(process.cwd(), "server/wg-easy-service.ts"),
+  const headscaleServiceSource = readFileSync(
+    path.resolve(process.cwd(), "server/headscale-service.ts"),
     "utf8",
   );
-  assert.match(dashboardSource, /useWgEasyStatus/);
-  assert.match(dashboardSource, /WireGuard UI/);
-  assert.match(dashboardSource, /data-testid="switch-wireguard-ui"/);
-  assert.match(dashboardSource, /onCheckedChange=\{handleWireguardToggle\}/);
-  assert.match(dashboardSource, /window\.open\(wireguardAdminUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(dashboardSource, /disabled=\{!wireguardAdminUrl\}/);
+  assert.match(dashboardSource, /useHeadscaleStatus/);
+  assert.match(dashboardSource, /Headscale mesh/);
+  assert.match(dashboardSource, /data-testid="button-open-headplane"/);
+  assert.match(dashboardSource, /window\.open\(headplaneUrl, "_blank", "noopener,noreferrer"\)/);
+  assert.match(dashboardSource, /data-testid="button-refresh-headscale"/);
   assert.doesNotMatch(
     dashboardSource,
-    /WG-Easy|WireGuard UDP tunnel|Set up a real WireGuard host|Open admin UI|tunnelVerification/,
+    /WG-Easy|wireguardAdminUrl|switch-wireguard-ui|tunnelVerification/,
   );
-  assert.match(wgEasyHookSource, /\/api\/wg-easy\/status/);
-  assert.match(wgEasyServiceSource, /WG_EASY_URL/);
-  assert.match(routesSource, /api\.wgEasy\.status\.path/);
+  assert.match(headscaleHookSource, /\/api\/headscale\/status/);
+  assert.match(headscaleServiceSource, /HEADSCALE_URL/);
+  assert.match(headscaleServiceSource, /HEADPLANE_URL/);
+  assert.match(routesSource, /api\.headscale\.status\.path/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {

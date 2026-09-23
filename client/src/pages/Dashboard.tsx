@@ -6,15 +6,15 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, ExternalLink, RefreshCw } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
-import { useWgEasyStatus } from "@/hooks/use-wg-easy";
+import { useHeadscaleStatus } from "@/hooks/use-headscale";
 import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
@@ -31,10 +31,8 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
-  const wgEasy = useWgEasyStatus();
-  const [wireguardUiOpen, setWireguardUiOpen] = useState(false);
-  const wireguardWindowRef = useRef<Window | null>(null);
-  const wireguardAdminUrl = wgEasy.data?.adminUrl ?? null;
+  const headscale = useHeadscaleStatus();
+  const headplaneUrl = headscale.data?.headplaneUrl ?? null;
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -85,30 +83,12 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
-  const handleWireguardToggle = (enabled: boolean) => {
-    if (!enabled) {
-      if (wireguardWindowRef.current && !wireguardWindowRef.current.closed) {
-        wireguardWindowRef.current.close();
-      }
-      wireguardWindowRef.current = null;
-      setWireguardUiOpen(false);
+  const openHeadplane = () => {
+    if (headplaneUrl) {
+      window.open(headplaneUrl, "_blank", "noopener,noreferrer");
       return;
     }
-
-    if (!wireguardAdminUrl) {
-      setWireguardUiOpen(false);
-      void wgEasy.refetch();
-      return;
-    }
-
-    const openedWindow = window.open(wireguardAdminUrl, "_blank", "noopener,noreferrer");
-    if (!openedWindow) {
-      setWireguardUiOpen(false);
-      return;
-    }
-    wireguardWindowRef.current = openedWindow;
-    openedWindow.focus();
-    setWireguardUiOpen(true);
+    void headscale.refetch();
   };
 
   return (
@@ -143,21 +123,46 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-sm font-medium text-foreground">WireGuard UI</p>
+                <p className="text-sm font-medium text-foreground">Headscale mesh</p>
+                <span className={`h-2 w-2 rounded-full ${
+                  headscale.data?.status === "online"
+                    ? "bg-emerald-400"
+                    : headscale.data?.status === "unavailable"
+                      ? "bg-red-400"
+                      : "bg-muted-foreground"
+                }`} />
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {wireguardAdminUrl
-                  ? "Open the standard WireGuard server administration UI"
-                  : "WireGuard administration UI is not configured"}
+                {headscale.data?.message ?? "Headscale control plane is not configured"}
               </p>
+              {headscale.data?.nodeCount !== null && headscale.data?.nodeCount !== undefined && (
+                <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
+                  {headscale.data.nodeCount} registered node{headscale.data.nodeCount === 1 ? "" : "s"}
+                </p>
+              )}
             </div>
-            <Switch
-              checked={wireguardUiOpen}
-              onCheckedChange={handleWireguardToggle}
-              disabled={!wireguardAdminUrl}
-              aria-label={`WireGuard UI ${wireguardUiOpen ? "On" : "Off"}`}
-              data-testid="switch-wireguard-ui"
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => void headscale.refetch()}
+                disabled={headscale.isFetching}
+                aria-label="Refresh Headscale status"
+                data-testid="button-refresh-headscale"
+              >
+                <RefreshCw className={`h-4 w-4 ${headscale.isFetching ? "animate-spin" : ""}`} />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openHeadplane}
+                disabled={!headplaneUrl}
+                data-testid="button-open-headplane"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open Headplane
+              </Button>
+            </div>
           </div>
         </CyberCard>
 

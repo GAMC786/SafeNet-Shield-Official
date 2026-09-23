@@ -11,7 +11,7 @@ import {
   activityLogSchema,
   firewallConfigSchema,
 } from './schema';
-import { wgEasyStatusSchema } from './wg-easy';
+import { headscaleStatusSchema } from './headscale';
 
 export const errorSchemas = {
   validation: z.object({
@@ -169,12 +169,12 @@ export const api = {
       },
     },
   },
-  wgEasy: {
+  headscale: {
     status: {
       method: 'GET' as const,
-      path: '/api/wg-easy/status',
+      path: '/api/headscale/status',
       responses: {
-        200: wgEasyStatusSchema,
+        200: headscaleStatusSchema,
       },
     },
   },

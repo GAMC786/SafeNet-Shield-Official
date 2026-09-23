@@ -39,7 +39,7 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
-import { getWgEasyStatus } from "./wg-easy-service";
+import { getHeadscaleStatus } from "./headscale-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -407,8 +407,8 @@ export async function registerRoutes(
     res.json(publicSettings(settings));
   });
 
-  app.get(api.wgEasy.status.path, async (_req, res) => {
-    res.json(await getWgEasyStatus());
+  app.get(api.headscale.status.path, async (_req, res) => {
+    res.json(await getHeadscaleStatus());
   });
 
   app.put(api.settings.update.path, async (req, res) => {

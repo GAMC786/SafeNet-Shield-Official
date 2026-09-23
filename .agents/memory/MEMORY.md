@@ -89,5 +89,4 @@
 - [Android resource cleanup](android-resource-cleanup.md) — removing a native component must remove its obsolete resources; hosted AAPT can reject stale string entries during release builds.
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
-- [WG-Easy hosting boundary](wg-easy-hosting-boundary.md) — SafeNet can monitor an external WG-Easy host, but its web deployment cannot provide WireGuard's privileged UDP endpoint.
-- [WG-Easy tunnel verification](wg-easy-tunnel-verification.md) — admin HTTP health is not UDP proof; require both handshake observations and disposable-peer cleanup.
+- [Headscale external control plane](headscale-external-control-plane.md) — SafeNet monitors external Headscale and opens Headplane; it does not host the mesh data plane or embed admin credentials.

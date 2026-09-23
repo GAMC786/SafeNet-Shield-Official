@@ -75,11 +75,12 @@ Preferred communication style: Simple, everyday language.
 ### External APIs
 - ipify.org: Public IP detection for DDNS updates
 
-### WG-Easy
-- SafeNet reports and opens a separately hosted WG-Easy instance through the Dashboard.
-- Configure `WG_EASY_URL` with the WG-Easy web-admin URL and `WG_EASY_WIREGUARD_ENDPOINT` with the public `host:port` used by WireGuard.
-- WG-Easy must run on a compatible Linux/Docker host with persistent `/etc/wireguard` storage and public UDP 51820. The SafeNet web service and Railway TCP proxy are not the VPN host.
-- `scripts/install-wg-easy.sh` downloads the official compose file and starts WG-Easy on that compatible host.
+### Headscale and Headplane
+- SafeNet reports the external Headscale control plane and opens a separately hosted Headplane administration UI through the Dashboard.
+- Configure `HEADSCALE_URL` with the Headscale API URL, `HEADPLANE_URL` with the Headplane URL, and `HEADSCALE_API_KEY` with a server-side Headscale API key.
+- Headscale and Headplane must run on a compatible external Linux/Docker host. The SafeNet web service and Railway TCP proxy are not the WireGuard data plane.
+- Headscale coordinates a Tailscale-compatible private mesh; Android users need a compatible Tailscale client rather than a standard WG-Easy QR workflow.
+- See `docs/headscale-external-host.md` for the external-host setup boundary and official installation references.
 
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
