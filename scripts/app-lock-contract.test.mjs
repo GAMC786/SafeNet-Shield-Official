@@ -179,52 +179,49 @@ function assertBlockedEvidence(fixture, expectedCategory) {
   return fields;
 }
 
-test("App Lock keeps a local passcode fallback and uses Android biometric authentication", () => {
-  assert.match(appGradle, /androidx\.biometric:biometric:\$androidxBiometricVersion/);
-  assert.match(manager, /local fallback/);
+test("App Lock uses a local passcode and the AppLock-style Accessibility Service", () => {
+  assert.doesNotMatch(appGradle, /androidx\.biometric:biometric/);
+  assert.match(manager, /passcode remains local/);
   assert.match(manager, /PREF_RECOVERY_HASH/);
   assert.match(manager, /HASH_ROUNDS = 100_000/);
   assert.match(manager, /verifyPin\(Context context, String pin\)/);
   assert.match(manager, /attempts >= 5/);
   assert.match(manager, /PREF_COOLDOWN_UNTIL/);
   assert.match(manager, /verifyRecoveryAnswer/);
-  assert.match(manager, /BiometricManager/);
-  assert.match(manager, /BIOMETRIC_STRONG/);
+  assert.match(manager, /isAccessibilityServiceEnabled/);
   assert.match(manager, /disableAntiUninstall/);
   assert.match(manager, /removeActiveAdmin/);
-  assert.match(activity, /BiometricPrompt/);
-  assert.match(activity, /onAuthenticationSucceeded/);
-  assert.match(activity, /setAllowedAuthenticators/);
+  assert.doesNotMatch(activity, /BiometricPrompt/);
   assert.match(activity, /disableAntiUninstall/);
 });
 
-test("OpenLock uses explicit Usage Access, overlay, and Device Admin boundaries", () => {
-  assert.match(manager, /isUsageAccessEnabled/);
+test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries", () => {
+  assert.match(manager, /isAccessibilityServiceEnabled/);
   assert.match(manager, /isOverlayPermissionEnabled/);
   assert.match(manager, /isDeviceAdminEnabled/);
-  assert.match(service, /UsageStatsManager/);
+  assert.match(service, /AccessibilityService/);
+  assert.match(service, /TYPE_WINDOW_STATE_CHANGED/);
   assert.match(service, /LockLockActivity.class/);
-  assert.doesNotMatch(manifest, /BIND_ACCESSIBILITY_SERVICE/);
-  assert.match(manifest, /PACKAGE_USAGE_STATS/);
+  assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+  assert.doesNotMatch(manifest, /PACKAGE_USAGE_STATS/);
   assert.match(manifest, /SYSTEM_ALERT_WINDOW/);
   assert.match(manifest, /BIND_DEVICE_ADMIN/);
   assert.match(manifest, /QUERY_ALL_PACKAGES/);
 });
 
-test("enabling, disabling, recovery, and biometric unlock use the native App Lock activity", () => {
+test("enabling, disabling, recovery, and passcode unlock use the native App Lock activity", () => {
   assert.match(plugin, /MODE_SETUP/);
   assert.match(plugin, /MODE_DISABLE/);
   assert.match(plugin, /startActivityForResult\(call, intent, "appLockActivityResult"\)/);
   assert.match(plugin, /appLockActivityResult/);
   assert.match(activity, /Save passcode and enable App Lock/);
-  assert.match(activity, /Use Android biometric/);
   assert.match(activity, /Use passcode fallback/);
   assert.match(activity, /Forgot passcode/);
   assert.match(activity, /verifyRecoveryAnswer/);
-  assert.match(activity, /Open Usage Access Settings/);
+  assert.match(activity, /Open Accessibility Settings/);
   assert.match(activity, /Allow App Lock Overlay/);
   assert.match(activity, /Open Device Administrator Settings/);
-  assert.match(manifest, /USE_BIOMETRIC/);
+  assert.doesNotMatch(manifest, /USE_BIOMETRIC/);
 });
 
 test("App Lock identifies SafeNet in Android Device Administrator settings", () => {
@@ -276,12 +273,12 @@ test("App Lock setup uses the SafeNet dashboard visual hierarchy", () => {
   assert.match(activity, /description\.toUpperCase\(Locale\.US\)/);
 });
 
-test("the lock surface and dashboard identify Android BiometricPrompt", () => {
+test("the lock surface and dashboard identify AppLock local passcode protection", () => {
   assert.match(nativeView, /SafeNet App Lock/);
-  assert.match(nativeView, /Android BiometricPrompt/);
+  assert.match(nativeView, /local SafeNet passcode/);
   assert.match(dashboard, /App Lock Protection/);
-  assert.match(dashboard, /Android BiometricPrompt protection/);
-  assert.match(dashboard, /Android BiometricPrompt/);
+  assert.match(dashboard, /AppLock-style protection/);
+  assert.match(dashboard, /Accessibility Service/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
 
@@ -295,9 +292,9 @@ test("VPN and proxy browser blocking is removed from the Android surface", () =>
 test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {
   for (const marker of [
     "setupRecoveryCooldownResetAndDisabledAdminStatus",
-     "usageAccessLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
+      "accessibilityServiceLocksSafeNetAndSecondPackageWithoutDuplicateActivities",
     "physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities",
-     "appops set ",
+      "settings put secure enabled_accessibility_services",
     "dpm remove-active-admin",
     "com.android.settings",
     "dumpsys activity activities",
@@ -307,7 +304,7 @@ test("instrumentation covers lifecycle, permissions, duplicate activity protecti
     "LOCKLOCK_PHYSICAL_RETURN result=PASS",
     "LOCKLOCK_PHYSICAL_OTHER_APP result=PASS",
     "LOCKLOCK_LIFECYCLE result=PASS",
-     "OPENLOCK_USAGE_ACCESS result=PASS activity_records=1",
+      "OPENLOCK_ACCESSIBILITY result=PASS activity_records=1",
   ]) {
     assert.match(instrumentation, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

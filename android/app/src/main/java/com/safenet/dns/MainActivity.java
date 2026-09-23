@@ -228,8 +228,8 @@ public class MainActivity extends BridgeActivity {
                 : AppLockManager.MODE_SETUP;
         appLockView.setMessage(
                 AppLockManager.hasPin(this)
-                        ? "Authenticate with Android BiometricPrompt to continue."
-                        : "Set up App Lock and Android authentication."
+                        ? "Enter your SafeNet passcode to continue."
+                        : "Set up App Lock and a local SafeNet passcode."
         );
         startActivityForResult(
                 new Intent(this, LockLockActivity.class)
@@ -280,7 +280,7 @@ public class MainActivity extends BridgeActivity {
             }
         } else if (appLockView != null && AppLockManager.isEnabled(this)) {
             appLockView.setVisibility(View.VISIBLE);
-            appLockView.setMessage("Authenticate with Android BiometricPrompt to continue.");
+            appLockView.setMessage("Enter your SafeNet passcode to continue.");
         }
     }
 

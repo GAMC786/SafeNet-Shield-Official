@@ -59,8 +59,8 @@ public final class NativeAppLockView extends FrameLayout {
 
         messageView = new TextView(context);
         messageView.setText(
-                "Android BiometricPrompt protects SafeNet. Use your enrolled biometric " +
-                "or device credential to continue."
+                "AppLock protection is active. Enter your local SafeNet passcode " +
+                "to continue."
         );
         messageView.setTextColor(SafeNetLockBrand.BODY);
         messageView.setTextSize(14);
@@ -75,8 +75,8 @@ public final class NativeAppLockView extends FrameLayout {
         content.addView(messageView, messageParams);
 
         unlockButton = new Button(context);
-        unlockButton.setText("Use Android biometric");
-        unlockButton.setContentDescription("Use Android BiometricPrompt to open SafeNet");
+        unlockButton.setText("Enter SafeNet passcode");
+        unlockButton.setContentDescription("Enter the local SafeNet passcode to open SafeNet");
         SafeNetLockBrand.stylePrimaryButton(unlockButton, context);
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

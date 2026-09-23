@@ -1,17 +1,15 @@
 package com.safenet.dns;
 
-import android.app.AppOpsManager;
 import android.app.admin.DevicePolicyManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.view.accessibility.AccessibilityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Process;
 import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
-
-import androidx.biometric.BiometricManager;
 
 import com.getcapacitor.JSObject;
 
@@ -23,11 +21,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Offline App Lock protection with an Android authentication prompt.
+ * Offline App Lock protection modeled on the MIT-licensed AppLock project.
  *
- * SafeNet uses Usage Access plus an overlay instead of Accessibility to observe
- * protected foreground apps. The passcode remains a local fallback and is
- * never sent anywhere.
+ * SafeNet uses Android's explicit Accessibility Service and an opaque lock
+ * activity to observe protected foreground apps. The passcode remains local,
+ * salted, and never leaves the device.
  */
 public final class AppLockManager {
     public static final String ACTION_APP_UNLOCKED = "com.safenet.dns.APP_UNLOCKED";
@@ -151,17 +149,29 @@ public final class AppLockManager {
         sessionAuthenticated = false;
     }
 
-    public static boolean isUsageAccessEnabled(Context context) {
-        AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-        if (appOps == null) {
+    public static boolean isAccessibilityServiceEnabled(Context context) {
+        AccessibilityManager manager =
+                (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (manager == null) {
             return false;
         }
-        int mode = appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.getPackageName()
-        );
-        return mode == AppOpsManager.MODE_ALLOWED;
+        String expectedClassName = OpenLockMonitorService.class.getName();
+        for (AccessibilityServiceInfo serviceInfo :
+                manager.getEnabledAccessibilityServiceList(
+                        AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+                )) {
+            if (serviceInfo.getResolveInfo() == null
+                    || serviceInfo.getResolveInfo().serviceInfo == null) {
+                continue;
+            }
+            android.content.pm.ServiceInfo enabledService =
+                    serviceInfo.getResolveInfo().serviceInfo;
+            if (context.getPackageName().equals(enabledService.packageName)
+                    && expectedClassName.equals(enabledService.name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isOverlayPermissionEnabled(Context context) {
@@ -179,29 +189,6 @@ public final class AppLockManager {
         return isSupported(context) && hasPin(context);
     }
 
-    public static boolean isBiometricAvailable(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return false;
-        }
-        return BiometricManager.from(context).canAuthenticate(allowedAuthenticators())
-                == BiometricManager.BIOMETRIC_SUCCESS;
-    }
-
-    public static String biometricAvailabilityMessage(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return "Android biometric authentication requires Android 6.0 or newer.";
-        }
-        switch (BiometricManager.from(context).canAuthenticate(allowedAuthenticators())) {
-            case BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE:
-                return "This device has no biometric sensor. Use the SafeNet passcode fallback.";
-            case BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE:
-                return "Android biometric hardware is temporarily unavailable. Use the SafeNet passcode fallback.";
-            case BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED:
-                return "Set up a fingerprint, face, or device credential in Android Settings.";
-            default:
-                return "Android biometric authentication is unavailable. Use the SafeNet passcode fallback.";
-        }
-    }
     public static String availabilityMessage(Context context) {
         if (!isSupported(context)) {
             return "SafeNet App Lock requires Android 7.0 or newer.";
@@ -209,8 +196,8 @@ public final class AppLockManager {
         if (!hasPin(context)) {
             return "Create an offline passcode to enable SafeNet App Lock.";
         }
-        if (!isUsageAccessEnabled(context)) {
-            return "Enable App Lock Usage Access to monitor protected app launches.";
+        if (!isAccessibilityServiceEnabled(context)) {
+            return "Enable the SafeNet App Lock Accessibility Service to monitor protected app launches.";
         }
         if (!isOverlayPermissionEnabled(context)) {
             return "Allow App Lock to display the lock screen over protected apps.";
@@ -218,10 +205,7 @@ public final class AppLockManager {
         if (isAntiUninstallEnabled(context) && !isDeviceAdminEnabled(context)) {
             return "Enable App Lock Device Administrator in Android Settings for anti-uninstall protection.";
         }
-        return isBiometricAvailable(context)
-                ? "SafeNet App Lock is ready for Android biometric authentication."
-                : "SafeNet App Lock is ready with a passcode fallback. "
-                        + biometricAvailabilityMessage(context);
+        return "SafeNet App Lock is ready with the local passcode and Accessibility Service.";
     }
 
     public static JSObject status(Context context) {
@@ -229,34 +213,30 @@ public final class AppLockManager {
         boolean supported = isSupported(context);
         boolean enabled = isEnabled(context);
         boolean configured = hasPin(context);
-        boolean usageAccessEnabled = isUsageAccessEnabled(context);
+        boolean accessibilityServiceEnabled = isAccessibilityServiceEnabled(context);
         boolean overlayEnabled = isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = isDeviceAdminEnabled(context);
         boolean antiUninstall = isAntiUninstallEnabled(context);
-        boolean biometricAvailable = isBiometricAvailable(context);
         boolean bruteForceProtected = getCooldownRemainingMs(context) > 0;
 
         result.put("supported", supported);
         result.put("enabled", enabled);
         result.put("available", supported && configured);
         result.put("configured", configured);
-        result.put("biometricAvailable", biometricAvailable);
         result.put("locked", enabled && !sessionAuthenticated);
-        result.put("usageAccessEnabled", usageAccessEnabled);
+        result.put("accessibilityServiceEnabled", accessibilityServiceEnabled);
         result.put("overlayEnabled", overlayEnabled);
         result.put("deviceAdminEnabled", deviceAdminEnabled);
         result.put("antiUninstall", antiUninstall);
         result.put("bruteForceProtected", bruteForceProtected);
         String message;
         if (enabled) {
-            message = usageAccessEnabled && overlayEnabled
+            message = accessibilityServiceEnabled && overlayEnabled
                     ? (antiUninstall && !deviceAdminEnabled
                         ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
-                        : biometricAvailable
-                            ? "SafeNet App Lock is active. Android biometric authentication is required when SafeNet returns."
-                            : "SafeNet App Lock is active. Passcode required when SafeNet returns.")
-                    : !usageAccessEnabled
-                        ? "SafeNet App Lock is enabled. Enable App Lock Usage Access to monitor protected app launches."
+                        : "SafeNet App Lock is active. Local passcode required when a protected app opens.")
+                    : !accessibilityServiceEnabled
+                        ? "SafeNet App Lock is enabled. Enable the SafeNet Accessibility Service to monitor protected app launches."
                         : "SafeNet App Lock is enabled. Allow App Lock to display the lock screen over protected apps.";
         } else if (deviceAdminEnabled) {
             message = "SafeNet App Lock is off. Deactivate SafeNet Device Administrator to remove anti-uninstall protection.";
@@ -388,8 +368,8 @@ public final class AppLockManager {
         return remaining;
     }
 
-    public static Intent usageAccessSettingsIntent() {
-        return new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+    public static Intent accessibilitySettingsIntent() {
+        return new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
     }
 
     public static Intent overlayPermissionIntent(Context context) {
@@ -424,24 +404,14 @@ public final class AppLockManager {
     }
 
     public static void startMonitorServiceIfReady(Context context) {
-        if (!isEnabled(context) || !hasPin(context)
-                || !isUsageAccessEnabled(context) || !isOverlayPermissionEnabled(context)) {
-            return;
-        }
-        Intent intent = new Intent(context, OpenLockMonitorService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
-        }
-    }
-
-    public static int biometricAuthenticators() {
-        return allowedAuthenticators();
+        // Accessibility services are owned and started by Android after the
+        // user enables them in Settings. There is no foreground-service start
+        // here, which avoids creating a second monitor instance.
     }
 
     public static void stopMonitorService(Context context) {
-        context.stopService(new Intent(context, OpenLockMonitorService.class));
+        // Android owns the Accessibility Service lifecycle. Its event handler
+        // checks the persisted enabled flag before locking any package.
     }
 
     private static android.content.SharedPreferences prefs(Context context) {
@@ -464,11 +434,6 @@ public final class AppLockManager {
             return false;
         }
         return !manager.isAdminActive(component);
-    }
-
-    private static int allowedAuthenticators() {
-        return BiometricManager.Authenticators.BIOMETRIC_STRONG
-                | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
     }
 
     private static boolean isValidPin(String pin) {

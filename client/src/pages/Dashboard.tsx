@@ -250,7 +250,7 @@ export default function Dashboard() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                   Android BiometricPrompt protection with a local passcode fallback
+                    AppLock-style protection with a local passcode and Accessibility Service
                 </p>
               </div>
             </div>
@@ -272,20 +272,18 @@ export default function Dashboard() {
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Access method</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                {appLock.status.biometricAvailable === true ? "Android BiometricPrompt" : "Passcode fallback"}
+                 Local passcode
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {appLock.status.biometricAvailable === true
-                  ? "Biometric or device credential"
-                  : "Stored locally on this device"}
+                 Salted and stored on this device
               </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
-               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Usage Access</p>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Accessibility Service</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                 {appLock.status.usageAccessEnabled === true && appLock.status.overlayEnabled === true ? "Connected" : "Setup required"}
+                  {appLock.status.accessibilityServiceEnabled === true && appLock.status.overlayEnabled === true ? "Connected" : "Setup required"}
               </p>
-               <p className="mt-1 text-xs text-muted-foreground">Monitors launches with an overlay</p>
+                <p className="mt-1 text-xs text-muted-foreground">Monitors selected launches before showing the lock screen</p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
@@ -308,7 +306,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
               <p className="mt-1 text-[11px] text-muted-foreground/80">
-                 SafeNet stores salted local hashes for the passcode fallback on-device. Usage Access, overlay, and Device Administrator permissions remain opt-in Android controls.
+                 SafeNet stores a salted local passcode hash on-device. Accessibility Service, overlay, and Device Administrator permissions remain explicit Android opt-ins.
               </p>
             </div>
             {appLock.status.enabled && appLock.supported && (
