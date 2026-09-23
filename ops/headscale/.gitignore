@@ -1,0 +1,9 @@
+secrets/*
+!secrets/.gitkeep
+headscale/config/config.yaml
+headscale/config/policy.hujson
+headscale/lib/*
+headplane/config.yaml
+headplane/data/*
+caddy/data/*
+caddy/config/*
