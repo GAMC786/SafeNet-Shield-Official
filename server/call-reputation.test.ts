@@ -69,7 +69,7 @@ test("CallShield is the default configured reputation source without API credent
     provider: "callshield",
     reportingAvailable: true,
     reason:
-      "CallShield community data is configured; lookups use a verified offline snapshot plus the live feed and fail open when neither is available.",
+      "CallShield is configured; live lookups use the signed manifest and verified content-addressed shard feed, with a verified offline snapshot and legacy feed fallback.",
   });
 });
 

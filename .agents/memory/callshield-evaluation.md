@@ -7,7 +7,7 @@ SafeNet remains the Android CallScreeningService. External call-blocker apps suc
 
 **Why:** The repository can provide useful local-screening patterns, but treating it as an API or copying its aggregate database would create integration and provenance risks.
 
-**How to apply:** Keep SafeNet's existing native screening boundary. Treat YACB and similar apps as reference implementations only. Consider local rules/feed verification only after auditing each source license and preserving fail-open behavior.
+**How to apply:** Keep SafeNet's existing native screening boundary. Treat YACB and similar apps as reference implementations only. Consume CallShield through its signed manifest and hash-verified shards when live, retaining the legacy feed and approved offline snapshot as fail-open fallbacks.
 
 For offline redistribution, the aggregate feed must not be treated as uniformly approved: its source manifest can include non-redistributable inputs. Bundle only rows whose provenance is explicitly approved, and ship attribution plus a hash/version manifest that rejects mutations and downgrades.
 

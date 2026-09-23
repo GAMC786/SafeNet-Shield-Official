@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createHash, createVerify } from "node:crypto";
 import {
   CALLSHIELD_OFFLINE_FEED,
   CALLSHIELD_OFFLINE_MANIFEST,
@@ -37,13 +38,23 @@ export type CallReputationAvailability = {
 
 const CALLSHIELD_PROVIDER = "callshield";
 const CALLSHIELD_SOURCE = "CallShield";
+const CALLSHIELD_BASE_URL =
+  "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/";
 const CALLSHIELD_FEED_URL =
-  "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/spam_numbers.json";
+  `${CALLSHIELD_BASE_URL}data/spam_numbers.json`;
+const CALLSHIELD_MANIFEST_URL =
+  `${CALLSHIELD_BASE_URL}data/spam_numbers.manifest.json`;
+const CALLSHIELD_MANIFEST_SIGNATURE_URL =
+  `${CALLSHIELD_MANIFEST_URL}.sig`;
 const CALLSHIELD_REPORT_URL =
   "https://callshield-reports.snafumatthew.workers.dev/";
 const CALLSHIELD_FEED_TIMEOUT_MS = 2500;
 const CALLSHIELD_FEED_TTL_MS = 15 * 60 * 1000;
 const CALLSHIELD_FAILURE_RETRY_MS = 30 * 1000;
+const CALLSHIELD_TRUSTED_PUBLIC_KEYS = [
+  "MFkwEwYHKoZIzj0DAQcDQgAESGK0kjIAEM7FP2RBLbWctHhYVP7LcNVJmWiuh6k6hkBGHfVXaqw+TOaSVQtbZLZeN5OThnqd0WTEF/CkBJ2gdA==",
+  "MFkwEwYHKoZIzj0DAQcDQgAE3eBrWqtgDaKc2HFC6EPtENrh8nlCH/bZ5PstgPpIJBVL8ZEf35UfwtbqWKJ/fQDi1pYKLmvMv/0OC3KSug/fxg==",
+];
 
 const callShieldEntrySchema = z.object({
   number: z.string().min(1),
@@ -61,11 +72,39 @@ const callShieldPrefixSchema = z.object({
 const callShieldFeedSchema = z.object({
   version: z.number().int().nonnegative(),
   updated: z.string().optional(),
+  sources: z.array(z.string().min(1)).optional(),
   numbers: z.array(callShieldEntrySchema).default([]),
   prefixes: z.array(callShieldPrefixSchema).default([]),
 }).passthrough();
 
 type CallShieldFeed = z.infer<typeof callShieldFeedSchema>;
+
+const callShieldManifestSchema = z.object({
+  format_version: z.literal(1),
+  version: z.number().int().nonnegative(),
+  updated: z.string().min(1),
+  legacy_path: z.string().min(1),
+  shard_directory: z.string().min(1),
+  shard_count: z.literal(256),
+  shards: z.array(z.object({
+    id: z.string().regex(/^[0-9a-f]{2}$/),
+    path: z.string().min(1),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    bytes: z.number().int().positive(),
+    numbers: z.number().int().nonnegative(),
+    prefixes: z.number().int().nonnegative(),
+  })).length(256),
+});
+
+const callShieldShardSchema = z.object({
+  shard_id: z.string().regex(/^[0-9a-f]{2}$/),
+  numbers: z.array(callShieldEntrySchema).default([]),
+  prefixes: z.array(callShieldPrefixSchema).default([]),
+}).passthrough();
+
+type CallShieldManifest = z.infer<typeof callShieldManifestSchema>;
+type CallShieldShard = z.infer<typeof callShieldShardSchema>;
+type CallShieldLookupFeed = Pick<CallShieldFeed, "numbers" | "prefixes">;
 
 const verifiedOfflineCallShieldFeed = verifyCallShieldOfflineSnapshot(
   CALLSHIELD_OFFLINE_FEED,
@@ -79,6 +118,15 @@ let callShieldFeedCache: {
   expiresAt: number;
 } | null = null;
 let callShieldFeedPromise: Promise<CallShieldFeed | null> | null = null;
+let callShieldManifestCache: {
+  manifest: CallShieldManifest;
+  expiresAt: number;
+} | null = null;
+let callShieldManifestPromise: Promise<CallShieldManifest | null> | null = null;
+const callShieldShardCache = new Map<string, {
+  shard: CallShieldShard;
+  expiresAt: number;
+}>();
 let callShieldFailureUntil = 0;
 
 function normalizePhoneNumber(value: string) {
@@ -151,6 +199,42 @@ function readJson(response: Response) {
   return response.json().catch(() => null);
 }
 
+async function readBytes(response: Response) {
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function sha256(value: Uint8Array) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function verifiesCallShieldSignature(body: Uint8Array, signatureText: string) {
+  let signature: Buffer;
+  try {
+    signature = Buffer.from(signatureText.trim(), "base64");
+  } catch {
+    return false;
+  }
+  if (signature.length === 0) return false;
+
+  return CALLSHIELD_TRUSTED_PUBLIC_KEYS.some((encodedKey) => {
+    try {
+      const verifier = createVerify("SHA256");
+      verifier.update(body);
+      verifier.end();
+      return verifier.verify(
+        {
+          key: Buffer.from(encodedKey, "base64"),
+          format: "der",
+          type: "spki",
+        },
+        signature,
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function reputationHeaders() {
   const token = process.env.SAFE_NET_CALL_REPUTATION_TOKEN?.trim();
   return {
@@ -183,6 +267,120 @@ function callShieldEnabled() {
 
 function callShieldFeedFailure(reason: string) {
   return unavailable(reason, CALLSHIELD_SOURCE);
+}
+
+function shardIdForNumber(number: string) {
+  return sha256(new TextEncoder().encode(number)).slice(0, 2);
+}
+
+async function loadCallShieldManifest(): Promise<CallShieldManifest | null> {
+  const now = Date.now();
+  if (callShieldManifestCache && callShieldManifestCache.expiresAt > now) {
+    return callShieldManifestCache.manifest;
+  }
+  if (callShieldManifestPromise) return callShieldManifestPromise;
+
+  callShieldManifestPromise = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
+    try {
+      const [manifestResponse, signatureResponse] = await Promise.all([
+        fetch(CALLSHIELD_MANIFEST_URL, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        }),
+        fetch(CALLSHIELD_MANIFEST_SIGNATURE_URL, {
+          headers: { Accept: "text/plain" },
+          signal: controller.signal,
+        }),
+      ]);
+      if (!manifestResponse.ok || !signatureResponse.ok) return null;
+
+      const manifestBytes = await readBytes(manifestResponse);
+      const signatureText = await signatureResponse.text();
+      if (!verifiesCallShieldSignature(manifestBytes, signatureText)) return null;
+
+      const parsed = callShieldManifestSchema.safeParse(
+        JSON.parse(new TextDecoder().decode(manifestBytes)),
+      );
+      if (!parsed.success) return null;
+      const ids = new Set(parsed.data.shards.map((shard) => shard.id));
+      if (ids.size !== parsed.data.shard_count) return null;
+      if (parsed.data.shards.some((shard) =>
+        !shard.path.startsWith(`${parsed.data.shard_directory}/`) ||
+        !shard.path.endsWith(".json")
+      )) {
+        return null;
+      }
+
+      callShieldManifestCache = {
+        manifest: parsed.data,
+        expiresAt: Date.now() + CALLSHIELD_FEED_TTL_MS,
+      };
+      return parsed.data;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+      callShieldManifestPromise = null;
+    }
+  })();
+
+  return callShieldManifestPromise;
+}
+
+async function loadCallShieldShard(
+  normalized: string,
+): Promise<CallShieldShard | null> {
+  const manifest = await loadCallShieldManifest();
+  if (!manifest) return null;
+
+  const shardId = shardIdForNumber(normalized);
+  const descriptor = manifest.shards.find((shard) => shard.id === shardId);
+  if (!descriptor) return null;
+
+  const now = Date.now();
+  const cached = callShieldShardCache.get(`${manifest.version}:${shardId}`);
+  if (cached && cached.expiresAt > now) return cached.shard;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
+  try {
+    const shardUrl = new URL(descriptor.path, CALLSHIELD_BASE_URL);
+    const response = await fetch(shardUrl, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+
+    const bytes = await readBytes(response);
+    if (
+      bytes.byteLength !== descriptor.bytes ||
+      sha256(bytes) !== descriptor.sha256
+    ) {
+      return null;
+    }
+    const parsed = callShieldShardSchema.safeParse(
+      JSON.parse(new TextDecoder().decode(bytes)),
+    );
+    if (!parsed.success || parsed.data.shard_id !== shardId) return null;
+    if (
+      parsed.data.numbers.length !== descriptor.numbers ||
+      parsed.data.prefixes.length !== descriptor.prefixes
+    ) {
+      return null;
+    }
+
+    callShieldShardCache.set(`${manifest.version}:${shardId}`, {
+      shard: parsed.data,
+      expiresAt: Date.now() + CALLSHIELD_FEED_TTL_MS,
+    });
+    return parsed.data;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function loadCallShieldFeed(): Promise<CallShieldFeed | null> {
@@ -235,7 +433,7 @@ async function loadCallShieldFeed(): Promise<CallShieldFeed | null> {
 }
 
 function callShieldDecision(
-  feed: CallShieldFeed,
+  feed: CallShieldLookupFeed,
   normalized: string,
 ): Extract<CallReputationResult, { available: true }> {
   const digits = phoneDigits(normalized);
@@ -273,6 +471,9 @@ function callShieldDecision(
 export function resetCallShieldCache() {
   callShieldFeedCache = null;
   callShieldFeedPromise = null;
+  callShieldManifestCache = null;
+  callShieldManifestPromise = null;
+  callShieldShardCache.clear();
   callShieldFailureUntil = 0;
 }
 
@@ -288,7 +489,7 @@ export async function getCallReputationAvailability(): Promise<CallReputationAva
     }
     return availability(
       "configured",
-      "CallShield community data is configured; lookups use a verified offline snapshot plus the live feed and fail open when neither is available.",
+      "CallShield is configured; live lookups use the signed manifest and verified content-addressed shard feed, with a verified offline snapshot and legacy feed fallback.",
       {
         source: CALLSHIELD_SOURCE,
         provider: CALLSHIELD_PROVIDER,
@@ -340,6 +541,12 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
   if (!normalized) return unavailable("The caller number is invalid.");
 
   if (callShieldEnabled()) {
+    const shard = await loadCallShieldShard(normalized);
+    if (shard) {
+      const shardDecision = callShieldDecision(shard, normalized);
+      if (shardDecision.action === "block") return shardDecision;
+    }
+
     const feed = await loadCallShieldFeed();
     if (!feed) {
       return callShieldFeedFailure(
