@@ -230,6 +230,7 @@ test("authenticated Headplane fixture matches the documented node contract", asy
     assert.equal(fixture.result.status, 0, `${fixture.result.stdout}\n${fixture.result.stderr}`);
     const evidence = readFileSync(join(fixture.output, "result.txt"), "utf8");
     assert.match(evidence, /^result=PASS$/m);
+    assert.match(evidence, /^headplane_node_name=safenet-phone$/m);
     assert.match(evidence, /^headplane_node_visibility=visible$/m);
     assert.match(evidence, /^headplane_node_status=online$/m);
     assert.match(evidence, /^headplane_node_owner=safenet$/m);
