@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test, { beforeEach } from "node:test";
 
 import {
@@ -6,7 +7,14 @@ import {
   lookupCallReputation,
   reportCall,
   resetCallShieldCache,
+  verifyCallShieldShard,
+  type CallShieldShardDescriptor,
 } from "./call-reputation";
+import {
+  callShieldManifestFixture,
+  callShieldShardFixture,
+  callShieldSignatureFixture,
+} from "./callshield-fixture";
 import {
   CALLSHIELD_OFFLINE_FEED,
   CALLSHIELD_OFFLINE_MANIFEST,
@@ -57,6 +65,155 @@ function feedResponse() {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+const CALLSHIELD_MANIFEST_URL =
+  "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/spam_numbers.manifest.json";
+const CALLSHIELD_SIGNATURE_URL = `${CALLSHIELD_MANIFEST_URL}.sig`;
+const CALLSHIELD_SHARD_URL =
+  "https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/spam_number_shards/53.json";
+const SIGNED_FIXTURE_NUMBER = "+12023225388";
+
+function fixtureDescriptor(): CallShieldShardDescriptor {
+  const manifest = JSON.parse(
+    new TextDecoder().decode(callShieldManifestFixture),
+  ) as { shards: CallShieldShardDescriptor[] };
+  const descriptor = manifest.shards.find((shard) => shard.id === "53");
+  assert.ok(descriptor);
+  return descriptor;
+}
+
+function fixtureFeedResponse() {
+  return new Response(JSON.stringify({
+    ...feed,
+    numbers: [{ number: SIGNED_FIXTURE_NUMBER, type: "legacy", reports: 3 }],
+  }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function fixtureFetch(options: {
+  manifest?: Uint8Array;
+  signature?: Uint8Array;
+  shard?: Uint8Array;
+  legacy?: Response | (() => Response | Promise<Response>);
+} = {}) {
+  return async (input: RequestInfo | URL) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    if (url === CALLSHIELD_MANIFEST_URL) {
+      return new Response(options.manifest ?? callShieldManifestFixture, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url === CALLSHIELD_SIGNATURE_URL) {
+      return new Response(options.signature ?? callShieldSignatureFixture, {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+    if (url === CALLSHIELD_SHARD_URL) {
+      return new Response(options.shard ?? callShieldShardFixture, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return typeof options.legacy === "function"
+      ? options.legacy()
+      : options.legacy ?? feedResponse();
+  };
+}
+
+test("CallShield accepts a fixed signed manifest and routes lookups to its verified shard", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = fixtureFetch();
+  try {
+    assert.deepEqual(await lookupCallReputation(SIGNED_FIXTURE_NUMBER), {
+      available: true,
+      action: "block",
+      source: "CallShield",
+      reason: "CallShield robocall: 2 reports; call blocked.",
+    });
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
+
+test("CallShield rejects a changed signed manifest and uses the legacy fallback", async () => {
+  const previousFetch = globalThis.fetch;
+  const changedManifest = new Uint8Array(callShieldManifestFixture);
+  changedManifest[changedManifest.length - 1] ^= 1;
+  globalThis.fetch = fixtureFetch({
+    manifest: changedManifest,
+    legacy: fixtureFeedResponse(),
+  });
+  try {
+    assert.deepEqual(await lookupCallReputation(SIGNED_FIXTURE_NUMBER), {
+      available: true,
+      action: "block",
+      source: "CallShield",
+      reason: "CallShield legacy: 3 reports; call blocked.",
+    });
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
+
+test("CallShield rejects wrong shard hashes, ids, and item counts", () => {
+  const descriptor = fixtureDescriptor();
+  assert.ok(verifyCallShieldShard(
+    callShieldShardFixture,
+    descriptor,
+    "53",
+  ));
+
+  assert.equal(
+    verifyCallShieldShard(
+      callShieldShardFixture,
+      { ...descriptor, sha256: "0".repeat(64) },
+      "53",
+    ),
+    null,
+  );
+  assert.equal(
+    verifyCallShieldShard(callShieldShardFixture, descriptor, "54"),
+    null,
+  );
+
+  const shardHash = createHash("sha256").update(callShieldShardFixture).digest("hex");
+  assert.equal(
+    verifyCallShieldShard(
+      callShieldShardFixture,
+      { ...descriptor, sha256: shardHash, bytes: callShieldShardFixture.byteLength, numbers: descriptor.numbers + 1 },
+      "53",
+    ),
+    null,
+  );
+});
+
+test("CallShield falls back to the offline snapshot when signed and legacy feeds are unavailable", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = fixtureFetch({
+    manifest: new Uint8Array(Buffer.from("not signed")),
+    legacy: async () => {
+      throw new Error("legacy feed offline");
+    },
+  });
+  try {
+    assert.deepEqual(await lookupCallReputation("+1 (555) 222-3333"), {
+      available: true,
+      action: "allow",
+      source: "CallShield",
+      reason: "CallShield found no matching spam number or range.",
+    });
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
 
 test("CallShield is the default configured reputation source without API credentials", async () => {
   globalThis.fetch = async () => {

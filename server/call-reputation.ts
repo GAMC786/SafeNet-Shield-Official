@@ -52,8 +52,8 @@ const CALLSHIELD_FEED_TIMEOUT_MS = 2500;
 const CALLSHIELD_FEED_TTL_MS = 15 * 60 * 1000;
 const CALLSHIELD_FAILURE_RETRY_MS = 30 * 1000;
 const CALLSHIELD_TRUSTED_PUBLIC_KEYS = [
-  "MFkwEwYHKoZIzj0DAQcDQgAESGK0kjIAEM7FP2RBLbWctHhYVP7LcNVJmWiuh6k6hkBGHfVXaqw+TOaSVQtbZLZeN5OThnqd0WTEF/CkBJ2gdA==",
-  "MFkwEwYHKoZIzj0DAQcDQgAE3eBrWqtgDaKc2HFC6EPtENrh8nlCH/bZ5PstgPpIJBVL8ZEf35UfwtbqWKJ/fQDi1pYKLmvMv/0OC3KSug/fxg==",
+  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESGK0kjIAEM7FP2RBLbWctHhYVP7LcNVJmWiuh6k6hkBGHfVXaqw+TOaSVQtbZLZeN5OThnqd0WTEF/CkBJ2gdA==",
+  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3eBrWqtgDaKc2HFC6EPtENrh8nlCH/bZ5PstgPpIJBVL8ZEf35UfwtbqWKJ/fQDi1pYKLmvMv/0OC3KSug/fxg==",
 ];
 
 const callShieldEntrySchema = z.object({
@@ -103,6 +103,7 @@ const callShieldShardSchema = z.object({
 }).passthrough();
 
 type CallShieldManifest = z.infer<typeof callShieldManifestSchema>;
+export type CallShieldShardDescriptor = CallShieldManifest["shards"][number];
 type CallShieldShard = z.infer<typeof callShieldShardSchema>;
 type CallShieldLookupFeed = Pick<CallShieldFeed, "numbers" | "prefixes">;
 
@@ -273,6 +274,35 @@ function shardIdForNumber(number: string) {
   return sha256(new TextEncoder().encode(number)).slice(0, 2);
 }
 
+export function verifyCallShieldShard(
+  bytes: Uint8Array,
+  descriptor: CallShieldShardDescriptor,
+  expectedShardId: string,
+): CallShieldShard | null {
+  if (
+    bytes.byteLength !== descriptor.bytes ||
+    sha256(bytes) !== descriptor.sha256
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = callShieldShardSchema.safeParse(
+      JSON.parse(new TextDecoder().decode(bytes)),
+    );
+    if (!parsed.success || parsed.data.shard_id !== expectedShardId) return null;
+    if (
+      parsed.data.numbers.length !== descriptor.numbers ||
+      parsed.data.prefixes.length !== descriptor.prefixes
+    ) {
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
 async function loadCallShieldManifest(): Promise<CallShieldManifest | null> {
   const now = Date.now();
   if (callShieldManifestCache && callShieldManifestCache.expiresAt > now) {
@@ -354,28 +384,14 @@ async function loadCallShieldShard(
     if (!response.ok) return null;
 
     const bytes = await readBytes(response);
-    if (
-      bytes.byteLength !== descriptor.bytes ||
-      sha256(bytes) !== descriptor.sha256
-    ) {
-      return null;
-    }
-    const parsed = callShieldShardSchema.safeParse(
-      JSON.parse(new TextDecoder().decode(bytes)),
-    );
-    if (!parsed.success || parsed.data.shard_id !== shardId) return null;
-    if (
-      parsed.data.numbers.length !== descriptor.numbers ||
-      parsed.data.prefixes.length !== descriptor.prefixes
-    ) {
-      return null;
-    }
+    const parsed = verifyCallShieldShard(bytes, descriptor, shardId);
+    if (!parsed) return null;
 
     callShieldShardCache.set(`${manifest.version}:${shardId}`, {
-      shard: parsed.data,
+      shard: parsed,
       expiresAt: Date.now() + CALLSHIELD_FEED_TTL_MS,
     });
-    return parsed.data;
+    return parsed;
   } catch {
     return null;
   } finally {
