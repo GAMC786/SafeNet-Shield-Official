@@ -32,9 +32,9 @@ export async function getWgEasyStatus(): Promise<WgEasyStatus> {
   const adminUrl = getConfiguredUrl();
   if (!adminUrl) {
     return baseStatus({
-      message: process.env.WG_EASY_URL
-        ? "WG_EASY_URL must be an HTTP or HTTPS URL without embedded credentials."
-        : undefined,
+      ...(process.env.WG_EASY_URL
+        ? { message: "WG_EASY_URL must be an HTTP or HTTPS URL without embedded credentials." }
+        : {}),
     });
   }
 
