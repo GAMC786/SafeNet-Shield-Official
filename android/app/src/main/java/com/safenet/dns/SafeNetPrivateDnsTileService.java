@@ -37,7 +37,7 @@ public class SafeNetPrivateDnsTileService extends TileService {
     public void onClick() {
         super.onClick();
         if (AppLockManager.hasPin(this)) {
-            Intent unlockIntent = new Intent(this, LockLockActivity.class)
+            Intent unlockIntent = new Intent(this, AppLockActivity.class)
                 .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_UNLOCK)
                 .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName())
                 .putExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, true)

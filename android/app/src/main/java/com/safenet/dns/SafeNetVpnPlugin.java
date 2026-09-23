@@ -113,7 +113,7 @@ public class SafeNetVpnPlugin extends Plugin {
             call.reject("Secure App Lock is unavailable.", "APP_LOCK_UNAVAILABLE");
             return;
         }
-        Intent intent = new Intent(getContext(), LockLockActivity.class)
+        Intent intent = new Intent(getContext(), AppLockActivity.class)
             .putExtra(AppLockManager.EXTRA_MODE, mode)
             .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getContext().getPackageName());
         startActivityForResult(call, intent, "appLockActivityResult");

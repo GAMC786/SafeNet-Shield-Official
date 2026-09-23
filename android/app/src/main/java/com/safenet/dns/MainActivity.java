@@ -232,7 +232,7 @@ public class MainActivity extends BridgeActivity {
                         : "Set up App Lock and a local SafeNet passcode."
         );
         startActivityForResult(
-                new Intent(this, LockLockActivity.class)
+                new Intent(this, AppLockActivity.class)
                         .putExtra(AppLockManager.EXTRA_MODE, mode)
                         .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
                 APP_LOCK_ACTIVITY_REQUEST
@@ -244,10 +244,19 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         appLockActivityActive = true;
+        Intent intent = new Intent(this, AppLockActivity.class)
+                .putExtra(
+                        AppLockManager.EXTRA_MODE,
+                        AppLockManager.hasPin(this)
+                                ? AppLockManager.MODE_UNLOCK
+                                : AppLockManager.MODE_SETUP
+                )
+                .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName());
+        if (AppLockManager.hasPin(this)) {
+            intent.putExtra(AppLockManager.EXTRA_OPEN_DASHBOARD_AFTER_AUTH, true);
+        }
         startActivityForResult(
-                new Intent(this, LockLockActivity.class)
-                        .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_SETUP)
-                        .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getPackageName()),
+                intent,
                 APP_LOCK_ACTIVITY_REQUEST
         );
     }

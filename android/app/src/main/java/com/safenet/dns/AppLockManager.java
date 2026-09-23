@@ -33,6 +33,7 @@ public final class AppLockManager {
     public static final String EXTRA_LOCKED_PACKAGE = "locked_package";
     public static final String EXTRA_AFTER_UNLOCK_PRIVATE_DNS = "after_unlock_private_dns";
     public static final String EXTRA_MODE = "mode";
+    public static final String EXTRA_OPEN_DASHBOARD_AFTER_AUTH = "open_dashboard_after_auth";
     public static final String MODE_SETUP = "setup";
     public static final String MODE_UNLOCK = "unlock";
     public static final String MODE_DISABLE = "disable";

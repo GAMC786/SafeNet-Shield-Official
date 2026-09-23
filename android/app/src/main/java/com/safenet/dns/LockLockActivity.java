@@ -56,7 +56,14 @@ import java.util.concurrent.Executors;
  * protected launch is blocked. The AppLock-style surface uses only SafeNet's
  * local passcode and recovery answer; Android credentials are never collected.
  */
-public final class LockLockActivity extends FragmentActivity {
+/**
+ * Compatibility authentication activity.
+ *
+ * The embedded AppLock dashboard is hosted by AppLockActivity. This activity
+ * remains the opaque passcode/recovery surface used when a protected app is
+ * already being intercepted.
+ */
+public class LockLockActivity extends FragmentActivity {
     private static final int RESULT_LOCKLOCK_SUCCESS = Activity.RESULT_OK;
     private static final int PADDING_DP = 24;
     private String mode;
@@ -81,11 +88,19 @@ public final class LockLockActivity extends FragmentActivity {
             mode = AppLockManager.MODE_UNLOCK;
         }
 
+        if (AppLockManager.MODE_SETUP.equals(mode) && useEmbeddedAppLockDashboard()) {
+            return;
+        }
+
         if (AppLockManager.MODE_SETUP.equals(mode)) {
             showSetup();
         } else {
             showUnlock();
         }
+    }
+
+    protected boolean useEmbeddedAppLockDashboard() {
+        return false;
     }
 
     @Override
@@ -372,6 +387,14 @@ public final class LockLockActivity extends FragmentActivity {
         finishSuccess();
     }
 
+    /**
+     * Allows an embedded caller to continue into an authenticated settings
+     * dashboard instead of closing after the passcode is accepted.
+     */
+    protected boolean onAuthenticationSucceeded() {
+        return false;
+    }
+
     private void showUnlock() {
         String title = AppLockManager.MODE_DISABLE.equals(mode)
                 ? "Disable SafeNet App Lock"
@@ -429,7 +452,9 @@ public final class LockLockActivity extends FragmentActivity {
                 // The tile's settings fallback is handled by the system.
             }
         }
-        finishSuccess();
+        if (!onAuthenticationSucceeded()) {
+            finishSuccess();
+        }
     }
 
     private void showRecovery() {

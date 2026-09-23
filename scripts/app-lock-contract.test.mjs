@@ -21,6 +21,7 @@ const [
   appGradle,
   manager,
   activity,
+  appLock,
   service,
   instrumentation,
   deviceScript,
@@ -28,6 +29,7 @@ const [
   manifest,
   nativeView,
   plugin,
+  mainActivity,
   dashboard,
   recoveryService,
   strings,
@@ -35,6 +37,7 @@ const [
   readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockActivity.java"),
+  readSource("android/app/src/main/java/com/safenet/dns/AppLockActivity.java"),
   readSource("android/app/src/main/java/com/safenet/dns/OpenLockMonitorService.java"),
   readSource(
     "android/app/src/androidTest/java/com/safenet/dns/AppLockInstrumentationTest.java",
@@ -44,6 +47,7 @@ const [
   readSource("android/app/src/main/AndroidManifest.xml"),
   readSource("android/app/src/main/java/com/safenet/dns/NativeAppLockView.java"),
   readSource("android/app/src/main/java/com/safenet/dns/SafeNetVpnPlugin.java"),
+  readSource("android/app/src/main/java/com/safenet/dns/MainActivity.java"),
   readSource("client/src/pages/Dashboard.tsx"),
   readSource("server/app-lock-recovery.ts"),
   readSource("android/app/src/main/res/values/strings.xml"),
@@ -201,12 +205,36 @@ test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries"
   assert.match(manager, /isDeviceAdminEnabled/);
   assert.match(service, /AccessibilityService/);
   assert.match(service, /TYPE_WINDOW_STATE_CHANGED/);
-  assert.match(service, /LockLockActivity.class/);
+  assert.match(service, /AppLockActivity.class/);
   assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
   assert.doesNotMatch(manifest, /PACKAGE_USAGE_STATS/);
   assert.match(manifest, /SYSTEM_ALERT_WINDOW/);
   assert.match(manifest, /BIND_DEVICE_ADMIN/);
   assert.match(manifest, /QUERY_ALL_PACKAGES/);
+});
+
+test("the embedded AppLock dashboard covers setup, app selection, and permission recovery", () => {
+  assert.match(appLock, /public final class AppLockActivity extends LockLockActivity/);
+  assert.match(appLock, /useEmbeddedAppLockDashboard/);
+  assert.match(appLock, /showAppLockDashboard/);
+  assert.match(appLock, /Select Apps/);
+  assert.match(appLock, /Search apps/);
+  assert.match(appLock, /Add protected apps/);
+  assert.match(appLock, /Open Accessibility Settings/);
+  assert.match(appLock, /Allow overlay/);
+  assert.match(appLock, /Open Device Administrator/);
+  assert.match(appLock, /AppLock passcode saved/);
+  assert.match(appLock, /AppLockManager\.setLockedPackages/);
+  assert.match(appLock, /onAuthenticationSucceeded/);
+  assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
+  assert.match(manifest, /android:name="\.AppLockActivity"/);
+});
+
+test("configured users authenticate before opening AppLock management", () => {
+  assert.match(mainActivity, /AppLockManager\.MODE_UNLOCK/);
+  assert.match(mainActivity, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
+  assert.match(appLock, /onAuthenticationSucceeded/);
+  assert.match(appLock, /mode = AppLockManager\.MODE_SETUP/);
 });
 
 test("enabling, disabling, recovery, and passcode unlock use the native App Lock activity", () => {
