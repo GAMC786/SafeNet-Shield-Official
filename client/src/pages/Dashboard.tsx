@@ -6,11 +6,11 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, ExternalLink } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
@@ -32,6 +32,9 @@ export default function Dashboard() {
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
   const wgEasy = useWgEasyStatus();
+  const [wireguardUiOpen, setWireguardUiOpen] = useState(false);
+  const wireguardWindowRef = useRef<Window | null>(null);
+  const wireguardAdminUrl = wgEasy.data?.adminUrl ?? null;
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -82,6 +85,32 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
+  const handleWireguardToggle = (enabled: boolean) => {
+    if (!enabled) {
+      if (wireguardWindowRef.current && !wireguardWindowRef.current.closed) {
+        wireguardWindowRef.current.close();
+      }
+      wireguardWindowRef.current = null;
+      setWireguardUiOpen(false);
+      return;
+    }
+
+    if (!wireguardAdminUrl) {
+      setWireguardUiOpen(false);
+      void wgEasy.refetch();
+      return;
+    }
+
+    const openedWindow = window.open(wireguardAdminUrl, "_blank", "noopener,noreferrer");
+    if (!openedWindow) {
+      setWireguardUiOpen(false);
+      return;
+    }
+    wireguardWindowRef.current = openedWindow;
+    openedWindow.focus();
+    setWireguardUiOpen(true);
+  };
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <Header 
@@ -109,126 +138,26 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="min-h-[104px]">
-          <div className="flex h-full flex-col justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Radio className="h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm font-medium text-foreground">WG-Easy</p>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {wgEasy.data?.message ?? "Checking the configured WireGuard server…"}
-                </p>
+        <CyberCard className="flex min-h-[104px] items-center">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Radio className="h-4 w-4 shrink-0 text-primary" />
+                <p className="text-sm font-medium text-foreground">WireGuard UI</p>
               </div>
-              <Badge
-                variant="outline"
-                className={
-                  wgEasy.data?.status === "online"
-                    ? "shrink-0 border-emerald-400/40 bg-emerald-400/10 text-[10px] text-emerald-300"
-                    : wgEasy.data?.status === "unavailable"
-                      ? "shrink-0 border-amber-400/40 bg-amber-400/10 text-[10px] text-amber-300"
-                      : "shrink-0 border-white/15 bg-white/5 text-[10px] text-muted-foreground"
-                }
-              >
-                {wgEasy.data?.status === "online"
-                  ? "ONLINE"
-                  : wgEasy.data?.status === "unavailable"
-                    ? "UNAVAILABLE"
-                    : "NOT CONFIGURED"}
-              </Badge>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {wireguardAdminUrl
+                  ? "Open the standard WireGuard server administration UI"
+                  : "WireGuard administration UI is not configured"}
+              </p>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-background/20 px-3 py-2">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-foreground">WireGuard UDP tunnel</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {wgEasy.data?.tunnelVerification.message ??
-                    "Waiting for a disposable-peer verification from the WG-Easy host."}
-                </p>
-              </div>
-              <Badge
-                variant="outline"
-                className={
-                  wgEasy.data?.tunnelVerification.status === "verified"
-                    ? "shrink-0 border-emerald-400/40 bg-emerald-400/10 text-[10px] text-emerald-300"
-                    : wgEasy.data?.tunnelVerification.status === "failed"
-                      ? "shrink-0 border-amber-400/40 bg-amber-400/10 text-[10px] text-amber-300"
-                      : "shrink-0 border-white/15 bg-white/5 text-[10px] text-muted-foreground"
-                }
-              >
-                {wgEasy.data?.tunnelVerification.status === "verified"
-                  ? "VERIFIED"
-                  : wgEasy.data?.tunnelVerification.status === "failed"
-                    ? "FAILED"
-                    : "NOT VERIFIED"}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {wgEasy.data?.adminUrl ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={wgEasy.data.adminUrl} target="_blank" rel="noreferrer">
-                    Open admin UI
-                    <ExternalLink aria-hidden="true" />
-                  </a>
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => void wgEasy.refetch()}
-                disabled={wgEasy.isFetching}
-              >
-                {wgEasy.isFetching ? "Checking…" : "Recheck"}
-              </Button>
-            </div>
-            {!wgEasy.data?.configured ? (
-              <details className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                <summary className="cursor-pointer font-medium text-primary">
-                  Set up a real WireGuard host
-                </summary>
-                <div className="mt-2 space-y-2 text-muted-foreground">
-                  <p>
-                    WG-Easy needs a Linux host with Docker, persistent storage, and public UDP
-                    51820. Railway&apos;s web service cannot provide that VPN endpoint.
-                  </p>
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>
-                      Run <code className="text-foreground">scripts/install-wg-easy.sh</code> as
-                      root on a compatible host.
-                    </li>
-                    <li>Allow UDP 51820 and TCP 51821 in that host&apos;s firewall.</li>
-                    <li>
-                      Set <code className="text-foreground">WG_EASY_URL</code> and{" "}
-                      <code className="text-foreground">WG_EASY_WIREGUARD_ENDPOINT</code> on
-                      SafeNet, then recheck.
-                    </li>
-                  </ol>
-                  <a
-                    href="https://wg-easy.github.io/wg-easy/latest/examples/tutorials/basic-installation/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
-                  >
-                    View the official host requirements
-                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                  </a>
-                </div>
-              </details>
-            ) : wgEasy.data.wireguardEndpoint ? (
-              <div className="space-y-1">
-                <p className="text-[11px] text-muted-foreground">
-                  VPN endpoint:{" "}
-                  <span className="font-mono text-foreground">{wgEasy.data.wireguardEndpoint}/udp</span>
-                </p>
-                {wgEasy.data.tunnelVerification.status === "not-run" ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Run <code className="text-foreground">/opt/wg-easy/verify-wg-easy-peer.sh</code> on
-                    the WG-Easy host with its admin credentials supplied through environment variables.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            <Switch
+              checked={wireguardUiOpen}
+              onCheckedChange={handleWireguardToggle}
+              disabled={!wireguardAdminUrl}
+              aria-label={`WireGuard UI ${wireguardUiOpen ? "On" : "Off"}`}
+              data-testid="switch-wireguard-ui"
+            />
           </div>
         </CyberCard>
 

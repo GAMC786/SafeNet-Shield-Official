@@ -253,7 +253,7 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard reports and opens a real WG-Easy connection", () => {
+test("the Dashboard opens the standard WireGuard UI from a Radix switch", () => {
   const wgEasyHookSource = readFileSync(
     path.join(clientRoot, "src/hooks/use-wg-easy.ts"),
     "utf8",
@@ -263,20 +263,17 @@ test("the Dashboard reports and opens a real WG-Easy connection", () => {
     "utf8",
   );
   assert.match(dashboardSource, /useWgEasyStatus/);
-  assert.match(dashboardSource, /Open admin UI/);
-  assert.match(dashboardSource, /NOT CONFIGURED/);
-  assert.match(dashboardSource, /Set up a real WireGuard host/);
-  assert.match(dashboardSource, /WG_EASY_WIREGUARD_ENDPOINT/);
+  assert.match(dashboardSource, /WireGuard UI/);
+  assert.match(dashboardSource, /data-testid="switch-wireguard-ui"/);
+  assert.match(dashboardSource, /onCheckedChange=\{handleWireguardToggle\}/);
+  assert.match(dashboardSource, /window\.open\(wireguardAdminUrl, "_blank", "noopener,noreferrer"\)/);
+  assert.match(dashboardSource, /disabled=\{!wireguardAdminUrl\}/);
   assert.doesNotMatch(
     dashboardSource,
-    /WG_EASY_ENABLED_STORAGE_KEY|switch-wg-easy|Wrapper enabled for this device/,
+    /WG-Easy|WireGuard UDP tunnel|Set up a real WireGuard host|Open admin UI|tunnelVerification/,
   );
   assert.match(wgEasyHookSource, /\/api\/wg-easy\/status/);
   assert.match(wgEasyServiceSource, /WG_EASY_URL/);
-  assert.match(wgEasyServiceSource, /WG_EASY_WIREGUARD_ENDPOINT/);
-  assert.match(wgEasyServiceSource, /WG_EASY_TUNNEL_RESULT_FILE/);
-  assert.match(dashboardSource, /WireGuard UDP tunnel/);
-  assert.match(dashboardSource, /NOT VERIFIED/);
   assert.match(routesSource, /api\.wgEasy\.status\.path/);
 });
 
