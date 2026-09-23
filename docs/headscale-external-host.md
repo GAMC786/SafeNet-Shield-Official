@@ -156,6 +156,17 @@ malformed response is recorded as bounded `BLOCKED` evidence rather than
 falling back to a manual assertion. Do not point this variable at a Headplane
 HTML route or at an endpoint that accepts an administrator credential.
 
+The contract is covered without a live mesh by the fixture regression lane:
+
+```sh
+node --test scripts/headscale-android-mesh.test.mjs
+```
+
+It exercises authenticated success, both authentication failures, all
+documented unsupported statuses, malformed JSON, and visibility/owner/status
+mismatches. The fixture checks that only bounded summaries are retained; raw
+responses and bearer tokens must not appear in generated evidence.
+
 After confirming the Android login-server setting, run:
 
 ```sh
