@@ -362,15 +362,24 @@ export default function DnsSettings() {
               Change Private DNS
             </Button>
           ) : (
-            <Button
-              type="button"
-              disabled={!privateDns.supported || privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
-              onClick={() => {
-                if (activeDns) void handleStartFiltering(activeDns);
-              }}
-            >
-              {privateDns.supported ? "Open Android settings" : "Android app only"}
-            </Button>
+            privateDns.supported ? (
+              <Button
+                type="button"
+                disabled={privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
+                onClick={() => {
+                  if (activeDns) void handleStartFiltering(activeDns);
+                }}
+              >
+                Open Android settings
+              </Button>
+            ) : (
+              <Badge
+                variant="outline"
+                className="border-primary/40 bg-primary/10 px-3 py-2 text-primary"
+              >
+                Android app only
+              </Badge>
+            )
           )}
         </div>
         {privateDns.supported && !privateDns.expectedHostname && (
