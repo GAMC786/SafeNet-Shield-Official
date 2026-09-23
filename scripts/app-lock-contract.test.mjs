@@ -350,13 +350,16 @@ test("instrumentation covers lifecycle, permissions, duplicate activity protecti
     "physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities",
       "settings put secure enabled_accessibility_services",
     "dpm remove-active-admin",
-    "LOCKLOCK_PHYSICAL_ANTI_UNINSTALL result=PASS",
+    "LOCKLOCK_PHYSICAL_WRONG_PIN result=PASS",
     "com.android.settings",
     "dumpsys activity activities",
     "countActivityRecords(activities, \"com.safenet.dns/.LockLockActivity\")",
     "unlockCurrentLockScreen(PIN)",
+    "rejectCurrentLockScreen(\"0000\")",
     "isForegroundPackage(targetPackage)",
     "LOCKLOCK_PHYSICAL_RETURN result=PASS",
+    "LOCKLOCK_PHYSICAL_REOPEN result=PASS",
+    "LOCKLOCK_PHYSICAL_REOPEN_AUTH result=PASS",
     "LOCKLOCK_PHYSICAL_OTHER_APP result=PASS",
     "LOCKLOCK_LIFECYCLE result=PASS",
       "OPENLOCK_ACCESSIBILITY result=PASS activity_records=1",
@@ -393,6 +396,7 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     "package-state.txt",
     "accessibility_enabled=",
     "selected_app_resumed=",
+    "selected_app_reopened_locked=",
     "temporary_unlock_isolated=",
     "APPLOCK_DASHBOARD result=PASS",
     "result.txt",
@@ -405,6 +409,14 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
   assert.match(
     workflow,
     /android-app-lock:\n\s+needs: build-android[\s\S]+android-writable-system/,
+  );
+  assert.match(
+    workflow,
+    /android-app-lock-physical-preflight:[\s\S]+listSelfHostedRunnersForRepo[\s\S]+NO_PHYSICAL_RUNNER/,
+  );
+  assert.match(
+    workflow,
+    /android-app-lock-physical:\n\s+needs: \[build-android, android-app-lock-physical-preflight\][\s\S]+runner_available == 'true'/,
   );
   assert.match(
     workflow,

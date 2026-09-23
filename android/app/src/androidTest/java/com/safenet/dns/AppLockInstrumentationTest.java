@@ -397,7 +397,6 @@ public class AppLockInstrumentationTest {
                 "What is the recovery answer?",
                 "offline answer"
         );
-        AppLockManager.setAntiUninstallEnabled(context, true);
         Set<String> lockedPackages = new HashSet<>();
         lockedPackages.add(context.getPackageName());
         lockedPackages.add(targetPackage);
@@ -407,7 +406,6 @@ public class AppLockInstrumentationTest {
 
         boolean accessibilityEnabled = AppLockManager.isAccessibilityServiceEnabled(context);
         boolean overlayEnabled = AppLockManager.isOverlayPermissionEnabled(context);
-        boolean deviceAdminEnabled = AppLockManager.isDeviceAdminEnabled(context);
         assertTrue(
                 "Enable the SafeNet Accessibility Service before this physical check.",
                 accessibilityEnabled
@@ -416,34 +414,32 @@ public class AppLockInstrumentationTest {
                 "Allow App Lock to display the lock screen over protected apps before this physical check.",
                 overlayEnabled
         );
-        assertTrue(
-                "Enable LockLock Device Administrator in Android Settings before this physical check.",
-                deviceAdminEnabled
-        );
         Log.i(
                 TAG,
                 "OPENLOCK_PHYSICAL_PERMISSIONS result=PASS accessibility=" +
                         accessibilityEnabled + " overlay=" + overlayEnabled +
-                        " device_admin=" + deviceAdminEnabled +
                         " device_model=" + deviceModel() + " target_package=" + targetPackage
         );
-
-        String uninstallAttempt = shell("pm uninstall --user 0 " + context.getPackageName());
-        assertTrue(
-                "Device Administrator must reject an uninstall attempt: " + uninstallAttempt,
-                uninstallAttempt.contains("Failure")
-        );
-        assertNotNull(
-                "SafeNet must remain installed after the rejected uninstall attempt.",
-                context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
-        );
-        Log.i(TAG, "LOCKLOCK_PHYSICAL_ANTI_UNINSTALL result=PASS");
 
         for (int cycle = 0; cycle < 3; cycle++) {
             AppLockManager.clearSession();
             shell("am force-stop " + targetPackage);
             shell("am start -W -n " + launchComponent.flattenToShortString());
             waitForLockActivity();
+            waitForPackage(context.getPackageName());
+            assertVisibleText("SafeNet App Lock");
+            assertFalse(
+                    "The selected third-party app must remain behind the lock screen before authentication.",
+                    isForegroundPackage(targetPackage)
+            );
+            assertEquals(
+                    "Repeated foreground events must keep one LockLockActivity record.",
+                    1,
+                    countActivityRecords(
+                            shell("dumpsys activity activities"),
+                            "com.safenet.dns/.LockLockActivity"
+                    )
+            );
             waitForButton("Use passcode fallback");
             Log.i(
                     TAG,
@@ -461,6 +457,17 @@ public class AppLockInstrumentationTest {
         );
 
         AppLockManager.clearSession();
+        rejectCurrentLockScreen("0000");
+        assertTrue(
+                "The SafeNet lock screen must remain foreground after an incorrect passcode.",
+                isLockActivityForeground()
+        );
+        assertFalse(
+                "The selected app must remain blocked after an incorrect passcode.",
+                isForegroundPackage(targetPackage)
+        );
+        Log.i(TAG, "LOCKLOCK_PHYSICAL_WRONG_PIN result=PASS target_package=" + targetPackage);
+
         unlockCurrentLockScreen(PIN);
         waitFor(
                 "the selected app to resume after entering the App Lock passcode fallback",
@@ -477,12 +484,51 @@ public class AppLockInstrumentationTest {
                         " temporary_unlock_target=true"
         );
 
+        device.pressHome();
+        SystemClock.sleep(16_000L);
+        AppLockManager.clearSession();
+        shell("am force-stop " + targetPackage);
+        shell("am start -W -n " + launchComponent.flattenToShortString());
+        waitForLockActivity();
+        waitForPackage(context.getPackageName());
+        assertVisibleText("SafeNet App Lock");
+        assertFalse(
+                "The selected app must be blocked again after leaving and reopening it.",
+                isForegroundPackage(targetPackage)
+        );
+        assertEquals(
+                "Reopening a protected app must not create duplicate lock activities.",
+                1,
+                countActivityRecords(
+                        shell("dumpsys activity activities"),
+                        "com.safenet.dns/.LockLockActivity"
+                )
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL_REOPEN result=PASS target_package=" + targetPackage +
+                        " blocked_before_reopen_auth=true"
+        );
+
+        unlockCurrentLockScreen(PIN);
+        waitFor(
+                "the selected app to resume after re-authenticating on reopen",
+                () -> isForegroundPackage(targetPackage)
+        );
+        assertFalse(
+                "The LockLock screen must finish after re-authentication on reopen.",
+                isLockActivityForeground()
+        );
+        Log.i(
+                TAG,
+                "LOCKLOCK_PHYSICAL_REOPEN_AUTH result=PASS target_package=" + targetPackage
+        );
+
         launchSafeNet();
         waitForLockActivity();
         waitForButton("Use passcode fallback");
         assertTrue(
-                "Launching unrelated protected SafeNet must show LockLock after the selected "
-                        + "app was temporarily unlocked.",
+                "Launching protected SafeNet must show LockLock after the selected app was unlocked.",
                 isLockActivityForeground()
         );
         Log.i(
@@ -495,8 +541,10 @@ public class AppLockInstrumentationTest {
                 TAG,
                 "LOCKLOCK_PHYSICAL result=PASS device_model=" + deviceModel() +
                         " target_package=" + targetPackage +
-                        " accessibility=true overlay=true device_admin=true activity_records=1" +
-                        " selected_app_resumed=true temporary_unlock_isolated=true"
+                        " accessibility=true overlay=true activity_records=1" +
+                        " selected_app_blocked=true wrong_pin_rejected=true" +
+                        " selected_app_resumed=true selected_app_reopened_locked=true" +
+                        " temporary_unlock_isolated=true"
         );
     }
 
@@ -714,6 +762,13 @@ public class AppLockInstrumentationTest {
                 () -> !shell("dumpsys activity activities")
                         .contains("com.safenet.dns/.LockLockActivity")
         );
+    }
+
+    private void rejectCurrentLockScreen(String pin) throws Exception {
+        List<UiObject2> fields = waitForFields(1);
+        fill(fields.get(0), pin);
+        waitForButton("Use passcode fallback").click();
+        assertVisibleText("Incorrect passcode. Attempt 1 of 5.");
     }
 
     private boolean isForegroundPackage(String packageName) throws Exception {

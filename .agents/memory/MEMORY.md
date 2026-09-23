@@ -81,6 +81,7 @@
 - [WireGuard-only VPN path](wireguard-only-vpn-path.md) — expose only WireGuard in the UI; legacy DNS VPN code may remain only for safe shutdown compatibility.
 - [Android Internet Share failure boundary](android-internet-share-failure-boundary.md) — native Wi-Fi Direct and foreground-service failures must become visible errors instead of crashing the APK.
 - [Physical release verification boundary](android-physical-release-verification.md) — tagged APK publication stays independent, but physical verification requires same-commit, same-APK evidence and an observed gateway handshake.
+- [Android physical runner preflight](android-physical-runner-preflight.md) — check online self-hosted labels before queueing physical validation; otherwise publish bounded BLOCKED evidence.
 - [Android VPN scope](android-vpn-removal-boundary.md) — SafeNet may use a DNS-only VPN for resolver filtering, but must not imply arbitrary HTTPS traffic inspection or restore WireGuard.
 - [VPN and proxy browser blocker](vpn-proxy-browser-blocker.md) — block selected VPN/proxy browser apps at launch through opt-in Accessibility; do not claim encrypted tunnel inspection.
 - [LockLock app protection boundary](androidx-secure-app-lock.md) — offline selected-app locking uses explicit Accessibility/Device Admin opt-ins, salted hashes, recovery, and brute-force cooldowns.

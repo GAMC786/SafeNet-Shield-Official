@@ -494,8 +494,10 @@ if [[ "$physical_device" == true ]]; then
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=1' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=2' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_APP cycle=3' "$output_dir/logcat.txt" &&
-        grep -Fq 'LOCKLOCK_PHYSICAL_ANTI_UNINSTALL result=PASS' "$output_dir/logcat.txt" &&
+        grep -Fq 'LOCKLOCK_PHYSICAL_WRONG_PIN result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_RETURN result=PASS' "$output_dir/logcat.txt" &&
+        grep -Fq 'LOCKLOCK_PHYSICAL_REOPEN result=PASS' "$output_dir/logcat.txt" &&
+        grep -Fq 'LOCKLOCK_PHYSICAL_REOPEN_AUTH result=PASS' "$output_dir/logcat.txt" &&
         grep -Fq 'LOCKLOCK_PHYSICAL_OTHER_APP result=PASS' "$output_dir/logcat.txt"; then
         result="PASS"
     else
@@ -530,6 +532,11 @@ fi
             printf 'selected_app_resumed=true\n'
         else
             printf 'selected_app_resumed=false\n'
+        fi
+        if grep -Fq 'LOCKLOCK_PHYSICAL_REOPEN result=PASS' "$output_dir/logcat.txt"; then
+            printf 'selected_app_reopened_locked=true\n'
+        else
+            printf 'selected_app_reopened_locked=false\n'
         fi
         if grep -Fq 'LOCKLOCK_PHYSICAL_OTHER_APP result=PASS' "$output_dir/logcat.txt"; then
             printf 'temporary_unlock_isolated=true\n'

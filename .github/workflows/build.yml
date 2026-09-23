@@ -2344,11 +2344,143 @@ jobs:
           path: android/app/build/reports/android-app-lock/latest
           if-no-files-found: warn
 
-  android-app-lock-physical:
+  android-app-lock-physical-preflight:
     needs: build-android
     if: >-
+      always() &&
       github.event_name == 'workflow_dispatch' &&
-      inputs.android_startup_validation == true
+      inputs.android_startup_validation == true &&
+      needs.build-android.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    env:
+      ANDROID_APP_LOCK_OUTPUT_DIR: android/app/build/reports/android-openlock-physical-preflight/latest
+    outputs:
+      runner_available: ${{ steps.check_physical_runner.outputs.runner_available }}
+      blocker_category: ${{ steps.check_physical_runner.outputs.blocker_category }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android
+          path: artifacts/android
+
+      - name: Download signed instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-instrumentation
+          path: artifacts/android-test
+
+      - name: Check for an online physical Android runner
+        id: check_physical_runner
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const requiredLabel = 'android-physical-device';
+            try {
+              const response = await github.rest.actions.listSelfHostedRunnersForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              });
+              const runners = response.data.runners || [];
+              const matching = runners.filter((runner) =>
+                runner.status === 'online' &&
+                (runner.labels || []).some((label) => label.name === requiredLabel)
+              );
+              core.setOutput('runner_available', matching.length > 0 ? 'true' : 'false');
+              core.setOutput(
+                'blocker_category',
+                matching.length > 0 ? 'NONE' : 'NO_PHYSICAL_RUNNER'
+              );
+              core.info(
+                matching.length > 0
+                  ? `Found ${matching.length} online runner(s) with ${requiredLabel}.`
+                  : `No online runner has the ${requiredLabel} label.`
+              );
+            } catch (error) {
+              core.warning(`Could not inspect physical Android runners: ${error.message}`);
+              core.setOutput('runner_available', 'unknown');
+              core.setOutput('blocker_category', 'RUNNER_PREFLIGHT_FAILED');
+            }
+
+      - name: Write bounded physical-runner blocker evidence
+        if: steps.check_physical_runner.outputs.runner_available != 'true'
+        shell: bash
+        env:
+          RUNNER_AVAILABLE: ${{ steps.check_physical_runner.outputs.runner_available }}
+          BLOCKER_CATEGORY: ${{ steps.check_physical_runner.outputs.blocker_category }}
+        run: |
+          set +e
+          evidence_dir="$GITHUB_WORKSPACE/$ANDROID_APP_LOCK_OUTPUT_DIR"
+          blocker="${BLOCKER_CATEGORY:-RUNNER_PREFLIGHT_FAILED}"
+          message="No online self-hosted Android runner with the android-physical-device label was available."
+          if [[ "$blocker" == "RUNNER_PREFLIGHT_FAILED" || "$RUNNER_AVAILABLE" == "unknown" ]]; then
+            message="GitHub runner availability could not be inspected before the physical OpenLock proof."
+          fi
+          bash ./scripts/android-app-lock-device-test.sh \
+            --physical --blocked \
+            --blocker "$blocker" \
+            --message "$message" \
+            --release-ref "$GITHUB_REF" \
+            --release-sha "$GITHUB_SHA" \
+            --apk "$GITHUB_WORKSPACE/artifacts/android/app-release.apk" \
+            --test-apk "$GITHUB_WORKSPACE/artifacts/android-test/app-release-androidTest.apk" \
+            --output "$evidence_dir" >/dev/null 2>&1
+          blocker_status=$?
+          if [[ "$blocker_status" -ne 78 ]]; then
+            echo "::error::Could not write bounded physical OpenLock blocker evidence."
+            exit "$blocker_status"
+          fi
+          {
+            printf 'runner_available=%s\n' "${RUNNER_AVAILABLE:-NOT_RECORDED}"
+            printf 'workflow_preflight_outcome=blocked\n'
+          } >> "$evidence_dir/result.txt"
+
+      - name: Publish physical-runner preflight summary
+        if: always()
+        shell: bash
+        env:
+          RUNNER_AVAILABLE: ${{ steps.check_physical_runner.outputs.runner_available }}
+          BLOCKER_CATEGORY: ${{ steps.check_physical_runner.outputs.blocker_category }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          {
+            echo "## OpenLock physical-runner preflight"
+            echo
+            echo "- **Online physical runner available:** \`${RUNNER_AVAILABLE:-NOT_RECORDED}\`"
+            echo "- **Blocker classification:** \`${BLOCKER_CATEGORY:-RUNNER_PREFLIGHT_FAILED}\`"
+            echo "- **Workflow run:** [Open run]($RUN_URL)"
+            if [[ "${RUNNER_AVAILABLE:-}" == "true" ]]; then
+              echo "- **Result:** the physical selected-app proof was allowed to queue on the matching runner."
+            else
+              echo "- **Result:** bounded BLOCKED evidence was written; the device proof did not run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload physical-runner preflight evidence
+        if: always() && steps.check_physical_runner.outputs.runner_available != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafeNet-DNS-Android-app-lock-physical-preflight-evidence
+          path: android/app/build/reports/android-openlock-physical-preflight/latest
+          if-no-files-found: error
+
+  android-app-lock-physical:
+    needs: [build-android, android-app-lock-physical-preflight]
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.android_startup_validation == true &&
+      needs.build-android.result == 'success' &&
+      needs.android-app-lock-physical-preflight.outputs.runner_available == 'true'
     runs-on: [self-hosted, linux, x64, android-physical-device]
     timeout-minutes: 30
     permissions:
@@ -2558,6 +2690,8 @@ jobs:
           device_admin="${device_admin:-NOT_RECORDED}"
           selected_app_resumed="$(sed -n 's/^selected_app_resumed=//p' "$result_file" 2>/dev/null | head -n 1)"
           selected_app_resumed="${selected_app_resumed:-NOT_RECORDED}"
+          selected_app_reopened_locked="$(sed -n 's/^selected_app_reopened_locked=//p' "$result_file" 2>/dev/null | head -n 1)"
+          selected_app_reopened_locked="${selected_app_reopened_locked:-NOT_RECORDED}"
           temporary_unlock_isolated="$(sed -n 's/^temporary_unlock_isolated=//p' "$result_file" 2>/dev/null | head -n 1)"
           temporary_unlock_isolated="${temporary_unlock_isolated:-NOT_RECORDED}"
           {
@@ -2574,11 +2708,11 @@ jobs:
             echo "- **Selected third-party package:** \`$target\`"
             echo "- **Accessibility Service enabled:** \`$accessibility\`"
              echo "- **Overlay enabled:** \`$overlay\`"
-            echo "- **Device Administrator enabled:** \`$device_admin\`"
-            echo "- **Permission boundary:** Both permissions are enabled through Android Settings on the phone before the check."
+            echo "- **Permission boundary:** Accessibility and overlay permissions are enabled through Android Settings on the phone before the check."
             echo "- **Selected app resumed after passcode:** \`$selected_app_resumed\`"
+            echo "- **Selected app blocked again after leaving and reopening:** \`$selected_app_reopened_locked\`"
             echo "- **Unrelated protected launch remained locked:** \`$temporary_unlock_isolated\`"
-            echo "- **Coverage:** Accessibility/overlay/Device Administrator handoff, anti-uninstall rejection, three launches of the selected app, one-activity duplicate prevention, valid passcode return, and isolation of the temporary unlock"
+            echo "- **Coverage:** local passcode setup, Accessibility/overlay permission boundary, three blocked launches of a selected third-party app, wrong-passcode rejection, one-activity duplicate prevention, valid passcode return, blocked reopen, and isolation of the temporary unlock"
             echo "- **Step outcome:** \`${CHECK_OUTCOME:-NOT_RECORDED}\`"
             echo "- **Workflow run:** [Open run]($RUN_URL)"
             echo "- **Evidence:** download the physical-device artifact from this run"
