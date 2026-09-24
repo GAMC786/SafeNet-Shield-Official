@@ -79,7 +79,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.setContent
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -957,7 +956,9 @@ private fun SettingAction(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            LockLockSwitch(checked, onCheckedChange = onClick)
+            LockLockSwitch(checked) { newChecked ->
+                if (newChecked != checked) onClick()
+            }
         }
     }
 }
