@@ -458,7 +458,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
   assert.match(dnsSettingsSource, /SafeNet Private DNS/);
   assert.match(dnsSettingsSource, /data-testid="switch-safe-net-private-dns"/);
-  assert.match(dnsSettingsSource, /privateDnsConnected \? "Connected"/);
+  assert.match(dnsSettingsSource, /privateDnsConnected\s*\?\s*"Connected"/);
   assert.match(dnsSettingsSource, /privateDnsStatusLabel/);
   assert.match(dnsSettingsSource, /!privateDns\.supported \|\| privateDns\.status\?\.supported === false/);
   assert.doesNotMatch(dnsSettingsSource, /!privateDnsEulaAccepted && !privateDns\.status\?\.running/);
