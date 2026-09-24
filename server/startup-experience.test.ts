@@ -457,10 +457,11 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
   assert.match(dnsSettingsSource, /SafeNet Private DNS/);
-  assert.match(dnsSettingsSource, /data-testid="button-view-private-dns-eula"/);
+  assert.match(dnsSettingsSource, /data-testid="switch-safe-net-private-dns"/);
+  assert.match(dnsSettingsSource, /privateDnsConnected \? "Connected"/);
+  assert.doesNotMatch(dnsSettingsSource, /Android app only/);
   assert.doesNotMatch(dnsSettingsSource, /!privateDnsEulaAccepted && !privateDns\.status\?\.running/);
   assert.match(dnsSettingsSource, /Available in the Android app/);
-  assert.match(dnsSettingsSource, /Open Android settings/);
   assert.match(dnsSettingsSource, /openPrivateDnsSettings/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);

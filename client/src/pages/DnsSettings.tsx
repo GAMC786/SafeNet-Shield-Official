@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
   DNS_FAMILY_RESOLVER_PRESETS,
@@ -100,10 +101,13 @@ export default function DnsSettings() {
   const { toast } = useToast();
   const activeDns = servers?.find((server) => server.isActive);
   const privateDns = usePrivateDns(activeDns);
+  const privateDnsConnected = privateDns.status?.running === true;
   const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
   const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const [pendingPrivateDnsServer, setPendingPrivateDnsServer] = useState<DnsServer | null>(null);
-  const [pendingPrivateDnsAction, setPendingPrivateDnsAction] = useState<"settings" | "oneTap" | null>(null);
+  const [pendingPrivateDnsAction, setPendingPrivateDnsAction] = useState<
+    "settings" | "manage" | "oneTap" | null
+  >(null);
   const [oneTapDialogOpen, setOneTapDialogOpen] = useState(false);
   const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
@@ -185,7 +189,7 @@ export default function DnsSettings() {
     }
   };
 
-  const openPrivateDnsSettings = async () => {
+  const openPrivateDnsSettings = async (intent: "enable" | "manage" = "enable") => {
     const hostname = privateDns.expectedHostname;
     if (!hostname) {
       toast({
@@ -198,8 +202,47 @@ export default function DnsSettings() {
     await privateDns.openSettings();
     toast({
       title: "Android Private DNS settings opened",
-      description: `Select ${hostname} as the Private DNS provider, then return to SafeNet.`,
+      description: intent === "enable"
+        ? `Select ${hostname} as the Private DNS provider, then return to SafeNet.`
+        : "Change the Private DNS provider in Android settings. SafeNet will update its status when you return.",
     });
+  };
+
+  const openPrivateDnsSettingsSafely = async (intent: "enable" | "manage" = "enable") => {
+    try {
+      await openPrivateDnsSettings(intent);
+    } catch (error) {
+      toast({
+        title: "Private DNS settings could not be opened",
+        description: error instanceof Error ? error.message : "Android did not expose the system Private DNS settings.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePrivateDnsSwitchChange = (checked: boolean) => {
+    if (!privateDns.supported) return;
+    if (!privateDnsEulaAccepted) {
+      setPendingPrivateDnsServer(activeDns ?? null);
+      setPendingPrivateDnsAction(checked ? "settings" : "manage");
+      setPrivateDnsEulaOpen(true);
+      return;
+    }
+
+    if (checked) {
+      if (!activeDns || !privateDns.expectedHostname) {
+        toast({
+          title: "Private DNS hostname required",
+          description: "Choose an active DNS-over-TLS or DNS-over-HTTPS resolver first.",
+          variant: "destructive",
+        });
+        return;
+      }
+      void handleStartFiltering(activeDns);
+      return;
+    }
+
+    void openPrivateDnsSettingsSafely("manage");
   };
 
   const applyOneTapNow = async () => {
@@ -252,14 +295,14 @@ export default function DnsSettings() {
     }
     setPrivateDnsEulaAccepted(true);
     setPrivateDnsEulaOpen(false);
-    if (pendingPrivateDnsServer) {
-      if (pendingPrivateDnsAction === "oneTap") {
-        void applyOneTapNow();
-      } else {
-        void openPrivateDnsSettings();
-      }
-      setPendingPrivateDnsServer(null);
+    if (pendingPrivateDnsAction === "oneTap" && pendingPrivateDnsServer) {
+      void applyOneTapNow();
+    } else if (pendingPrivateDnsAction === "settings") {
+      void openPrivateDnsSettingsSafely();
+    } else if (pendingPrivateDnsAction === "manage") {
+      void openPrivateDnsSettingsSafely("manage");
     }
+    setPendingPrivateDnsServer(null);
     setPendingPrivateDnsAction(null);
   };
 
@@ -398,9 +441,28 @@ export default function DnsSettings() {
       <CyberCard className={privateDns.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
-              SafeNet Private DNS
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
+                SafeNet Private DNS
+              </h2>
+              {privateDns.supported && (
+                <Badge
+                  variant="outline"
+                  className={privateDnsConnected
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+                    : "border-white/15 bg-white/5 text-muted-foreground"}
+                  aria-live="polite"
+                >
+                  {privateDns.status?.supported === false
+                    ? "Unavailable"
+                    : privateDnsConnected
+                      ? "Connected"
+                      : privateDns.status
+                        ? "Not connected"
+                        : "Checking"}
+                </Badge>
+              )}
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {!privateDns.supported
                 ? "Available in the Android app. SafeNet uses Android Private DNS for encrypted DNS-over-TLS without creating a VPN."
@@ -409,34 +471,14 @@ export default function DnsSettings() {
                   || "Android Private DNS uses encrypted DNS-over-TLS without creating a VPN."}
             </p>
           </div>
-          {privateDns.status?.running ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={privateDns.isBusy}
-              onClick={() => void privateDns.openSettings()}
-            >
-              Change Private DNS
-            </Button>
-          ) : (
-            privateDns.supported ? (
-              <Button
-                type="button"
-                disabled={privateDns.isBusy || !activeDns || !privateDns.expectedHostname}
-                onClick={() => {
-                  if (activeDns) void handleStartFiltering(activeDns);
-                }}
-              >
-                Open Android settings
-              </Button>
-            ) : (
-              <Badge
-                variant="outline"
-                className="border-primary/40 bg-primary/10 px-3 py-2 text-primary"
-              >
-                Android app only
-              </Badge>
-            )
+          {privateDns.supported && privateDns.status?.supported !== false && (
+            <Switch
+              checked={privateDnsConnected}
+              onCheckedChange={handlePrivateDnsSwitchChange}
+              disabled={privateDns.isBusy || privateDns.status?.supported !== true}
+              aria-label={`SafeNet Private DNS ${privateDnsConnected ? "Connected" : "Off"}`}
+              data-testid="switch-safe-net-private-dns"
+            />
           )}
         </div>
         {privateDns.supported && !privateDns.expectedHostname && (
@@ -465,17 +507,6 @@ export default function DnsSettings() {
             </Button>
           </div>
         )}
-        <div className="mt-3 flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto px-0 py-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
-            onClick={() => setPrivateDnsEulaOpen(true)}
-            data-testid="button-view-private-dns-eula"
-          >
-            View SafeNet Private DNS EULA
-          </Button>
-        </div>
       </CyberCard>
 
       <CyberCard className="border-primary/20">
