@@ -20,6 +20,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.webkit.CookieManager;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -90,6 +91,20 @@ public class LockLockActivity extends FragmentActivity {
         if (mode == null) {
             mode = AppLockManager.MODE_UNLOCK;
         }
+        // Predictive Back gestures use the dispatcher rather than the legacy
+        // Activity callback. Reuse the existing guard without re-entering it
+        // when setup mode delegates to Android's normal Back behavior.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                setEnabled(false);
+                try {
+                    LockLockActivity.this.onBackPressed();
+                } finally {
+                    setEnabled(true);
+                }
+            }
+        });
 
         if (AppLockManager.MODE_ACCOUNT_RECOVERY.equals(mode)) {
             recoveryHandoff = getIntent().getStringExtra(AppLockManager.EXTRA_RECOVERY_HANDOFF);

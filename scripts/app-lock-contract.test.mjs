@@ -224,6 +224,17 @@ test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries"
   assert.match(manifest, /QUERY_ALL_PACKAGES/);
 });
 
+test("predictive system Back uses the protected lock-screen guard", () => {
+  assert.match(activity, /OnBackPressedCallback/);
+  assert.match(activity, /getOnBackPressedDispatcher\(\)\.addCallback\(this/);
+  assert.match(activity, /LockLockActivity\.this\.onBackPressed\(\)/);
+  assert.match(
+    instrumentation,
+    /systemBackDispatcherCannotDismissProtectedAppLockScreen/,
+  );
+  assert.match(instrumentation, /getOnBackPressedDispatcher\(\)[\s\S]*\.onBackPressed\(\)/);
+});
+
 test("the embedded AppLock dashboard covers setup, app selection, and permission recovery", () => {
   assert.match(appLock, /public final class AppLockActivity extends LockLockActivity/);
   assert.match(appLock, /useEmbeddedAppLockDashboard/);

@@ -112,6 +112,43 @@ public class AppLockInstrumentationTest {
     }
 
     @Test
+    public void systemBackDispatcherCannotDismissProtectedAppLockScreen() throws Exception {
+        AppLockManager.configure(
+                context,
+                PIN,
+                "What is the recovery answer?",
+                "offline answer"
+        );
+        AppLockManager.setLockedPackages(
+                context,
+                Collections.singleton(context.getPackageName())
+        );
+        AppLockManager.setEnabled(context, true);
+        AppLockManager.clearSession();
+
+        Intent lockIntent = new Intent(context, AppLockActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, context.getPackageName());
+        Activity lockActivity =
+                InstrumentationRegistry.getInstrumentation().startActivitySync(lockIntent);
+        waitForButton("Use passcode fallback");
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                () -> ((AppLockActivity) lockActivity)
+                        .getOnBackPressedDispatcher()
+                        .onBackPressed()
+        );
+
+        assertFalse(
+                "A system Back gesture must not dismiss the lock screen before authentication.",
+                lockActivity.isFinishing()
+        );
+        assertVisibleText("Use passcode fallback");
+        Log.i(TAG, "LOCKLOCK_SYSTEM_BACK result=PASS blocked_before_auth=true");
+        finishActivity(lockActivity);
+    }
+
+    @Test
     public void openLockActivityDrivesSetupRecoveryAndDisableUi() throws Exception {
         Activity setupActivity = launchLockLock(AppLockManager.MODE_SETUP);
         List<UiObject2> setupFields = waitForFields(4);
