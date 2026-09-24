@@ -102,15 +102,17 @@ export default function DnsSettings() {
   const activeDns = servers?.find((server) => server.isActive);
   const privateDns = usePrivateDns(activeDns);
   const privateDnsConnected = privateDns.status?.running === true;
+  const privateDnsStatusIsUnavailable =
+    !privateDns.supported
+    || privateDns.status?.supported === false
+    || Boolean(privateDns.status?.error);
   const privateDnsStatusLabel = privateDnsConnected
     ? "Connected"
-    : !privateDns.supported || privateDns.status?.supported === false
+    : privateDnsStatusIsUnavailable
       ? "Unavailable"
       : privateDns.status
-        ? "Not connected"
+        ? "Disconnected"
         : "Checking";
-  const privateDnsStatusIsUnavailable =
-    !privateDns.supported || privateDns.status?.supported === false;
   const privateDnsStatusClassName = privateDnsConnected
     ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
     : privateDnsStatusIsUnavailable || !privateDns.status
@@ -489,6 +491,7 @@ export default function DnsSettings() {
                 !privateDns.supported
                 || privateDns.isBusy
                 || privateDns.status?.supported !== true
+                || Boolean(privateDns.status?.error)
               }
               aria-label={`SafeNet Private DNS ${privateDnsStatusLabel}`}
               data-testid="switch-safe-net-private-dns"

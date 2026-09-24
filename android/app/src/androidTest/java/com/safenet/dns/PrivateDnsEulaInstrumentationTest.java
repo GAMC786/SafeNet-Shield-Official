@@ -67,7 +67,7 @@ public class PrivateDnsEulaInstrumentationTest {
             "(() => {" +
                 "const toggle = document.querySelector('[data-testid=\"switch-safe-net-private-dns\"]');" +
                 "return Boolean(toggle && toggle.getAttribute('role') === 'switch' && !toggle.disabled && " +
-                    "toggle.getAttribute('aria-label') === 'SafeNet Private DNS Off');" +
+                    "toggle.getAttribute('aria-label') === 'SafeNet Private DNS Disconnected');" +
             "})()"
         );
 
