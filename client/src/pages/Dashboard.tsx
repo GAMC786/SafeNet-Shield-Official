@@ -148,45 +148,45 @@ export default function Dashboard() {
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                    onClick={() => void tailscale.refetch()}
-                    disabled={tailscale.isFetching}
-                    aria-label="Refresh Tailscale status"
-                    data-testid="button-refresh-tailscale"
-                >
-                    <RefreshCw className={`h-4 w-4 ${tailscale.isFetching ? "animate-spin" : ""}`} />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                    onClick={openTailscaleDashboard}
-                    disabled={!tailscaleDashboardUrl}
-                    data-testid="button-open-tailscale-dashboard"
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                    Open Tailscale Admin
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
                   Status
                 </span>
                 <Badge
                   variant="outline"
-                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
-                    data-testid="tailscale-status-indicator"
+                  className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
+                  data-testid="tailscale-status-indicator"
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
-                      tailscale.data?.status === "online"
+                    tailscale.data?.status === "online"
                       ? "bg-emerald-400"
-                        : tailscale.data?.status === "unavailable"
+                      : tailscale.data?.status === "unavailable"
                         ? "bg-red-400"
                         : "bg-muted-foreground"
                   }`} />
-                    {tailscaleStatusLabel}
+                  {tailscaleStatusLabel}
                 </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void tailscale.refetch()}
+                  disabled={tailscale.isFetching}
+                  aria-label="Refresh Tailscale status"
+                  data-testid="button-refresh-tailscale"
+                >
+                  <RefreshCw className={`h-4 w-4 ${tailscale.isFetching ? "animate-spin" : ""}`} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openTailscaleDashboard}
+                  disabled={!tailscaleDashboardUrl}
+                  data-testid="button-open-tailscale-dashboard"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open Tailscale Admin
+                </Button>
               </div>
             </div>
           </div>
