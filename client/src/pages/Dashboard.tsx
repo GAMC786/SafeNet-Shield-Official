@@ -136,6 +136,40 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
                 <p className="text-sm font-medium text-foreground">Headscale Mesh VPN via Headplane UI</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {headscale.data?.message ?? "Headscale control plane is not configured"}
+              </p>
+              {headscale.data?.nodeCount !== null && headscale.data?.nodeCount !== undefined && (
+                <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
+                  {headscale.data.nodeCount} registered node{headscale.data.nodeCount === 1 ? "" : "s"}
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void headscale.refetch()}
+                  disabled={headscale.isFetching}
+                  aria-label="Refresh Headscale status"
+                  data-testid="button-refresh-headscale"
+                >
+                  <RefreshCw className={`h-4 w-4 ${headscale.isFetching ? "animate-spin" : ""}`} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openHeadplane}
+                  disabled={!headplaneUrl}
+                  data-testid="button-open-headplane"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open Headplane
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
                   Status
                 </span>
@@ -154,36 +188,6 @@ export default function Dashboard() {
                   {headscaleStatusLabel}
                 </Badge>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {headscale.data?.message ?? "Headscale control plane is not configured"}
-              </p>
-              {headscale.data?.nodeCount !== null && headscale.data?.nodeCount !== undefined && (
-                <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
-                  {headscale.data.nodeCount} registered node{headscale.data.nodeCount === 1 ? "" : "s"}
-                </p>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void headscale.refetch()}
-                disabled={headscale.isFetching}
-                aria-label="Refresh Headscale status"
-                data-testid="button-refresh-headscale"
-              >
-                <RefreshCw className={`h-4 w-4 ${headscale.isFetching ? "animate-spin" : ""}`} />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={openHeadplane}
-                disabled={!headplaneUrl}
-                data-testid="button-open-headplane"
-              >
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Open Headplane
-              </Button>
             </div>
           </div>
         </CyberCard>
