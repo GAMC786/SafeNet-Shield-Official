@@ -162,6 +162,15 @@ test("the native plugin keeps Private DNS and shared features", () => {
   assert.match(tailscaleAppSource, /WantRunningSet/);
   assert.match(tailscalePluginSource, /TAILSCALE_UNSUPPORTED/);
   assert.match(tailscalePluginSource, /SDK_INT < 26/);
+  assert.match(tailscalePluginSource, /import androidx\.activity\.result\.ActivityResult/);
+  assert.match(tailscalePluginSource, /Iterator<String> peerKeys = peers\.keys\(\)/);
+  assert.match(tailscalePluginSource, /JSObject exit = new JSObject\(\)/);
+  assert.doesNotMatch(tailscalePluginSource, /peers\.keySet\(\)/);
+  assert.match(tailscaleServiceSource, /new IpPrefix\(InetAddress\.getByName\(s\), p\)/);
+  assert.match(
+    tailscaleAppSource,
+    /network\.bindSocket\(descriptor\.getFileDescriptor\(\)\);\s*return true;/,
+  );
 });
 
 test("the Android manifest declares only the real Tailscale VPN service, not a SafeNet DNS VPN", () => {

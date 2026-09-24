@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.net.VpnService;
 import android.net.Uri;
 import android.os.Build;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -12,6 +13,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -48,14 +50,18 @@ public final class SafeNetTailscalePlugin extends Plugin {
             if (!prefs.isNull("ExitNodeID")) put(out, "selectedExitNodeId", prefs.optString("ExitNodeID", null));
             JSONArray exits = new JSONArray();
             JSONObject peers = json.optJSONObject("Peer");
-            if (peers != null) for (String key : peers.keySet()) {
-                JSONObject peer = peers.optJSONObject(key);
-                if (peer != null && peer.optBoolean("ExitNodeOption", false)) {
-                    JSONObject exit = new JSONObject();
-                    exit.put("id", peer.optString("ID", key));
-                    put(exit, "name", peer.optString("DNSName", peer.optString("HostName", null)));
-                    exit.put("online", peer.optBoolean("Online", false));
-                    exits.put(exit);
+            if (peers != null) {
+                Iterator<String> peerKeys = peers.keys();
+                while (peerKeys.hasNext()) {
+                    String key = peerKeys.next();
+                    JSONObject peer = peers.optJSONObject(key);
+                    if (peer != null && peer.optBoolean("ExitNodeOption", false)) {
+                        JSObject exit = new JSObject();
+                        exit.put("id", peer.optString("ID", key));
+                        put(exit, "name", peer.optString("DNSName", peer.optString("HostName", null)));
+                        exit.put("online", peer.optBoolean("Online", false));
+                        exits.put(exit);
+                    }
                 }
             }
             out.put("exitNodes", exits);
@@ -71,7 +77,7 @@ public final class SafeNetTailscalePlugin extends Plugin {
         if (consent != null) { startActivityForResult(call, consent, CONSENT); return; }
         startEngine(call);
     }
-    @ActivityCallback private void tailscaleVpnConsent(PluginCall call, com.getcapacitor.ActivityResult result) {
+    @ActivityCallback private void tailscaleVpnConsent(PluginCall call, ActivityResult result) {
         if (result == null || result.getResultCode() != Activity.RESULT_OK) {
             call.reject("Android VPN consent was denied.", "TAILSCALE_CONSENT_DENIED"); return;
         }

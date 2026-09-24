@@ -251,7 +251,9 @@ public final class SafeNetTailscaleApp extends Application implements libtailsca
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         Network network = cm == null ? null : cm.getActiveNetwork();
         try (android.os.ParcelFileDescriptor descriptor = android.os.ParcelFileDescriptor.fromFd(fd)) {
-            return network != null && network.bindSocket(descriptor.getFileDescriptor());
+            if (network == null) return false;
+            network.bindSocket(descriptor.getFileDescriptor());
+            return true;
         } catch (Exception e) { return false; }
     }
     @Override public byte[] getUserCACertsPEM() {

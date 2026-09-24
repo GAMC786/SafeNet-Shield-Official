@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.content.Intent;
+import android.net.IpPrefix;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.app.Notification;
@@ -8,6 +9,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.os.Build;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.UUID;
 import libtailscale.Libtailscale;
 
@@ -100,7 +103,13 @@ public final class SafeNetTailscaleVpnService extends VpnService implements libt
         @Override public void addSearchDomain(String s) { b.addSearchDomain(s); }
         @Override public void addRoute(String s, int p) { b.addRoute(s, p); }
         @Override public void excludeRoute(String s, int p) {
-            if (android.os.Build.VERSION.SDK_INT >= 33) b.excludeRoute(new android.net.IpPrefix(s, p));
+            if (Build.VERSION.SDK_INT >= 33) {
+                try {
+                    b.excludeRoute(new IpPrefix(InetAddress.getByName(s), p));
+                } catch (UnknownHostException e) {
+                    throw new IllegalArgumentException("Invalid excluded Tailscale route.", e);
+                }
+            }
         }
         @Override public void addAddress(String s, int p) { b.addAddress(s, p); }
         @Override public libtailscale.ParcelFileDescriptor establish() {
