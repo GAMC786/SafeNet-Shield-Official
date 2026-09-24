@@ -123,7 +123,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-sm font-medium text-foreground">Headscale mesh</p>
+                <p className="text-sm font-medium text-foreground">Headscale Mesh VPN via Headplane UI</p>
                 <span className={`h-2 w-2 rounded-full ${
                   headscale.data?.status === "online"
                     ? "bg-emerald-400"
