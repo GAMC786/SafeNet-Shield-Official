@@ -6,11 +6,12 @@ import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
+import { TailscaleEulaDialog } from "@/components/TailscaleEulaDialog";
 import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, ExternalLink, RefreshCw } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
@@ -19,6 +20,17 @@ import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { isProtectionActive } from "@/lib/protection-status";
+
+const TAILSCALE_EULA_VERSION = "1.0";
+const TAILSCALE_EULA_STORAGE_KEY = "safenet-tailscale-eula-version";
+
+function hasAcceptedTailscaleEula() {
+  try {
+    return window.localStorage.getItem(TAILSCALE_EULA_STORAGE_KEY) === TAILSCALE_EULA_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -32,6 +44,8 @@ export default function Dashboard() {
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
   const tailscale = useTailscaleStatus();
+  const [tailscaleEulaOpen, setTailscaleEulaOpen] = useState(false);
+  const [tailscaleEulaAccepted, setTailscaleEulaAccepted] = useState(hasAcceptedTailscaleEula);
   const tailscaleDashboardUrl = tailscale.data?.dashboardUrl ?? "https://login.tailscale.com/admin/machines";
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
@@ -97,10 +111,27 @@ export default function Dashboard() {
 
   const openTailscaleDashboard = () => {
     if (tailscaleDashboardUrl) {
+      if (!tailscaleEulaAccepted) {
+        setTailscaleEulaOpen(true);
+        return;
+      }
       window.open(tailscaleDashboardUrl, "_blank", "noopener,noreferrer");
       return;
     }
     void tailscale.refetch();
+  };
+
+  const acceptTailscaleEula = () => {
+    try {
+      window.localStorage.setItem(TAILSCALE_EULA_STORAGE_KEY, TAILSCALE_EULA_VERSION);
+    } catch {
+      // Keep this acceptance for the current page session if storage is unavailable.
+    }
+    setTailscaleEulaAccepted(true);
+    setTailscaleEulaOpen(false);
+    if (tailscaleDashboardUrl) {
+      window.open(tailscaleDashboardUrl, "_blank", "noopener,noreferrer");
+    }
   };
 
   return (
@@ -191,6 +222,13 @@ export default function Dashboard() {
             </div>
           </div>
         </CyberCard>
+
+        <TailscaleEulaDialog
+          open={tailscaleEulaOpen}
+          onOpenChange={setTailscaleEulaOpen}
+          onAccept={acceptTailscaleEula}
+          onCancel={() => setTailscaleEulaOpen(false)}
+        />
 
       </div>
 
