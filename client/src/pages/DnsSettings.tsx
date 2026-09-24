@@ -633,9 +633,6 @@ export default function DnsSettings() {
         <CyberCard className="py-12 text-center text-muted-foreground">
           <Server className="mx-auto mb-4 h-12 w-12 opacity-50" />
           <p>No resolvers configured yet.</p>
-          <Button onClick={openCreateDialog} className="mt-4">
-            <Plus className="mr-2 h-4 w-4" /> Add a Resolver
-          </Button>
         </CyberCard>
       ) : (
         <div className="space-y-4">
