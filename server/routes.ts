@@ -39,7 +39,7 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
-import { getHeadscaleNodeStatus, getHeadscaleStatus } from "./headscale-service";
+import { getNetBirdPeerStatus, getNetBirdStatus } from "./netbird-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -407,30 +407,28 @@ export async function registerRoutes(
     res.json(publicSettings(settings));
   });
 
-  app.get(api.headscale.status.path, async (_req, res) => {
-    res.json(await getHeadscaleStatus());
+  app.get(api.netbird.status.path, async (_req, res) => {
+    res.json(await getNetBirdStatus());
   });
 
-  // This is a deliberately small, server-to-server adapter for the physical
-  // mesh proof. It never exposes the Headscale API key or raw node payload.
-  app.get("/api/headscale/node-status", async (req, res) => {
-    const configuredToken = process.env.HEADPLANE_NODE_API_TOKEN?.trim();
+  app.get("/api/netbird/peer-status", async (req, res) => {
+    const configuredToken = process.env.NETBIRD_STATUS_TOKEN?.trim();
     const authorization = req.get("authorization");
     if (!configuredToken) {
-      return res.status(503).json({ message: "Headscale node-status adapter is not configured." });
+      return res.status(503).json({ message: "NetBird peer-status adapter is not configured." });
     }
     if (authorization !== `Bearer ${configuredToken}`) {
-      return res.status(401).json({ message: "A valid node-status bearer token is required." });
+      return res.status(401).json({ message: "A valid peer-status bearer token is required." });
     }
 
-    const nodeName = typeof req.query.node === "string" ? req.query.node.trim() : "";
-    if (!nodeName || nodeName.length > 128) {
-      return res.status(400).json({ message: "A single node query value is required." });
+    const peerName = typeof req.query.name === "string" ? req.query.name.trim() : "";
+    if (!peerName || peerName.length > 128) {
+      return res.status(400).json({ message: "A single peer name query value is required." });
     }
 
-    const status = await getHeadscaleNodeStatus(nodeName);
+    const status = await getNetBirdPeerStatus(peerName);
     if (!status) {
-      return res.status(404).json({ message: "The requested Headscale node was not found." });
+      return res.status(404).json({ message: "The requested NetBird peer was not found." });
     }
     res.set("Cache-Control", "no-store");
     return res.json(status);

@@ -253,28 +253,28 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard opens Headplane and reports Headscale control-plane status", () => {
-  const headscaleHookSource = readFileSync(
-    path.join(clientRoot, "src/hooks/use-headscale.ts"),
+test("the Dashboard opens NetBird Dashboard and reports NetBird status", () => {
+  const netbirdHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-netbird.ts"),
     "utf8",
   );
-  const headscaleServiceSource = readFileSync(
-    path.resolve(process.cwd(), "server/headscale-service.ts"),
+  const netbirdServiceSource = readFileSync(
+    path.resolve(process.cwd(), "server/netbird-service.ts"),
     "utf8",
   );
-  assert.match(dashboardSource, /useHeadscaleStatus/);
-  assert.match(dashboardSource, /Headscale mesh/);
-  assert.match(dashboardSource, /data-testid="button-open-headplane"/);
-  assert.match(dashboardSource, /window\.open\(headplaneUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(dashboardSource, /data-testid="button-refresh-headscale"/);
+  assert.match(dashboardSource, /useNetBirdStatus/);
+  assert.match(dashboardSource, /NetBird Mesh/);
+  assert.match(dashboardSource, /data-testid="button-open-netbird-dashboard"/);
+  assert.match(dashboardSource, /window\.open\(netbirdDashboardUrl, "_blank", "noopener,noreferrer"\)/);
+  assert.match(dashboardSource, /data-testid="button-refresh-netbird"/);
   assert.doesNotMatch(
     dashboardSource,
     /WG-Easy|wireguardAdminUrl|switch-wireguard-ui|tunnelVerification/,
   );
-  assert.match(headscaleHookSource, /\/api\/headscale\/status/);
-  assert.match(headscaleServiceSource, /HEADSCALE_URL/);
-  assert.match(headscaleServiceSource, /HEADPLANE_URL/);
-  assert.match(routesSource, /api\.headscale\.status\.path/);
+  assert.match(netbirdHookSource, /\/api\/netbird\/status/);
+  assert.match(netbirdServiceSource, /NETBIRD_MANAGEMENT_URL/);
+  assert.match(netbirdServiceSource, /NETBIRD_DASHBOARD_URL/);
+  assert.match(routesSource, /api\.netbird\.status\.path/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {

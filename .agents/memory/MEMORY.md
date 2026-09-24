@@ -89,5 +89,4 @@
 - [Android resource cleanup](android-resource-cleanup.md) — removing a native component must remove its obsolete resources; hosted AAPT can reject stale string entries during release builds.
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
-- [Headscale external control plane](headscale-external-control-plane.md) — SafeNet monitors external Headscale and opens Headplane; it does not host the mesh data plane or embed admin credentials.
-- [Headplane package firewall](headplane-package-firewall.md) — if Replit blocks a required upstream package, use a traceable local source build instead of bypassing the package firewall.
+- [NetBird external control plane](netbird-external-control-plane.md) — SafeNet reports bounded peer status from an external NetBird deployment; it does not host the WireGuard mesh data plane.

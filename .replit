@@ -75,18 +75,6 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
-[[workflows.workflow]]
-name = "Headplane"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run headplane:dev"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "console"
-
 [agent]
 integrations = ["javascript_openai_ai_integrations:2.0.0"]
 

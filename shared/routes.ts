@@ -11,7 +11,7 @@ import {
   activityLogSchema,
   firewallConfigSchema,
 } from './schema';
-import { headscaleStatusSchema } from './headscale';
+import { netbirdStatusSchema } from './netbird';
 
 export const errorSchemas = {
   validation: z.object({
@@ -169,12 +169,12 @@ export const api = {
       },
     },
   },
-  headscale: {
+  netbird: {
     status: {
       method: 'GET' as const,
-      path: '/api/headscale/status',
+      path: '/api/netbird/status',
       responses: {
-        200: headscaleStatusSchema,
+        200: netbirdStatusSchema,
       },
     },
   },

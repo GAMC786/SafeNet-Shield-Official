@@ -127,33 +127,33 @@ fi
     join(assets, "SafeNet-DNS-Android-internet-share-verification.sha256"),
     `${internetShareVerificationDigest}  SafeNet-DNS-Android-internet-share-verification.txt\n`,
   );
-  const headscaleMeshVerificationPath = join(
+  const netbirdMeshVerificationPath = join(
     assets,
-    "SafeNet-DNS-Android-headscale-mesh-verification.md",
+    "SafeNet-DNS-Android-netbird-mesh-verification.md",
   );
   writeFileSync(
-    headscaleMeshVerificationPath,
+    netbirdMeshVerificationPath,
     [
-      "### Headplane node ownership verification",
+      "### NetBird Android peer verification",
       "",
       "- **Result:** `BLOCKED`",
-      "- **Bounded evidence:** [Download the Headplane verification report](https://github.com/example/safenet/releases/tag/v1.0.66)",
-      "- **Blocker:** `HEADSCALE_MESH_EVIDENCE_MISSING`",
-      "- **Verified node identity:** Headscale `NOT_RECORDED`; Headplane `NOT_RECORDED`",
-      "- **Headplane visibility:** `NOT_RECORDED`",
-      "- **Headplane status:** `NOT_RECORDED`",
-      "- **Owner comparison:** Headscale `NOT_RECORDED`; Headplane `NOT_RECORDED`; result `NOT_RECORDED`",
+      "- **Bounded evidence:** [Download the NetBird verification report](https://github.com/example/safenet/releases/tag/v1.0.66)",
+      "- **Blocker:** `NETBIRD_MESH_EVIDENCE_MISSING`",
+      "- **Verified peer:** NetBird `NOT_RECORDED`",
+      "- **Management peer status:** `NOT_RECORDED`; SafeNet adapter: `NOT_RECORDED`",
+      "- **Owner:** `NOT_RECORDED`",
+      "- **Android client package:** `NOT_RECORDED`",
       "",
     ].join("\n"),
   );
-  const headscaleMeshVerificationDigest = spawnSync(
+  const netbirdMeshVerificationDigest = spawnSync(
     "sha256sum",
-    [headscaleMeshVerificationPath],
+    [netbirdMeshVerificationPath],
     { encoding: "utf8" },
   ).stdout.split(/\s+/)[0];
   writeFileSync(
-    join(assets, "SafeNet-DNS-Android-headscale-mesh-verification.sha256"),
-    `${headscaleMeshVerificationDigest}  SafeNet-DNS-Android-headscale-mesh-verification.md\n`,
+    join(assets, "SafeNet-DNS-Android-netbird-mesh-verification.sha256"),
+    `${netbirdMeshVerificationDigest}  SafeNet-DNS-Android-netbird-mesh-verification.md\n`,
   );
 
   return { root, assets, sdk };

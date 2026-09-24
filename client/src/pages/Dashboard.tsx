@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
-import { useHeadscaleStatus } from "@/hooks/use-headscale";
+import { useNetBirdStatus } from "@/hooks/use-netbird";
 import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
@@ -31,8 +31,8 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
-  const headscale = useHeadscaleStatus();
-  const headplaneUrl = headscale.data?.headplaneUrl ?? null;
+  const netbird = useNetBirdStatus();
+  const netbirdDashboardUrl = netbird.data?.dashboardUrl ?? null;
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -54,16 +54,16 @@ export default function Dashboard() {
     : appLock.status.enabled
       ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
-  const headscaleStatusLabel = headscale.isLoading
+  const netbirdStatusLabel = netbird.isLoading
     ? "Checking"
-    : headscale.data?.status === "online"
+    : netbird.data?.status === "online"
       ? "Online"
-      : headscale.data?.status === "unavailable"
+      : netbird.data?.status === "unavailable"
         ? "Unavailable"
         : "Not configured";
-  const headscaleStatusClass = headscale.data?.status === "online"
+  const netbirdStatusClass = netbird.data?.status === "online"
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-    : headscale.data?.status === "unavailable"
+    : netbird.data?.status === "unavailable"
       ? "border-red-400/40 bg-red-400/10 text-red-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
   
@@ -95,12 +95,12 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
-  const openHeadplane = () => {
-    if (headplaneUrl) {
-      window.open(headplaneUrl, "_blank", "noopener,noreferrer");
+  const openNetBirdDashboard = () => {
+    if (netbirdDashboardUrl) {
+      window.open(netbirdDashboardUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    void headscale.refetch();
+    void netbird.refetch();
   };
 
   return (
@@ -135,14 +135,14 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-sm font-medium text-foreground">Headscale Mesh VPN via Headplane UI</p>
+                 <p className="text-sm font-medium text-foreground">NetBird Mesh</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {headscale.data?.message ?? "Headscale control plane is not configured"}
+                 {netbird.data?.message ?? "NetBird management server is not configured"}
               </p>
-              {headscale.data?.nodeCount !== null && headscale.data?.nodeCount !== undefined && (
+              {netbird.data?.peerCount !== null && netbird.data?.peerCount !== undefined && (
                 <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
-                  {headscale.data.nodeCount} registered node{headscale.data.nodeCount === 1 ? "" : "s"}
+                  {netbird.data.peerCount} registered peer{netbird.data.peerCount === 1 ? "" : "s"}
                 </p>
               )}
             </div>
@@ -151,22 +151,22 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => void headscale.refetch()}
-                  disabled={headscale.isFetching}
-                  aria-label="Refresh Headscale status"
-                  data-testid="button-refresh-headscale"
+                   onClick={() => void netbird.refetch()}
+                   disabled={netbird.isFetching}
+                   aria-label="Refresh NetBird status"
+                   data-testid="button-refresh-netbird"
                 >
-                  <RefreshCw className={`h-4 w-4 ${headscale.isFetching ? "animate-spin" : ""}`} />
+                   <RefreshCw className={`h-4 w-4 ${netbird.isFetching ? "animate-spin" : ""}`} />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={openHeadplane}
-                  disabled={!headplaneUrl}
-                  data-testid="button-open-headplane"
+                   onClick={openNetBirdDashboard}
+                   disabled={!netbirdDashboardUrl}
+                   data-testid="button-open-netbird-dashboard"
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  Open Headplane
+                   Open NetBird Dashboard
                 </Button>
               </div>
               <div className="flex items-center gap-2">
@@ -175,17 +175,17 @@ export default function Dashboard() {
                 </span>
                 <Badge
                   variant="outline"
-                  className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${headscaleStatusClass}`}
-                  data-testid="headscale-status-indicator"
+                   className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${netbirdStatusClass}`}
+                   data-testid="netbird-status-indicator"
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
-                    headscale.data?.status === "online"
+                     netbird.data?.status === "online"
                       ? "bg-emerald-400"
-                      : headscale.data?.status === "unavailable"
+                       : netbird.data?.status === "unavailable"
                         ? "bg-red-400"
                         : "bg-muted-foreground"
                   }`} />
-                  {headscaleStatusLabel}
+                   {netbirdStatusLabel}
                 </Badge>
               </div>
             </div>

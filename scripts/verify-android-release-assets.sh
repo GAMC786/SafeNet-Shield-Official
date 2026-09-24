@@ -115,8 +115,8 @@ smoke_result="$assets_dir/SafeNet-DNS-Android-smoke-result.txt"
 smoke_checksum="$assets_dir/SafeNet-DNS-Android-smoke-evidence.sha256"
 internet_share_verification="$assets_dir/SafeNet-DNS-Android-internet-share-verification.txt"
 internet_share_verification_checksum="$assets_dir/SafeNet-DNS-Android-internet-share-verification.sha256"
-headscale_mesh_verification="$assets_dir/SafeNet-DNS-Android-headscale-mesh-verification.md"
-headscale_mesh_verification_checksum="$assets_dir/SafeNet-DNS-Android-headscale-mesh-verification.sha256"
+netbird_mesh_verification="$assets_dir/SafeNet-DNS-Android-netbird-mesh-verification.md"
+netbird_mesh_verification_checksum="$assets_dir/SafeNet-DNS-Android-netbird-mesh-verification.sha256"
 
 require_file "$apk" "Signed application APK"
 require_file "$test_apk" "Signed instrumentation APK"
@@ -127,8 +127,8 @@ require_file "$smoke_result" "Smoke result asset"
 require_file "$smoke_checksum" "Smoke evidence checksum"
 require_file "$internet_share_verification" "Physical Internet Share verification report"
 require_file "$internet_share_verification_checksum" "Physical Internet Share verification checksum"
-require_file "$headscale_mesh_verification" "Headplane node verification report"
-require_file "$headscale_mesh_verification_checksum" "Headplane node verification checksum"
+require_file "$netbird_mesh_verification" "NetBird peer verification report"
+require_file "$netbird_mesh_verification_checksum" "NetBird peer verification checksum"
 
 verify_checksum_file() {
     local checksum_file="$1"
@@ -179,8 +179,8 @@ verify_checksum_file \
     "$internet_share_verification_checksum" \
     "SafeNet-DNS-Android-internet-share-verification.txt"
 verify_checksum_file \
-    "$headscale_mesh_verification_checksum" \
-    "SafeNet-DNS-Android-headscale-mesh-verification.md"
+    "$netbird_mesh_verification_checksum" \
+    "SafeNet-DNS-Android-netbird-mesh-verification.md"
 
 [[ -d "$sdk_root/build-tools" ]] ||
     fail "Android SDK build-tools directory is unavailable: ${sdk_root:-unset}"
@@ -266,16 +266,16 @@ grep -Eq '^profile_count=3$' "$internet_share_verification" ||
     fail "Published Internet Share verification report must include all three device profiles."
 grep -Eq '^signed_apk_sha256=[[:xdigit:]]{64}$|^signed_apk_sha256=NOT_RECORDED$' "$internet_share_verification" ||
     fail "Published Internet Share verification report has an invalid signed APK digest."
-grep -Eq '^### Headplane node ownership verification$' "$headscale_mesh_verification" ||
-    fail "Published Headplane node verification report is missing its bounded summary heading."
-grep -Eq '^- \*\*Result:\*\* `(PASS|BLOCKED)`$' "$headscale_mesh_verification" ||
-    fail "Published Headplane node verification report has an invalid result."
-if grep -Eq '^- \*\*Result:\*\* `BLOCKED`$' "$headscale_mesh_verification"; then
-    grep -Eq '^- \*\*Blocker:\*\* `[A-Z0-9_]+`$' "$headscale_mesh_verification" ||
-        fail "Published blocked Headplane node verification report is missing its failure category."
+grep -Eq '^### NetBird Android peer verification$' "$netbird_mesh_verification" ||
+    fail "Published NetBird peer verification report is missing its bounded summary heading."
+grep -Eq '^- \*\*Result:\*\* `(PASS|BLOCKED)`$' "$netbird_mesh_verification" ||
+    fail "Published NetBird peer verification report has an invalid result."
+if grep -Eq '^- \*\*Result:\*\* `BLOCKED`$' "$netbird_mesh_verification"; then
+    grep -Eq '^- \*\*Blocker:\*\* `[A-Z0-9_]+`$' "$netbird_mesh_verification" ||
+        fail "Published blocked NetBird peer verification report is missing its failure category."
 fi
-if grep -Eiq 'token|authorization|raw response|bearer' "$headscale_mesh_verification"; then
-    fail "Published Headplane node verification report contains a credential or raw-response marker."
+if grep -Eiq 'token|authorization|raw response|bearer' "$netbird_mesh_verification"; then
+    fail "Published NetBird peer verification report contains a credential or raw-response marker."
 fi
 
-echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, Internet Share state, and Headplane node verification."
+echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, Internet Share state, and NetBird peer verification."
