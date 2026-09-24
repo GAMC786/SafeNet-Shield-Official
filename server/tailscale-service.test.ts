@@ -9,9 +9,9 @@ afterEach(() => {
   for (const name of names) original[name] === undefined ? delete process.env[name] : process.env[name] = original[name];
   globalThis.fetch = originalFetch;
 });
-function configure() {
+function configure(clientId = "client") {
   process.env.TAILSCALE_TAILNET = "example.com";
-  process.env.TAILSCALE_OAUTH_CLIENT_ID = "client";
+  process.env.TAILSCALE_OAUTH_CLIENT_ID = clientId;
   process.env.TAILSCALE_OAUTH_CLIENT_SECRET = "secret";
 }
 
@@ -28,9 +28,10 @@ test("exchanges OAuth credentials and lists devices without exposing secrets", a
   globalThis.fetch = async (input, init) => {
     calls++;
     if (String(input).endsWith("/oauth/token")) {
-      assert.equal(new Headers(init?.headers).get("authorization"), `Basic ${Buffer.from("client:secret").toString("base64")}`);
-      assert.match(String(init?.body), /grant_type=client_credentials/);
-      assert.match(String(init?.body), /scope=devices%3Acore%3Aread/);
+      assert.equal(new Headers(init?.headers).get("authorization"), null);
+      assert.equal(new Headers(init?.headers).get("content-type"), "application/x-www-form-urlencoded");
+      const body = new URLSearchParams(String(init?.body));
+      assert.deepEqual([...body.entries()].sort(), [["client_id", "client"], ["client_secret", "secret"]]);
       return new Response(JSON.stringify({ access_token: "access-secret", expires_in: 3600 }));
     }
     assert.equal(String(input), "https://api.tailscale.com/api/v2/tailnet/example.com/devices");
@@ -60,5 +61,14 @@ test("reports API failures as unavailable", async () => {
     : new Response("", { status: 403 });
   const status = await getTailscaleStatus();
   assert.equal(status.status, "unavailable");
-  assert.match(status.message, /rejected/);
+  assert.match(status.message, /denied device-list access/);
+});
+
+test("reports OAuth rejection without exposing the response body", async () => {
+  configure("rejected-client");
+  globalThis.fetch = async () => new Response("private-response-marker", { status: 401 });
+  const status = await getTailscaleStatus();
+  assert.equal(status.status, "unavailable");
+  assert.match(status.message, /OAuth rejected the client credentials \(HTTP 401\)/);
+  assert.doesNotMatch(JSON.stringify(status), /private-response-marker|rejected-client|access-secret/);
 });

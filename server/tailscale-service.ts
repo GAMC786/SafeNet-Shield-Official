@@ -3,38 +3,46 @@ import { tailscaleStatusSchema, type TailscaleStatus } from "@shared/tailscale";
 const API_ROOT = "https://api.tailscale.com/api/v2";
 const DASHBOARD_URL = "https://login.tailscale.com/admin/machines";
 const CHECK_TIMEOUT_MS = 5000;
-let cachedToken: { value: string; expiresAt: number } | null = null;
-let tokenRequest: Promise<string | null> | null = null;
+let cachedToken: { clientId: string; value: string; expiresAt: number } | null = null;
+type TokenResult = { ok: true; value: string } | { ok: false; message: string };
+let tokenRequest: Promise<TokenResult> | null = null;
 
 function tailnet() {
   return process.env.TAILSCALE_TAILNET?.trim() || null;
 }
 
-function basic(value: string) {
-  return `Basic ${Buffer.from(value).toString("base64")}`;
-}
-
 async function accessToken(signal: AbortSignal) {
   const id = process.env.TAILSCALE_OAUTH_CLIENT_ID?.trim();
   const secret = process.env.TAILSCALE_OAUTH_CLIENT_SECRET?.trim();
-  if (!id || !secret) return null;
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
+  if (!id || !secret) return { ok: false, message: "Tailscale OAuth credentials are not configured." } as const;
+  if (cachedToken?.clientId === id && cachedToken.expiresAt > Date.now() + 60_000) {
+    return { ok: true, value: cachedToken.value } as const;
+  }
   if (!tokenRequest) {
     tokenRequest = fetch(`${API_ROOT}/oauth/token`, {
       method: "POST",
       signal,
-      headers: { Accept: "application/json", Authorization: basic(`${id}:${secret}`), "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant_type: "client_credentials", scope: "devices:core:read" }),
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: id, client_secret: secret }),
     }).then(async (response) => {
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return { ok: false, message: `Tailscale OAuth rejected the client credentials (HTTP ${response.status}). Verify the client ID and secret.` } as const;
+      }
       const payload = await response.json().catch(() => null) as { access_token?: unknown; expires_in?: unknown } | null;
-      if (typeof payload?.access_token !== "string") return null;
+      if (typeof payload?.access_token !== "string") {
+        return { ok: false, message: "Tailscale OAuth returned an unexpected token response." } as const;
+      }
       const expiresIn = typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in) && payload.expires_in > 0
         ? payload.expires_in
         : 3_600;
-      cachedToken = { value: payload.access_token, expiresAt: Date.now() + expiresIn * 1000 };
-      return payload.access_token;
-    }).catch(() => null).finally(() => { tokenRequest = null; });
+      cachedToken = { clientId: id, value: payload.access_token, expiresAt: Date.now() + expiresIn * 1000 };
+      return { ok: true, value: payload.access_token } as const;
+    }).catch((error: unknown) => ({
+      ok: false as const,
+      message: error instanceof Error && error.name === "AbortError"
+        ? "Tailscale OAuth did not respond within 5 seconds."
+        : "SafeNet could not reach the Tailscale OAuth endpoint.",
+    })).finally(() => { tokenRequest = null; });
   }
   return tokenRequest;
 }
@@ -62,12 +70,13 @@ function deviceStatus(device: Device): "online" | "offline" | "unknown" {
 async function fetchDevices(signal: AbortSignal) {
   const token = await accessToken(signal);
   const network = tailnet();
-  if (!token || !network) return { response: null, devices: [] as Device[] };
+  if (!token.ok) return { response: null, devices: null, tokenFailure: token.message };
+  if (!network) return { response: null, devices: null, tokenFailure: null };
   const response = await fetch(`${API_ROOT}/tailnet/${encodeURIComponent(network)}/devices`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` }, signal, redirect: "manual",
+    headers: { Accept: "application/json", Authorization: `Bearer ${token.value}` }, signal, redirect: "manual",
   });
   if (response.status === 401) cachedToken = null;
-  return { response, devices: response.ok ? devices(await response.json().catch(() => null)) : null };
+  return { response, devices: response.ok ? devices(await response.json().catch(() => null)) : null, tokenFailure: null };
 }
 
 function base(overrides: Partial<TailscaleStatus> = {}): TailscaleStatus {
@@ -84,8 +93,16 @@ export async function getTailscaleStatus(): Promise<TailscaleStatus> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
   try {
-    const { response, devices: list } = await fetchDevices(controller.signal);
-    if (!response?.ok) return base({ configured: true, tailnet: network, status: "unavailable", checkedAt: new Date().toISOString(), message: response?.status === 401 || response?.status === 403 ? "Tailscale rejected the OAuth credential." : `Tailscale responded with HTTP ${response?.status ?? "an error"}.` });
+    const { response, devices: list, tokenFailure } = await fetchDevices(controller.signal);
+    if (tokenFailure) return base({ configured: true, tailnet: network, status: "unavailable", checkedAt: new Date().toISOString(), message: tokenFailure });
+    if (!response?.ok) {
+      const message = response?.status === 401 || response?.status === 403
+        ? `Tailscale denied device-list access (HTTP ${response.status}). Check the OAuth client's devices:core:read permission and selected tailnet.`
+        : response?.status === 404
+          ? "Tailscale could not find the selected tailnet. Use its tailnet name/ID or - for the OAuth client's default tailnet."
+          : `Tailscale device API responded with HTTP ${response?.status ?? "an error"}.`;
+      return base({ configured: true, tailnet: network, status: "unavailable", checkedAt: new Date().toISOString(), message });
+    }
     if (!list) return base({ configured: true, tailnet: network, status: "unavailable", checkedAt: new Date().toISOString(), message: "Tailscale returned an unexpected device-list response." });
     return base({ configured: true, tailnet: network, status: "online", checkedAt: new Date().toISOString(), deviceCount: list.length, message: "Tailscale is reachable. The Tailscale admin console is ready for mesh administration." });
   } catch (error) {
