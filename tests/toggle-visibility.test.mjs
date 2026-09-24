@@ -862,13 +862,20 @@ test("Dashboard does not expose the removed VPN and proxy browser blocker", asyn
   await page.close();
 });
 
-test("Antivirus dashboard toggles protection status and settings switches recover after an update error", async () => {
+test("Antivirus dashboard summarizes protection and settings switches recover after an update error", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);
   await page.goto(`${baseUrl}/antivirus`);
   await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
 
-  const antivirusSwitch = page.getByTestId("switch-antivirus-enabled");
+  await page.getByText("Protected", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByTestId("switch-antivirus-enabled").count(),
+    0,
+    "the Antivirus dashboard should not duplicate the editable protection switch",
+  );
+  await page.getByRole("tab", { name: "Settings" }).click();
+  const antivirusSwitch = page.getByTestId("switch-main-enabled");
   await waitForAttribute(antivirusSwitch, "aria-checked", "true");
   const antivirusUpdate = page.waitForRequest((request) =>
     request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
@@ -876,9 +883,11 @@ test("Antivirus dashboard toggles protection status and settings switches recove
   await antivirusSwitch.click();
   await antivirusUpdate;
   await waitForAttribute(antivirusSwitch, "aria-checked", "false");
+  await page.getByRole("tab", { name: "Dashboard" }).click();
   await page.getByText("Unprotected", { exact: true }).waitFor();
   assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
 
+  await page.getByRole("tab", { name: "Settings" }).click();
   const antivirusEnableUpdate = page.waitForRequest((request) =>
     request.method() === "PUT" && request.url().includes("/api/antivirus/settings"),
   );

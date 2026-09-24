@@ -761,51 +761,51 @@ export default function Antivirus() {
             <TabsContent value="dashboard" className="mt-0 space-y-4">
               <CyberCard>
                 <div className="mb-4 flex items-center justify-between gap-4">
-                  <h3 className="font-display text-lg tracking-wider">Protection Status</h3>
-                  <Switch
-                    checked={antivirusEnabled}
-                    onCheckedChange={(checked) => handleAntivirusSettingToggle("isEnabled", checked)}
-                    disabled={updateSettings.isPending || !clamAvVerified}
-                    aria-label="Toggle antivirus protection"
-                    data-testid="switch-antivirus-enabled"
-                  />
+                   <div>
+                     <h3 className="font-display text-lg tracking-wider">Protection Status</h3>
+                     <p className="mt-1 text-sm text-muted-foreground">
+                       Read-only overview. Manage protection controls in Settings.
+                     </p>
+                   </div>
+                   <Badge
+                     variant={antivirusEnabled ? "default" : "outline"}
+                     className={antivirusEnabled ? "bg-emerald-600 text-white" : "border-destructive/40 text-destructive"}
+                   >
+                     {antivirusEnabled ? "Protected" : "Unprotected"}
+                   </Badge>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                     <span className="text-sm">Malware Blocking</span>
-                    <Switch
-                      checked={settings?.malwareDomainBlocking ?? true}
-                      onCheckedChange={(checked) => handleAntivirusSettingToggle("malwareDomainBlocking", checked)}
-                    disabled={updateSettings.isPending}
-                      data-testid="switch-malware-protection"
-                    />
+                     <span className={`text-xs font-mono uppercase tracking-wider ${
+                       settings?.malwareDomainBlocking ?? true ? "text-emerald-400" : "text-muted-foreground"
+                     }`}>
+                       {settings?.malwareDomainBlocking ?? true ? "Enabled" : "Disabled"}
+                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                     <span className="text-sm">Phishing Protection</span>
-                    <Switch
-                      checked={settings?.phishingProtection ?? true}
-                      onCheckedChange={(checked) => handleAntivirusSettingToggle("phishingProtection", checked)}
-                    disabled={updateSettings.isPending}
-                      data-testid="switch-phishing-protection"
-                    />
+                     <span className={`text-xs font-mono uppercase tracking-wider ${
+                       settings?.phishingProtection ?? true ? "text-emerald-400" : "text-muted-foreground"
+                     }`}>
+                       {settings?.phishingProtection ?? true ? "Enabled" : "Disabled"}
+                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                     <span className="text-sm">Real-time Protection</span>
-                    <Switch
-                      checked={settings?.realTimeProtection ?? true}
-                      onCheckedChange={(checked) => handleAntivirusSettingToggle("realTimeProtection", checked)}
-                    disabled={updateSettings.isPending}
-                      data-testid="switch-realtime-scanning"
-                    />
+                     <span className={`text-xs font-mono uppercase tracking-wider ${
+                       settings?.realTimeProtection ?? true ? "text-emerald-400" : "text-muted-foreground"
+                     }`}>
+                       {settings?.realTimeProtection ?? true ? "Enabled" : "Disabled"}
+                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                     <span className="text-sm">Auto-Quarantine</span>
-                    <Switch
-                      checked={settings?.autoQuarantine ?? true}
-                      onCheckedChange={(checked) => handleAntivirusSettingToggle("autoQuarantine", checked)}
-                    disabled={updateSettings.isPending}
-                      data-testid="switch-auto-update"
-                    />
+                     <span className={`text-xs font-mono uppercase tracking-wider ${
+                       settings?.autoQuarantine ?? true ? "text-emerald-400" : "text-muted-foreground"
+                     }`}>
+                       {settings?.autoQuarantine ?? true ? "Enabled" : "Disabled"}
+                     </span>
                   </div>
                 </div>
               </CyberCard>
