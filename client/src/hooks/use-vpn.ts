@@ -118,6 +118,19 @@ interface SafeNetVpnPlugin {
     mode: "off" | "automatic" | "hostname" | "unknown";
     hostname: string | null;
     expectedHostname: string | null;
+    oneTapAvailable: boolean;
+    oneTapSetupRequired: boolean;
+    message: string;
+    error?: string | null;
+  }>;
+  setPrivateDnsHostname(options: { expectedHostname: string }): Promise<{
+    supported: boolean;
+    running: boolean;
+    mode: "off" | "automatic" | "hostname" | "unknown";
+    hostname: string | null;
+    expectedHostname: string | null;
+    oneTapAvailable: boolean;
+    oneTapSetupRequired: boolean;
     message: string;
     error?: string | null;
   }>;
@@ -127,6 +140,8 @@ interface SafeNetVpnPlugin {
     mode: "off" | "automatic" | "hostname" | "unknown";
     hostname: string | null;
     expectedHostname: string | null;
+    oneTapAvailable: boolean;
+    oneTapSetupRequired: boolean;
     message: string;
     error?: string | null;
   }>;

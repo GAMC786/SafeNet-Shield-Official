@@ -27,6 +27,7 @@ import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
+import { PrivateDnsOneTapDialog } from "@/components/PrivateDnsOneTapDialog";
 
 type ResolverForm = {
   name: string;
@@ -102,6 +103,8 @@ export default function DnsSettings() {
   const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
   const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const [pendingPrivateDnsServer, setPendingPrivateDnsServer] = useState<DnsServer | null>(null);
+  const [pendingPrivateDnsAction, setPendingPrivateDnsAction] = useState<"settings" | "oneTap" | null>(null);
+  const [oneTapDialogOpen, setOneTapDialogOpen] = useState(false);
   const [isOpen, setIsOpen] = usePersistentState("safenet-dns-resolver-dialog-open", false);
   const [editingResolver, setEditingResolver] = useState<DnsServer | null>(null);
   const [editingResolverId, setEditingResolverId, clearEditingResolverId] = usePersistentState<number | null>(
@@ -167,6 +170,7 @@ export default function DnsSettings() {
   const handleStartFiltering = async (server: DnsServer) => {
     if (!privateDnsEulaAccepted && !privateDns.status?.running) {
       setPendingPrivateDnsServer(server);
+      setPendingPrivateDnsAction("settings");
       setPrivateDnsEulaOpen(true);
       return;
     }
@@ -198,6 +202,48 @@ export default function DnsSettings() {
     });
   };
 
+  const applyOneTapNow = async () => {
+    try {
+      await privateDns.applyOneTap();
+      toast({
+        title: "Private DNS enabled",
+        description: privateDns.expectedHostname
+          ? `${privateDns.expectedHostname} is now active through Android Private DNS.`
+          : "The selected Private DNS hostname is now active.",
+      });
+    } catch (error) {
+      toast({
+        title: "One-tap Private DNS was not applied",
+        description: error instanceof Error
+          ? error.message
+          : "Grant access through ADB or Shizuku, then try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleOneTap = async () => {
+    if (!privateDns.expectedHostname) {
+      toast({
+        title: "Private DNS hostname required",
+        description: "Choose a DNS-over-TLS or DNS-over-HTTPS resolver first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!privateDns.status?.oneTapAvailable) {
+      setOneTapDialogOpen(true);
+      return;
+    }
+    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
+      setPendingPrivateDnsServer(activeDns ?? null);
+      setPendingPrivateDnsAction("oneTap");
+      setPrivateDnsEulaOpen(true);
+      return;
+    }
+    await applyOneTapNow();
+  };
+
   const handlePrivateDnsEulaAccept = () => {
     try {
       window.localStorage.setItem(PRIVATE_DNS_EULA_STORAGE_KEY, SAFE_NET_PRIVATE_DNS_EULA_VERSION);
@@ -207,9 +253,14 @@ export default function DnsSettings() {
     setPrivateDnsEulaAccepted(true);
     setPrivateDnsEulaOpen(false);
     if (pendingPrivateDnsServer) {
-      void openPrivateDnsSettings();
+      if (pendingPrivateDnsAction === "oneTap") {
+        void applyOneTapNow();
+      } else {
+        void openPrivateDnsSettings();
+      }
       setPendingPrivateDnsServer(null);
     }
+    setPendingPrivateDnsAction(null);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -333,8 +384,14 @@ export default function DnsSettings() {
         onAccept={handlePrivateDnsEulaAccept}
         onCancel={() => {
           setPendingPrivateDnsServer(null);
+          setPendingPrivateDnsAction(null);
           setPrivateDnsEulaOpen(false);
         }}
+      />
+      <PrivateDnsOneTapDialog
+        open={oneTapDialogOpen}
+        onOpenChange={setOneTapDialogOpen}
+        hostname={privateDns.expectedHostname}
       />
       <Header title="DNS Servers" subtitle="Manage Resolvers" />
 
@@ -386,6 +443,27 @@ export default function DnsSettings() {
           <p className="mt-2 text-xs text-destructive">
             The selected resolver does not expose a hostname Android Private DNS can use. Choose a DNS-over-TLS or DNS-over-HTTPS resolver.
           </p>
+        )}
+        {privateDns.supported && privateDns.expectedHostname && (
+          <div className="mt-4 flex flex-col gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Optional one-tap control</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {privateDns.status?.oneTapAvailable
+                  ? "Protected access is enabled. SafeNet can apply the selected hostname and verify it."
+                  : "Keep using Android settings, or grant protected access explicitly through ADB or Shizuku."}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={privateDns.isBusy}
+              onClick={() => void handleOneTap()}
+              className="shrink-0"
+            >
+              {privateDns.status?.oneTapAvailable ? "Apply with one tap" : "Set up one-tap"}
+            </Button>
+          </div>
         )}
       </CyberCard>
 

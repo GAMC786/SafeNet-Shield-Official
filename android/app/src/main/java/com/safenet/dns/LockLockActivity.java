@@ -456,10 +456,12 @@ public class LockLockActivity extends FragmentActivity {
             AppLockManager.allowTemporaryUnlock(this, lockedPackage);
         }
         if (getIntent().getBooleanExtra(AppLockManager.EXTRA_AFTER_UNLOCK_PRIVATE_DNS, false)) {
-            try {
-                startActivity(new Intent("android.settings.PRIVATE_DNS_SETTINGS"));
-            } catch (RuntimeException ignored) {
-                // The tile's settings fallback is handled by the system.
+            if (!SafeNetPrivateDnsTileService.applyExpectedHostname(this)) {
+                try {
+                    startActivity(new Intent("android.settings.PRIVATE_DNS_SETTINGS"));
+                } catch (RuntimeException ignored) {
+                    // The tile's settings fallback is handled by the system.
+                }
             }
         }
         if (!onAuthenticationSucceeded()) {

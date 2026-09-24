@@ -100,6 +100,7 @@ test("the native plugin keeps Private DNS and shared features", () => {
   for (const method of [
     "getProtectionStatus",
     "getPrivateDnsStatus",
+    "setPrivateDnsHostname",
     "openPrivateDnsSettings",
     "syncFirewallConfig",
     "getApkScanStatus",

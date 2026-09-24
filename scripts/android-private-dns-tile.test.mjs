@@ -6,6 +6,10 @@ const manifest = readFileSync(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
 );
+const controller = readFileSync(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetPrivateDnsController.java", import.meta.url),
+  "utf8",
+);
 const tileService = readFileSync(
   new URL("../android/app/src/main/java/com/safenet/dns/SafeNetPrivateDnsTileService.java", import.meta.url),
   "utf8",
@@ -24,6 +28,7 @@ const lockActivity = readFileSync(
 );
 
 test("Android exposes a SafeNet Private DNS Quick Settings tile", () => {
+  assert.match(manifest, /WRITE_SECURE_SETTINGS/);
   assert.match(manifest, /SafeNetPrivateDnsTileService/);
   assert.match(manifest, /BIND_QUICK_SETTINGS_TILE/);
   assert.match(manifest, /android\.service\.quicksettings\.action\.QS_TILE/);
@@ -42,4 +47,14 @@ test("the tile uses verified Private DNS state and opens system settings", () =>
   assert.match(appLockManager, /EXTRA_AFTER_UNLOCK_PRIVATE_DNS/);
   assert.match(lockActivity, /EXTRA_AFTER_UNLOCK_PRIVATE_DNS/);
   assert.match(lockActivity, /android\.settings\.PRIVATE_DNS_SETTINGS/);
+});
+
+test("one-tap control is guarded by explicit privileged access and verification", () => {
+  assert.match(controller, /WRITE_SECURE_SETTINGS/);
+  assert.match(controller, /PERMISSION_REQUIRED/);
+  assert.match(controller, /PRIVATE_DNS_MODE/);
+  assert.match(controller, /PRIVATE_DNS_SPECIFIER/);
+  assert.match(controller, /VERIFICATION_FAILED/);
+  assert.match(tileService, /SafeNetPrivateDnsController\.canWrite/);
+  assert.match(tileService, /applyExpectedHostname/);
 });

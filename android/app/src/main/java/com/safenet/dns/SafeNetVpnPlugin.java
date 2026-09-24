@@ -410,6 +410,48 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setPrivateDnsHostname(PluginCall call) {
+        String expectedHostname = call.getString("expectedHostname", "");
+        SafeNetPrivateDnsController.ApplyResult result =
+            SafeNetPrivateDnsController.apply(getContext(), expectedHostname);
+        switch (result) {
+            case APPLIED:
+                call.resolve(privateDnsStatus(expectedHostname));
+                return;
+            case UNSUPPORTED:
+                call.reject(
+                    "Android Private DNS requires Android 9 or newer.",
+                    "PRIVATE_DNS_UNSUPPORTED"
+                );
+                return;
+            case INVALID_HOSTNAME:
+                call.reject(
+                    "A valid DNS-over-TLS hostname is required.",
+                    "PRIVATE_DNS_HOSTNAME_INVALID"
+                );
+                return;
+            case PERMISSION_REQUIRED:
+                call.reject(
+                    "Grant WRITE_SECURE_SETTINGS through ADB or Shizuku before using one-tap control.",
+                    "PRIVATE_DNS_PRIVILEGED_ACCESS_REQUIRED"
+                );
+                return;
+            case WRITE_FAILED:
+                call.reject(
+                    "Android rejected the Private DNS update.",
+                    "PRIVATE_DNS_WRITE_FAILED"
+                );
+                return;
+            case VERIFICATION_FAILED:
+            default:
+                call.reject(
+                    "Private DNS did not report the requested hostname after the update.",
+                    "PRIVATE_DNS_VERIFICATION_FAILED"
+                );
+        }
+    }
+
+    @PluginMethod
     public void openPrivateDnsSettings(PluginCall call) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             call.resolve(privateDnsStatus(call.getString("expectedHostname", "")));
@@ -461,6 +503,16 @@ public class SafeNetVpnPlugin extends Plugin {
         String expected = normalizePrivateDnsHostname(expectedHostname);
         result.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P);
         result.put("expectedHostname", expected == null ? JSONObject.NULL : expected);
+        result.put(
+            "oneTapAvailable",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && SafeNetPrivateDnsController.canWrite(getContext())
+        );
+        result.put(
+            "oneTapSetupRequired",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && !SafeNetPrivateDnsController.canWrite(getContext())
+        );
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             result.put("running", false);
             result.put("mode", "unknown");
@@ -527,21 +579,7 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private static String normalizePrivateDnsHostname(String value) {
-        if (value == null) return null;
-        String normalized = value.trim().toLowerCase(java.util.Locale.US);
-        while (normalized.endsWith(".")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.isEmpty() || normalized.contains("/") || normalized.contains(" ")) {
-            return null;
-        }
-        if (normalized.matches("[^:]+:\\d{1,5}")) {
-            normalized = normalized.substring(0, normalized.lastIndexOf(':'));
-        }
-        if (normalized.contains(":") || !normalized.matches("[a-z0-9.-]+")) {
-            return null;
-        }
-        return normalized;
+        return SafeNetPrivateDnsController.normalizeHostname(value);
     }
 
     @PluginMethod

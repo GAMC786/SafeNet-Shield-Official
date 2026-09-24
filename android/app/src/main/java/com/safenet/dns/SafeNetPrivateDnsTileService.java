@@ -11,8 +11,9 @@ import android.service.quicksettings.TileService;
  * Quick Settings entry point for SafeNet's Android Private DNS protection.
  *
  * Android does not allow ordinary applications to change the protected Private
- * DNS setting directly. The tile therefore reflects the verified state and
- * opens the system settings screen when tapped.
+ * DNS setting directly. The tile therefore applies the verified hostname only
+ * when the user has explicitly granted protected access; otherwise it opens
+ * the system settings screen when tapped.
  */
 public class SafeNetPrivateDnsTileService extends TileService {
     private static final String PREFS_NAME = "safenet_private_dns_tile";
@@ -45,7 +46,26 @@ public class SafeNetPrivateDnsTileService extends TileService {
             startActivityAndCollapse(unlockIntent);
             return;
         }
+        if (SafeNetPrivateDnsController.canWrite(this)
+            && applyExpectedHostname()) {
+            updateTileState();
+            return;
+        }
         openPrivateDnsSettings();
+    }
+
+    public boolean applyExpectedHostname() {
+        String expectedHostname = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString(EXPECTED_HOSTNAME_KEY, "");
+        return SafeNetPrivateDnsController.apply(this, expectedHostname)
+            == SafeNetPrivateDnsController.ApplyResult.APPLIED;
+    }
+
+    public static boolean applyExpectedHostname(Context context) {
+        String expectedHostname = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(EXPECTED_HOSTNAME_KEY, "");
+        return SafeNetPrivateDnsController.apply(context, expectedHostname)
+            == SafeNetPrivateDnsController.ApplyResult.APPLIED;
     }
 
     private void openPrivateDnsSettings() {

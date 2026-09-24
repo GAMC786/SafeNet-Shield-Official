@@ -42,8 +42,9 @@ export function PrivateDnsEulaDialog({
               <p>
                 Android controls the setting and only one Private DNS provider
                 can be active at a time. SafeNet can open the Android settings
-                screen and report whether the selected hostname is active, but
-                Android requires you to confirm the provider hostname there.
+                screen and report whether the selected hostname is active. An
+                optional one-tap mode is available only after you explicitly
+                grant protected Android access through ADB or Shizuku.
               </p>
               <p>
                 Apps that use their own encrypted DNS, a private proxy, or
@@ -53,7 +54,8 @@ export function PrivateDnsEulaDialog({
               </p>
               <p className="font-medium text-foreground">
                 By selecting “Agree &amp; Continue,” you accept this agreement
-                and authorize SafeNet to open Android Private DNS settings.
+                and authorize SafeNet to use the Android Private DNS settings
+                flow. Any optional privileged control requires separate setup.
               </p>
             </div>
           </AlertDialogDescription>

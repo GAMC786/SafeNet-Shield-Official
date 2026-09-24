@@ -12,6 +12,8 @@ export type PrivateDnsStatus = {
   mode: "off" | "automatic" | "hostname" | "unknown";
   hostname: string | null;
   expectedHostname: string | null;
+  oneTapAvailable: boolean;
+  oneTapSetupRequired: boolean;
   message: string;
   error?: string | null;
 };
@@ -75,6 +77,8 @@ export function usePrivateDns(server: DnsServer | null | undefined) {
         mode: "unknown",
         hostname: null,
         expectedHostname,
+        oneTapAvailable: false,
+        oneTapSetupRequired: false,
         message: "Android Private DNS status is unavailable.",
         error: "Android Private DNS status is unavailable.",
       };
@@ -104,5 +108,19 @@ export function usePrivateDns(server: DnsServer | null | undefined) {
     }
   }, [expectedHostname, supported]);
 
-  return { supported, expectedHostname, status, isBusy, refresh, openSettings };
+  const applyOneTap = useCallback(async () => {
+    if (!supported) return null;
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() =>
+        SafeNetVpn.setPrivateDnsHostname({ expectedHostname: expectedHostname ?? "" }),
+      );
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [expectedHostname, supported]);
+
+  return { supported, expectedHostname, status, isBusy, refresh, openSettings, applyOneTap };
 }
