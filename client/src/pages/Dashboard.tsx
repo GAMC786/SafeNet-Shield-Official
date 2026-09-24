@@ -398,6 +398,25 @@ export default function Dashboard() {
                           ))}
                         </select>
                       </label>
+                      {!tailscaleVpn.status.loginRequired &&
+                        !tailscaleVpn.status.error &&
+                        (tailscaleVpn.status.exitNodes ?? []).length === 0 && (
+                        <p
+                          className="text-xs text-muted-foreground"
+                          data-testid="tailscale-no-exit-nodes"
+                        >
+                          No exit nodes are available in this tailnet. Advertise an exit node
+                          from a Tailscale device and approve it in the admin console.{" "}
+                          <a
+                            href="https://tailscale.com/kb/1103/exit-nodes"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline underline-offset-2"
+                          >
+                            Setup instructions
+                          </a>
+                        </p>
+                      )}
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs text-muted-foreground">Accept subnet routes</span>
                         <Switch

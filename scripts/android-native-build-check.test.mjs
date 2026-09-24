@@ -193,6 +193,9 @@ test("Tailscale UI separates control-plane health from this device and discloses
   assert.match(dashboardSource, /switch-tailscale-device-vpn/);
   assert.match(dashboardSource, /tailscale-vpn-options/);
   assert.match(dashboardSource, /select-tailscale-exit-node/);
+  assert.match(dashboardSource, /tailscale-no-exit-nodes/);
+  assert.match(dashboardSource, /No exit nodes are available in this tailnet/);
+  assert.match(dashboardSource, /tailscale\.com\/kb\/1103\/exit-nodes/);
   assert.match(dashboardSource, /switch-tailscale-accept-routes/);
   assert.match(dashboardSource, /switch-tailscale-dns/);
   assert.match(tailscaleEulaSource, /Android allows one active VPN service at a time/);
