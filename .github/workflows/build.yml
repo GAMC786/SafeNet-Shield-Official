@@ -1071,7 +1071,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # API 34 avoids the hosted API 35 image's intermittent offline boot
-          # and storage-service failures while still exercising the minSdk 24 app.
+          # and storage-service failures while still exercising the minSdk 26 app.
           api-level: 34
           target: google_apis
           arch: x86_64

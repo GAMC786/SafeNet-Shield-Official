@@ -168,8 +168,8 @@ test("the Android manifest declares only the real Tailscale VPN service, not a S
   assert.match(manifestSource, /android:name="\.SafeNetTailscaleVpnService"/);
   assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
   assert.match(manifestSource, /android\.permission\.FOREGROUND_SERVICE_SYSTEM_EXEMPTED/);
-  assert.match(manifestSource, /tools:overrideLibrary="com\.tailscale\.ipn"/);
-  assert.match(androidVariablesSource, /minSdkVersion\s*=\s*24/);
+  assert.doesNotMatch(manifestSource, /overrideLibrary/);
+  assert.match(androidVariablesSource, /minSdkVersion\s*=\s*26/);
   assert.match(tailscaleServiceSource, /implements libtailscale\.IPNService/);
   assert.doesNotMatch(manifestSource, /SafeNetDnsVpnService/);
   assert.doesNotMatch(manifestSource, /SafeNetVpnTileService|SafeNetWireGuard/);

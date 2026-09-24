@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <!-- Tailscale's engine is only invoked on API 26+, while SafeNet stays installable on API 24+. -->
-    <uses-sdk tools:overrideLibrary="com.tailscale.ipn" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Only grantable through explicit ADB/Shizuku setup; never granted by install. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
