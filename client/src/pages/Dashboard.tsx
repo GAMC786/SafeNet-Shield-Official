@@ -284,34 +284,40 @@ export default function Dashboard() {
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 lg:shrink-0 lg:justify-end">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-1 lg:shrink-0 lg:justify-end sm:gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-0.5 sm:gap-1.5">
                   <Badge
                     variant="outline"
-                    className={`gap-1 px-1.5 text-[9px] font-bold uppercase tracking-normal sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleStatusClass}`}
+                    className={`gap-0.5 px-1 text-[9px] font-bold uppercase tracking-normal sm:gap-1.5 sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleStatusClass}`}
                     data-testid="tailscale-control-plane-status"
+                    aria-label={`Control plane: ${tailscaleStatusLabel}`}
                   >
-                    <span className="sm:hidden">Control:</span>
-                    <span className="hidden sm:inline">Control plane:</span>
+                    <span className="sr-only">Control plane:</span>
+                    <span className="max-[359px]:hidden sm:hidden" aria-hidden="true">Ctrl:</span>
+                    <span className="hidden sm:inline" aria-hidden="true">Control plane:</span>
                     {tailscaleStatusLabel}
                   </Badge>
                   <Badge
                     variant="outline"
-                    className={`gap-1 px-1.5 text-[9px] font-bold uppercase tracking-normal sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleDeviceStatusClass}`}
+                    className={`gap-0.5 px-1 text-[9px] font-bold uppercase tracking-normal sm:gap-1.5 sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleDeviceStatusClass}`}
                     data-testid="tailscale-device-status"
+                    aria-label={`Device: ${tailscaleDeviceStatusLabel}`}
                   >
-                    Device: {tailscaleDeviceStatusLabel}
+                    <span className="sr-only">Device:</span>
+                    <span className="max-[359px]:hidden sm:hidden" aria-hidden="true">VPN:</span>
+                    <span className="hidden sm:inline" aria-hidden="true">Device:</span>
+                    {tailscaleDeviceStatusLabel}
                   </Badge>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 shrink-0 whitespace-nowrap px-2 text-[10px] sm:px-3 sm:text-xs"
+                  className="h-8 shrink-0 whitespace-nowrap px-1 text-[9px] sm:px-3 sm:text-xs"
                   onClick={openTailscaleDashboard}
                   disabled={!tailscaleDashboardUrl}
                   data-testid="button-open-tailscale-dashboard"
                 >
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5 sm:mr-2 sm:h-4 sm:w-4" />
+                  <ExternalLink className="mr-1 hidden h-3.5 w-3.5 sm:mr-2 sm:inline sm:h-4 sm:w-4" />
                   Open Tailscale Admin
                 </Button>
               </div>
