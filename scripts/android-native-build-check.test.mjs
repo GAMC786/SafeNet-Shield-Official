@@ -164,7 +164,8 @@ test("the Android manifest declares only the real Tailscale VPN service, not a S
 });
 
 test("Tailscale UI separates control-plane health from this device and discloses VPN effects", () => {
-  assert.match(dashboardSource, /Control plane: \{tailscaleStatusLabel\}/);
+  assert.match(dashboardSource, /Control plane:/);
+  assert.match(dashboardSource, /sm:hidden">Control:/);
   assert.match(dashboardSource, /Device: \{tailscaleDeviceStatusLabel\}/);
   assert.match(dashboardSource, /button-tailscale-connect/);
   assert.match(dashboardSource, /tailscale-vpn-options/);

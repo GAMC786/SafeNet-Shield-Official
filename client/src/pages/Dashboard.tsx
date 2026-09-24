@@ -247,11 +247,27 @@ export default function Dashboard() {
 
         <CyberCard className="flex min-h-[104px] w-full items-center">
           <div className="w-full space-y-4 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Radio className="h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm font-medium text-foreground">Tailscale Mesh VPN with WireGuard</p>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Radio className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="min-w-0 text-sm font-medium text-foreground">Tailscale Mesh VPN with WireGuard</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => {
+                      void tailscale.refetch();
+                      if (tailscaleVpn.isAndroid) void tailscaleVpn.refetch();
+                    }}
+                    disabled={tailscale.isFetching || tailscaleVpn.isFetching}
+                    aria-label="Refresh Tailscale status"
+                    data-testid="button-refresh-tailscale"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${tailscale.isFetching || tailscaleVpn.isFetching ? "animate-spin" : ""}`} />
+                  </Button>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {tailscale.data?.message ?? "Tailscale control-plane status is unavailable"}
@@ -268,48 +284,36 @@ export default function Dashboard() {
                   </p>
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 lg:shrink-0 lg:justify-end">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <Badge
                     variant="outline"
-                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
+                    className={`gap-1 px-1.5 text-[9px] font-bold uppercase tracking-normal sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleStatusClass}`}
                     data-testid="tailscale-control-plane-status"
                   >
-                    Control plane: {tailscaleStatusLabel}
+                    <span className="sm:hidden">Control:</span>
+                    <span className="hidden sm:inline">Control plane:</span>
+                    {tailscaleStatusLabel}
                   </Badge>
                   <Badge
                     variant="outline"
-                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleDeviceStatusClass}`}
+                    className={`gap-1 px-1.5 text-[9px] font-bold uppercase tracking-normal sm:px-2 sm:text-[10px] sm:tracking-wider ${tailscaleDeviceStatusClass}`}
                     data-testid="tailscale-device-status"
                   >
                     Device: {tailscaleDeviceStatusLabel}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      void tailscale.refetch();
-                      if (tailscaleVpn.isAndroid) void tailscaleVpn.refetch();
-                    }}
-                    disabled={tailscale.isFetching || tailscaleVpn.isFetching}
-                    aria-label="Refresh Tailscale status"
-                    data-testid="button-refresh-tailscale"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${tailscale.isFetching || tailscaleVpn.isFetching ? "animate-spin" : ""}`} />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openTailscaleDashboard}
-                    disabled={!tailscaleDashboardUrl}
-                    data-testid="button-open-tailscale-dashboard"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Open Tailscale Admin
-                  </Button>
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 whitespace-nowrap px-2 text-[10px] sm:px-3 sm:text-xs"
+                  onClick={openTailscaleDashboard}
+                  disabled={!tailscaleDashboardUrl}
+                  data-testid="button-open-tailscale-dashboard"
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5 sm:mr-2 sm:h-4 sm:w-4" />
+                  Open Tailscale Admin
+                </Button>
               </div>
             </div>
 
