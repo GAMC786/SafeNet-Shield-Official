@@ -247,6 +247,8 @@ test("the active AppLock configuration is the LockLock Compose integration", () 
   assert.match(appGradle, /org\.jetbrains\.kotlin\.android/);
   assert.match(appGradle, /org\.jetbrains\.kotlin\.plugin\.compose/);
   assert.match(appGradle, /androidx\.compose\.material3:material3/);
+  assert.match(composeUi, /import androidx\.compose\.ui\.platform\.ViewCompositionStrategy/);
+  assert.match(composeUi, /LockLockSwitch\(checked, onCheckedChange = onClick\)/);
   assert.match(composeUi, /https:\/\/github\.com\/nethical6\/LockLock/);
   assert.match(composeUi, /Select Apps/);
   assert.match(composeUi, /LockLockRecoveryDialog/);

@@ -89,7 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
-import androidx.core.view.ViewCompositionStrategy
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -957,7 +957,7 @@ private fun SettingAction(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            LockLockSwitch(checked, onClick = onClick)
+            LockLockSwitch(checked, onCheckedChange = onClick)
         }
     }
 }
