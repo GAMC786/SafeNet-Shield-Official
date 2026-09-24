@@ -104,13 +104,11 @@ export default function DnsSettings() {
   const privateDnsConnected = privateDns.status?.running === true;
   const privateDnsStatusLabel = privateDnsConnected
     ? "Connected"
-    : !privateDns.supported
-      ? "Android only"
-      : privateDns.status?.supported === false
-        ? "Unavailable"
-        : privateDns.status
-          ? "Not connected"
-          : "Checking";
+    : !privateDns.supported || privateDns.status?.supported === false
+      ? "Unavailable"
+      : privateDns.status
+        ? "Not connected"
+        : "Checking";
   const privateDnsStatusIsUnavailable =
     !privateDns.supported || privateDns.status?.supported === false;
   const privateDnsStatusClassName = privateDnsConnected
@@ -484,15 +482,17 @@ export default function DnsSettings() {
               <span aria-hidden="true" className={`mr-1.5 h-2 w-2 rounded-full ${privateDnsStatusDotClassName}`} />
               {privateDnsStatusLabel}
             </Badge>
-            {privateDns.supported && privateDns.status?.supported !== false && (
-              <Switch
-                checked={privateDnsConnected}
-                onCheckedChange={handlePrivateDnsSwitchChange}
-                disabled={privateDns.isBusy || privateDns.status?.supported !== true}
-                aria-label={`SafeNet Private DNS ${privateDnsConnected ? "Connected" : "Off"}`}
-                data-testid="switch-safe-net-private-dns"
-              />
-            )}
+            <Switch
+              checked={privateDnsConnected}
+              onCheckedChange={handlePrivateDnsSwitchChange}
+              disabled={
+                !privateDns.supported
+                || privateDns.isBusy
+                || privateDns.status?.supported !== true
+              }
+              aria-label={`SafeNet Private DNS ${privateDnsStatusLabel}`}
+              data-testid="switch-safe-net-private-dns"
+            />
           </div>
         </div>
         {privateDns.supported && !privateDns.expectedHostname && (
