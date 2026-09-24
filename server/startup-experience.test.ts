@@ -263,7 +263,7 @@ test("the Dashboard opens Tailscale Admin and reports Tailscale status", () => {
     "utf8",
   );
   assert.match(dashboardSource, /useTailscaleStatus/);
-  assert.match(dashboardSource, /Tailscale VPN/);
+  assert.match(dashboardSource, /Tailscale Mesh VPN with WireGuard/);
   assert.match(dashboardSource, /useTailscaleNative/);
   assert.match(dashboardSource, /data-testid="button-tailscale-connect"/);
   assert.match(dashboardSource, /data-testid="button-open-tailscale-dashboard"/);
