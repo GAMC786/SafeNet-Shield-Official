@@ -102,6 +102,27 @@ export default function DnsSettings() {
   const activeDns = servers?.find((server) => server.isActive);
   const privateDns = usePrivateDns(activeDns);
   const privateDnsConnected = privateDns.status?.running === true;
+  const privateDnsStatusLabel = privateDnsConnected
+    ? "Connected"
+    : !privateDns.supported
+      ? "Android only"
+      : privateDns.status?.supported === false
+        ? "Unavailable"
+        : privateDns.status
+          ? "Not connected"
+          : "Checking";
+  const privateDnsStatusIsUnavailable =
+    !privateDns.supported || privateDns.status?.supported === false;
+  const privateDnsStatusClassName = privateDnsConnected
+    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+    : privateDnsStatusIsUnavailable || !privateDns.status
+      ? "border-white/15 bg-white/5 text-muted-foreground"
+      : "border-amber-500/40 bg-amber-500/10 text-amber-200";
+  const privateDnsStatusDotClassName = privateDnsConnected
+    ? "bg-emerald-400"
+    : privateDnsStatusIsUnavailable || !privateDns.status
+      ? "bg-slate-400"
+      : "bg-amber-400";
   const [privateDnsEulaOpen, setPrivateDnsEulaOpen] = useState(false);
   const [privateDnsEulaAccepted, setPrivateDnsEulaAccepted] = useState(hasAcceptedPrivateDnsEula);
   const [pendingPrivateDnsServer, setPendingPrivateDnsServer] = useState<DnsServer | null>(null);
@@ -445,23 +466,14 @@ export default function DnsSettings() {
               <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
                 SafeNet Private DNS
               </h2>
-              {privateDns.supported && (
-                <Badge
-                  variant="outline"
-                  className={privateDnsConnected
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-                    : "border-white/15 bg-white/5 text-muted-foreground"}
-                  aria-live="polite"
-                >
-                  {privateDns.status?.supported === false
-                    ? "Unavailable"
-                    : privateDnsConnected
-                      ? "Connected"
-                      : privateDns.status
-                        ? "Not connected"
-                        : "Checking"}
-                </Badge>
-              )}
+              <Badge
+                variant="outline"
+                className={privateDnsStatusClassName}
+                aria-live="polite"
+              >
+                <span aria-hidden="true" className={`mr-1.5 h-2 w-2 rounded-full ${privateDnsStatusDotClassName}`} />
+                {privateDnsStatusLabel}
+              </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {!privateDns.supported

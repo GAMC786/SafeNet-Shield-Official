@@ -459,6 +459,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /SafeNet Private DNS/);
   assert.match(dnsSettingsSource, /data-testid="switch-safe-net-private-dns"/);
   assert.match(dnsSettingsSource, /privateDnsConnected \? "Connected"/);
+  assert.match(dnsSettingsSource, /privateDnsStatusLabel/);
   assert.doesNotMatch(dnsSettingsSource, /Android app only/);
   assert.doesNotMatch(dnsSettingsSource, /!privateDnsEulaAccepted && !privateDns\.status\?\.running/);
   assert.match(dnsSettingsSource, /Available in the Android app/);
