@@ -135,7 +135,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm font-medium text-foreground">Tailscale Mesh</p>
+                  <p className="text-sm font-medium text-foreground">Tailscale Mesh VPN with WireGuard</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                   {tailscale.data?.message ?? "Tailscale tailnet is not configured"}
