@@ -54,6 +54,18 @@ export default function Dashboard() {
     : appLock.status.enabled
       ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
+  const headscaleStatusLabel = headscale.isLoading
+    ? "Checking"
+    : headscale.data?.status === "online"
+      ? "Online"
+      : headscale.data?.status === "unavailable"
+        ? "Unavailable"
+        : "Not configured";
+  const headscaleStatusClass = headscale.data?.status === "online"
+    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+    : headscale.data?.status === "unavailable"
+      ? "border-red-400/40 bg-red-400/10 text-red-300"
+      : "border-white/15 bg-white/5 text-muted-foreground";
   
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -124,13 +136,23 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
                 <p className="text-sm font-medium text-foreground">Headscale Mesh VPN via Headplane UI</p>
-                <span className={`h-2 w-2 rounded-full ${
-                  headscale.data?.status === "online"
-                    ? "bg-emerald-400"
-                    : headscale.data?.status === "unavailable"
-                      ? "bg-red-400"
-                      : "bg-muted-foreground"
-                }`} />
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  Status
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${headscaleStatusClass}`}
+                  data-testid="headscale-status-indicator"
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    headscale.data?.status === "online"
+                      ? "bg-emerald-400"
+                      : headscale.data?.status === "unavailable"
+                        ? "bg-red-400"
+                        : "bg-muted-foreground"
+                  }`} />
+                  {headscaleStatusLabel}
+                </Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {headscale.data?.message ?? "Headscale control plane is not configured"}
