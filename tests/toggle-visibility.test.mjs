@@ -868,7 +868,8 @@ test("Antivirus dashboard summarizes protection and settings switches recover af
   await page.goto(`${baseUrl}/antivirus`);
   await page.getByRole("heading", { name: "Built-In Antivirus" }).waitFor();
 
-  await page.getByText("Protected", { exact: true }).waitFor();
+  const protectionStatus = page.getByTestId("antivirus-protection-status");
+  await protectionStatus.getByText("Protected", { exact: true }).waitFor();
   assert.equal(
     await page.getByTestId("switch-antivirus-enabled").count(),
     0,
@@ -884,8 +885,8 @@ test("Antivirus dashboard summarizes protection and settings switches recover af
   await antivirusUpdate;
   await waitForAttribute(antivirusSwitch, "aria-checked", "false");
   await page.getByRole("tab", { name: "Dashboard" }).click();
-  await page.getByText("Unprotected", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
+  await protectionStatus.getByText("Unprotected", { exact: true }).waitFor();
+  assert.equal(await protectionStatus.getByText("Protected", { exact: true }).count(), 0);
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const antivirusEnableUpdate = page.waitForRequest((request) =>
@@ -894,8 +895,9 @@ test("Antivirus dashboard summarizes protection and settings switches recover af
   await antivirusSwitch.click();
   await antivirusEnableUpdate;
   await waitForAttribute(antivirusSwitch, "aria-checked", "true");
-  await page.getByText("Protected", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
+  await page.getByRole("tab", { name: "Dashboard" }).click();
+  await protectionStatus.getByText("Protected", { exact: true }).waitFor();
+  assert.equal(await protectionStatus.getByText("Unprotected", { exact: true }).count(), 0);
 
   await page.getByRole("tab", { name: "Settings" }).click();
   const malwareSwitch = page.getByTestId("switch-malware-settings");

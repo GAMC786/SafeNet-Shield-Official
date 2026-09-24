@@ -770,6 +770,7 @@ export default function Antivirus() {
                    <Badge
                      variant={antivirusEnabled ? "default" : "outline"}
                      className={antivirusEnabled ? "bg-emerald-600 text-white" : "border-destructive/40 text-destructive"}
+                     data-testid="antivirus-protection-status"
                    >
                      {antivirusEnabled ? "Protected" : "Unprotected"}
                    </Badge>
