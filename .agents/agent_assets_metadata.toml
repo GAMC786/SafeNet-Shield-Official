@@ -98,3 +98,17 @@ mtime_ms = 1789715900686
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/86d6c366-c326-42f0-ad4c-2e2957fa7ebf/a91f2a2d-8963-4bfa-add0-844f4d7ebb79"
 storage_version_token = "1789715907144558"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "4x6i2iU3UXoYpb-dUV5OK"
+uri = "file://artifacts/safenet-app-lock-physical-preflight-evidence.tar.gz"
+type = "unspecified"
+title = "SafeNet App Lock physical preflight evidence"
+description = "Bounded evidence for the current verification attempt. It records BLOCKED / NO_PHYSICAL_RUNNER with ADB, runner, and GitHub self-hosted runner diagnostics; no device result is claimed."
+logical_id = "9e957334-e0e4-42da-9009-52bdbbdb1efe"
+content_hash = "sha256:77705f847d5cd7b358ac0b8b8e8440a58c88f2acc1a572a7f9225c605c3798d8"
+size = 1164
+mtime_ms = 1790215932694
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/9e957334-e0e4-42da-9009-52bdbbdb1efe/6b72884a-df25-470f-a881-3a0bce147297"
+storage_version_token = "1790215963219032"
+content_type = "application/octet-stream"
