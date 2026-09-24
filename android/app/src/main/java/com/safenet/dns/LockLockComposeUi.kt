@@ -18,8 +18,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +53,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,6 +83,7 @@ import androidx.compose.ui.platform.setContent
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -101,8 +105,17 @@ private enum class LockLockDialog {
     CHANGE_PASSCODE,
 }
 
-private val LockLockLightPrimary = Color(0xFF6750A4)
-private val LockLockDarkPrimary = Color(0xFFD0BCFF)
+private val SafeNetBackground = Color(0xFF0F172A)
+private val SafeNetSurface = Color(0xFF182135)
+private val SafeNetSurfaceAlt = Color(0xFF1E293B)
+private val SafeNetPrimary = Color(0xFF3B82F6)
+private val SafeNetAccent = Color(0xFF38BDF8)
+private val SafeNetText = Color(0xFFF8FAFC)
+private val SafeNetBody = Color(0xFFCBD5E1)
+private val SafeNetMuted = Color(0xFF94A3B8)
+private val SafeNetBorder = Color(0xFF334155)
+private val SafeNetSuccess = Color(0xFF34D399)
+private val SafeNetDanger = Color(0xFFF87171)
 
 object LockLockComposeUi {
     @JvmStatic
@@ -118,13 +131,53 @@ object LockLockComposeUi {
 
 @Composable
 private fun LockLockTheme(content: @Composable () -> Unit) {
-    val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
-    val colors = if (darkTheme) {
-        androidx.compose.material3.darkColorScheme(primary = LockLockDarkPrimary)
-    } else {
-        androidx.compose.material3.lightColorScheme(primary = LockLockLightPrimary)
-    }
-    MaterialTheme(colorScheme = colors, content = content)
+    val colors = androidx.compose.material3.darkColorScheme(
+        primary = SafeNetPrimary,
+        onPrimary = SafeNetText,
+        primaryContainer = Color(0xFF1E3A8A),
+        onPrimaryContainer = SafeNetText,
+        secondary = SafeNetAccent,
+        onSecondary = SafeNetBackground,
+        secondaryContainer = Color(0xFF164E63),
+        onSecondaryContainer = SafeNetText,
+        background = SafeNetBackground,
+        onBackground = SafeNetText,
+        surface = SafeNetSurface,
+        onSurface = SafeNetText,
+        surfaceVariant = SafeNetSurfaceAlt,
+        onSurfaceVariant = SafeNetBody,
+        outline = SafeNetBorder,
+        outlineVariant = SafeNetBorder.copy(alpha = 0.65f),
+        error = SafeNetDanger,
+        onError = SafeNetBackground,
+    )
+    MaterialTheme(
+        colorScheme = colors,
+        shapes = androidx.compose.material3.Shapes(
+            small = RoundedCornerShape(8.dp),
+            medium = RoundedCornerShape(12.dp),
+            large = RoundedCornerShape(18.dp),
+        ),
+        typography = MaterialTheme.typography.copy(
+            headlineSmall = MaterialTheme.typography.headlineSmall.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            ),
+            titleLarge = MaterialTheme.typography.titleLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            ),
+            titleMedium = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            ),
+            labelLarge = MaterialTheme.typography.labelLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            ),
+        ),
+        content = content,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,11 +248,18 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
             TopAppBar(
                 title = {
                     Column {
+                        Text(
+                            "SAFENET  /  APP LOCK",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SafeNetAccent,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                        )
                         Text("Select Apps", fontWeight = FontWeight.Bold)
                         Text(
                             if (protectionEnabled) "Protection is active" else "Protection is ready",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (protectionEnabled) SafeNetSuccess else SafeNetMuted,
                         )
                     }
                 },
@@ -209,7 +269,8 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = SafeNetBackground.copy(alpha = 0.96f),
+                    scrolledContainerColor = SafeNetSurface,
                 ),
             )
         },
@@ -220,8 +281,9 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f),
+                            Color(0xFF172554),
+                            SafeNetBackground,
+                            Color(0xFF020617),
                         )
                     )
                 )
@@ -303,6 +365,17 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                     .fillMaxWidth()
                     .padding(top = 8.dp, bottom = 8.dp),
                 singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = SafeNetAccent,
+                    unfocusedBorderColor = SafeNetBorder,
+                    focusedLabelColor = SafeNetAccent,
+                    unfocusedLabelColor = SafeNetMuted,
+                    cursorColor = SafeNetAccent,
+                    focusedLeadingIconColor = SafeNetAccent,
+                    unfocusedLeadingIconColor = SafeNetMuted,
+                    focusedTrailingIconColor = SafeNetAccent,
+                    unfocusedTrailingIconColor = SafeNetMuted,
+                ),
             )
 
             LazyColumn(
@@ -330,7 +403,12 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
             if (configured) {
                 Button(
                     onClick = { },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, SafeNetBorder, RoundedCornerShape(12.dp)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = SafeNetAccent,
+                    ),
                 ) {
                     Text("Add protected apps")
                 }
@@ -342,6 +420,10 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp, bottom = 12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SafeNetPrimary,
+                        contentColor = SafeNetText,
+                    ),
                 ) {
                     Text("Protect selected apps")
                 }
@@ -436,16 +518,25 @@ private fun SetupCard(
             .fillMaxWidth()
             .padding(top = 8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+            containerColor = SafeNetSurface.copy(alpha = 0.96f),
         ),
         shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, SafeNetAccent.copy(alpha = 0.45f)),
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Icon(
                 Icons.Default.Build,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = SafeNetAccent,
                 modifier = Modifier.size(32.dp),
+            )
+            Text(
+                "SECURE LOCAL CONTROL",
+                style = MaterialTheme.typography.labelSmall,
+                color = SafeNetAccent,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp),
             )
             Text(
                 "Set up App Lock",
@@ -464,6 +555,7 @@ private fun SetupCard(
                 label = { Text("Passcode") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                colors = safeNetFieldColors(),
             )
             OutlinedTextField(
                 value = confirmation,
@@ -473,6 +565,7 @@ private fun SetupCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 singleLine = true,
+                colors = safeNetFieldColors(),
             )
             OutlinedTextField(
                 value = question,
@@ -482,6 +575,7 @@ private fun SetupCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 singleLine = true,
+                colors = safeNetFieldColors(),
             )
             OutlinedTextField(
                 value = answer,
@@ -491,6 +585,7 @@ private fun SetupCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 singleLine = true,
+                colors = safeNetFieldColors(),
             )
             if (errorMessage.isNotEmpty()) {
                 Text(
@@ -505,6 +600,10 @@ private fun SetupCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SafeNetPrimary,
+                    contentColor = SafeNetText,
+                ),
             ) {
                 Text("Set passcode and enable AppLock")
             }
@@ -544,12 +643,21 @@ private fun PermissionSummary(
             .fillMaxWidth()
             .padding(top = 8.dp),
         shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = SafeNetSurface.copy(alpha = 0.96f)),
+        border = BorderStroke(1.dp, SafeNetBorder),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                "Permissions",
+                "ANDROID PERMISSION GATE",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = SafeNetAccent,
+            )
+            Text(
+                "Protection needs these Android handoffs before monitored app launches can be secured.",
+                style = MaterialTheme.typography.bodySmall,
+                color = SafeNetMuted,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
             )
             permissions.forEach { (title, granted, action) ->
                 PermissionRow(title, granted, action)
@@ -582,7 +690,7 @@ private fun PermissionRow(title: String, granted: Boolean, onClick: () -> Unit) 
         Icon(
             if (granted) Icons.Default.Lock else Icons.Default.Person,
             contentDescription = null,
-            tint = if (granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            tint = if (granted) SafeNetSuccess else SafeNetDanger,
             modifier = Modifier.size(24.dp),
         )
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
@@ -590,7 +698,7 @@ private fun PermissionRow(title: String, granted: Boolean, onClick: () -> Unit) 
             Text(
                 if (granted) "Ready" else "Tap to open Android settings",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (granted) SafeNetSuccess else SafeNetMuted,
             )
         }
     }
@@ -637,6 +745,10 @@ private fun LockLockAppSelectionItem(
                 },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(
+            1.dp,
+            if (selected) SafeNetAccent.copy(alpha = 0.72f) else SafeNetBorder,
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 6.dp else 2.dp),
     ) {
         Row(
@@ -701,6 +813,11 @@ private fun LockLockSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit)
                 else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                 RoundedCornerShape(16.dp),
             )
+            .border(
+                1.dp,
+                if (checked) SafeNetAccent else SafeNetBorder,
+                RoundedCornerShape(16.dp),
+            )
             .clickable { onCheckedChange(!checked) }
             .padding(4.dp),
     ) {
@@ -732,6 +849,8 @@ private fun LockLockSettingsDialog(
                 .fillMaxWidth(0.9f)
                 .padding(16.dp),
             shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SafeNetSurface),
+            border = BorderStroke(1.dp, SafeNetAccent.copy(alpha = 0.55f)),
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Row(
@@ -749,8 +868,9 @@ private fun LockLockSettingsDialog(
                     }
                 }
                 Text(
-                    "Security",
-                    color = MaterialTheme.colorScheme.primary,
+                        "SECURITY CONTROL",
+                        color = SafeNetAccent,
+                        fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 )
@@ -813,6 +933,10 @@ private fun SettingAction(
             },
         ),
         shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(
+                1.dp,
+                if (checked) SafeNetAccent.copy(alpha = 0.55f) else SafeNetBorder,
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -873,6 +997,7 @@ private fun ChangePasscodeDialog(
                     onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) pin = it },
                     label = { Text("New passcode") },
                     singleLine = true,
+                    colors = safeNetFieldColors(),
                 )
                 OutlinedTextField(
                     value = confirmation,
@@ -882,6 +1007,7 @@ private fun ChangePasscodeDialog(
                     label = { Text("Confirm passcode") },
                     singleLine = true,
                     modifier = Modifier.padding(top = 8.dp),
+                    colors = safeNetFieldColors(),
                 )
             }
         },
@@ -941,6 +1067,19 @@ private fun LockLockRecoveryDialog(
         },
     )
 }
+
+@Composable
+private fun safeNetFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = SafeNetAccent,
+    unfocusedBorderColor = SafeNetBorder,
+    focusedLabelColor = SafeNetAccent,
+    unfocusedLabelColor = SafeNetMuted,
+    cursorColor = SafeNetAccent,
+    focusedTextColor = SafeNetText,
+    unfocusedTextColor = SafeNetText,
+    focusedPlaceholderColor = SafeNetMuted,
+    unfocusedPlaceholderColor = SafeNetMuted,
+)
 
 private fun queryLaunchableApps(context: Context): List<LockLockApp> {
     val launcher = Intent(Intent.ACTION_MAIN).apply {

@@ -255,6 +255,17 @@ test("the active AppLock configuration is the LockLock Compose integration", () 
   assert.match(lockLockNotice, /github\.com\/nethical6\/LockLock/);
 });
 
+test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
+  assert.match(composeUi, /SafeNetBackground/);
+  assert.match(composeUi, /SafeNetPrimary/);
+  assert.match(composeUi, /SafeNetAccent/);
+  assert.match(composeUi, /FontFamily\.Monospace/);
+  assert.match(composeUi, /BorderStroke/);
+  assert.match(composeUi, /ANDROID PERMISSION GATE/);
+  assert.match(composeUi, /SECURE LOCAL CONTROL/);
+  assert.match(composeUi, /safeNetFieldColors/);
+});
+
 test("configured users authenticate before opening AppLock management", () => {
   assert.match(mainActivity, /AppLockManager\.MODE_UNLOCK/);
   assert.match(mainActivity, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
