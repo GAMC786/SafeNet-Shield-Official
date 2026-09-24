@@ -219,7 +219,7 @@ export default function Dashboard() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    AppLock-style protection with a local passcode and Accessibility Service
+                    SafeNet's AppLock-style protection with a local passcode and Accessibility Service using LockLock via GitHub
                 </p>
               </div>
             </div>
