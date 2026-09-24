@@ -169,6 +169,7 @@ test("Tailscale UI separates control-plane health from this device and discloses
   assert.match(dashboardSource, /hidden sm:inline" aria-hidden="true">Device:/);
   assert.match(dashboardSource, /\{tailscaleDeviceStatusLabel\}/);
   assert.match(dashboardSource, /button-tailscale-connect/);
+  assert.match(dashboardSource, /switch-tailscale-device-vpn/);
   assert.match(dashboardSource, /tailscale-vpn-options/);
   assert.match(dashboardSource, /select-tailscale-exit-node/);
   assert.match(dashboardSource, /switch-tailscale-accept-routes/);

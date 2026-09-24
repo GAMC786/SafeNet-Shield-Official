@@ -326,31 +326,42 @@ export default function Dashboard() {
             {tailscaleVpn.isAndroid ? (
               <div className="space-y-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-foreground">This device’s VPN connection</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Android will ask before SafeNet creates a VPN connection. Tailscale device status is separate from the control-plane check above.
                     </p>
                   </div>
-                  <Button
-                    variant={tailscaleVpn.status?.connected ? "destructive" : "default"}
-                    size="sm"
-                    onClick={
-                      tailscaleVpn.status?.connected
-                        ? () => void runTailscaleDisconnect()
-                        : requestTailscaleConnect
-                    }
-                    disabled={!tailscaleVpn.status?.supported || tailscaleActionPending}
-                    data-testid="button-tailscale-connect"
-                  >
-                    {tailscaleActionPending
-                      ? "Working…"
-                      : tailscaleVpn.status?.connected
-                        ? "Disconnect"
-                        : tailscaleVpn.status?.loginRequired
-                          ? "Continue sign-in"
-                          : "Connect"}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {!tailscaleVpn.status?.connected && tailscaleVpn.status?.loginRequired && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={requestTailscaleConnect}
+                        disabled={!tailscaleVpn.status?.supported || tailscaleActionPending}
+                        data-testid="button-tailscale-connect"
+                      >
+                        {tailscaleActionPending ? "Working…" : "Continue sign-in"}
+                      </Button>
+                    )}
+                    <Switch
+                      checked={tailscaleVpn.status?.connected === true}
+                      onCheckedChange={(enabled) => {
+                        if (enabled) {
+                          requestTailscaleConnect();
+                        } else {
+                          void runTailscaleDisconnect();
+                        }
+                      }}
+                      disabled={
+                        !tailscaleVpn.status?.supported
+                        || tailscaleActionPending
+                        || (!tailscaleVpn.status?.connected && tailscaleVpn.status?.loginRequired === true)
+                      }
+                      aria-label={`Tailscale device VPN ${tailscaleDeviceStatusLabel}`}
+                      data-testid="switch-tailscale-device-vpn"
+                    />
+                  </div>
                 </div>
 
                 {(tailscaleActionError || tailscaleVpn.status?.error) && (
@@ -428,9 +439,17 @@ export default function Dashboard() {
                 )}
               </div>
             ) : (
-              <p className="border-t border-white/10 pt-3 text-xs text-muted-foreground">
-                Device VPN controls are available in SafeNet for Android 8.0 and later.
-              </p>
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                  Device VPN controls are available in SafeNet for Android 8.0 and later.
+                </p>
+                <Switch
+                  checked={tailscaleVpn.status?.connected === true}
+                  disabled
+                  aria-label={`Tailscale device VPN ${tailscaleDeviceStatusLabel}`}
+                  data-testid="switch-tailscale-device-vpn"
+                />
+              </div>
             )}
           </div>
         </CyberCard>
