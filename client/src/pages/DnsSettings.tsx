@@ -466,14 +466,6 @@ export default function DnsSettings() {
               <h2 className="font-display text-sm font-bold uppercase tracking-wider text-white">
                 SafeNet Private DNS
               </h2>
-              <Badge
-                variant="outline"
-                className={privateDnsStatusClassName}
-                aria-live="polite"
-              >
-                <span aria-hidden="true" className={`mr-1.5 h-2 w-2 rounded-full ${privateDnsStatusDotClassName}`} />
-                {privateDnsStatusLabel}
-              </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {!privateDns.supported
@@ -483,15 +475,25 @@ export default function DnsSettings() {
                   || "Android Private DNS uses encrypted DNS-over-TLS without creating a VPN."}
             </p>
           </div>
-          {privateDns.supported && privateDns.status?.supported !== false && (
-            <Switch
-              checked={privateDnsConnected}
-              onCheckedChange={handlePrivateDnsSwitchChange}
-              disabled={privateDns.isBusy || privateDns.status?.supported !== true}
-              aria-label={`SafeNet Private DNS ${privateDnsConnected ? "Connected" : "Off"}`}
-              data-testid="switch-safe-net-private-dns"
-            />
-          )}
+          <div className="flex w-full items-center justify-end gap-3 sm:w-auto">
+            <Badge
+              variant="outline"
+              className={privateDnsStatusClassName}
+              aria-live="polite"
+            >
+              <span aria-hidden="true" className={`mr-1.5 h-2 w-2 rounded-full ${privateDnsStatusDotClassName}`} />
+              {privateDnsStatusLabel}
+            </Badge>
+            {privateDns.supported && privateDns.status?.supported !== false && (
+              <Switch
+                checked={privateDnsConnected}
+                onCheckedChange={handlePrivateDnsSwitchChange}
+                disabled={privateDns.isBusy || privateDns.status?.supported !== true}
+                aria-label={`SafeNet Private DNS ${privateDnsConnected ? "Connected" : "Off"}`}
+                data-testid="switch-safe-net-private-dns"
+              />
+            )}
+          </div>
         </div>
         {privateDns.supported && !privateDns.expectedHostname && (
           <p className="mt-2 text-xs text-destructive">
