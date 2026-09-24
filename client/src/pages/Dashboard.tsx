@@ -111,8 +111,8 @@ export default function Dashboard() {
         status={isProtected ? "active" : "unprotected"}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <CyberCard className="flex min-h-[104px] items-center">
+      <div className="grid grid-cols-1 gap-4">
+        <CyberCard className="flex min-h-[104px] w-full items-center">
           <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
             <div className="flex min-w-0 items-center gap-2">
               <Music className="h-4 w-4 shrink-0 text-primary" />
@@ -130,7 +130,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <CyberCard className="flex min-h-[104px] items-center">
+        <CyberCard className="flex min-h-[104px] w-full items-center">
           <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
