@@ -168,7 +168,7 @@ export default function DnsSettings() {
   };
 
   const handleStartFiltering = async (server: DnsServer) => {
-    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
+    if (!privateDnsEulaAccepted) {
       setPendingPrivateDnsServer(server);
       setPendingPrivateDnsAction("settings");
       setPrivateDnsEulaOpen(true);
@@ -235,7 +235,7 @@ export default function DnsSettings() {
       setOneTapDialogOpen(true);
       return;
     }
-    if (!privateDnsEulaAccepted && !privateDns.status?.running) {
+    if (!privateDnsEulaAccepted) {
       setPendingPrivateDnsServer(activeDns ?? null);
       setPendingPrivateDnsAction("oneTap");
       setPrivateDnsEulaOpen(true);
@@ -465,6 +465,17 @@ export default function DnsSettings() {
             </Button>
           </div>
         )}
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto px-0 py-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
+            onClick={() => setPrivateDnsEulaOpen(true)}
+            data-testid="button-view-private-dns-eula"
+          >
+            View SafeNet Private DNS EULA
+          </Button>
+        </div>
       </CyberCard>
 
       <CyberCard className="border-primary/20">
