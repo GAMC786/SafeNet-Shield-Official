@@ -90,3 +90,4 @@
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
 - [Tailscale hosted control plane](tailscale-hosted-control-plane.md) — SafeNet uses scoped OAuth for hosted status; Android mesh evidence must prove the real VPN route and peer probe.
+- [Tailscale Go working directory](tailscale-go-wrapper-working-directory.md) — enter the Android submodule before Make; `make -C` can preserve the caller's PWD and select the wrong Go toolchain.
