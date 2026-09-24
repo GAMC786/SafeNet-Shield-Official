@@ -29,27 +29,43 @@ export function TailscaleEulaDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            Tailscale Mesh VPN EULA
+            Tailscale VPN Use Notice
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2 text-left text-sm leading-6">
               <p>
-                SafeNet displays the status and device count for the Tailscale
-                tailnet configured by your administrator and can open the
-                Tailscale admin console.
+                SafeNet includes the upstream Tailscale Android networking
+                engine. When you connect, SafeNet uses Android’s VPN service
+                to route this device’s traffic through your Tailscale network.
+                Tailscale handles device authentication, peer connections, and
+                encrypted tunnel traffic.
               </p>
               <p>
-                SafeNet does not create Tailscale accounts, enroll your device,
-                establish a Tailscale VPN connection, or route your traffic
-                through Tailscale.
+                Tailscale sign-in opens in your browser. You must be authorized
+                to join the selected tailnet. Tailscale’s terms and privacy
+                practices apply to its service.
+                {" "}
+                <a
+                  href="https://tailscale.com/licenses/android"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline underline-offset-2"
+                >
+                  Tailscale Android notices
+                </a>
+                .
               </p>
               <p>
-                Tailscale is a third-party service, and its own terms govern its
-                use. Continue only if you are authorized to access this tailnet.
+                Android allows one active VPN service at a time, so connecting
+                may replace another VPN. Exit-node, subnet-route, and Tailscale
+                DNS options affect which traffic and DNS requests use the
+                tailnet. SafeNet’s Android Private DNS setting is separate and
+                remains managed by Android.
               </p>
               <p className="font-medium text-foreground">
-                By selecting “Agree &amp; Continue,” you acknowledge this notice
-                and open the Tailscale admin console in a new tab.
+                By selecting “Agree &amp; Continue,” you acknowledge this
+                notice. Android will show its VPN permission prompt the first
+                time you connect.
               </p>
             </div>
           </AlertDialogDescription>

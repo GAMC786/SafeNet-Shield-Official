@@ -27,6 +27,30 @@ const manifestSource = await readFile(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
 );
+const androidVariablesSource = await readFile(
+  new URL("../android/variables.gradle", import.meta.url),
+  "utf8",
+);
+const tailscalePluginSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscalePlugin.java", import.meta.url),
+  "utf8",
+);
+const tailscaleServiceSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscaleVpnService.java", import.meta.url),
+  "utf8",
+);
+const tailscaleAppSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscaleApp.java", import.meta.url),
+  "utf8",
+);
+const dashboardSource = await readFile(
+  new URL("../client/src/pages/Dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const tailscaleEulaSource = await readFile(
+  new URL("../client/src/components/TailscaleEulaDialog.tsx", import.meta.url),
+  "utf8",
+);
 const releaseSmokeSource = await readFile(
   new URL("./android-smoke-test.sh", import.meta.url),
   "utf8",
@@ -112,13 +136,43 @@ test("the native plugin keeps Private DNS and shared features", () => {
   }
   assert.doesNotMatch(pluginSource, /SafeNetDnsVpnService/);
   assert.doesNotMatch(pluginSource, /SafeNetWireGuard|startWireGuard|stopWireGuard/);
+  for (const method of ["getStatus", "connect", "disconnect", "setOptions", "openLoginUrl"]) {
+    assert.match(tailscalePluginSource, new RegExp(`void ${method}\\(`));
+  }
+  assert.match(tailscalePluginSource, /\/localapi\/v0\/status/);
+  assert.match(tailscalePluginSource, /\/localapi\/v0\/start/);
+  assert.match(tailscalePluginSource, /\/localapi\/v0\/prefs/);
+  assert.match(tailscalePluginSource, /ExitNodeID/);
+  assert.match(tailscalePluginSource, /RouteAllSet/);
+  assert.match(tailscalePluginSource, /CorpDNSSet/);
+  assert.match(tailscalePluginSource, /ExitNodeAllowLANAccessSet/);
+  assert.match(tailscalePluginSource, /ExitNodeIDSet/);
+  assert.match(tailscaleAppSource, /WantRunningSet/);
+  assert.match(tailscalePluginSource, /TAILSCALE_UNSUPPORTED/);
+  assert.match(tailscalePluginSource, /SDK_INT < 26/);
 });
 
-test("the Android manifest does not declare a DNS VPN service", () => {
-  assert.doesNotMatch(manifestSource, /android\.net\.VpnService/);
-  assert.doesNotMatch(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
+test("the Android manifest declares only the real Tailscale VPN service, not a SafeNet DNS VPN", () => {
+  assert.match(manifestSource, /android:name="\.SafeNetTailscaleVpnService"/);
+  assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
+  assert.match(manifestSource, /android\.permission\.FOREGROUND_SERVICE_SYSTEM_EXEMPTED/);
+  assert.match(manifestSource, /tools:overrideLibrary="com\.tailscale\.ipn"/);
+  assert.match(androidVariablesSource, /minSdkVersion\s*=\s*24/);
+  assert.match(tailscaleServiceSource, /implements libtailscale\.IPNService/);
   assert.doesNotMatch(manifestSource, /SafeNetDnsVpnService/);
   assert.doesNotMatch(manifestSource, /SafeNetVpnTileService|SafeNetWireGuard/);
+});
+
+test("Tailscale UI separates control-plane health from this device and discloses VPN effects", () => {
+  assert.match(dashboardSource, /Control plane: \{tailscaleStatusLabel\}/);
+  assert.match(dashboardSource, /Device: \{tailscaleDeviceStatusLabel\}/);
+  assert.match(dashboardSource, /button-tailscale-connect/);
+  assert.match(dashboardSource, /tailscale-vpn-options/);
+  assert.match(dashboardSource, /select-tailscale-exit-node/);
+  assert.match(dashboardSource, /switch-tailscale-accept-routes/);
+  assert.match(dashboardSource, /switch-tailscale-dns/);
+  assert.match(tailscaleEulaSource, /Android allows one active VPN service at a time/);
+  assert.match(tailscaleEulaSource, /Private DNS setting is separate/);
 });
 
 test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS package state", () => {

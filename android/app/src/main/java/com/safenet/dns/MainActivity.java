@@ -42,6 +42,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
+        registerPlugin(SafeNetTailscalePlugin.class);
         super.onCreate(savedInstanceState);
 
         Log.i(TAG, "SafeNet activity created");

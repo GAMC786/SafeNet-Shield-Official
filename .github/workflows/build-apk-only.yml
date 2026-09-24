@@ -19,6 +19,14 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go for the pinned Tailscale engine
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: third_party/tailscale-android/go.mod
+          cache-dependency-path: third_party/tailscale-android/go.sum
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

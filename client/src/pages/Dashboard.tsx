@@ -15,13 +15,13 @@ import { useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
-import { useTailscaleStatus } from "@/hooks/use-tailscale";
+import { useTailscaleNative, useTailscaleStatus } from "@/hooks/use-tailscale";
 import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { isProtectionActive } from "@/lib/protection-status";
 
-const TAILSCALE_EULA_VERSION = "1.0";
+const TAILSCALE_EULA_VERSION = "2.0";
 const TAILSCALE_EULA_STORAGE_KEY = "safenet-tailscale-eula-version";
 
 function hasAcceptedTailscaleEula() {
@@ -44,8 +44,12 @@ export default function Dashboard() {
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
   const tailscale = useTailscaleStatus();
+  const tailscaleVpn = useTailscaleNative();
   const [tailscaleEulaOpen, setTailscaleEulaOpen] = useState(false);
   const [tailscaleEulaAccepted, setTailscaleEulaAccepted] = useState(hasAcceptedTailscaleEula);
+  const [pendingTailscaleAction, setPendingTailscaleAction] = useState<"connect" | "admin" | null>(null);
+  const [tailscaleActionError, setTailscaleActionError] = useState<string | null>(null);
+  const [tailscaleActionPending, setTailscaleActionPending] = useState(false);
   const tailscaleDashboardUrl = tailscale.data?.dashboardUrl ?? "https://login.tailscale.com/admin/machines";
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
@@ -80,6 +84,24 @@ export default function Dashboard() {
     : tailscale.data?.status === "unavailable"
       ? "border-red-400/40 bg-red-400/10 text-red-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
+  const tailscaleDeviceStatusLabel = !tailscaleVpn.isAndroid
+    ? "Android only"
+    : tailscaleVpn.isLoading
+      ? "Checking"
+      : tailscaleVpn.status?.supported === false
+        ? "Android 8+ required"
+        : tailscaleVpn.error || tailscaleVpn.status?.error
+          ? "Unavailable"
+          : tailscaleVpn.status?.connected
+            ? "Connected"
+            : tailscaleVpn.status?.loginRequired
+              ? "Login required"
+              : "Disconnected";
+  const tailscaleDeviceStatusClass = tailscaleVpn.status?.connected
+    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+    : tailscaleDeviceStatusLabel === "Unavailable"
+      ? "border-red-400/40 bg-red-400/10 text-red-300"
+      : "border-white/15 bg-white/5 text-muted-foreground";
   
   const allowedQueries = Math.max((stats?.totalQueries ?? 0) - (stats?.blockedQueries ?? 0), 0);
   const blockRate = stats?.totalQueries
@@ -109,9 +131,51 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
+  const runTailscaleConnect = async () => {
+    setTailscaleActionError(null);
+    setTailscaleActionPending(true);
+    try {
+      const result = await tailscaleVpn.connect();
+      if (result.error) setTailscaleActionError(result.error);
+    } catch (error) {
+      setTailscaleActionError(error instanceof Error ? error.message : "Could not connect to Tailscale.");
+    } finally {
+      setTailscaleActionPending(false);
+    }
+  };
+
+  const runTailscaleDisconnect = async () => {
+    setTailscaleActionError(null);
+    setTailscaleActionPending(true);
+    try {
+      const result = await tailscaleVpn.disconnect();
+      if (result.error) setTailscaleActionError(result.error);
+    } catch (error) {
+      setTailscaleActionError(error instanceof Error ? error.message : "Could not disconnect from Tailscale.");
+    } finally {
+      setTailscaleActionPending(false);
+    }
+  };
+
+  const updateTailscaleOptions = async (
+    options: Parameters<typeof tailscaleVpn.setOptions>[0],
+  ) => {
+    setTailscaleActionError(null);
+    setTailscaleActionPending(true);
+    try {
+      const result = await tailscaleVpn.setOptions(options);
+      if (result.error) setTailscaleActionError(result.error);
+    } catch (error) {
+      setTailscaleActionError(error instanceof Error ? error.message : "Could not update Tailscale options.");
+    } finally {
+      setTailscaleActionPending(false);
+    }
+  };
+
   const openTailscaleDashboard = () => {
     if (tailscaleDashboardUrl) {
       if (!tailscaleEulaAccepted) {
+        setPendingTailscaleAction("admin");
         setTailscaleEulaOpen(true);
         return;
       }
@@ -119,6 +183,22 @@ export default function Dashboard() {
       return;
     }
     void tailscale.refetch();
+  };
+
+  const requestTailscaleConnect = () => {
+    if (!tailscaleEulaAccepted) {
+      setPendingTailscaleAction("connect");
+      setTailscaleEulaOpen(true);
+      return;
+    }
+    if (tailscaleVpn.status?.loginRequired && tailscaleVpn.status.authUrl) {
+      setTailscaleActionError(null);
+      void tailscaleVpn.openLoginUrl(tailscaleVpn.status.authUrl).catch((error) => {
+        setTailscaleActionError(error instanceof Error ? error.message : "Could not open Tailscale sign-in.");
+      });
+      return;
+    }
+    void runTailscaleConnect();
   };
 
   const acceptTailscaleEula = () => {
@@ -129,7 +209,11 @@ export default function Dashboard() {
     }
     setTailscaleEulaAccepted(true);
     setTailscaleEulaOpen(false);
-    if (tailscaleDashboardUrl) {
+    const action = pendingTailscaleAction;
+    setPendingTailscaleAction(null);
+    if (action === "connect") {
+      void runTailscaleConnect();
+    } else if (action === "admin" && tailscaleDashboardUrl) {
       window.open(tailscaleDashboardUrl, "_blank", "noopener,noreferrer");
     }
   };
@@ -162,64 +246,182 @@ export default function Dashboard() {
         </CyberCard>
 
         <CyberCard className="flex min-h-[104px] w-full items-center">
-          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Radio className="h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm font-medium text-foreground">Tailscale Mesh VPN with WireGuard</p>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                  {tailscale.data?.message ?? "Tailscale tailnet is not configured"}
-              </p>
-              {tailscale.data?.deviceCount !== null && tailscale.data?.deviceCount !== undefined && (
-                <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
-                   {tailscale.data.deviceCount} registered device{tailscale.data.deviceCount === 1 ? "" : "s"}
+          <div className="w-full space-y-4 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Radio className="h-4 w-4 shrink-0 text-primary" />
+                  <p className="text-sm font-medium text-foreground">Tailscale VPN</p>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {tailscale.data?.message ?? "Tailscale control-plane status is unavailable"}
                 </p>
-              )}
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                  Status
-                </span>
-                <Badge
-                  variant="outline"
-                  className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
-                  data-testid="tailscale-status-indicator"
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${
-                    tailscale.data?.status === "online"
-                      ? "bg-emerald-400"
-                      : tailscale.data?.status === "unavailable"
-                        ? "bg-red-400"
-                        : "bg-muted-foreground"
-                  }`} />
-                  {tailscaleStatusLabel}
-                </Badge>
+                {tailscale.data?.deviceCount !== null && tailscale.data?.deviceCount !== undefined && (
+                  <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
+                    {tailscale.data.deviceCount} registered device{tailscale.data.deviceCount === 1 ? "" : "s"}
+                  </p>
+                )}
+                {tailscaleVpn.status?.selfName && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    This device: {tailscaleVpn.status.selfName}
+                    {tailscaleVpn.status.tailnetName ? ` · ${tailscaleVpn.status.tailnetName}` : ""}
+                  </p>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => void tailscale.refetch()}
-                  disabled={tailscale.isFetching}
-                  aria-label="Refresh Tailscale status"
-                  data-testid="button-refresh-tailscale"
-                >
-                  <RefreshCw className={`h-4 w-4 ${tailscale.isFetching ? "animate-spin" : ""}`} />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openTailscaleDashboard}
-                  disabled={!tailscaleDashboardUrl}
-                  data-testid="button-open-tailscale-dashboard"
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Open Tailscale Admin
-                </Button>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Badge
+                    variant="outline"
+                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
+                    data-testid="tailscale-control-plane-status"
+                  >
+                    Control plane: {tailscaleStatusLabel}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleDeviceStatusClass}`}
+                    data-testid="tailscale-device-status"
+                  >
+                    Device: {tailscaleDeviceStatusLabel}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      void tailscale.refetch();
+                      if (tailscaleVpn.isAndroid) void tailscaleVpn.refetch();
+                    }}
+                    disabled={tailscale.isFetching || tailscaleVpn.isFetching}
+                    aria-label="Refresh Tailscale status"
+                    data-testid="button-refresh-tailscale"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${tailscale.isFetching || tailscaleVpn.isFetching ? "animate-spin" : ""}`} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openTailscaleDashboard}
+                    disabled={!tailscaleDashboardUrl}
+                    data-testid="button-open-tailscale-dashboard"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Open Tailscale Admin
+                  </Button>
+                </div>
               </div>
             </div>
+
+            {tailscaleVpn.isAndroid ? (
+              <div className="space-y-3 border-t border-white/10 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">This device’s VPN connection</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Android will ask before SafeNet creates a VPN connection. Tailscale device status is separate from the control-plane check above.
+                    </p>
+                  </div>
+                  <Button
+                    variant={tailscaleVpn.status?.connected ? "destructive" : "default"}
+                    size="sm"
+                    onClick={
+                      tailscaleVpn.status?.connected
+                        ? () => void runTailscaleDisconnect()
+                        : requestTailscaleConnect
+                    }
+                    disabled={!tailscaleVpn.status?.supported || tailscaleActionPending}
+                    data-testid="button-tailscale-connect"
+                  >
+                    {tailscaleActionPending
+                      ? "Working…"
+                      : tailscaleVpn.status?.connected
+                        ? "Disconnect"
+                        : tailscaleVpn.status?.loginRequired
+                          ? "Continue sign-in"
+                          : "Connect"}
+                  </Button>
+                </div>
+
+                {(tailscaleActionError || tailscaleVpn.status?.error) && (
+                  <p className="text-xs text-red-300" role="alert" data-testid="tailscale-action-error">
+                    {tailscaleActionError ?? tailscaleVpn.status?.error}
+                  </p>
+                )}
+
+                {tailscaleVpn.status?.supported && (
+                  <details className="rounded-md border border-white/10 px-3 py-2" data-testid="tailscale-vpn-options">
+                    <summary className="cursor-pointer text-xs font-medium text-foreground">
+                      VPN options
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        Exit node
+                        <select
+                          className="rounded-md border border-white/15 bg-background px-2 py-2 text-sm text-foreground"
+                          aria-label="Tailscale exit node"
+                          value={tailscaleVpn.status.selectedExitNodeId ?? ""}
+                          disabled={tailscaleActionPending}
+                          onChange={(event) =>
+                            void updateTailscaleOptions({
+                              exitNodeId: event.currentTarget.value || null,
+                            })
+                          }
+                          data-testid="select-tailscale-exit-node"
+                        >
+                          <option value="">No exit node</option>
+                          {(tailscaleVpn.status.exitNodes ?? []).map((node) => (
+                            <option key={node.id} value={node.id}>
+                              {node.name || node.id}{node.online ? "" : " (offline)"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-muted-foreground">Accept subnet routes</span>
+                        <Switch
+                          checked={tailscaleVpn.status.acceptRoutes}
+                          disabled={tailscaleActionPending}
+                          onCheckedChange={(enabled) =>
+                            void updateTailscaleOptions({ acceptRoutes: enabled })
+                          }
+                          aria-label="Accept Tailscale subnet routes"
+                          data-testid="switch-tailscale-accept-routes"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-muted-foreground">Use Tailscale DNS</span>
+                        <Switch
+                          checked={tailscaleVpn.status.useTailscaleDNS}
+                          disabled={tailscaleActionPending}
+                          onCheckedChange={(enabled) =>
+                            void updateTailscaleOptions({ useTailscaleDNS: enabled })
+                          }
+                          aria-label="Use Tailscale DNS"
+                          data-testid="switch-tailscale-dns"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-muted-foreground">Allow local network access through exit node</span>
+                        <Switch
+                          checked={tailscaleVpn.status.allowLanAccess}
+                          disabled={tailscaleActionPending || !tailscaleVpn.status.selectedExitNodeId}
+                          onCheckedChange={(enabled) =>
+                            void updateTailscaleOptions({ allowLanAccess: enabled })
+                          }
+                          aria-label="Allow local network access through Tailscale exit node"
+                          data-testid="switch-tailscale-lan"
+                        />
+                      </div>
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : (
+              <p className="border-t border-white/10 pt-3 text-xs text-muted-foreground">
+                Device VPN controls are available in SafeNet for Android 8.0 and later.
+              </p>
+            )}
           </div>
         </CyberCard>
 

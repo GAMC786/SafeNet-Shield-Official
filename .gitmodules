@@ -1,0 +1,4 @@
+[submodule "third_party/tailscale-android"]
+	path = third_party/tailscale-android
+	url = https://github.com/tailscale/tailscale-android.git
+	branch = main

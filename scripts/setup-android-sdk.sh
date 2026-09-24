@@ -83,6 +83,7 @@ run_sdkmanager_install() {
 compile_sdk_version="$(sed -nE 's/^[[:space:]]*compileSdkVersion[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p' "$variables_file")"
 target_sdk_version="$(sed -nE 's/^[[:space:]]*targetSdkVersion[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p' "$variables_file")"
 build_tools_version="$(sed -nE "s/^[[:space:]]*androidBuildToolsVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
+tailscale_ndk_version="23.1.7779620"
 
 [[ "$compile_sdk_version" =~ ^[0-9]+$ ]] ||
     fail "Could not read a single compileSdkVersion from $variables_file."
@@ -124,6 +125,7 @@ packages=(
     "platform-tools"
     "platforms;android-$compile_sdk_version"
     "build-tools;$build_tools_version"
+    "ndk;$tailscale_ndk_version"
 )
 if [[ "$target_sdk_version" != "$compile_sdk_version" ]]; then
     packages+=("platforms;android-$target_sdk_version")
@@ -194,7 +196,8 @@ missing_packages=()
 for package_path in \
     "platform-tools" \
     "platforms/android-$compile_sdk_version" \
-    "build-tools/$build_tools_version"; do
+    "build-tools/$build_tools_version" \
+    "ndk/$tailscale_ndk_version"; do
     [[ -d "$sdk_root/$package_path" ]] || missing_packages+=("$package_path")
 done
 if [[ "$target_sdk_version" != "$compile_sdk_version" &&
@@ -211,4 +214,4 @@ if (( ${#missing_packages[@]} > 0 )); then
         "$last_install_status"
 fi
 
-echo "Android SDK is ready for compile SDK $compile_sdk_version, target SDK $target_sdk_version, and build-tools $build_tools_version."
+echo "Android SDK is ready for compile SDK $compile_sdk_version, target SDK $target_sdk_version, build-tools $build_tools_version, and NDK $tailscale_ndk_version."
