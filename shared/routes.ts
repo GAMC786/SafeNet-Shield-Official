@@ -11,7 +11,7 @@ import {
   activityLogSchema,
   firewallConfigSchema,
 } from './schema';
-import { netbirdStatusSchema } from './netbird';
+import { tailscaleStatusSchema } from './tailscale';
 
 export const errorSchemas = {
   validation: z.object({
@@ -169,12 +169,12 @@ export const api = {
       },
     },
   },
-  netbird: {
+  tailscale: {
     status: {
       method: 'GET' as const,
-      path: '/api/netbird/status',
+      path: '/api/tailscale/status',
       responses: {
-        200: netbirdStatusSchema,
+        200: tailscaleStatusSchema,
       },
     },
   },

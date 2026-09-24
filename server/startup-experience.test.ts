@@ -253,28 +253,28 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard opens NetBird Dashboard and reports NetBird status", () => {
-  const netbirdHookSource = readFileSync(
-    path.join(clientRoot, "src/hooks/use-netbird.ts"),
+test("the Dashboard opens Tailscale Admin and reports Tailscale status", () => {
+  const tailscaleHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-tailscale.ts"),
     "utf8",
   );
-  const netbirdServiceSource = readFileSync(
-    path.resolve(process.cwd(), "server/netbird-service.ts"),
+  const tailscaleServiceSource = readFileSync(
+    path.resolve(process.cwd(), "server/tailscale-service.ts"),
     "utf8",
   );
-  assert.match(dashboardSource, /useNetBirdStatus/);
-  assert.match(dashboardSource, /NetBird Mesh/);
-  assert.match(dashboardSource, /data-testid="button-open-netbird-dashboard"/);
-  assert.match(dashboardSource, /window\.open\(netbirdDashboardUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(dashboardSource, /data-testid="button-refresh-netbird"/);
+  assert.match(dashboardSource, /useTailscaleStatus/);
+  assert.match(dashboardSource, /Tailscale Mesh/);
+  assert.match(dashboardSource, /data-testid="button-open-tailscale-dashboard"/);
+  assert.match(dashboardSource, /window\.open\(tailscaleDashboardUrl, "_blank", "noopener,noreferrer"\)/);
+  assert.match(dashboardSource, /data-testid="button-refresh-tailscale"/);
   assert.doesNotMatch(
     dashboardSource,
     /WG-Easy|wireguardAdminUrl|switch-wireguard-ui|tunnelVerification/,
   );
-  assert.match(netbirdHookSource, /\/api\/netbird\/status/);
-  assert.match(netbirdServiceSource, /NETBIRD_MANAGEMENT_URL/);
-  assert.match(netbirdServiceSource, /NETBIRD_DASHBOARD_URL/);
-  assert.match(routesSource, /api\.netbird\.status\.path/);
+  assert.match(tailscaleHookSource, /\/api\/tailscale\/status/);
+  assert.match(tailscaleServiceSource, /TAILSCALE_TAILNET/);
+  assert.match(tailscaleServiceSource, /TAILSCALE_OAUTH_CLIENT_SECRET/);
+  assert.match(routesSource, /api\.tailscale\.status\.path/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {

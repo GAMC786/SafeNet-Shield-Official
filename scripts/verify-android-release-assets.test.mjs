@@ -127,33 +127,33 @@ fi
     join(assets, "SafeNet-DNS-Android-internet-share-verification.sha256"),
     `${internetShareVerificationDigest}  SafeNet-DNS-Android-internet-share-verification.txt\n`,
   );
-  const netbirdMeshVerificationPath = join(
+  const tailscaleMeshVerificationPath = join(
     assets,
-    "SafeNet-DNS-Android-netbird-mesh-verification.md",
+    "SafeNet-DNS-Android-tailscale-mesh-verification.md",
   );
   writeFileSync(
-    netbirdMeshVerificationPath,
+    tailscaleMeshVerificationPath,
     [
-      "### NetBird Android peer verification",
+      "### Tailscale Android peer verification",
       "",
       "- **Result:** `BLOCKED`",
-      "- **Bounded evidence:** [Download the NetBird verification report](https://github.com/example/safenet/releases/tag/v1.0.66)",
-      "- **Blocker:** `NETBIRD_MESH_EVIDENCE_MISSING`",
-      "- **Verified peer:** NetBird `NOT_RECORDED`",
-      "- **Management peer status:** `NOT_RECORDED`; SafeNet adapter: `NOT_RECORDED`",
+      "- **Bounded evidence:** [Download the Tailscale verification report](https://github.com/example/safenet/releases/tag/v1.0.66)",
+      "- **Blocker:** `TAILSCALE_MESH_EVIDENCE_MISSING`",
+      "- **Verified device:** Tailscale `NOT_RECORDED`",
+      "- **Device status:** `NOT_RECORDED`; SafeNet adapter: `NOT_RECORDED`",
       "- **Owner:** `NOT_RECORDED`",
       "- **Android client package:** `NOT_RECORDED`",
       "",
     ].join("\n"),
   );
-  const netbirdMeshVerificationDigest = spawnSync(
+  const tailscaleMeshVerificationDigest = spawnSync(
     "sha256sum",
-    [netbirdMeshVerificationPath],
+    [tailscaleMeshVerificationPath],
     { encoding: "utf8" },
   ).stdout.split(/\s+/)[0];
   writeFileSync(
-    join(assets, "SafeNet-DNS-Android-netbird-mesh-verification.sha256"),
-    `${netbirdMeshVerificationDigest}  SafeNet-DNS-Android-netbird-mesh-verification.md\n`,
+    join(assets, "SafeNet-DNS-Android-tailscale-mesh-verification.sha256"),
+    `${tailscaleMeshVerificationDigest}  SafeNet-DNS-Android-tailscale-mesh-verification.md\n`,
   );
 
   return { root, assets, sdk };

@@ -75,11 +75,11 @@ Preferred communication style: Simple, everyday language.
 ### External APIs
 - ipify.org: Public IP detection for DDNS updates
 
-### NetBird mesh integration
-- SafeNet treats NetBird as an external mesh control plane. The NetBird self-hosted Docker stack must run on a separate Linux VM with a public domain, TCP 80/443, UDP 3478, and persistent storage; SafeNet/Replit does not host the WireGuard data plane.
-- Configure `NETBIRD_MANAGEMENT_URL`, `NETBIRD_DASHBOARD_URL`, and server-only `NETBIRD_API_TOKEN` to enable bounded peer status and the Dashboard link. The token is sent only to the NetBird API from the server.
-- The optional physical Android proof uses the official NetBird Android client and the separate server-only `NETBIRD_STATUS_TOKEN`; it does not claim SafeNet itself is the NetBird VPN client.
-- See `ops/netbird/README.md` and `docs/netbird-verification.env.example` for external deployment, configuration, backup, and verification guidance.
+### Tailscale mesh integration
+- SafeNet treats the official Tailscale hosted tailnet as an external mesh control plane. Tailscale provides the encrypted data plane; SafeNet/Replit does not host it and is not a Tailscale client.
+- Configure server-only `TAILSCALE_TAILNET`, `TAILSCALE_OAUTH_CLIENT_ID`, and `TAILSCALE_OAUTH_CLIENT_SECRET`. The OAuth credential must have only the `devices:core:read` scope. SafeNet exchanges it for a short-lived token and reads bounded device status from the Tailscale API.
+- Configure the separate server-only `TAILSCALE_STATUS_TOKEN` for physical evidence. The official Android client package is `com.tailscale.ipn`; a real phone, connected tailnet device, VPN route, and approved-peer probe are required for mesh proof.
+- See `ops/tailscale/README.md` and `docs/tailscale-verification.env.example` for hosted-tailnet setup, Replit Secrets, and verification guidance. Recovery evidence is documented in `docs/tailscale-recovery-evidence.md`; there is no self-hosted control-plane backup to restore.
 ### Build & Development
 - Replit plugins: vite-plugin-runtime-error-modal, vite-plugin-cartographer, vite-plugin-dev-banner
 - p-limit and p-retry for batch processing rate limiting

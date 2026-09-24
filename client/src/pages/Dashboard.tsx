@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
-import { useNetBirdStatus } from "@/hooks/use-netbird";
+import { useTailscaleStatus } from "@/hooks/use-tailscale";
 import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
@@ -31,8 +31,8 @@ export default function Dashboard() {
   const clamAv = useClamAvStatus();
   const soundtrack = useSoundtrack();
   const appLock = useAppLock();
-  const netbird = useNetBirdStatus();
-  const netbirdDashboardUrl = netbird.data?.dashboardUrl ?? null;
+  const tailscale = useTailscaleStatus();
+  const tailscaleDashboardUrl = tailscale.data?.dashboardUrl ?? "https://login.tailscale.com/admin/machines";
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
@@ -54,16 +54,16 @@ export default function Dashboard() {
     : appLock.status.enabled
       ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
-  const netbirdStatusLabel = netbird.isLoading
+  const tailscaleStatusLabel = tailscale.isLoading
     ? "Checking"
-    : netbird.data?.status === "online"
+    : tailscale.data?.status === "online"
       ? "Online"
-      : netbird.data?.status === "unavailable"
+      : tailscale.data?.status === "unavailable"
         ? "Unavailable"
         : "Not configured";
-  const netbirdStatusClass = netbird.data?.status === "online"
+  const tailscaleStatusClass = tailscale.data?.status === "online"
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-    : netbird.data?.status === "unavailable"
+    : tailscale.data?.status === "unavailable"
       ? "border-red-400/40 bg-red-400/10 text-red-300"
       : "border-white/15 bg-white/5 text-muted-foreground";
   
@@ -95,12 +95,12 @@ export default function Dashboard() {
   }, [allowedQueries, logs, stats]);
   const isLive = statsQuery.isFetching || logsQuery.isFetching;
 
-  const openNetBirdDashboard = () => {
-    if (netbirdDashboardUrl) {
-      window.open(netbirdDashboardUrl, "_blank", "noopener,noreferrer");
+  const openTailscaleDashboard = () => {
+    if (tailscaleDashboardUrl) {
+      window.open(tailscaleDashboardUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    void netbird.refetch();
+    void tailscale.refetch();
   };
 
   return (
@@ -135,14 +135,14 @@ export default function Dashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                 <p className="text-sm font-medium text-foreground">NetBird Mesh</p>
+                  <p className="text-sm font-medium text-foreground">Tailscale Mesh</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                 {netbird.data?.message ?? "NetBird management server is not configured"}
+                  {tailscale.data?.message ?? "Tailscale tailnet is not configured"}
               </p>
-              {netbird.data?.peerCount !== null && netbird.data?.peerCount !== undefined && (
+              {tailscale.data?.deviceCount !== null && tailscale.data?.deviceCount !== undefined && (
                 <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
-                  {netbird.data.peerCount} registered peer{netbird.data.peerCount === 1 ? "" : "s"}
+                   {tailscale.data.deviceCount} registered device{tailscale.data.deviceCount === 1 ? "" : "s"}
                 </p>
               )}
             </div>
@@ -151,22 +151,22 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="icon"
-                   onClick={() => void netbird.refetch()}
-                   disabled={netbird.isFetching}
-                   aria-label="Refresh NetBird status"
-                   data-testid="button-refresh-netbird"
+                    onClick={() => void tailscale.refetch()}
+                    disabled={tailscale.isFetching}
+                    aria-label="Refresh Tailscale status"
+                    data-testid="button-refresh-tailscale"
                 >
-                   <RefreshCw className={`h-4 w-4 ${netbird.isFetching ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-4 w-4 ${tailscale.isFetching ? "animate-spin" : ""}`} />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                   onClick={openNetBirdDashboard}
-                   disabled={!netbirdDashboardUrl}
-                   data-testid="button-open-netbird-dashboard"
+                    onClick={openTailscaleDashboard}
+                    disabled={!tailscaleDashboardUrl}
+                    data-testid="button-open-tailscale-dashboard"
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
-                   Open NetBird Dashboard
+                    Open Tailscale Admin
                 </Button>
               </div>
               <div className="flex items-center gap-2">
@@ -175,17 +175,17 @@ export default function Dashboard() {
                 </span>
                 <Badge
                   variant="outline"
-                   className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${netbirdStatusClass}`}
-                   data-testid="netbird-status-indicator"
+                    className={`gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tailscaleStatusClass}`}
+                    data-testid="tailscale-status-indicator"
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
-                     netbird.data?.status === "online"
+                      tailscale.data?.status === "online"
                       ? "bg-emerald-400"
-                       : netbird.data?.status === "unavailable"
+                        : tailscale.data?.status === "unavailable"
                         ? "bg-red-400"
                         : "bg-muted-foreground"
                   }`} />
-                   {netbirdStatusLabel}
+                    {tailscaleStatusLabel}
                 </Badge>
               </div>
             </div>

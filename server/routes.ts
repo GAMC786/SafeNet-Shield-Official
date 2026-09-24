@@ -39,7 +39,7 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
-import { getNetBirdPeerStatus, getNetBirdStatus } from "./netbird-service";
+import { getTailscaleDeviceStatus, getTailscaleStatus } from "./tailscale-service";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -407,30 +407,31 @@ export async function registerRoutes(
     res.json(publicSettings(settings));
   });
 
-  app.get(api.netbird.status.path, async (_req, res) => {
-    res.json(await getNetBirdStatus());
+  app.get(api.tailscale.status.path, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(await getTailscaleStatus());
   });
 
-  app.get("/api/netbird/peer-status", async (req, res) => {
-    const configuredToken = process.env.NETBIRD_STATUS_TOKEN?.trim();
+  app.get("/api/tailscale/device-status", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const configuredToken = process.env.TAILSCALE_STATUS_TOKEN?.trim();
     const authorization = req.get("authorization");
     if (!configuredToken) {
-      return res.status(503).json({ message: "NetBird peer-status adapter is not configured." });
+      return res.status(503).json({ message: "Tailscale device-status adapter is not configured." });
     }
     if (authorization !== `Bearer ${configuredToken}`) {
-      return res.status(401).json({ message: "A valid peer-status bearer token is required." });
+      return res.status(401).json({ message: "A valid device-status bearer token is required." });
     }
 
-    const peerName = typeof req.query.name === "string" ? req.query.name.trim() : "";
-    if (!peerName || peerName.length > 128) {
-      return res.status(400).json({ message: "A single peer name query value is required." });
+    const deviceName = typeof req.query.name === "string" ? req.query.name.trim() : "";
+    if (!deviceName || deviceName.length > 128) {
+      return res.status(400).json({ message: "A single device name query value is required." });
     }
 
-    const status = await getNetBirdPeerStatus(peerName);
+    const status = await getTailscaleDeviceStatus(deviceName);
     if (!status) {
-      return res.status(404).json({ message: "The requested NetBird peer was not found." });
+      return res.status(404).json({ message: "The requested Tailscale device was not found." });
     }
-    res.set("Cache-Control", "no-store");
     return res.json(status);
   });
 

@@ -89,4 +89,4 @@
 - [Android resource cleanup](android-resource-cleanup.md) — removing a native component must remove its obsolete resources; hosted AAPT can reject stale string entries during release builds.
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
-- [NetBird external control plane](netbird-external-control-plane.md) — SafeNet reports bounded peer status from an external NetBird deployment; it does not host the WireGuard mesh data plane.
+- [Tailscale hosted control plane](tailscale-hosted-control-plane.md) — SafeNet uses scoped OAuth for hosted status; Android mesh evidence must prove the real VPN route and peer probe.

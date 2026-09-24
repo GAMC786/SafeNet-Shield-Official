@@ -5,17 +5,17 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-const renderer = new URL("./render-netbird-android-mesh-summary.mjs", import.meta.url).pathname;
-test("renders bounded NetBird summary without secrets or raw fields", () => {
-  const dir = mkdtempSync(join(tmpdir(), "netbird-summary-"));
+const renderer = new URL("./render-tailscale-android-mesh-summary.mjs", import.meta.url).pathname;
+test("renders bounded Tailscale summary without secrets", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tailscale-summary-"));
   try {
     const evidence = join(dir, "result.txt"), output = join(dir, "summary.md");
-    writeFileSync(evidence, "result=PASS\npeer_name=phone\npeer_owner=safenet\npeer_online=true\nstatus_peer_online=online\nclient_package=com.netbird.client\napi_token=secret\n");
+    writeFileSync(evidence, "result=PASS\ndevice_name=phone\ndevice_online=true\nstatus_device_online=online\nclient_package=com.tailscale.ipn\nstatus_token=secret\n");
     const result = spawnSync("node", [renderer, "--output", output, "--evidence", evidence], { encoding: "utf8" });
     assert.equal(result.status, 0);
     const summary = readFileSync(output, "utf8");
-    assert.match(summary, /NetBird Android peer verification/);
+    assert.match(summary, /Tailscale Android peer verification/);
     assert.match(summary, /phone/);
-    assert.doesNotMatch(summary, /secret|api_token/);
+    assert.doesNotMatch(summary, /secret|status_token/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
