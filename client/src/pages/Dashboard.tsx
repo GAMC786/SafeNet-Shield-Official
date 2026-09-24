@@ -442,7 +442,18 @@ export default function Dashboard() {
                         />
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs text-muted-foreground">Allow local network access through exit node</span>
+                        <div className="min-w-0">
+                          <span className="text-xs text-muted-foreground">Allow local network access through exit node</span>
+                          {!tailscaleVpn.status.selectedExitNodeId && (
+                            <p
+                              id="tailscale-lan-disabled-hint"
+                              className="mt-1 text-[11px] text-muted-foreground/80"
+                              data-testid="tailscale-lan-disabled-hint"
+                            >
+                              Select an exit node above to enable this option.
+                            </p>
+                          )}
+                        </div>
                         <Switch
                           checked={tailscaleVpn.status.allowLanAccess}
                           disabled={tailscaleActionPending || !tailscaleVpn.status.selectedExitNodeId}
@@ -450,6 +461,7 @@ export default function Dashboard() {
                             void updateTailscaleOptions({ allowLanAccess: enabled })
                           }
                           aria-label="Allow local network access through Tailscale exit node"
+                          aria-describedby={!tailscaleVpn.status.selectedExitNodeId ? "tailscale-lan-disabled-hint" : undefined}
                           data-testid="switch-tailscale-lan"
                         />
                       </div>
