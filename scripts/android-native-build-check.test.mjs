@@ -11,6 +11,10 @@ const sdkSetupScript = await readFile(
   new URL("./setup-android-sdk.sh", import.meta.url),
   "utf8",
 );
+const tailscaleBuildScript = await readFile(
+  new URL("./build-tailscale-aar.sh", import.meta.url),
+  "utf8",
+);
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -79,6 +83,14 @@ test("Android native check is executable and supports bounded debug and release 
   assert.match(nativeBuildScript, /:app:assembleReleaseAndroidTest/);
   assert.match(nativeBuildScript, /--release-instrumentation/);
   assert.match(nativeBuildScript, /max_diagnostics_bytes=16000/);
+});
+
+test("Tailscale AAR build enters the submodule before invoking Make", () => {
+  assert.match(
+    tailscaleBuildScript,
+    /\(\s*cd "\$source_dir"\s*make libtailscale\s*\)/,
+  );
+  assert.doesNotMatch(tailscaleBuildScript, /make -C "\$source_dir"/);
 });
 
 test("release-capable workflows compile native sources before packaging", () => {

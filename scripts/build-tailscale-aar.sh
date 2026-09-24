@@ -36,6 +36,11 @@ export ANDROID_NDK_HOME="$ndk_root"
 export NDK_ROOT="$ndk_root"
 
 echo "Building Tailscale Android engine from pinned revision $expected_revision"
-make -C "$source_dir" libtailscale
+# The submodule Makefile derives the custom Go wrapper path from PWD.
+# Enter it first so gomobile uses Tailscale's runtime fork, not host Go.
+(
+    cd "$source_dir"
+    make libtailscale
+)
 [[ -s "$source_dir/android/libs/libtailscale.aar" ]] ||
     fail "Tailscale Android build completed without producing libtailscale.aar."
