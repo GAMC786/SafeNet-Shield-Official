@@ -24,7 +24,7 @@ test("the tile reflects native tunnel state and routes taps through MainActivity
   assert.match(tile, /SafeNetTailscalePlugin\.isConnected\(\)/);
   assert.match(tile, /Tile\.STATE_ACTIVE/);
   assert.match(tile, /Tile\.STATE_INACTIVE/);
-  assert.match(tile, /SafeNetTailscaleTileService\.ACTION_TOGGLE/);
+  assert.match(tile, /setAction\(ACTION_TOGGLE\)/);
   assert.match(tile, /startActivityAndCollapse\(toggleIntent\)/);
   assert.match(plugin, /static boolean isConnected\(\)/);
   assert.match(plugin, /SafeNetTailscaleTileService\.requestTileRefresh\(context\)/);
