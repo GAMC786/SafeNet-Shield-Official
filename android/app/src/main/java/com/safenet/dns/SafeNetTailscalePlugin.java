@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.net.VpnService;
 import android.net.Uri;
@@ -21,7 +22,11 @@ import org.json.JSONObject;
 public final class SafeNetTailscalePlugin extends Plugin {
     private static volatile boolean connected;
     private static final String CONSENT = "tailscaleVpnConsent";
-    static void setConnected(boolean value) { connected = value; }
+    static boolean isConnected() { return connected; }
+    static void setConnected(boolean value, Context context) {
+        connected = value;
+        SafeNetTailscaleTileService.requestTileRefresh(context);
+    }
 
     @PluginMethod public void getStatus(PluginCall call) {
         if (Build.VERSION.SDK_INT < 26) { call.resolve(status(false, "unsupported")); return; }
@@ -96,7 +101,7 @@ public final class SafeNetTailscalePlugin extends Plugin {
         try {
             SafeNetTailscaleApp.get(getContext()).setWantRunning(false);
             getContext().startService(new Intent(getContext(), SafeNetTailscaleVpnService.class).setAction("STOP"));
-            connected = false;
+            setConnected(false, getContext());
             getStatus(call);
         } catch (Exception e) {
             call.reject("Tailscale could not disconnect.", "TAILSCALE_DISCONNECT_FAILED", e);

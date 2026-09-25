@@ -77,6 +77,17 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".SafeNetTailscaleTileService"
+            android:label="@string/tailscale_vpn_tile_label"
+            android:icon="@drawable/ic_qs_tailscale"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".LockLockActivity"
             android:excludeFromRecents="true"

@@ -11,4 +11,7 @@
     <string name="private_dns_tile_label">SafeNet Private DNS</string>
     <string name="private_dns_tile_active">Active</string>
     <string name="private_dns_tile_inactive">Tap to configure</string>
+    <string name="tailscale_vpn_tile_label">SafeNet Tailscale VPN</string>
+    <string name="tailscale_vpn_tile_connected">Connected</string>
+    <string name="tailscale_vpn_tile_disconnected">Disconnected · tap to connect</string>
 </resources>

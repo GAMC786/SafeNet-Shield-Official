@@ -432,6 +432,24 @@ const clerkAppearance = {
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    const tileWindow = window as Window & {
+      __safenetHandleTailscaleTileToggle?: () => void;
+      __safenetTailscaleTileTogglePending?: boolean;
+    };
+    const handleTailscaleTileToggle = () => {
+      tileWindow.__safenetTailscaleTileTogglePending = true;
+      setLocation("/");
+      window.dispatchEvent(new Event("safenet:tailscale-tile-toggle"));
+    };
+    tileWindow.__safenetHandleTailscaleTileToggle = handleTailscaleTileToggle;
+    return () => {
+      if (tileWindow.__safenetHandleTailscaleTileToggle === handleTailscaleTileToggle) {
+        delete tileWindow.__safenetHandleTailscaleTileToggle;
+      }
+    };
+  }, [setLocation]);
+
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}

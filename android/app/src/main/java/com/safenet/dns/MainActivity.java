@@ -30,12 +30,16 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
     private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
+    private final Runnable tailscaleTileToggleDispatch =
+            this::dispatchPendingTailscaleTileToggle;
     private NativeStartupFallbackView startupFallback;
     private NativeAppLockView appLockView;
     private WebView appLockWebView;
     private boolean appLockHasResumed;
     private boolean appLockNeedsUnlockOnResume;
     private boolean appLockActivityActive;
+    private boolean pendingTailscaleTileToggle;
+    private int tailscaleTileToggleDispatchAttempts;
     private Runnable startupCheck;
     private long startupDeadline;
 
@@ -59,6 +63,7 @@ public class MainActivity extends BridgeActivity {
         installNativeFallback(webView);
         installAppLock(webView);
         handleAppLockRecoveryIntent(getIntent());
+        captureTailscaleTileToggle(getIntent());
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -78,6 +83,50 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleAppLockRecoveryIntent(intent);
+        captureTailscaleTileToggle(intent);
+        dispatchPendingTailscaleTileToggle();
+    }
+
+    private void captureTailscaleTileToggle(Intent intent) {
+        if (intent == null
+                || !SafeNetTailscaleTileService.ACTION_TOGGLE.equals(intent.getAction())) {
+            return;
+        }
+        pendingTailscaleTileToggle = true;
+        tailscaleTileToggleDispatchAttempts = 0;
+        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
+    }
+
+    private void dispatchPendingTailscaleTileToggle() {
+        if (!pendingTailscaleTileToggle
+                || (AppLockManager.isEnabled(this)
+                        && !AppLockManager.isSessionAuthenticated())) {
+            return;
+        }
+        if (tailscaleTileToggleDispatchAttempts >= 40) {
+            pendingTailscaleTileToggle = false;
+            Log.w(TAG, "Tailscale Quick Settings action timed out before the app was ready");
+            return;
+        }
+        WebView webView = getBridge() == null ? null : getBridge().getWebView();
+        if (webView == null) {
+            tailscaleTileToggleDispatchAttempts++;
+            startupHandler.postDelayed(tailscaleTileToggleDispatch, 250L);
+            return;
+        }
+        tailscaleTileToggleDispatchAttempts++;
+        webView.evaluateJavascript(
+                "(function(){const action=window.__safenetHandleTailscaleTileToggle;" +
+                        "if(typeof action==='function'){action();return true;}return false;})()",
+                value -> {
+                    if ("true".equals(value)) {
+                        pendingTailscaleTileToggle = false;
+                        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
+                    } else if (pendingTailscaleTileToggle) {
+                        startupHandler.postDelayed(tailscaleTileToggleDispatch, 250L);
+                    }
+                }
+        );
     }
 
     private void handleAppLockRecoveryIntent(Intent intent) {
@@ -329,6 +378,7 @@ public class MainActivity extends BridgeActivity {
             appLockView.setVisibility(View.VISIBLE);
             appLockView.setMessage("Enter your SafeNet passcode to continue.");
         }
+        dispatchPendingTailscaleTileToggle();
     }
 
     private void beginStartupCheck(WebView webView) {
@@ -388,6 +438,7 @@ public class MainActivity extends BridgeActivity {
         if (startupCheck != null) {
             startupHandler.removeCallbacks(startupCheck);
         }
+        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
         startupFallback = null;
         appLockView = null;
         appLockWebView = null;
@@ -431,6 +482,7 @@ public class MainActivity extends BridgeActivity {
             appLockNeedsUnlockOnResume = false;
             appLockView.post(this::requestAppUnlock);
         }
+        dispatchPendingTailscaleTileToggle();
     }
 
     @Override

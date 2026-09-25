@@ -11,7 +11,7 @@ import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Mu
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
@@ -50,6 +50,7 @@ export default function Dashboard() {
   const [pendingTailscaleAction, setPendingTailscaleAction] = useState<"connect" | "admin" | null>(null);
   const [tailscaleActionError, setTailscaleActionError] = useState<string | null>(null);
   const [tailscaleActionPending, setTailscaleActionPending] = useState(false);
+  const [pendingTailscaleTileToggle, setPendingTailscaleTileToggle] = useState(false);
   const tailscaleDashboardUrl = tailscale.data?.dashboardUrl ?? "https://login.tailscale.com/admin/machines";
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
@@ -207,6 +208,48 @@ export default function Dashboard() {
     }
     void runTailscaleConnect();
   };
+
+  useEffect(() => {
+    const tileWindow = window as Window & {
+      __safenetTailscaleTileTogglePending?: boolean;
+    };
+    const consumeTileToggle = () => {
+      tileWindow.__safenetTailscaleTileTogglePending = false;
+      setPendingTailscaleTileToggle(true);
+    };
+    window.addEventListener("safenet:tailscale-tile-toggle", consumeTileToggle);
+    if (tileWindow.__safenetTailscaleTileTogglePending) {
+      consumeTileToggle();
+    }
+    return () => {
+      window.removeEventListener("safenet:tailscale-tile-toggle", consumeTileToggle);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingTailscaleTileToggle || tailscaleVpn.isLoading) return;
+    setPendingTailscaleTileToggle(false);
+    if (!tailscaleVpn.status) {
+      setTailscaleActionError(
+        tailscaleVpn.error instanceof Error
+          ? tailscaleVpn.error.message
+          : "Could not check the Tailscale device state.",
+      );
+      return;
+    }
+    if (tailscaleVpn.status.connected) {
+      void runTailscaleDisconnect();
+    } else {
+      requestTailscaleConnect();
+    }
+  }, [
+    pendingTailscaleTileToggle,
+    tailscaleVpn.error,
+    tailscaleVpn.isLoading,
+    tailscaleVpn.status,
+    runTailscaleDisconnect,
+    requestTailscaleConnect,
+  ]);
 
   const acceptTailscaleEula = () => {
     try {

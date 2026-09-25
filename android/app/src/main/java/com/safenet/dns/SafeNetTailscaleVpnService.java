@@ -51,17 +51,19 @@ public final class SafeNetTailscaleVpnService extends VpnService implements libt
         Libtailscale.serviceDisconnect(this);
     }
     @Override public void disconnectVPN() { stopSelf(); }
-    @Override public void updateVpnStatus(boolean connected) { SafeNetTailscalePlugin.setConnected(connected); }
+    @Override public void updateVpnStatus(boolean connected) {
+        SafeNetTailscalePlugin.setConnected(connected, this);
+    }
     @Override public void onDestroy() {
         close();
-        SafeNetTailscalePlugin.setConnected(false);
+        SafeNetTailscalePlugin.setConnected(false, this);
         if (activeService == this) activeService = null;
         super.onDestroy();
     }
     @Override public void onRevoke() {
         try { SafeNetTailscaleApp.get(this).setWantRunning(false); } catch (Exception ignored) {}
         close();
-        SafeNetTailscalePlugin.setConnected(false);
+        SafeNetTailscalePlugin.setConnected(false, this);
         super.onRevoke();
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
