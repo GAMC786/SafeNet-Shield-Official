@@ -70,6 +70,10 @@ export default function SpamCallBlocker() {
     "safenet-spam-call-enabled",
     false,
   );
+  const [blockUnknownCallers, setBlockUnknownCallers] = usePersistentState(
+    "safenet-spam-call-block-unknown",
+    false,
+  );
   const [reputationAvailability, setReputationAvailability] = useState<ReputationAvailability | null>(null);
   const [smsKeywords, setSmsKeywords] = usePersistentState<string[]>(
     "safenet-sms-filter-keywords",
@@ -100,8 +104,8 @@ export default function SpamCallBlocker() {
 
   const syncConfig = native.syncConfig;
   useEffect(() => {
-    void syncConfig(blockedNumbers).catch(() => undefined);
-  }, [blockedNumbers, syncConfig]);
+    void syncConfig({ blockedNumbers, blockUnknownCallers }).catch(() => undefined);
+  }, [blockedNumbers, blockUnknownCallers, syncConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -532,10 +536,38 @@ export default function SpamCallBlocker() {
             <div className="mt-4 flex flex-wrap gap-2">
               <Badge variant={enabled ? "default" : "outline"}>{statusLabel}</Badge>
               <Badge variant="outline">{blockedCount} blocked locally</Badge>
-              {native.status?.apiConfigured && <Badge variant="outline">SafeNet API connected</Badge>}
+              {native.status?.apiConfigured && <Badge variant="outline">SafeNet API configured</Badge>}
+              {isAndroid && native.status?.offlineReputationAvailable && (
+                <Badge variant="outline">Offline backup installed</Badge>
+              )}
             </div>
           </div>
         </div>
+      </CyberCard>
+
+      <CyberCard className="border-yellow-300/20 bg-yellow-300/[0.03]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold normal-case tracking-normal text-white">
+              Block withheld or unknown caller IDs
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Optional strict mode for calls Android reports without a usable number. It can also block
+              legitimate private, short-code, or unusual caller IDs. Off by default.
+            </p>
+          </div>
+          <Switch
+            checked={blockUnknownCallers}
+            onCheckedChange={setBlockUnknownCallers}
+            aria-label={`Turn unknown caller blocking ${blockUnknownCallers ? "off" : "on"}`}
+          />
+        </div>
+        {isAndroid && !native.status?.apiConfigured && (
+          <p className="mt-3 text-xs leading-5 text-yellow-100/80">
+            Live reputation lookups are not configured on this install. Only the limited offline backup
+            and your local blocklist can identify numbers.
+          </p>
+        )}
       </CyberCard>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -591,8 +623,9 @@ export default function SpamCallBlocker() {
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
             {reputationAvailability?.reason ?? "Checking whether the CallShield community feed is available."}
             {" "}
-            SafeNet only acts on an explicit local block or an approved reputation response. If Android
-            or the reputation source is unavailable, incoming calls are allowed.
+            Recent positive reputation decisions are kept on this device for up to 24 hours. If an unseen
+            caller cannot be checked, the call is allowed unless unknown-caller blocking is enabled. The
+            bundled offline list is limited and will not recognize every new spam number.
           </p>
         </CyberCard>
       </div>

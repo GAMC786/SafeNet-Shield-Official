@@ -195,6 +195,7 @@ public class SafeNetVpnPlugin extends Plugin {
     @PluginMethod
     public void syncCallScreeningConfig(PluginCall call) {
         JSArray numbers = call.getArray("blockedNumbers", new JSArray());
+        boolean blockUnknownCallers = call.getBoolean("blockUnknownCallers", false);
         Set<String> normalized = new HashSet<>();
         for (int index = 0; index < numbers.length(); index++) {
             String value = numbers.optString(index, "");
@@ -210,6 +211,7 @@ public class SafeNetVpnPlugin extends Plugin {
             .putString(SafeNetCallScreeningService.PREF_API_ORIGIN, apiOrigin)
             .putString(SafeNetCallScreeningService.PREF_AUTH_COOKIE, authCookie == null ? "" : authCookie)
             .putStringSet(SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS, normalized)
+            .putBoolean(SafeNetCallScreeningService.PREF_BLOCK_UNKNOWN_CALLERS, blockUnknownCallers)
             .apply();
         call.resolve(callScreeningStatus());
     }
@@ -235,6 +237,13 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("enabled", roleHeld && locallyEnabled);
         result.put("serviceRegistered", true);
         result.put("apiConfigured", !getConfigApiOrigin().isEmpty());
+        result.put(
+            "blockUnknownCallers",
+            getContext().getSharedPreferences(
+                SafeNetCallScreeningService.PREFS_NAME,
+                android.content.Context.MODE_PRIVATE
+            ).getBoolean(SafeNetCallScreeningService.PREF_BLOCK_UNKNOWN_CALLERS, false)
+        );
         result.put(
             "offlineReputationAvailable",
             SafeNetCallScreeningService.hasBundledCallShieldFeed(getContext())

@@ -2,6 +2,7 @@ package com.safenet.dns;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.app.role.RoleManager;
@@ -123,6 +124,87 @@ public class SafeNetCallScreeningInstrumentationTest {
 
         assertEquals("block", action(BLOCKED_NUMBER));
         Log.i(TAG, "CALL_SCREENING_LOCAL_BLOCK result=PASS provider=NOT_REQUIRED");
+    }
+
+    @Test
+    public void localBlockMatchesNumbersRegardlessOfPlusAndFormatting() {
+        preferences.edit()
+            .putStringSet(
+                SafeNetCallScreeningService.PREF_BLOCKED_NUMBERS,
+                Collections.singleton("+1 (555) 000-0001")
+            )
+            .commit();
+
+        assertEquals("block", action("15550000001"));
+        assertEquals("block", action("+1-555-000-0001"));
+        Log.i(TAG, "CALL_SCREENING_LOCAL_BLOCK_FORMAT result=PASS");
+    }
+
+    @Test
+    public void withheldOrUnknownCallerBlockingRequiresExplicitOptIn() {
+        assertEquals("allow", action(null));
+
+        preferences.edit()
+            .putBoolean(SafeNetCallScreeningService.PREF_BLOCK_UNKNOWN_CALLERS, true)
+            .commit();
+        assertEquals("block", action(null));
+
+        preferences.edit()
+            .putBoolean(SafeNetCallScreeningService.PREF_BLOCK_UNKNOWN_CALLERS, false)
+            .commit();
+        assertEquals("allow", action(null));
+        Log.i(TAG, "CALL_SCREENING_UNKNOWN_CALLER_POLICY result=PASS default=ALLOW opted_in=BLOCK");
+    }
+
+    @Test
+    public void positiveReputationDecisionsAreUsedOfflineUntilTheyExpire() {
+        long now = System.currentTimeMillis();
+        preferences.edit()
+            .putString(SafeNetCallScreeningService.PREF_API_ORIGIN, "https://127.0.0.1:1")
+            .commit();
+        SafeNetCallScreeningService.cacheReputationDecision(
+            preferences,
+            REPUTATION_BLOCK_NUMBER,
+            "block",
+            now
+        );
+        SafeNetCallScreeningService.cacheReputationDecision(
+            preferences,
+            SILENCE_NUMBER,
+            "silence",
+            now
+        );
+        SafeNetCallScreeningService.cacheReputationDecision(
+            preferences,
+            ALLOW_NUMBER,
+            "allow",
+            now
+        );
+
+        // The positive cache is checked before network access, keeping repeat
+        // callers screened even when the configured service cannot be reached.
+        assertEquals(
+            "block",
+            SafeNetCallScreeningService.cachedReputationAction(
+                preferences,
+                REPUTATION_BLOCK_NUMBER.substring(1),
+                now
+            )
+        );
+        assertEquals("block", action(REPUTATION_BLOCK_NUMBER.substring(1)));
+        assertEquals("silence", action(SILENCE_NUMBER));
+        assertNull(SafeNetCallScreeningService.cachedReputationAction(
+            preferences,
+            ALLOW_NUMBER,
+            now
+        ));
+        assertNull(SafeNetCallScreeningService.cachedReputationAction(
+            preferences,
+            REPUTATION_BLOCK_NUMBER,
+            now + SafeNetCallScreeningService.REPUTATION_DECISION_TTL_MS + 1
+        ));
+        assertEquals("allow", action(REPUTATION_BLOCK_NUMBER));
+        Log.i(TAG, "CALL_SCREENING_REPUTATION_CACHE result=PASS positive_only=PASS ttl_hours=24");
     }
 
     @Test

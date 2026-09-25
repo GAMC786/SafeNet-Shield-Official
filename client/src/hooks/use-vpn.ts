@@ -107,6 +107,8 @@ export interface CallScreeningStatus {
   enabled: boolean;
   serviceRegistered: boolean;
   apiConfigured: boolean;
+  blockUnknownCallers?: boolean;
+  offlineReputationAvailable?: boolean;
   blockedNumberCount: number;
   message: string;
 }
@@ -165,7 +167,10 @@ interface SafeNetVpnPlugin {
   requestCallScreeningRole(): Promise<CallScreeningStatus>;
   openCallScreeningSettings(): Promise<CallScreeningStatus>;
   setCallScreeningEnabled(options: { enabled: boolean }): Promise<CallScreeningStatus>;
-  syncCallScreeningConfig(options: { blockedNumbers: string[] }): Promise<CallScreeningStatus>;
+  syncCallScreeningConfig(options: {
+    blockedNumbers: string[];
+    blockUnknownCallers: boolean;
+  }): Promise<CallScreeningStatus>;
   getAppLockStatus(): Promise<import("./use-app-lock").AppLockStatus>;
   setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
   unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
@@ -257,10 +262,13 @@ export function useCallScreening() {
     }
   }, [supported]);
 
-  const syncConfig = useCallback(async (blockedNumbers: string[]) => {
+  const syncConfig = useCallback(async (options: {
+    blockedNumbers: string[];
+    blockUnknownCallers: boolean;
+  }) => {
     if (!supported) return null;
     const nextStatus = await enqueueNativeCommand(() =>
-      SafeNetVpn.syncCallScreeningConfig({ blockedNumbers }),
+      SafeNetVpn.syncCallScreeningConfig(options),
     );
     setStatus(nextStatus);
     return nextStatus;

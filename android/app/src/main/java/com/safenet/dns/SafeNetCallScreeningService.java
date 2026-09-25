@@ -16,6 +16,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -30,8 +31,14 @@ public class SafeNetCallScreeningService extends CallScreeningService {
     static final String PREF_AUTH_COOKIE = "auth_cookie";
     static final String PREF_BLOCKED_NUMBERS = "blocked_numbers";
     static final String PREF_ENABLED = "enabled";
+    static final String PREF_BLOCK_UNKNOWN_CALLERS = "block_unknown_callers";
+    static final String PREF_REPUTATION_DECISIONS = "reputation_decisions";
     static final String PREF_CALLSHIELD_FEED_VERSION = "callshield_feed_version";
     static final String PREF_CALLSHIELD_FEED_HASH = "callshield_feed_hash";
+    static final long REPUTATION_DECISION_TTL_MS = 24L * 60 * 60 * 1000;
+    private static final int MAX_CACHED_REPUTATION_DECISIONS = 256;
+    private static final long MAX_FUTURE_CACHE_SKEW_MS = 5L * 60 * 1000;
+    private static final Object REPUTATION_CACHE_LOCK = new Object();
     private static final String CALLSHIELD_FEED_ASSET = "callshield/spam_numbers.json";
     private static final String CALLSHIELD_MANIFEST_ASSET = "callshield/manifest.json";
     private static final ExecutorService LOOKUP_EXECUTOR = Executors.newCachedThreadPool();
@@ -39,35 +46,25 @@ public class SafeNetCallScreeningService extends CallScreeningService {
     @Override
     public void onScreenCall(Call.Details details) {
         if (details == null) {
-            respondAllow(details);
             return;
         }
-        String number = details == null || details.getHandle() == null
+        String number = details.getHandle() == null
             ? ""
             : details.getHandle().getSchemeSpecificPart();
-        String normalized = normalizeNumber(number);
-        if (normalized == null) {
-            respondAllow(details);
-            return;
-        }
-
         SharedPreferences preferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         if (!preferences.getBoolean(PREF_ENABLED, true)) {
             respondAllow(details);
             return;
         }
-        if (readBlockedNumbers(preferences).contains(normalized)) {
+        String normalized = normalizeNumber(number);
+        if (normalized == null) {
+            respond(details, unknownCallerAction(preferences));
+            return;
+        }
+        if (isBlockedNumber(readBlockedNumbers(preferences), normalized)) {
             // An explicit user block is a local SafeNet blocklist decision and
             // does not depend on a network lookup.
             respond(details, "block");
-            return;
-        }
-        String apiOrigin = preferences.getString(PREF_API_ORIGIN, "");
-        if (apiOrigin == null || apiOrigin.trim().isEmpty()) {
-            LOOKUP_EXECUTOR.execute(() -> {
-                String action = decideAction(getApplicationContext(), preferences, normalized);
-                respond(details, action);
-            });
             return;
         }
         LOOKUP_EXECUTOR.execute(() -> {
@@ -108,18 +105,25 @@ public class SafeNetCallScreeningService extends CallScreeningService {
         SharedPreferences preferences,
         String number
     ) {
-        if (number == null) {
-            return "allow";
-        }
         if (!preferences.getBoolean(PREF_ENABLED, true)) {
             return "allow";
         }
-        if (readBlockedNumbers(preferences).contains(number)) {
+        String normalized = normalizeNumber(number);
+        if (normalized == null) {
+            return unknownCallerAction(preferences);
+        }
+        if (isBlockedNumber(readBlockedNumbers(preferences), normalized)) {
             // An explicit user block is a local SafeNet blocklist decision and
             // does not depend on a network lookup.
             return "block";
         }
 
+        String cachedAction = cachedReputationAction(
+            preferences,
+            normalized,
+            System.currentTimeMillis()
+        );
+        if (cachedAction != null) return cachedAction;
         String apiOrigin = preferences.getString(PREF_API_ORIGIN, "");
         if (apiOrigin == null || apiOrigin.trim().isEmpty()) {
             String offlineAction = offlineAction(context, preferences, number);
@@ -129,13 +133,139 @@ public class SafeNetCallScreeningService extends CallScreeningService {
         String liveAction = lookupLive(
             apiOrigin,
             preferences.getString(PREF_AUTH_COOKIE, ""),
-            number
+            normalized
         );
         if (liveAction != null) {
+            if ("block".equals(liveAction) || "silence".equals(liveAction)) {
+                cacheReputationDecision(
+                    preferences,
+                    normalized,
+                    liveAction,
+                    System.currentTimeMillis()
+                );
+            } else {
+                clearCachedReputationDecision(preferences, normalized);
+            }
             return liveAction;
         }
         String offlineAction = offlineAction(context, preferences, number);
         return offlineAction == null ? "allow" : offlineAction;
+    }
+
+    private static String unknownCallerAction(SharedPreferences preferences) {
+        return preferences.getBoolean(PREF_BLOCK_UNKNOWN_CALLERS, false) ? "block" : "allow";
+    }
+
+    private static boolean isBlockedNumber(Set<String> blockedNumbers, String number) {
+        String digits = phoneDigits(number);
+        if (digits.isEmpty()) return false;
+        for (String blockedNumber : blockedNumbers) {
+            if (digits.equals(phoneDigits(blockedNumber))) return true;
+        }
+        return false;
+    }
+
+    static String cachedReputationAction(
+        SharedPreferences preferences,
+        String number,
+        long now
+    ) {
+        synchronized (REPUTATION_CACHE_LOCK) {
+            String normalized = normalizeNumber(number);
+            if (normalized == null) return null;
+            String digits = phoneDigits(normalized);
+            JSONObject cache = readReputationCache(preferences);
+            JSONObject entry = cache.optJSONObject(digits);
+            if (entry == null) return null;
+
+            String action = entry.optString("action", "");
+            long cachedAt = entry.optLong("cachedAt", 0);
+            boolean positiveDecision = "block".equals(action) || "silence".equals(action);
+            boolean invalidTime = cachedAt <= 0 ||
+                cachedAt > now + MAX_FUTURE_CACHE_SKEW_MS ||
+                now - cachedAt > REPUTATION_DECISION_TTL_MS;
+            if (!positiveDecision || invalidTime) {
+                cache.remove(digits);
+                saveReputationCache(preferences, cache);
+                return null;
+            }
+            return action;
+        }
+    }
+
+    static void cacheReputationDecision(
+        SharedPreferences preferences,
+        String number,
+        String action,
+        long cachedAt
+    ) {
+        String normalized = normalizeNumber(number);
+        if (normalized == null ||
+            (!"block".equals(action) && !"silence".equals(action))) {
+            return;
+        }
+        synchronized (REPUTATION_CACHE_LOCK) {
+            JSONObject cache = readReputationCache(preferences);
+            try {
+                JSONObject entry = new JSONObject();
+                entry.put("action", action);
+                entry.put("cachedAt", cachedAt);
+                cache.put(phoneDigits(normalized), entry);
+                pruneReputationCache(cache);
+                saveReputationCache(preferences, cache);
+            } catch (Exception ignored) {
+                // A cache write must never interfere with call screening.
+            }
+        }
+    }
+
+    private static void clearCachedReputationDecision(
+        SharedPreferences preferences,
+        String number
+    ) {
+        String normalized = normalizeNumber(number);
+        if (normalized == null) return;
+        synchronized (REPUTATION_CACHE_LOCK) {
+            JSONObject cache = readReputationCache(preferences);
+            cache.remove(phoneDigits(normalized));
+            saveReputationCache(preferences, cache);
+        }
+    }
+
+    private static JSONObject readReputationCache(SharedPreferences preferences) {
+        try {
+            return new JSONObject(preferences.getString(PREF_REPUTATION_DECISIONS, "{}"));
+        } catch (Exception ignored) {
+            return new JSONObject();
+        }
+    }
+
+    private static void pruneReputationCache(JSONObject cache) {
+        while (cache.length() > MAX_CACHED_REPUTATION_DECISIONS) {
+            String oldestNumber = null;
+            long oldestTime = Long.MAX_VALUE;
+            Iterator<String> numbers = cache.keys();
+            while (numbers.hasNext()) {
+                String number = numbers.next();
+                JSONObject entry = cache.optJSONObject(number);
+                long cachedAt = entry == null ? 0 : entry.optLong("cachedAt", 0);
+                if (oldestNumber == null || cachedAt < oldestTime) {
+                    oldestNumber = number;
+                    oldestTime = cachedAt;
+                }
+            }
+            if (oldestNumber == null) return;
+            cache.remove(oldestNumber);
+        }
+    }
+
+    private static void saveReputationCache(
+        SharedPreferences preferences,
+        JSONObject cache
+    ) {
+        preferences.edit()
+            .putString(PREF_REPUTATION_DECISIONS, cache.toString())
+            .apply();
     }
 
     static String lookup(String apiOrigin, String authCookie, String number) {
