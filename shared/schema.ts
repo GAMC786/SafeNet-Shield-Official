@@ -1,4 +1,5 @@
-import { pgTable, text, serial, boolean, timestamp, integer, varchar, json } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, pgTable, text, serial, boolean, timestamp, integer, varchar, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -81,7 +82,12 @@ export const appLockRecoveryChallenges = pgTable("app_lock_recovery_challenges",
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   consumedAt: timestamp("consumed_at"),
-});
+}, (table) => [
+  check(
+    "app_lock_recovery_challenges_purpose_check",
+    sql`${table.purpose} = ANY (ARRAY['email'::text, 'oauth_handoff'::text])`,
+  ),
+]);
 
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
