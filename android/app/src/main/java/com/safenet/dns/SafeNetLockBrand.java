@@ -30,6 +30,7 @@ final class SafeNetLockBrand {
     static final int MUTED = Color.rgb(148, 163, 184);
     static final int BORDER = Color.rgb(51, 65, 85);
     static final int SUCCESS = Color.rgb(52, 211, 153);
+    static final int DANGER = Color.rgb(248, 113, 113);
 
     private SafeNetLockBrand() {}
 

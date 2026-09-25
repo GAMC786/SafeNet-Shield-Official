@@ -210,6 +210,10 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
     var deviceAdminEnabled by remember {
         mutableStateOf(AppLockManager.isDeviceAdminEnabled(context))
     }
+    val protectionActive = protectionEnabled
+        && configured
+        && accessibilityEnabled
+        && overlayEnabled
 
     fun refreshState() {
         configured = AppLockManager.hasPin(context)
@@ -256,9 +260,21 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                         )
                         Text("Select Apps", fontWeight = FontWeight.Bold)
                         Text(
-                            if (protectionEnabled) "Protection is active" else "Protection is ready",
+                            if (protectionActive) {
+                                "Protection is active"
+                            } else if (protectionEnabled) {
+                                "Not protecting apps — check permissions"
+                            } else {
+                                "Protection is ready"
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (protectionEnabled) SafeNetSuccess else SafeNetMuted,
+                            color = if (protectionActive) {
+                                SafeNetSuccess
+                            } else if (protectionEnabled) {
+                                SafeNetDanger
+                            } else {
+                                SafeNetMuted
+                            },
                         )
                     }
                 },

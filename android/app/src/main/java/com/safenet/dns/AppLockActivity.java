@@ -153,24 +153,36 @@ public final class AppLockActivity extends LockLockActivity {
                 12,
                 this
         ));
-        TextView status = bodyText(AppLockManager.isEnabled(this)
+        boolean protectionEnabled = AppLockManager.isEnabled(this);
+        boolean protectionActive = AppLockManager.isProtectionActive(this);
+        TextView status = bodyText(protectionActive
                 ? "Protection is active"
-                : "Protection is ready to configure");
-        status.setTextColor(AppLockManager.isEnabled(this)
+                : protectionEnabled
+                        ? "Not protecting apps — permissions needed"
+                        : "Protection is ready to configure");
+        status.setTextColor(protectionActive
                 ? SafeNetLockBrand.SUCCESS
-                : SafeNetLockBrand.BODY);
+                : protectionEnabled
+                        ? SafeNetLockBrand.DANGER
+                        : SafeNetLockBrand.BODY);
         status.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
         statusRow.addView(status, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Switch protection = new Switch(this);
-        protection.setText(AppLockManager.isEnabled(this) ? "ON" : "OFF");
-        protection.setTextColor(AppLockManager.isEnabled(this)
+        protection.setText(!protectionEnabled
+                ? "OFF"
+                : protectionActive ? "ON" : "SETUP");
+        protection.setTextColor(protectionActive
                 ? SafeNetLockBrand.SUCCESS
-                : SafeNetLockBrand.MUTED);
-        protection.setContentDescription(AppLockManager.isEnabled(this)
-                ? "AppLock protection on"
-                : "AppLock protection off");
-        protection.setChecked(AppLockManager.isEnabled(this));
+                : protectionEnabled
+                        ? SafeNetLockBrand.DANGER
+                        : SafeNetLockBrand.MUTED);
+        protection.setContentDescription(protectionActive
+                ? "AppLock protection active"
+                : protectionEnabled
+                        ? "AppLock is enabled but not protecting apps because Android permissions are needed"
+                        : "AppLock protection off");
+        protection.setChecked(protectionEnabled);
         protection.setOnCheckedChangeListener((button, checked) -> {
             if (button.isPressed() && !checked && AppLockManager.isEnabled(this)) {
                 button.setChecked(true);

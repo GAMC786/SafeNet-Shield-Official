@@ -39,8 +39,6 @@ import org.json.JSONObject;
     }
 )
 public final class SafeNetSmsPlugin extends Plugin {
-    private static final String WRITE_SMS_PERMISSION = "android.permission.WRITE_SMS";
-
     @PluginMethod
     public void getStatus(PluginCall call) {
         call.resolve(status());
@@ -253,8 +251,7 @@ public final class SafeNetSmsPlugin extends Plugin {
         boolean permissionsGranted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, WRITE_SMS_PERMISSION) == PackageManager.PERMISSION_GRANTED;
+            ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED;
         boolean enabled = context.getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(SafeNetSmsFilter.PREF_ENABLED, false);
         result.put("supported", supported);
