@@ -9,7 +9,7 @@ import { DNS_PROVIDER_ACCESS_RULES, type DnsProviderAccessRule } from "@shared/d
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { List, Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole, Globe2 } from "lucide-react";
+import { Search, Pencil, Trash2, Plus, Ban, Zap, Check, X, LockKeyhole, Globe2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,7 +45,6 @@ export default function Firewall() {
     "safenet-firewall-new-domain-action",
     "block",
   );
-  const [newKeyword, setNewKeyword] = usePersistentState("safenet-firewall-new-keyword", "");
   const [isRuleDialogOpen, setIsRuleDialogOpen] = usePersistentState("safenet-firewall-rule-dialog-open", false);
   const [editingRule, setEditingRule] = useState<FirewallRule | null>(null);
   const [editingRuleId, setEditingRuleId, clearEditingRuleId] = usePersistentState<number | null>(
@@ -117,31 +116,6 @@ export default function Firewall() {
       },
       onError: (error) => toast({
         title: "URL rule could not be added",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      }),
-    });
-  };
-
-  const handleAddKeyword = () => {
-    if (!newKeyword) return;
-    const content = newKeyword.trim();
-    if (!content) return;
-    createBlock.mutate({
-      type: "keyword",
-      content,
-      category: "custom",
-      isActive: true
-    }, {
-      onSuccess: () => {
-        setNewKeyword("");
-        toast({
-          title: "Keyword filter added",
-          description: `${content} will be filtered from DNS requests.`,
-        });
-      },
-      onError: (error) => toast({
-        title: "Keyword filter could not be added",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
@@ -354,8 +328,6 @@ export default function Firewall() {
   };
 
   const domains = blocklists?.filter(b => b.type === "domain") || [];
-  const keywords = blocklists?.filter(b => b.type === "keyword") || [];
-
   return (
     <div className="space-y-6">
       <Header 
@@ -426,9 +398,6 @@ export default function Firewall() {
             </TabsTrigger>
             <TabsTrigger value="domains" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
               Allow/Block URLs
-            </TabsTrigger>
-            <TabsTrigger value="keywords" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              Keyword Filtering
             </TabsTrigger>
           </TabsList>
           <div className="flex-1">
@@ -840,65 +809,6 @@ export default function Firewall() {
           </div>
         </TabsContent>
 
-        <TabsContent value="keywords" className="mt-0 space-y-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <List className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input 
-                placeholder="Enter keyword to block (e.g. gambling)" 
-                className="pl-10 bg-card border-border font-mono"
-                value={newKeyword}
-                onChange={e => setNewKeyword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddKeyword()}
-              />
-            </div>
-            <Button onClick={handleAddKeyword} disabled={createBlock.isPending || !newKeyword.trim()} className="bg-destructive hover:bg-destructive/80 text-white font-bold">
-              <Plus className="w-4 h-4 mr-2" /> Filter
-            </Button>
-          </div>
-
-          <div className="grid gap-2">
-            {keywords.map(item => (
-              <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg bg-card/50 border border-white/5 hover:border-destructive/30 transition-colors group ${!item.isActive ? "opacity-50" : ""}`}>
-                <div className="flex items-center gap-3">
-                  <List className="w-4 h-4 text-destructive" />
-                  <span className="font-mono text-sm">{item.content}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Switch
-                    checked={item.isActive === true}
-                    onCheckedChange={() => handleToggleBlocklist(item)}
-                    disabled={updateBlock.isPending}
-                    aria-label={`${item.content} ${item.isActive ? "On" : "Off"}`}
-                    data-testid={`switch-toggle-keyword-${item.id}`}
-                    className="h-8 w-14"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
-                    onClick={() => openEditBlocklistDialog(item)}
-                    aria-label={`Edit ${item.content}`}
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => void handleDeleteBlocklist(item)}
-                    aria-label={`Delete ${item.content}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {keywords.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground font-mono text-sm">No keywords filtered yet.</p>
-            )}
-          </div>
-        </TabsContent>
           </div>
         </div>
       </Tabs>

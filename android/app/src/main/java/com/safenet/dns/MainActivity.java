@@ -16,6 +16,7 @@ import android.webkit.WebSettings;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Settings;
+import org.json.JSONObject;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -40,6 +41,10 @@ public class MainActivity extends BridgeActivity {
     private boolean appLockActivityActive;
     private boolean pendingTailscaleTileToggle;
     private int tailscaleTileToggleDispatchAttempts;
+    private boolean pendingSmsCompose;
+    private int smsComposeDispatchAttempts;
+    private String pendingSmsRecipient = "";
+    private String pendingSmsBody = "";
     private Runnable startupCheck;
     private long startupDeadline;
 
@@ -47,6 +52,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
         registerPlugin(SafeNetTailscalePlugin.class);
+        registerPlugin(SafeNetSmsPlugin.class);
         super.onCreate(savedInstanceState);
 
         Log.i(TAG, "SafeNet activity created");
@@ -64,6 +70,7 @@ public class MainActivity extends BridgeActivity {
         installAppLock(webView);
         handleAppLockRecoveryIntent(getIntent());
         captureTailscaleTileToggle(getIntent());
+        captureSmsComposeIntent(getIntent());
         webView.postDelayed(
                 () -> Log.i(
                         TAG,
@@ -76,6 +83,7 @@ public class MainActivity extends BridgeActivity {
         );
 
         configureSystemBars(webView);
+        if (pendingSmsCompose) startupHandler.postDelayed(this::dispatchPendingSmsCompose, 500L);
     }
 
     @Override
@@ -85,6 +93,51 @@ public class MainActivity extends BridgeActivity {
         handleAppLockRecoveryIntent(intent);
         captureTailscaleTileToggle(intent);
         dispatchPendingTailscaleTileToggle();
+        captureSmsComposeIntent(intent);
+        dispatchPendingSmsCompose();
+    }
+
+    private void captureSmsComposeIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SENDTO.equals(intent.getAction())) return;
+        Uri data = intent.getData();
+        if (data == null) return;
+        String scheme = data.getScheme();
+        if (scheme == null || !(scheme.equalsIgnoreCase("sms")
+                || scheme.equalsIgnoreCase("smsto")
+                || scheme.equalsIgnoreCase("mms")
+                || scheme.equalsIgnoreCase("mmsto"))) return;
+        pendingSmsRecipient = data.getSchemeSpecificPart();
+        if (pendingSmsRecipient == null) pendingSmsRecipient = "";
+        int queryIndex = pendingSmsRecipient.indexOf('?');
+        if (queryIndex >= 0) pendingSmsRecipient = pendingSmsRecipient.substring(0, queryIndex);
+        pendingSmsBody = intent.getStringExtra("sms_body");
+        if (pendingSmsBody == null) pendingSmsBody = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (pendingSmsBody == null) pendingSmsBody = "";
+        pendingSmsCompose = true;
+        smsComposeDispatchAttempts = 0;
+    }
+
+    private void dispatchPendingSmsCompose() {
+        if (!pendingSmsCompose || getBridge() == null || getBridge().getWebView() == null) return;
+        if (smsComposeDispatchAttempts >= 40) {
+            pendingSmsCompose = false;
+            Log.w(TAG, "SMS compose intent could not reach the SafeNet page");
+            return;
+        }
+        smsComposeDispatchAttempts++;
+        String recipient = JSONObject.quote(pendingSmsRecipient);
+        String body = JSONObject.quote(pendingSmsBody);
+        getBridge().getWebView().evaluateJavascript(
+                "(function(){const handler=window.__safenetHandleSmsCompose;" +
+                        "if(typeof handler==='function'){handler(" + recipient + "," + body + ");return true;}" +
+                        "return false;})()",
+                value -> {
+                    if ("true".equals(value)) {
+                        pendingSmsCompose = false;
+                    } else if (pendingSmsCompose) {
+                        startupHandler.postDelayed(this::dispatchPendingSmsCompose, 250L);
+                    }
+                });
     }
 
     private void captureTailscaleTileToggle(Intent intent) {

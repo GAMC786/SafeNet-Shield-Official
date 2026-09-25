@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, LockKeyhole, PhoneCall, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, LockKeyhole, MessageSquareText, PhoneCall, Plus, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { useCallScreening } from "@/hooks/use-vpn";
+import { useSmsFilter } from "@/hooks/use-sms-filter";
 import { apiFetch } from "@/lib/api";
 import { Capacitor } from "@capacitor/core";
 import { useToast } from "@/hooks/use-toast";
@@ -29,9 +30,29 @@ function normalizePhoneNumber(value: string) {
   return `${trimmed.startsWith("+") ? "+" : ""}${digits}`;
 }
 
+function isSafeSmsRegex(value: string) {
+  if (
+    !value.trim() ||
+    value.length > 100 ||
+    /[()|]/.test(value) ||
+    /\\[1-9]/.test(value)
+  ) {
+    return false;
+  }
+  if ((value.match(/[+*?{]/g) ?? []).length > 1) return false;
+  try {
+    new RegExp(value, "i");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function SpamCallBlocker() {
   const native = useCallScreening();
+  const sms = useSmsFilter();
   const { toast } = useToast();
+  const isAndroid = Capacitor.getPlatform() === "android";
   const [blockedNumbers, setBlockedNumbers] = usePersistentState<string[]>(
     "safenet-spam-call-blocked-numbers",
     [],
@@ -50,6 +71,32 @@ export default function SpamCallBlocker() {
     false,
   );
   const [reputationAvailability, setReputationAvailability] = useState<ReputationAvailability | null>(null);
+  const [smsKeywords, setSmsKeywords] = usePersistentState<string[]>(
+    "safenet-sms-filter-keywords",
+    [],
+  );
+  const [smsKeywordDraft, setSmsKeywordDraft, clearSmsKeywordDraft] = usePersistentState(
+    "safenet-sms-filter-keyword-draft",
+    "",
+  );
+  const [smsRegexes, setSmsRegexes] = usePersistentState<string[]>(
+    "safenet-sms-filter-regexes",
+    [],
+  );
+  const [smsRegexDraft, setSmsRegexDraft, clearSmsRegexDraft] = usePersistentState(
+    "safenet-sms-filter-regex-draft",
+    "",
+  );
+  const [smsAllowedSenders, setSmsAllowedSenders] = usePersistentState<string[]>(
+    "safenet-sms-filter-allowed-senders",
+    [],
+  );
+  const [smsAllowedSenderDraft, setSmsAllowedSenderDraft, clearSmsAllowedSenderDraft] = usePersistentState(
+    "safenet-sms-filter-allowed-sender-draft",
+    "",
+  );
+  const [smsRecipient, setSmsRecipient] = useState("");
+  const [smsBody, setSmsBody] = useState("");
 
   const syncConfig = native.syncConfig;
   useEffect(() => {
@@ -102,6 +149,46 @@ export default function SpamCallBlocker() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isAndroid) return;
+    void sms.syncRules({
+      keywords: smsKeywords,
+      regexes: smsRegexes,
+      allowedSenders: smsAllowedSenders,
+    }).catch((error) => {
+      toast({
+        title: "SMS rules could not be synced",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    });
+  }, [isAndroid, smsAllowedSenders, sms.syncRules, smsKeywords, smsRegexes, toast]);
+
+  useEffect(() => {
+    type SmsComposeWindow = Window & {
+      __safenetPendingSmsCompose?: { recipient: string; body: string };
+    };
+    const targetWindow = window as SmsComposeWindow;
+    const applyCompose = (recipient: string, body: string) => {
+      setSmsRecipient(recipient);
+      setSmsBody(body);
+    };
+    const pending = targetWindow.__safenetPendingSmsCompose;
+    if (pending) {
+      applyCompose(pending.recipient, pending.body);
+      delete targetWindow.__safenetPendingSmsCompose;
+    }
+    const handleComposeEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ recipient: string; body: string }>).detail;
+      if (detail) {
+        applyCompose(detail.recipient, detail.body);
+        delete targetWindow.__safenetPendingSmsCompose;
+      }
+    };
+    window.addEventListener("safenet:sms-compose", handleComposeEvent);
+    return () => window.removeEventListener("safenet:sms-compose", handleComposeEvent);
+  }, []);
+
   const addBlockedNumber = useCallback(() => {
     const normalized = normalizePhoneNumber(number);
     if (!normalized) {
@@ -115,6 +202,172 @@ export default function SpamCallBlocker() {
   const removeBlockedNumber = useCallback((value: string) => {
     setBlockedNumbers((current) => current.filter((entry) => entry !== value));
   }, [setBlockedNumbers]);
+
+  const addSmsKeyword = useCallback(() => {
+    const value = smsKeywordDraft.trim();
+    if (!value || value.length > 80) {
+      toast({ title: "Enter a keyword", description: "Keywords can contain up to 80 characters.", variant: "destructive" });
+      return;
+    }
+    if (smsKeywords.some((item) => item.toLowerCase() === value.toLowerCase())) {
+      clearSmsKeywordDraft();
+      return;
+    }
+    if (smsKeywords.length >= 50) {
+      toast({ title: "Keyword limit reached", description: "You can add up to 50 SMS keywords.", variant: "destructive" });
+      return;
+    }
+    setSmsKeywords((current) => current.some((item) => item.toLowerCase() === value.toLowerCase())
+      ? current
+      : [...current, value]);
+    clearSmsKeywordDraft();
+  }, [clearSmsKeywordDraft, setSmsKeywords, smsKeywordDraft, smsKeywords, toast]);
+
+  const addSmsRegex = useCallback(() => {
+    const value = smsRegexDraft.trim();
+    if (!isSafeSmsRegex(value)) {
+      toast({
+        title: "Pattern is invalid or too complex",
+        description: "Use a pattern under 100 characters with no groups or alternation and at most one repetition.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (smsRegexes.includes(value)) {
+      clearSmsRegexDraft();
+      return;
+    }
+    if (smsRegexes.length >= 20) {
+      toast({ title: "Pattern limit reached", description: "You can add up to 20 SMS patterns.", variant: "destructive" });
+      return;
+    }
+    setSmsRegexes((current) => current.includes(value) ? current : [...current, value]);
+    clearSmsRegexDraft();
+  }, [clearSmsRegexDraft, setSmsRegexes, smsRegexDraft, smsRegexes, toast]);
+
+  const addSmsAllowedSender = useCallback(() => {
+    const value = smsAllowedSenderDraft.trim();
+    if (!value || value.length > 80) {
+      toast({ title: "Enter a sender", description: "Allowed senders can contain up to 80 characters.", variant: "destructive" });
+      return;
+    }
+    if (smsAllowedSenders.some((item) => item.toLowerCase() === value.toLowerCase())) {
+      clearSmsAllowedSenderDraft();
+      return;
+    }
+    if (smsAllowedSenders.length >= 50) {
+      toast({ title: "Allowed sender limit reached", description: "You can add up to 50 allowed SMS senders.", variant: "destructive" });
+      return;
+    }
+    setSmsAllowedSenders((current) => current.some((item) => item.toLowerCase() === value.toLowerCase())
+      ? current
+      : [...current, value]);
+    clearSmsAllowedSenderDraft();
+  }, [clearSmsAllowedSenderDraft, setSmsAllowedSenders, smsAllowedSenderDraft, smsAllowedSenders, toast]);
+
+  const enableSmsFiltering = useCallback(async () => {
+    try {
+      let status = sms.status ?? await sms.refresh();
+      if (!status?.roleHeld) {
+        status = await sms.requestDefaultSmsApp();
+        if (!status?.roleHeld) {
+          toast({
+            title: "SafeNet is not the default SMS app",
+            description: "Choose SafeNet in Android's system dialog, then return here.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      if (!status.permissionsGranted) {
+        status = await sms.requestSmsPermissions();
+      }
+      if (!status.permissionsGranted) {
+        toast({
+          title: "SMS access is required",
+          description: "Grant the requested Android SMS permissions to enable local filtering.",
+          variant: "destructive",
+        });
+        return;
+      }
+      await sms.setEnabled(true);
+      toast({
+        title: "SMS filtering enabled",
+        description: "Incoming texts are checked on this device and filtered messages stay in local quarantine.",
+      });
+    } catch (error) {
+      toast({
+        title: "SMS filtering could not be enabled",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.refresh, sms.requestDefaultSmsApp, sms.requestSmsPermissions, sms.setEnabled, sms.status, toast]);
+
+  const handleSmsFilterToggle = useCallback((nextEnabled: boolean) => {
+    if (nextEnabled) {
+      void enableSmsFiltering();
+      return;
+    }
+    void sms.setEnabled(false)
+      .then(() => toast({ title: "SMS filtering turned off" }))
+      .catch((error) => toast({
+        title: "SMS filtering could not be turned off",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      }));
+  }, [enableSmsFiltering, sms.setEnabled, toast]);
+
+  const sendSms = useCallback(async () => {
+    if (!normalizePhoneNumber(smsRecipient)) {
+      toast({ title: "Enter a valid phone number", description: "Use at least 7 digits.", variant: "destructive" });
+      return;
+    }
+    if (!smsBody.trim()) {
+      toast({ title: "Enter a message", description: "SMS text cannot be empty.", variant: "destructive" });
+      return;
+    }
+    try {
+      await sms.sendMessage(smsRecipient, smsBody);
+      setSmsBody("");
+      toast({
+        title: "SMS submitted",
+        description: "Android accepted the message for sending. Carrier delivery may take a moment.",
+      });
+    } catch (error) {
+      toast({
+        title: "SMS could not be sent",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.sendMessage, smsBody, smsRecipient, toast]);
+
+  const restoreSms = useCallback(async (id: string) => {
+    try {
+      await sms.restoreMessage(id);
+      toast({ title: "Message restored", description: "The SMS was returned to the Android inbox." });
+    } catch (error) {
+      toast({
+        title: "Message could not be restored",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.restoreMessage, toast]);
+
+  const deleteSms = useCallback(async (id: string) => {
+    try {
+      await sms.deleteMessage(id);
+      toast({ title: "Quarantined message deleted" });
+    } catch (error) {
+      toast({
+        title: "Message could not be deleted",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.deleteMessage, toast]);
 
   const reportSpam = useCallback(async () => {
     const normalized = normalizePhoneNumber(reportNumber);
@@ -157,7 +410,6 @@ export default function SpamCallBlocker() {
     }
   }, [clearReportNumber, reportNumber, setBlockedNumbers, toast]);
 
-  const isAndroid = Capacitor.getPlatform() === "android";
   const enabled = native.status?.enabled === true;
   const protectionEnabled = isAndroid ? enabled : browserEnabled;
   const statusLabel = !isAndroid
@@ -238,6 +490,324 @@ export default function SpamCallBlocker() {
           </div>
         )}
       />
+
+      <CyberCard className="border-cyan-400/20 bg-cyan-400/[0.04]">
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-cyan-200" />
+              <div>
+                <h2 className="font-display font-bold text-white">Junkboy SMS Filter</h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Local keyword and pattern filtering for incoming Android texts. Messages are evaluated on
+                  this device; filtered texts are kept in a reviewable quarantine, not sent to SafeNet servers.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={sms.status?.enabled === true}
+              disabled={!isAndroid || sms.isBusy || sms.status === null}
+              onCheckedChange={handleSmsFilterToggle}
+              aria-label={`Turn SMS filtering ${sms.status?.enabled ? "off" : "on"}`}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite">
+            <Badge variant={sms.status?.enabled ? "default" : "outline"}>
+              {!isAndroid
+                ? "Android only"
+                : sms.status?.enabled
+                  ? "SMS filtering active"
+                  : sms.status?.roleHeld
+                    ? "SafeNet is default; filtering off"
+                    : sms.status?.roleAvailable
+                      ? "Default SMS setup needed"
+                      : "SMS role unavailable"}
+            </Badge>
+            {sms.status?.roleHeld && (
+              <Badge variant="outline">
+                {sms.status.permissionsGranted ? "SMS access granted" : "SMS permissions needed"}
+              </Badge>
+            )}
+            <Badge variant="outline">{sms.quarantinedMessages.length} quarantined</Badge>
+          </div>
+
+          {!isAndroid && (
+            <p className="text-xs text-muted-foreground">
+              These rules are saved in this browser for preview. Message filtering and sending are available only in SafeNet for Android.
+            </p>
+          )}
+          {isAndroid && sms.status && !sms.status.roleHeld && (
+            <Button
+              variant="outline"
+              className="w-fit border-cyan-300/40 text-cyan-100 hover:bg-cyan-300/10"
+              disabled={sms.isBusy || !sms.status.roleAvailable}
+              onClick={() => {
+                void sms.requestDefaultSmsApp()
+                  .then((status) => {
+                    if (status.roleHeld) {
+                      toast({
+                        title: "SafeNet selected as the default SMS app",
+                        description: "Grant SMS access, then turn on local filtering.",
+                      });
+                    }
+                  })
+                  .catch((error) => toast({
+                    title: "Default SMS app was not changed",
+                    description: error instanceof Error ? error.message : "Try again.",
+                    variant: "destructive",
+                  }));
+              }}
+            >
+              <MessageSquareText className="mr-2 h-4 w-4" />
+              {sms.isBusy ? "Opening Android settings..." : "Set SafeNet as default SMS app"}
+            </Button>
+          )}
+          {isAndroid && sms.status?.roleHeld && !sms.status.permissionsGranted && (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={sms.isBusy}
+              onClick={() => {
+                void sms.requestSmsPermissions()
+                  .then((status) => {
+                    if (status.permissionsGranted) {
+                      toast({ title: "SMS access granted", description: "You can now enable filtering." });
+                    }
+                  })
+                  .catch((error) => toast({
+                    title: "SMS access was not granted",
+                    description: error instanceof Error ? error.message : "Try again.",
+                    variant: "destructive",
+                  }));
+              }}
+            >
+              Grant SMS access
+            </Button>
+          )}
+
+          <div className="rounded-lg border border-yellow-300/20 bg-yellow-300/[0.04] p-3">
+            <p className="text-xs leading-5 text-yellow-100/90">
+              SafeNet’s default-handler integration currently supports SMS only. MMS photos and group messages
+              are not downloaded or filtered; keep your existing messaging app as default if you rely on MMS.
+              The TFLite file in Junkboy is a documented placeholder, so filtering here uses clear local rules,
+              not AI classification.
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <h3 className="text-sm font-semibold text-white">Block keywords</h3>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  value={smsKeywordDraft}
+                  onChange={(event) => setSmsKeywordDraft(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") addSmsKeyword(); }}
+                  maxLength={80}
+                  placeholder="e.g. claim your prize"
+                  aria-label="SMS keyword to block"
+                />
+                <Button size="icon" onClick={addSmsKeyword} aria-label="Add SMS keyword">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {smsKeywords.map((keyword) => (
+                  <Badge key={keyword} variant="outline" className="gap-1 border-white/15 py-1">
+                    {keyword}
+                    <button
+                      type="button"
+                      onClick={() => setSmsKeywords((current) => current.filter((item) => item !== keyword))}
+                      aria-label={`Remove SMS keyword ${keyword}`}
+                      className="ml-1 text-muted-foreground hover:text-white"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+                {smsKeywords.length === 0 && <p className="text-xs text-muted-foreground">No custom keywords.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <h3 className="text-sm font-semibold text-white">Block patterns</h3>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  value={smsRegexDraft}
+                  onChange={(event) => setSmsRegexDraft(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") addSmsRegex(); }}
+                  maxLength={100}
+                  placeholder="e.g. claim\\s+your\\s+prize"
+                  aria-label="SMS pattern to block"
+                  className="font-mono"
+                />
+                <Button size="icon" onClick={addSmsRegex} aria-label="Add SMS pattern">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-3 space-y-1">
+                {smsRegexes.map((pattern) => (
+                  <div key={pattern} className="flex items-center justify-between gap-2 text-xs">
+                    <code className="break-all text-cyan-100">{pattern}</code>
+                    <button
+                      type="button"
+                      onClick={() => setSmsRegexes((current) => current.filter((item) => item !== pattern))}
+                      aria-label={`Remove SMS pattern ${pattern}`}
+                      className="shrink-0 text-muted-foreground hover:text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {smsRegexes.length === 0 && <p className="text-xs text-muted-foreground">No custom patterns.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <h3 className="text-sm font-semibold text-white">Always allow senders</h3>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  value={smsAllowedSenderDraft}
+                  onChange={(event) => setSmsAllowedSenderDraft(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") addSmsAllowedSender(); }}
+                  maxLength={80}
+                  placeholder="Phone number or sender name"
+                  aria-label="SMS sender to always allow"
+                />
+                <Button size="icon" onClick={addSmsAllowedSender} aria-label="Add allowed SMS sender">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {smsAllowedSenders.map((sender) => (
+                  <Badge key={sender} variant="outline" className="gap-1 border-green-300/20 py-1">
+                    {sender}
+                    <button
+                      type="button"
+                      onClick={() => setSmsAllowedSenders((current) => current.filter((item) => item !== sender))}
+                      aria-label={`Remove allowed SMS sender ${sender}`}
+                      className="ml-1 text-muted-foreground hover:text-white"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+                {smsAllowedSenders.length === 0 && <p className="text-xs text-muted-foreground">No allowed senders.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-white">Quarantined messages</h3>
+                <Badge variant="outline">{sms.quarantinedMessages.length}</Badge>
+              </div>
+              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                {sms.quarantinedMessages.map((message) => (
+                  <div key={String(message.id)} className="rounded-md border border-white/10 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-xs font-semibold text-white">{message.sender}</p>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{message.body}</p>
+                        <p className="mt-2 text-[10px] text-muted-foreground">
+                          {message.reason ?? "Filtered locally"} · {new Date(message.receivedAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Restore message from ${message.sender}`}
+                          title="Restore to Android inbox"
+                          disabled={!sms.status?.roleHeld || !sms.status.permissionsGranted || sms.isBusy}
+                          onClick={() => void restoreSms(String(message.id))}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Delete quarantined message from ${message.sender}`}
+                          disabled={sms.isBusy}
+                          onClick={() => void deleteSms(String(message.id))}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {sms.quarantinedMessages.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No filtered messages yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <h3 className="text-sm font-semibold text-white">Send an SMS</h3>
+              <div className="mt-3 space-y-2">
+                <Input
+                  value={smsRecipient}
+                  onChange={(event) => setSmsRecipient(event.target.value)}
+                  placeholder="+1 555 123 4567"
+                  inputMode="tel"
+                  aria-label="SMS recipient"
+                />
+                <textarea
+                  value={smsBody}
+                  onChange={(event) => setSmsBody(event.target.value)}
+                  maxLength={2000}
+                  placeholder="Write a text message"
+                  aria-label="SMS message"
+                  className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">Sent texts are saved in the Android sent folder.</p>
+                  <Button
+                    onClick={() => void sendSms()}
+                    disabled={!isAndroid || !sms.status?.roleHeld || !sms.status.permissionsGranted || sms.isBusy}
+                  >
+                    {sms.isBusy ? "Sending..." : "Send SMS"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-white">Recent inbox ({sms.recentMessages.length})</h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!sms.status?.roleHeld || !sms.status.permissionsGranted}
+                    onClick={() => {
+                      void sms.refreshRecentMessages().catch((error) => toast({
+                        title: "Recent messages could not be loaded",
+                        description: error instanceof Error ? error.message : "Try again.",
+                        variant: "destructive",
+                      }));
+                    }}
+                  >
+                    Refresh inbox
+                  </Button>
+                </div>
+                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto">
+                  {sms.recentMessages.map((message) => (
+                    <div key={String(message.id)} className="rounded-md border border-white/10 p-2">
+                      <p className="text-xs font-semibold text-white">{message.sender}</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{message.body}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{new Date(message.receivedAt).toLocaleString()}</p>
+                    </div>
+                  ))}
+                  {sms.recentMessages.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Recent messages appear here after SMS access is granted.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CyberCard>
 
       <CyberCard className="overflow-hidden">
         <div className="flex items-start gap-4">
