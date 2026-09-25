@@ -42,6 +42,10 @@ final class SafeNetSmsFilter {
 
     private SafeNetSmsFilter() {}
 
+    static boolean canEnableFiltering(boolean roleHeld, boolean receiveSmsPermissionGranted) {
+        return roleHeld && receiveSmsPermissionGranted;
+    }
+
     static final class Result {
         final boolean blocked;
         final String reason;

@@ -35,6 +35,12 @@ import org.json.JSONObject;
                 Manifest.permission.RECEIVE_SMS,
                 Manifest.permission.SEND_SMS
             }
+        ),
+        @Permission(
+            alias = "receiveSms",
+            strings = {
+                Manifest.permission.RECEIVE_SMS
+            }
         )
     }
 )
@@ -93,6 +99,20 @@ public final class SafeNetSmsPlugin extends Plugin {
         requestPermissionForAlias("sms", call, "smsPermissionResult");
     }
 
+    @PluginMethod
+    public void requestFilterPermission(PluginCall call) {
+        if (!status().optBoolean("roleHeld", false)) {
+            call.reject("Choose SafeNet as the default SMS app before granting incoming SMS access.");
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECEIVE_SMS) ==
+            PackageManager.PERMISSION_GRANTED) {
+            call.resolve(status());
+            return;
+        }
+        requestPermissionForAlias("receiveSms", call, "smsPermissionResult");
+    }
+
     @PermissionCallback
     private void smsPermissionResult(PluginCall call) {
         if (call != null) call.resolve(status());
@@ -101,9 +121,12 @@ public final class SafeNetSmsPlugin extends Plugin {
     @PluginMethod
     public void setEnabled(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", false);
-        if (enabled && (!status().optBoolean("roleHeld", false) ||
-            !status().optBoolean("permissionsGranted", false))) {
-            call.reject("Select SafeNet as the default SMS app and grant the requested SMS permissions first.");
+        JSObject current = status();
+        if (enabled && !SafeNetSmsFilter.canEnableFiltering(
+            current.optBoolean("roleHeld", false),
+            current.optBoolean("filterPermissionGranted", false)
+        )) {
+            call.reject("Select SafeNet as the default SMS app and grant permission to receive SMS first.");
             return;
         }
         getContext().getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
@@ -248,15 +271,23 @@ public final class SafeNetSmsPlugin extends Plugin {
                 PackageManager.MATCH_DEFAULT_ONLY
             ) != null;
         }
+        boolean filterPermissionGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+                PackageManager.PERMISSION_GRANTED;
         boolean permissionsGranted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
+            filterPermissionGranted &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED;
-        boolean enabled = context.getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
+        boolean configuredEnabled = context.getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(SafeNetSmsFilter.PREF_ENABLED, false);
+        boolean enabled = configuredEnabled && SafeNetSmsFilter.canEnableFiltering(
+            roleHeld,
+            filterPermissionGranted
+        );
         result.put("supported", supported);
         result.put("roleAvailable", roleAvailable);
         result.put("roleHeld", roleHeld);
+        result.put("filterPermissionGranted", filterPermissionGranted);
         result.put("permissionsGranted", permissionsGranted);
         result.put("enabled", enabled);
         result.put("quarantineCount", SafeNetSmsFilter.quarantineCount(context));
@@ -267,8 +298,10 @@ public final class SafeNetSmsPlugin extends Plugin {
                 ? "Android does not offer a default SMS app selection on this device."
                 : !roleHeld
                     ? "SafeNet must be selected as the default SMS app before it can filter incoming texts."
-                    : !permissionsGranted
-                        ? "Grant SMS access to filter incoming texts and send messages."
+                    : !filterPermissionGranted
+                        ? "Grant permission to receive SMS before enabling incoming-text filtering."
+                        : !permissionsGranted
+                            ? "Incoming SMS filtering is ready. Grant inbox and sending permissions to use those features."
                         : "SMS filtering and sending are available. MMS is not supported.");
         return result;
     }

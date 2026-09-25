@@ -9,6 +9,13 @@ import org.junit.Test;
 
 public class SafeNetSmsFilterTest {
     @Test
+    public void incomingFilterNeedsDefaultSmsRoleAndReceivePermission() {
+        assertTrue(SafeNetSmsFilter.canEnableFiltering(true, true));
+        assertFalse(SafeNetSmsFilter.canEnableFiltering(false, true));
+        assertFalse(SafeNetSmsFilter.canEnableFiltering(true, false));
+    }
+
+    @Test
     public void filteringIsDisabledUntilUserEnablesIt() {
         SafeNetSmsFilter.Result result = SafeNetSmsFilter.classifyText(
             "+1 555 123 4567",

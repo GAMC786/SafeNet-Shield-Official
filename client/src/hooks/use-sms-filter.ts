@@ -5,6 +5,7 @@ export type SmsFilterStatus = {
   supported: boolean;
   roleAvailable: boolean;
   roleHeld: boolean;
+  filterPermissionGranted: boolean;
   permissionsGranted: boolean;
   enabled: boolean;
   quarantineCount: number;
@@ -23,6 +24,7 @@ export type LocalSmsMessage = {
 type SmsFilterPlugin = {
   getStatus(): Promise<SmsFilterStatus>;
   requestDefaultSmsApp(): Promise<SmsFilterStatus>;
+  requestFilterPermission(): Promise<SmsFilterStatus>;
   requestSmsPermissions(): Promise<SmsFilterStatus>;
   setEnabled(options: { enabled: boolean }): Promise<SmsFilterStatus>;
   syncRules(options: {
@@ -59,6 +61,7 @@ export function useSmsFilter() {
         supported: true,
         roleAvailable: false,
         roleHeld: false,
+        filterPermissionGranted: false,
         permissionsGranted: false,
         enabled: false,
         quarantineCount: 0,
@@ -114,6 +117,17 @@ export function useSmsFilter() {
     setIsBusy(true);
     try {
       const nextStatus = await SmsFilterNative.requestSmsPermissions();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  const requestFilterPermission = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SmsFilterNative.requestFilterPermission();
       setStatus(nextStatus);
       return nextStatus;
     } finally {
@@ -179,6 +193,7 @@ export function useSmsFilter() {
     refresh,
     refreshRecentMessages,
     requestDefaultSmsApp,
+    requestFilterPermission,
     requestSmsPermissions,
     setEnabled,
     syncRules,

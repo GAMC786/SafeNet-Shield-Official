@@ -3,8 +3,8 @@ name: Android SMS permission gating
 description: Keep SMS status checks aligned with permissions the app can request at runtime.
 ---
 
-The permission state used to enable SMS filtering must match the permissions requested through the app's runtime permission alias. Keep `WRITE_SMS` declared in the manifest for default-SMS-provider operations, but do not require it as a runtime grant for the filter toggle; it is not part of the app's runtime permission request.
+Enable incoming-message filtering based on the default-SMS role and `RECEIVE_SMS` only. Keep inbox reading (`READ_SMS`) and outgoing messages (`SEND_SMS`) gated by their own permissions; they must not block the incoming filter toggle. Keep `WRITE_SMS` declared for default-provider operations, but do not require it as a runtime grant.
 
-**Why:** The native status check required `WRITE_SMS` even though the permission prompt requested only `READ_SMS`, `RECEIVE_SMS`, and `SEND_SMS`, leaving the filter disabled after users granted every requested permission.
+**Why:** Filtering needs delivery of incoming SMS, while inbox browsing and sending are separate features. A combined “all SMS permissions” status can leave filtering disabled when an unrelated permission is missing.
 
-**How to apply:** When adding or changing SMS permission checks, compare the enablement gate to the runtime alias. Keep provider-write failures handled at the inbox operation boundary rather than using `WRITE_SMS` to block filter activation.
+**How to apply:** Keep a receive-only runtime permission request for filter activation and test that the default role plus `RECEIVE_SMS` enables filtering without `READ_SMS` or `SEND_SMS`. Handle provider-write failures at the inbox operation boundary rather than using `WRITE_SMS` to block filter activation.

@@ -283,13 +283,13 @@ export default function SpamCallBlocker() {
           return;
         }
       }
-      if (!status.permissionsGranted) {
-        status = await sms.requestSmsPermissions();
+      if (!status.filterPermissionGranted) {
+        status = await sms.requestFilterPermission();
       }
-      if (!status.permissionsGranted) {
+      if (!status.filterPermissionGranted) {
         toast({
-          title: "SMS access is required",
-          description: "Grant the requested Android SMS permissions to enable local filtering.",
+          title: "Incoming SMS permission is required",
+          description: "Allow SafeNet to receive incoming SMS before enabling local filtering.",
           variant: "destructive",
         });
         return;
@@ -306,7 +306,14 @@ export default function SpamCallBlocker() {
         variant: "destructive",
       });
     }
-  }, [sms.refresh, sms.requestDefaultSmsApp, sms.requestSmsPermissions, sms.setEnabled, sms.status, toast]);
+  }, [
+    sms.refresh,
+    sms.requestDefaultSmsApp,
+    sms.requestFilterPermission,
+    sms.setEnabled,
+    sms.status,
+    toast,
+  ]);
 
   const handleSmsFilterToggle = useCallback((nextEnabled: boolean) => {
     if (nextEnabled) {
@@ -740,7 +747,11 @@ export default function SpamCallBlocker() {
             </Badge>
             {sms.status?.roleHeld && (
               <Badge variant="outline">
-                {sms.status.permissionsGranted ? "SMS access granted" : "SMS permissions needed"}
+                {sms.status.filterPermissionGranted
+                  ? sms.status.permissionsGranted
+                    ? "Filter, inbox, and sending access granted"
+                    : "Filter access granted"
+                  : "Receive SMS permission needed"}
               </Badge>
             )}
             <Badge variant="outline">{sms.quarantinedMessages.length} quarantined</Badge>
@@ -786,7 +797,10 @@ export default function SpamCallBlocker() {
                 void sms.requestSmsPermissions()
                   .then((status) => {
                     if (status.permissionsGranted) {
-                      toast({ title: "SMS access granted", description: "You can now enable filtering." });
+                      toast({
+                        title: "Inbox and sending access granted",
+                        description: "You can browse recent messages and send texts. Filtering only needs receive-SMS access.",
+                      });
                     }
                   })
                   .catch((error) => toast({
@@ -796,7 +810,7 @@ export default function SpamCallBlocker() {
                   }));
               }}
             >
-              Grant SMS access
+              Grant inbox and sending access
             </Button>
           )}
 
