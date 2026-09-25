@@ -57,6 +57,9 @@ const [
   readSource("android/third_party/locklock/NOTICE.md"),
 ]);
 const clientApp = await readSource("client/src/App.tsx");
+const appLockActivity = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockActivity.java",
+);
 
 const repositoryRoot = new URL("..", import.meta.url);
 
@@ -191,6 +194,10 @@ function assertBlockedEvidence(fixture, expectedCategory) {
 test("App Lock uses a local passcode and the AppLock-style Accessibility Service", () => {
   assert.doesNotMatch(appGradle, /androidx\.biometric:biometric/);
   assert.match(manager, /passcode remains local/);
+  assert.match(
+    manager,
+    /isProtectionActive\(Context context\)[\s\S]*?isAccessibilityServiceEnabled\(context\)[\s\S]*?isOverlayPermissionEnabled\(context\)/,
+  );
   assert.match(manager, /PREF_RECOVERY_HASH/);
   assert.match(manager, /HASH_ROUNDS = 100_000/);
   assert.match(manager, /verifyPin\(Context context, String pin\)/);
@@ -198,6 +205,7 @@ test("App Lock uses a local passcode and the AppLock-style Accessibility Service
   assert.match(manager, /PREF_COOLDOWN_UNTIL/);
   assert.match(manager, /verifyRecoveryAnswer/);
   assert.match(manager, /isAccessibilityServiceEnabled/);
+  assert.match(appLockActivity, /AppLockManager\.isProtectionActive\(this\)/);
   assert.match(manager, /disableAntiUninstall/);
   assert.match(manager, /removeActiveAdmin/);
   assert.doesNotMatch(activity, /BiometricPrompt/);
@@ -213,6 +221,8 @@ test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries"
   assert.match(service, /AppLockActivity.class/);
   assert.match(service, /postDelayed\(retryPendingLaunch, RETRY_DELAY_MS\)/);
   assert.match(service, /packageName\.equals\(pendingPackage\)/);
+  assert.match(service, /observeForegroundPackage/);
+  assert.match(service, /getActivityInfo/);
   assert.match(
     service,
     /startActivity\(lockIntent\);[\s\S]*lastLaunchedPackage = packageName;/,
@@ -268,6 +278,7 @@ test("the active AppLock configuration is the LockLock Compose integration", () 
   assert.match(composeUi, /Select Apps/);
   assert.match(composeUi, /LockLockRecoveryDialog/);
   assert.match(composeUi, /LockLockAppSelectionItem/);
+  assert.match(composeUi, /Not protecting apps — check permissions/);
   assert.match(lockLockNotice, /GNU General Public License v3\.0/);
   assert.match(lockLockNotice, /github\.com\/nethical6\/LockLock/);
 });
@@ -472,6 +483,12 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     workflow,
     /writeReleaseArtifactMetadata[\s\S]+app-release\.apk\.metadata/,
   );
+  assert.match(
+    instrumentation,
+    /temporaryUnlockIsClearedAfterLeavingTheUnlockedApp/,
+  );
+  assert.match(instrumentation, /within_grace_period=true/);
+  assert.doesNotMatch(instrumentation, /SystemClock\.sleep\(16_000L\)/);
   assert.match(
     workflow,
     /--release-ref "\$GITHUB_REF"[\s\S]+--release-sha "\$GITHUB_SHA"/,

@@ -3,9 +3,12 @@ package com.safenet.dns;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -23,8 +26,9 @@ public final class OpenLockMonitorService extends AccessibilityService {
     private static final long TEMPORARY_UNLOCK_MS = 15_000L;
     private static final long RETRY_DELAY_MS = 350L;
 
-    private static volatile String temporarilyUnlockedPackage = "";
-    private static volatile long temporarilyUnlockedUntil;
+    private static String temporarilyUnlockedPackage = "";
+    private static long temporarilyUnlockedUntil;
+    private static boolean temporarilyUnlockedPackageForeground;
 
     private String lastLaunchedPackage;
     private long lastLaunchAt;
@@ -42,21 +46,72 @@ public final class OpenLockMonitorService extends AccessibilityService {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                temporarilyUnlockedUntil = 0L;
+                clearTemporaryUnlock();
                 AppLockManager.clearSession();
             }
         }
     };
 
-    public static boolean isUnlockTemporarilyAllowed(String packageName) {
-        return packageName != null
-                && packageName.equals(temporarilyUnlockedPackage)
-                && System.currentTimeMillis() < temporarilyUnlockedUntil;
+    public static synchronized boolean isUnlockTemporarilyAllowed(String packageName) {
+        if (packageName == null || !packageName.equals(temporarilyUnlockedPackage)) {
+            return false;
+        }
+        if (temporarilyUnlockedPackageForeground) {
+            return true;
+        }
+        if (System.currentTimeMillis() < temporarilyUnlockedUntil) {
+            return true;
+        }
+        clearTemporaryUnlock();
+        return false;
     }
 
-    public static void allowTemporaryUnlock(String packageName) {
-        temporarilyUnlockedPackage = packageName == null ? "" : packageName;
+    public static synchronized void allowTemporaryUnlock(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            clearTemporaryUnlock();
+            return;
+        }
+        temporarilyUnlockedPackage = packageName;
         temporarilyUnlockedUntil = System.currentTimeMillis() + TEMPORARY_UNLOCK_MS;
+        temporarilyUnlockedPackageForeground = false;
+    }
+
+    static synchronized boolean observeForegroundPackage(
+            String packageName,
+            boolean windowStateChanged,
+            boolean activityWindow
+    ) {
+        if (temporarilyUnlockedPackage.isEmpty()) {
+            return false;
+        }
+        if (!temporarilyUnlockedPackageForeground
+                && System.currentTimeMillis() >= temporarilyUnlockedUntil) {
+            clearTemporaryUnlock();
+            return false;
+        }
+        if (temporarilyUnlockedPackage.equals(packageName)) {
+            if (windowStateChanged) {
+                temporarilyUnlockedPackageForeground = true;
+                return true;
+            }
+            return false;
+        }
+        if (temporarilyUnlockedPackageForeground && activityWindow) {
+            clearTemporaryUnlock();
+        }
+        return false;
+    }
+
+    public static synchronized void clearTemporaryUnlock() {
+        temporarilyUnlockedPackage = "";
+        temporarilyUnlockedUntil = 0L;
+        temporarilyUnlockedPackageForeground = false;
+    }
+
+    private static synchronized boolean shouldInspectForegroundActivity(String packageName) {
+        return !temporarilyUnlockedPackage.isEmpty()
+                && (temporarilyUnlockedPackageForeground
+                || temporarilyUnlockedPackage.equals(packageName));
     }
 
     @Override
@@ -102,11 +157,51 @@ public final class OpenLockMonitorService extends AccessibilityService {
             return;
         }
         String packageName = packageNameValue.toString();
-        if (packageName.isEmpty() || packageName.equals(getPackageName())) {
+        if (packageName.isEmpty()) {
+            return;
+        }
+
+        boolean windowStateChanged =
+                event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+        boolean activityWindow = shouldInspectForegroundActivity(packageName)
+                && isActivityWindow(packageName, event.getClassName());
+        boolean unlockedPackageForeground = observeForegroundPackage(
+                packageName,
+                windowStateChanged,
+                activityWindow
+        );
+        if (unlockedPackageForeground && packageName.equals(lastLaunchedPackage)) {
+            lastLaunchedPackage = null;
+            lastLaunchAt = 0L;
+        }
+        if (packageName.equals(getPackageName())) {
             return;
         }
 
         requestLock(packageName);
+    }
+
+    private boolean isActivityWindow(String packageName, CharSequence className) {
+        if (className == null || className.length() == 0) {
+            return false;
+        }
+        try {
+            getPackageManager().getActivityInfo(
+                    new ComponentName(packageName, className.toString()),
+                    0
+            );
+            return true;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            Intent homeIntent = new Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_HOME);
+            ResolveInfo homeActivity = getPackageManager().resolveActivity(
+                    homeIntent,
+                    PackageManager.MATCH_DEFAULT_ONLY
+            );
+            return homeActivity != null
+                    && homeActivity.activityInfo != null
+                    && packageName.equals(homeActivity.activityInfo.packageName);
+        }
     }
 
     private void requestLock(String packageName) {
@@ -151,6 +246,7 @@ public final class OpenLockMonitorService extends AccessibilityService {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacks(retryPendingLaunch);
+        clearTemporaryUnlock();
         try {
             unregisterReceiver(screenReceiver);
         } catch (IllegalArgumentException ignored) {

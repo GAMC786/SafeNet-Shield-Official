@@ -20,3 +20,15 @@ Foreground lock launches must record the relaunch timestamp only after `startAct
 **Why:** Recording the package as handled before Android accepts the launch can suppress every later foreground event while the selected app remains visible, leaving the user-facing protection silently bypassed.
 
 **How to apply:** Keep failed launches retryable, guard duplicate activity instances separately from launch-attempt timestamps, and validate this path on a hosted or physical Android runner.
+
+Temporary passcode authorization is a foreground handoff, not a reusable grace period. Keep it available for the authenticated app's return, then revoke it when a confirmed different Activity takes focus.
+
+**Why:** A package-scoped time window can otherwise be reused after leaving the app, while tests that wait past the window miss the bypass.
+
+**How to apply:** Test leaving and reopening within the original allowance window; ignore keyboard and other non-Activity windows, and verify the behavior on a real Android device before release.
+
+The persisted enabled switch is not proof that app launches are being monitored. Any UI that says protection is active must also require a passcode, the Accessibility Service, and overlay permission, and refresh those checks after Android settings returns.
+
+**Why:** Users can save App Lock as enabled before granting its system permissions; reporting that as active hides that selected apps are not yet enforced.
+
+**How to apply:** Keep requested/enabled state separate from runtime enforcement readiness, and show missing permission state prominently without preventing the setup handoff.

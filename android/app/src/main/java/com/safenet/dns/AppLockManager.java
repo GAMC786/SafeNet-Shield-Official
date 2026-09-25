@@ -91,6 +91,14 @@ public final class AppLockManager {
         return prefs(context).getBoolean(PREF_ENABLED, false);
     }
 
+    public static boolean isProtectionActive(Context context) {
+        return isSupported(context)
+                && isEnabled(context)
+                && hasPin(context)
+                && isAccessibilityServiceEnabled(context)
+                && isOverlayPermissionEnabled(context);
+    }
+
     public static boolean hasPin(Context context) {
         return !TextUtils.isEmpty(prefs(context).getString(PREF_PIN_HASH, null));
     }
@@ -103,6 +111,7 @@ public final class AppLockManager {
         prefs(context).edit().putBoolean(PREF_ENABLED, enabled).apply();
         if (!enabled) {
             sessionAuthenticated = false;
+            OpenLockMonitorService.clearTemporaryUnlock();
             stopMonitorService(context);
         } else {
             startMonitorServiceIfReady(context);

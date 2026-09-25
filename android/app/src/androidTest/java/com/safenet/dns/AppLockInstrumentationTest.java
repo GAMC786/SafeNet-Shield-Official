@@ -90,6 +90,7 @@ public class AppLockInstrumentationTest {
                 .edit()
                 .clear()
                 .commit();
+        OpenLockMonitorService.clearTemporaryUnlock();
         AppLockManager.clearSession();
     }
 
@@ -97,6 +98,7 @@ public class AppLockInstrumentationTest {
     public void restoreOpenLockState() throws Exception {
         AppLockManager.setEnabled(context, false);
         AppLockManager.setAntiUninstallEnabled(context, false);
+        OpenLockMonitorService.clearTemporaryUnlock();
         AppLockManager.clearSession();
         context.getSharedPreferences("safenet_openlock", Context.MODE_PRIVATE)
                 .edit()
@@ -405,6 +407,69 @@ public class AppLockInstrumentationTest {
     }
 
     @Test
+    public void temporaryUnlockIsClearedAfterLeavingTheUnlockedApp() throws Exception {
+        assertNotNull(
+                "The Android test runner must include the Settings package.",
+                context.getPackageManager().getPackageInfo(SETTINGS_PACKAGE, 0)
+        );
+        AppLockManager.configure(
+                context,
+                PIN,
+                "What is the recovery answer?",
+                "offline answer"
+        );
+        Set<String> lockedPackages = new HashSet<>();
+        lockedPackages.add(context.getPackageName());
+        lockedPackages.add(SETTINGS_PACKAGE);
+        AppLockManager.setLockedPackages(context, lockedPackages);
+        AppLockManager.setEnabled(context, true);
+        AppLockManager.clearSession();
+        OpenLockMonitorService.allowTemporaryUnlock(SETTINGS_PACKAGE);
+
+        assertTrue(
+                "The temporary grant must allow the just-authenticated app to resume.",
+                OpenLockMonitorService.observeForegroundPackage(
+                        SETTINGS_PACKAGE,
+                        true,
+                        true
+                )
+        );
+        assertFalse(
+                "The app must remain usable while its activity stays in the foreground.",
+                AppLockManager.shouldLockPackage(context, SETTINGS_PACKAGE)
+        );
+        assertFalse(
+                "Keyboard and other non-activity windows must not revoke the foreground grant.",
+                OpenLockMonitorService.observeForegroundPackage(
+                        "com.google.android.inputmethod.latin",
+                        false,
+                        false
+                )
+        );
+        assertFalse(AppLockManager.shouldLockPackage(context, SETTINGS_PACKAGE));
+
+        OpenLockMonitorService.observeForegroundPackage(
+                "com.android.launcher",
+                true,
+                true
+        );
+        assertTrue(
+                "Leaving the app must revoke its temporary grant immediately.",
+                AppLockManager.shouldLockPackage(context, SETTINGS_PACKAGE)
+        );
+        assertFalse(
+                "Reopening the app inside the old grace window must not reuse the grant.",
+                OpenLockMonitorService.observeForegroundPackage(
+                        SETTINGS_PACKAGE,
+                        true,
+                        true
+                )
+        );
+        assertTrue(AppLockManager.shouldLockPackage(context, SETTINGS_PACKAGE));
+        Log.i(TAG, "OPENLOCK_TEMPORARY_UNLOCK result=PASS immediate_reopen_locked=true");
+    }
+
+    @Test
     public void physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities()
             throws Exception {
         assertTrue(
@@ -522,7 +587,16 @@ public class AppLockInstrumentationTest {
         );
 
         device.pressHome();
-        SystemClock.sleep(16_000L);
+        waitFor(
+                "the home screen to become foreground before reopening within the grace period",
+                () -> {
+                    String foregroundPackage = device.getCurrentPackageName();
+                    return foregroundPackage != null
+                            && !targetPackage.equals(foregroundPackage)
+                            && !context.getPackageName().equals(foregroundPackage);
+                }
+        );
+        SystemClock.sleep(2_000L);
         AppLockManager.clearSession();
         shell("am force-stop " + targetPackage);
         shell("am start -W -n " + launchComponent.flattenToShortString());
@@ -544,7 +618,7 @@ public class AppLockInstrumentationTest {
         Log.i(
                 TAG,
                 "LOCKLOCK_PHYSICAL_REOPEN result=PASS target_package=" + targetPackage +
-                        " blocked_before_reopen_auth=true"
+                        " blocked_before_reopen_auth=true within_grace_period=true"
         );
 
         unlockCurrentLockScreen(PIN);
