@@ -162,6 +162,46 @@ public final class DnsFirewall {
         String sourceAddress,
         String destinationAddress
     ) {
+        return evaluateWithReason(query, sourceAddress, destinationAddress, false);
+    }
+
+    Evaluation evaluateTailscaleWithReason(
+        byte[] query,
+        String sourceAddress,
+        String destinationAddress,
+        boolean trustedTailscaleResolver
+    ) {
+        return evaluateWithReason(query, sourceAddress, destinationAddress, trustedTailscaleResolver);
+    }
+
+    boolean shouldBlockTailscalePacket(
+        byte[] query,
+        String sourceAddress,
+        String destinationAddress,
+        boolean isTcp,
+        boolean trustedTailscaleResolver,
+        boolean fragmented
+    ) {
+        if (!enabled) {
+            return false;
+        }
+        if (failClosed || isTcp || fragmented) {
+            return true;
+        }
+        return evaluateTailscaleWithReason(
+            query,
+            sourceAddress,
+            destinationAddress,
+            trustedTailscaleResolver
+        ).decision == Decision.BLOCK;
+    }
+
+    private Evaluation evaluateWithReason(
+        byte[] query,
+        String sourceAddress,
+        String destinationAddress,
+        boolean trustedTailscaleResolver
+    ) {
         if (!enabled) {
             return new Evaluation(Decision.ALLOW, "firewall_disabled");
         }
@@ -176,7 +216,9 @@ public final class DnsFirewall {
             return new Evaluation(Decision.BLOCK, "invalid_dns_query");
         }
 
-        if (preventDnsOverrides && !isVirtualDnsDestination(destinationAddress)) {
+        if (preventDnsOverrides &&
+            !isVirtualDnsDestination(destinationAddress) &&
+            !trustedTailscaleResolver) {
             return new Evaluation(Decision.BLOCK, "dns_override_prevented");
         }
 

@@ -157,6 +157,51 @@ public class DnsFirewallTest {
         assertEquals("allowed_by_policy", allowed.reason);
     }
 
+    @Test
+    public void tailscaleDnsAcceptsConfiguredResolverAndStillAppliesDomainRules() throws Exception {
+        DnsFirewall firewall = DnsFirewall.fromJson(config(
+            "{\"type\":\"domain\",\"content\":\"blocked.example\",\"action\":\"block\",\"isActive\":true}"
+        ));
+
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            firewall.evaluateTailscaleWithReason(
+                query("safe.example"),
+                "100.64.0.2",
+                "100.100.100.100",
+                true
+            ).decision
+        );
+        assertEquals(
+            DnsFirewall.Decision.BLOCK,
+            firewall.evaluateTailscaleWithReason(
+                query("www.blocked.example"),
+                "100.64.0.2",
+                "100.100.100.100",
+                true
+            ).decision
+        );
+    }
+
+    @Test
+    public void tailscaleTcpAndFragmentedDnsFailClosedOnlyWhenFirewallIsEnabled() throws Exception {
+        DnsFirewall enabled = DnsFirewall.fromJson(config(""));
+        DnsFirewall disabled = DnsFirewall.fromJson(
+            "{\"settings\":{\"firewallEnabled\":false,\"preventDnsOverrides\":true},"
+                + "\"rules\":[],\"blocklists\":[]}"
+        );
+
+        assertTrue(enabled.shouldBlockTailscalePacket(
+            null, "100.64.0.2", "100.100.100.100", true, true, false
+        ));
+        assertTrue(enabled.shouldBlockTailscalePacket(
+            query("safe.example"), "100.64.0.2", "100.100.100.100", false, true, true
+        ));
+        assertFalse(disabled.shouldBlockTailscalePacket(
+            null, "100.64.0.2", "100.100.100.100", true, true, false
+        ));
+    }
+
     private static String config(String blocklists) {
         return "{\"settings\":" + SETTINGS + ",\"rules\":[],\"blocklists\":["
             + blocklists + "]}";

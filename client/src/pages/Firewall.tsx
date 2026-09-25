@@ -368,7 +368,8 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Block domains through SafeNet&apos;s DNS path. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Filters cleartext UDP DNS routed through Tailscale when connected; TCP/53 is blocked while this firewall is on.
+              DoH and DoT are encrypted and are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -406,8 +407,8 @@ export default function Firewall() {
                 <div>
                   <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Keep DNS requests on SafeNet&apos;s protected resolver path so apps cannot silently switch
-                    to another resolver.
+                    Restrict Tailscale-routed DNS to its configured resolver addresses so apps cannot silently
+                    switch to another cleartext resolver.
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
