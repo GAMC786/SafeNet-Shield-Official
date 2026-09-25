@@ -41,6 +41,7 @@ public class SafeNetCallScreeningService extends CallScreeningService {
     private static final Object REPUTATION_CACHE_LOCK = new Object();
     private static final String CALLSHIELD_FEED_ASSET = "callshield/spam_numbers.json";
     private static final String CALLSHIELD_MANIFEST_ASSET = "callshield/manifest.json";
+    private static final String CALLSHIELD_APPROVED_OFFLINE_SOURCE = "github_database";
     private static final ExecutorService LOOKUP_EXECUTOR = Executors.newCachedThreadPool();
 
     @Override
@@ -361,6 +362,7 @@ public class SafeNetCallScreeningService extends CallScreeningService {
                 new String(readBytes(manifestInput), StandardCharsets.UTF_8)
             );
             if (manifest.optInt("formatVersion", -1) != 1 ||
+                manifest.optInt("sourceManifestVersion", -1) != 1 ||
                 !manifest.optBoolean("redistributable", false) ||
                 manifest.optString("license", "").trim().isEmpty() ||
                 manifest.optString("attribution", "").trim().isEmpty()) {
@@ -390,7 +392,12 @@ public class SafeNetCallScreeningService extends CallScreeningService {
             }
             JSONArray feedSources = feed.optJSONArray("sources");
             JSONArray includedSources = manifest.optJSONArray("includedSources");
-            if (feedSources == null || includedSources == null || includedSources.length() == 0) {
+            if (feedSources == null ||
+                includedSources == null ||
+                feedSources.length() != 1 ||
+                includedSources.length() != 1 ||
+                !containsValue(feedSources, CALLSHIELD_APPROVED_OFFLINE_SOURCE) ||
+                !containsValue(includedSources, CALLSHIELD_APPROVED_OFFLINE_SOURCE)) {
                 return null;
             }
             for (int index = 0; index < includedSources.length(); index++) {
@@ -412,8 +419,10 @@ public class SafeNetCallScreeningService extends CallScreeningService {
                 if (row == null) return null;
                 String normalized = normalizeNumber(row.optString("number", ""));
                 JSONArray rowSources = row.optJSONArray("sources");
-                if (normalized == null || rowSources == null ||
-                    !containsValue(rowSources, "community")) {
+                if (normalized == null ||
+                    rowSources == null ||
+                    rowSources.length() != 1 ||
+                    !containsValue(rowSources, CALLSHIELD_APPROVED_OFFLINE_SOURCE)) {
                     return null;
                 }
                 numbers.add(new FeedNumber(normalized, row.optInt("reports", 0)));
@@ -426,7 +435,13 @@ public class SafeNetCallScreeningService extends CallScreeningService {
                 JSONObject row = prefixRows.optJSONObject(index);
                 if (row == null) return null;
                 String normalized = normalizeNumber(row.optString("prefix", ""));
-                if (normalized == null) return null;
+                JSONArray rowSources = row.optJSONArray("sources");
+                if (normalized == null ||
+                    rowSources == null ||
+                    rowSources.length() != 1 ||
+                    !containsValue(rowSources, CALLSHIELD_APPROVED_OFFLINE_SOURCE)) {
+                    return null;
+                }
                 prefixes.add(new FeedPrefix(normalized));
             }
 

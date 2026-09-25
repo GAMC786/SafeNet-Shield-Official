@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test, { beforeEach } from "node:test";
 
 import {
@@ -20,6 +21,7 @@ import {
   CALLSHIELD_OFFLINE_MANIFEST,
   verifyCallShieldOfflineSnapshot,
 } from "./callshield-offline-feed";
+import { filterCallShieldOfflineFeed } from "./callshield-offline-generator";
 
 const feed = {
   version: 41,
@@ -351,7 +353,7 @@ test("CallShield offline manifests require approved data and an exact hash", () 
     verifyCallShieldOfflineSnapshot(
       CALLSHIELD_OFFLINE_FEED,
       CALLSHIELD_OFFLINE_MANIFEST,
-      41,
+      45,
     ),
     true,
   );
@@ -366,7 +368,7 @@ test("CallShield offline manifests require approved data and an exact hash", () 
     verifyCallShieldOfflineSnapshot(
       CALLSHIELD_OFFLINE_FEED,
       CALLSHIELD_OFFLINE_MANIFEST,
-      42,
+      46,
     ),
     false,
   );
@@ -383,6 +385,151 @@ test("CallShield offline manifests require approved data and an exact hash", () 
       { ...CALLSHIELD_OFFLINE_MANIFEST, formatVersion: 2 },
     ),
     false,
+  );
+  const mutatedFeed = {
+    ...CALLSHIELD_OFFLINE_FEED,
+    numbers: CALLSHIELD_OFFLINE_FEED.numbers.map((row, index) =>
+      index === 0 ? { ...row, reports: row.reports + 1 } : row
+    ),
+  };
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      mutatedFeed,
+      CALLSHIELD_OFFLINE_MANIFEST,
+    ),
+    false,
+  );
+  const unapprovedProvenance = {
+    ...CALLSHIELD_OFFLINE_FEED,
+    numbers: CALLSHIELD_OFFLINE_FEED.numbers.map((row, index) =>
+      index === 0 ? { ...row, sources: ["community"] } : row
+    ),
+  };
+  const unapprovedHash = createHash("sha256")
+    .update(JSON.stringify(unapprovedProvenance), "utf8")
+    .digest("hex");
+  assert.equal(
+    verifyCallShieldOfflineSnapshot(
+      unapprovedProvenance,
+      { ...CALLSHIELD_OFFLINE_MANIFEST, sha256: unapprovedHash },
+    ),
+    false,
+  );
+});
+
+test("CallShield provenance filtering excludes mixed, restricted, expired, and unattributed rows", () => {
+  const approvedSource = {
+    id: "github_database",
+    redistributable: true,
+    license: "CallShield database terms",
+    attribution: "CallShield maintained spam database",
+  };
+  const restrictedSource = {
+    id: "phoneblock_bulk",
+    redistributable: false,
+    license: "PhoneBlock terms; operator review required",
+    attribution: "PhoneBlock community database",
+  };
+  const sourceManifest = {
+    version: 1,
+    sources: [approvedSource, restrictedSource],
+  };
+  const approvedEvidence = {
+    source_id: approvedSource.id,
+    license: approvedSource.license,
+    attribution: approvedSource.attribution,
+    expires_at_epoch_ms: Date.parse("2026-10-01T00:00:00Z"),
+  };
+  const upstream = {
+    version: 45,
+    updated: "2026-09-25",
+    sources: ["github_database", "phoneblock_bulk"],
+    numbers: [
+      {
+        number: "+12025550101",
+        type: "robocall",
+        reports: 5,
+        evidence: [approvedEvidence],
+      },
+      {
+        number: "+12025550102",
+        type: "spam",
+        reports: 3,
+        evidence: [
+          approvedEvidence,
+          {
+            source_id: restrictedSource.id,
+            license: restrictedSource.license,
+            attribution: restrictedSource.attribution,
+            expires_at_epoch_ms: Date.parse("2026-10-01T00:00:00Z"),
+          },
+        ],
+      },
+      {
+        number: "+12025550103",
+        type: "spam",
+        reports: 4,
+        evidence: [{
+          source_id: restrictedSource.id,
+          license: restrictedSource.license,
+          attribution: restrictedSource.attribution,
+          expires_at_epoch_ms: Date.parse("2026-10-01T00:00:00Z"),
+        }],
+      },
+      {
+        number: "+12025550104",
+        type: "spam",
+        reports: 2,
+        evidence: [{
+          ...approvedEvidence,
+          expires_at_epoch_ms: Date.parse("2026-09-25T23:59:59Z"),
+        }],
+      },
+      {
+        number: "+12025550105",
+        type: "spam",
+        reports: 1,
+      },
+    ],
+    prefixes: [
+      { prefix: "+1202", type: "spam" },
+      {
+        prefix: "+1900",
+        type: "premium",
+        evidence: [approvedEvidence],
+      },
+    ],
+  };
+
+  const filtered = filterCallShieldOfflineFeed(upstream, sourceManifest);
+  assert.deepEqual(filtered.sources, ["github_database"]);
+  assert.deepEqual(filtered.numbers.map((row) => row.number), [
+    "+12025550101",
+  ]);
+  assert.deepEqual(filtered.prefixes.map((row) => row.prefix), ["+1900"]);
+  assert.deepEqual(filtered.numbers[0]?.sources, ["github_database"]);
+});
+
+test("server and Android offline snapshots use the same feed bytes, version, and hash", () => {
+  const sharedFeed = readFileSync("shared/callshield-offline-feed.json", "utf8");
+  const androidFeed = readFileSync(
+    "android/app/src/main/assets/callshield/spam_numbers.json",
+    "utf8",
+  );
+  const sharedManifest = JSON.parse(
+    readFileSync("shared/callshield-offline-manifest.json", "utf8"),
+  );
+  const androidManifest = JSON.parse(
+    readFileSync("android/app/src/main/assets/callshield/manifest.json", "utf8"),
+  );
+
+  assert.equal(sharedFeed, androidFeed);
+  assert.equal(sharedFeed, JSON.stringify(CALLSHIELD_OFFLINE_FEED));
+  assert.deepEqual(sharedManifest, androidManifest);
+  assert.deepEqual(sharedManifest, CALLSHIELD_OFFLINE_MANIFEST);
+  assert.equal(
+    createHash("sha256").update(sharedFeed, "utf8").digest("hex"),
+    CALLSHIELD_OFFLINE_MANIFEST.sha256,
   );
 });
 

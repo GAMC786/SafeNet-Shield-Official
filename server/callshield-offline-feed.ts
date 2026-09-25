@@ -1,117 +1,59 @@
 import { createHash } from "node:crypto";
+import offlineFeedJson from "../shared/callshield-offline-feed.json";
+import offlineManifestJson from "../shared/callshield-offline-manifest.json";
+import type {
+  CallShieldOfflineFeed,
+  CallShieldOfflineManifest,
+} from "./callshield-offline-generator";
 
-export type CallShieldOfflineFeed = {
-  version: number;
-  updated: string;
-  sources: string[];
-  numbers: Array<{
-    number: string;
-    type: string;
-    reports: number;
-    description: string;
-    sources: string[];
-  }>;
-  prefixes: Array<{
-    prefix: string;
-    type: string;
-    description: string;
-  }>;
-};
+export type {
+  CallShieldOfflineFeed,
+  CallShieldOfflineManifest,
+} from "./callshield-offline-generator";
 
-export type CallShieldOfflineManifest = {
-  formatVersion: number;
-  feedVersion: number;
-  updated: string;
-  sha256: string;
-  redistributable: boolean;
-  license: string;
-  attribution: string;
-  includedSources: string[];
-};
+export const CALLSHIELD_OFFLINE_FEED =
+  offlineFeedJson as unknown as CallShieldOfflineFeed;
+export const CALLSHIELD_OFFLINE_MANIFEST =
+  offlineManifestJson as unknown as CallShieldOfflineManifest;
 
-// This is intentionally limited to CallShield's explicitly redistributable
-// community-report rows. Do not add rows from mixed-source numbers or ranges
-// without reviewing source-manifest.json first.
-export const CALLSHIELD_OFFLINE_FEED: CallShieldOfflineFeed = {
-  version: 41,
-  updated: "2026-09-05",
-  sources: ["community_reports"],
-  numbers: [
-    {
-      number: "+19057712581",
-      type: "spam",
-      reports: 7,
-      description: "Community reported",
-      sources: ["community"],
-    },
-    {
-      number: "+33377145841",
-      type: "spam",
-      reports: 5,
-      description: "Community reported",
-      sources: ["community"],
-    },
-    {
-      number: "+436776143525",
-      type: "spam",
-      reports: 4,
-      description: "Community reported",
-      sources: ["community"],
-    },
-    {
-      number: "+917003869903",
-      type: "spam",
-      reports: 4,
-      description: "Community reported",
-      sources: ["community"],
-    },
-    {
-      number: "+12029942853",
-      type: "spam",
-      reports: 3,
-      description: "Community reported",
-      sources: ["community"],
-    },
-    {
-      number: "+19204669303",
-      type: "spam",
-      reports: 3,
-      description: "Community reported",
-      sources: ["community"],
-    },
-  ],
-  prefixes: [],
-};
-
-export const CALLSHIELD_OFFLINE_MANIFEST: CallShieldOfflineManifest = {
-  formatVersion: 1,
-  feedVersion: 41,
-  updated: "2026-09-05",
-  sha256: "66daea9ddd83febdc3d95b6db374e8d1fa5627f55f4fba8e685e8e0c8d624656",
-  redistributable: true,
-  license: "CallShield database terms",
-  attribution: "CallShield community reports",
-  includedSources: ["community_reports"],
-};
+export const CALLSHIELD_APPROVED_OFFLINE_SOURCES = ["github_database"] as const;
 
 export function verifyCallShieldOfflineSnapshot(
   feed: CallShieldOfflineFeed,
   manifest: CallShieldOfflineManifest,
   minimumVersion = 0,
 ) {
+  const approvedSources = new Set<string>(CALLSHIELD_APPROVED_OFFLINE_SOURCES);
+  const numberRowsAreApproved = feed.numbers.every((entry) =>
+    entry.sources.length === 1 &&
+    approvedSources.has(entry.sources[0]) &&
+    manifest.includedSources.includes(entry.sources[0])
+  );
+  const prefixRowsAreApproved = feed.prefixes.every((entry) =>
+    entry.sources.length === 1 &&
+    approvedSources.has(entry.sources[0]) &&
+    manifest.includedSources.includes(entry.sources[0])
+  );
+
   if (
     manifest.formatVersion !== 1 ||
+    manifest.sourceManifestVersion !== 1 ||
     !manifest.redistributable ||
     manifest.feedVersion < minimumVersion ||
     manifest.feedVersion !== feed.version ||
     manifest.updated !== feed.updated ||
     !manifest.license.trim() ||
     !manifest.attribution.trim() ||
-    manifest.includedSources.length === 0 ||
-    manifest.includedSources.some((source) => source !== "community_reports") ||
+    manifest.numberCount !== feed.numbers.length ||
+    manifest.prefixCount !== feed.prefixes.length ||
+    manifest.includedSources.length !== CALLSHIELD_APPROVED_OFFLINE_SOURCES.length ||
+    manifest.includedSources.some((source) => !approvedSources.has(source)) ||
+    feed.sources.length !== CALLSHIELD_APPROVED_OFFLINE_SOURCES.length ||
+    feed.sources.some((source) => !approvedSources.has(source)) ||
     !manifest.includedSources.every((source) => feed.sources.includes(source)) ||
     !feed.sources.every((source) => manifest.includedSources.includes(source)) ||
-    !feed.numbers.every((entry) => entry.sources.includes("community"))
+    !numberRowsAreApproved ||
+    !prefixRowsAreApproved
   ) {
     return false;
   }

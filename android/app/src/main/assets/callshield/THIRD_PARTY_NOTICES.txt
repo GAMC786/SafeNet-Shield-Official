@@ -1,10 +1,13 @@
 CallShield offline caller-reputation snapshot
 
-The bundled snapshot is limited to CallShield community-report rows explicitly
-marked redistributable by CallShield's data/source-manifest.json. It excludes
-mixed-source bulk rows and all non-redistributable ranges.
-
-Attribution: CallShield community reports
+Attribution: CallShield maintained spam database
 License: CallShield database terms
-Feed version: 41
-Feed SHA-256: 66daea9ddd83febdc3d95b6db374e8d1fa5627f55f4fba8e685e8e0c8d624656
+Source manifest: https://raw.githubusercontent.com/SysAdminDoc/CallShield/master/data/source-manifest.json
+
+Only rows with exactly one unique evidence source are eligible. The included
+github_database source is explicitly marked redistributable in the source
+manifest, and each included row's evidence license and attribution must match
+that declaration and remain unexpired on the snapshot date. Mixed-source,
+restricted, expired, and unprovenanced prefix rows are excluded.
+
+Feed version and SHA-256: see manifest.json

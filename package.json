@@ -15,6 +15,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc && tsc -p tsconfig.worker.json",
     "test": "node scripts/run-tests.mjs",
+    "callshield:offline-snapshot": "node --import tsx scripts/build-callshield-offline-snapshot.mjs",
     "test:ui": "node --test tests/toggle-visibility.test.mjs",
     "lint:workflows": "node scripts/lint-workflows.mjs",
     "setup:workflow-lint": "node scripts/setup-workflow-lint.mjs",

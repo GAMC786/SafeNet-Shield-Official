@@ -14,3 +14,9 @@ For offline redistribution, the aggregate feed must not be treated as uniformly 
 **Why:** A mixed-source CallShield snapshot can contain restricted bulk data even when the upstream repository code is MIT-licensed.
 
 **How to apply:** Recheck `source-manifest.json` whenever refreshing the offline snapshot; keep the server and Android copies pinned to the same verified feed version and SHA-256.
+
+In the upstream source-manifest revision reviewed on 2026-09-25, `github_database` is explicitly redistributable under “CallShield database terms.” SafeNet's offline export may include it only when a row has one unique evidence source, its license and attribution exactly match that declaration, and the evidence has not expired. Mixed-source rows and prefixes without item-level evidence remain excluded.
+
+**Why:** The aggregate feed also contains mixed or restricted inputs, so a redistributable flag on one source cannot approve a row that combines it with other provenance.
+
+**How to apply:** Re-fetch and review the source manifest for every refresh; do not treat this reviewed source ID or its approval as permanent.

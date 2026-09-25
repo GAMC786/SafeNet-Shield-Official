@@ -242,7 +242,7 @@ public class SafeNetCallScreeningInstrumentationTest {
         assertEquals("allow", action(ALLOW_NUMBER));
 
         preferences.edit()
-            .putInt(SafeNetCallScreeningService.PREF_CALLSHIELD_FEED_VERSION, 42)
+            .putInt(SafeNetCallScreeningService.PREF_CALLSHIELD_FEED_VERSION, 46)
             .commit();
         assertEquals(
             "allow",
