@@ -143,6 +143,28 @@ test("CallShield accepts a fixed signed manifest and routes lookups to its verif
   }
 });
 
+test("CallShield does not wait for the legacy feed after a verified shard miss", async () => {
+  const previousFetch = globalThis.fetch;
+  let legacyRequested = false;
+  globalThis.fetch = fixtureFetch({
+    legacy: () => {
+      legacyRequested = true;
+      return fixtureFeedResponse();
+    },
+  });
+  try {
+    assert.deepEqual(await lookupCallReputation("+12025550405"), {
+      available: true,
+      action: "allow",
+      source: "CallShield",
+      reason: "CallShield found no matching spam number or range.",
+    });
+    assert.equal(legacyRequested, false);
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
+
 test("CallShield rejects a changed signed manifest and uses the legacy fallback", async () => {
   const previousFetch = globalThis.fetch;
   const changedManifest = new Uint8Array(callShieldManifestFixture);

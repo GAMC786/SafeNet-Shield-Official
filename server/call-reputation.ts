@@ -558,10 +558,10 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
 
   if (callShieldEnabled()) {
     const shard = await loadCallShieldShard(normalized);
-    if (shard) {
-      const shardDecision = callShieldDecision(shard, normalized);
-      if (shardDecision.action === "block") return shardDecision;
-    }
+    // A verified, content-addressed shard is the authoritative live feed for
+    // this number. Do not fetch the full legacy feed after a verified miss:
+    // Android's screening callback has a short response deadline.
+    if (shard) return callShieldDecision(shard, normalized);
 
     const feed = await loadCallShieldFeed();
     if (!feed) {
