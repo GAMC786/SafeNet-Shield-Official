@@ -488,6 +488,23 @@ test("the dedicated runner publishes bounded LockLock evidence", () => {
     /temporaryUnlockIsClearedAfterLeavingTheUnlockedApp/,
   );
   assert.match(instrumentation, /within_grace_period=true/);
+  const physicalAppLockTest = instrumentation.match(
+    /public void physicalDeviceLocksSelectedThirdPartyAppWithoutDuplicateActivities[\s\S]*?(?=\n    @Test|\n    private )/,
+  )?.[0];
+  assert.ok(physicalAppLockTest, "the physical selected-app test must exist");
+  const quickReopenPath = physicalAppLockTest
+    .split("long switchedHomeAt = SystemClock.elapsedRealtime();")[1]
+    ?.split("LOCKLOCK_PHYSICAL_REOPEN result=PASS")[0];
+  assert.ok(quickReopenPath, "the physical quick-reopen path must exist");
+  assert.doesNotMatch(
+    quickReopenPath,
+    /am force-stop/,
+    "quick-reopen validation must preserve the background app task",
+  );
+  assert.match(
+    physicalAppLockTest,
+    /switchedHomeAt = SystemClock\.elapsedRealtime\(\)[\s\S]*?device\.pressHome\(\)[\s\S]*?SystemClock\.elapsedRealtime\(\) - switchedHomeAt < TEMPORARY_UNLOCK_WINDOW_MS/,
+  );
   assert.doesNotMatch(instrumentation, /SystemClock\.sleep\(16_000L\)/);
   assert.match(
     workflow,

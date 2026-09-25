@@ -32,3 +32,9 @@ The persisted enabled switch is not proof that app launches are being monitored.
 **Why:** Users can save App Lock as enabled before granting its system permissions; reporting that as active hides that selected apps are not yet enforced.
 
 **How to apply:** Keep requested/enabled state separate from runtime enforcement readiness, and show missing permission state prominently without preventing the setup handoff.
+
+Physical quick-switch validation must preserve the protected app's task in the background. Do not force-stop the app between Home and reopening it.
+
+**Why:** Force-stopping removes the background task and turns a quick-switch regression check into a cold-launch check, which can pass without proving the original bypass is fixed.
+
+**How to apply:** Unlock the app, press Home, then reopen its existing task through the launcher or Overview within 15 seconds; assert the lock screen appears before re-authentication.

@@ -53,6 +53,7 @@ public class AppLockInstrumentationTest {
     private static final String PIN = "2468";
     private static final String RESET_PIN = "1357";
     private static final long WAIT_TIMEOUT_MS = 15_000L;
+    private static final long TEMPORARY_UNLOCK_WINDOW_MS = 15_000L;
     private static final long UI_TIMEOUT_MS = 10_000L;
     private static final String UI_FAILURE_SCREENSHOT =
             "/data/local/tmp/safenet-locklock-ui-failure.png";
@@ -586,6 +587,7 @@ public class AppLockInstrumentationTest {
                         " temporary_unlock_target=true"
         );
 
+        long switchedHomeAt = SystemClock.elapsedRealtime();
         device.pressHome();
         waitFor(
                 "the home screen to become foreground before reopening within the grace period",
@@ -598,10 +600,13 @@ public class AppLockInstrumentationTest {
         );
         SystemClock.sleep(2_000L);
         AppLockManager.clearSession();
-        shell("am force-stop " + targetPackage);
         shell("am start -W -n " + launchComponent.flattenToShortString());
         waitForLockActivity();
         waitForPackage(context.getPackageName());
+        assertTrue(
+                "The selected app must be reopened within 15 seconds of switching Home.",
+                SystemClock.elapsedRealtime() - switchedHomeAt < TEMPORARY_UNLOCK_WINDOW_MS
+        );
         assertVisibleText("SafeNet App Lock");
         assertFalse(
                 "The selected app must be blocked again after leaving and reopening it.",
