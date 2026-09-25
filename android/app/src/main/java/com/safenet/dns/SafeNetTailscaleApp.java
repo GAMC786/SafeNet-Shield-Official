@@ -264,6 +264,17 @@ public final class SafeNetTailscaleApp extends Application implements libtailsca
     @Override public byte[] blockedDNSResponse(byte[] query) {
         return DnsFirewall.blockedResponse(query);
     }
+
+    @Override public boolean shouldBlockNonDNSPacket() {
+        try {
+            return FirewallConfigStore.load(this).shouldBlockTailscaleNonDnsPacket();
+        } catch (RuntimeException error) {
+            // A JNI/policy failure must not let a non-DNS packet bypass an
+            // enabled policy.
+            Log.e("SafeNetTailscale", "Tailscale non-DNS firewall evaluation failed closed", error);
+            return true;
+    }
+    }
     @Override public String getSyspolicyStringValue(String key) { throw new IllegalStateException("Policy unavailable"); }
     @Override public boolean getSyspolicyBooleanValue(String key) { throw new IllegalStateException("Policy unavailable"); }
     @Override public String getSyspolicyStringArrayJSONValue(String key) { throw new IllegalStateException("Policy unavailable"); }

@@ -56,6 +56,9 @@ function publicSettings(settings: AppSettings) {
     // keep resolver override protection on until the user explicitly turns it
     // off.
     preventDnsOverrides: settings.preventDnsOverrides ?? true,
+    // This policy is independent of the DNS firewall and defaults off for
+    // installations that predate Tailscale packet filtering.
+    tailscaleNonDnsFirewallEnabled: settings.tailscaleNonDnsFirewallEnabled ?? false,
   };
 }
 

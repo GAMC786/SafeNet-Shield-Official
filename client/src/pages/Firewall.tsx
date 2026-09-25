@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/use-blocklists";
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
@@ -34,7 +35,10 @@ export default function Firewall() {
   const updateSettings = useUpdateSettings();
   const firewallEnabled = settings?.firewallEnabled ?? false;
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
+  const tailscaleNonDnsFirewallEnabled = settings?.tailscaleNonDnsFirewallEnabled ?? false;
+  const isAndroid = Capacitor.getPlatform() === "android";
   const isProtected = firewallEnabled && preventDnsOverrides;
+  const isAnyFirewallActive = isProtected || (isAndroid && tailscaleNonDnsFirewallEnabled);
 
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
@@ -357,7 +361,7 @@ export default function Firewall() {
       <Header 
         title="Firewall Rules" 
         subtitle="Access Control Lists" 
-        status={isProtected ? "active" : "unprotected"}
+        status={isAnyFirewallActive ? "active" : "unprotected"}
       />
 
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
@@ -383,6 +387,36 @@ export default function Firewall() {
           </div>
         </div>
       </CyberCard>
+
+      {isAndroid && (
+        <CyberCard className="border-orange-400/20 bg-orange-400/5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-orange-300" />
+              <div>
+                <h2 className="font-display font-bold text-white">Tailscale Non-DNS Traffic</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Separately block non-DNS IP packets routed through Tailscale. UDP/TCP port 53 stays under
+                  the DNS Firewall policy above; this setting does not change DNS rules.
+                </p>
+                <p className="mt-2 text-xs text-orange-200/80">
+                  DoH and DoT are encrypted and are not inspected by domain. When enabled, encrypted DNS
+                  traffic may be blocked as ordinary HTTPS/TLS traffic.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={tailscaleNonDnsFirewallEnabled}
+              disabled={!settings || updateSettings.isPending}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ tailscaleNonDnsFirewallEnabled: checked })
+              }
+              aria-label="Block non-DNS traffic routed through Tailscale"
+              data-testid="switch-tailscale-nondns-firewall"
+            />
+          </div>
+        </CyberCard>
+      )}
 
       <Tabs defaultValue="rules" className="w-full" orientation="vertical">
         <div className="flex flex-col md:flex-row gap-6">

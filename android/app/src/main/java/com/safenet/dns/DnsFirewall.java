@@ -45,6 +45,7 @@ public final class DnsFirewall {
 
     private final boolean enabled;
     private final boolean preventDnsOverrides;
+    private final boolean tailscaleNonDnsFirewallEnabled;
     private final List<AccessRule> accessRules;
     private final List<Filter> filters;
     private final boolean failClosed;
@@ -52,23 +53,25 @@ public final class DnsFirewall {
     private DnsFirewall(
         boolean enabled,
         boolean preventDnsOverrides,
+        boolean tailscaleNonDnsFirewallEnabled,
         List<AccessRule> accessRules,
         List<Filter> filters,
         boolean failClosed
     ) {
         this.enabled = enabled;
         this.preventDnsOverrides = preventDnsOverrides;
+        this.tailscaleNonDnsFirewallEnabled = tailscaleNonDnsFirewallEnabled;
         this.accessRules = Collections.unmodifiableList(new ArrayList<>(accessRules));
         this.filters = Collections.unmodifiableList(new ArrayList<>(filters));
         this.failClosed = failClosed;
     }
 
     public static DnsFirewall allowAll() {
-        return new DnsFirewall(false, true, Collections.emptyList(), Collections.emptyList(), false);
+        return new DnsFirewall(false, true, false, Collections.emptyList(), Collections.emptyList(), false);
     }
 
     public static DnsFirewall failClosed() {
-        return new DnsFirewall(true, true, Collections.emptyList(), Collections.emptyList(), true);
+        return new DnsFirewall(true, true, true, Collections.emptyList(), Collections.emptyList(), true);
     }
 
     boolean isEnabled() {
@@ -90,6 +93,10 @@ public final class DnsFirewall {
         }
         if (!(settings.opt("preventDnsOverrides") instanceof Boolean)) {
             throw new JSONException("The DNS override protection setting is invalid.");
+        }
+        if (settings.has("tailscaleNonDnsFirewallEnabled") &&
+            !(settings.opt("tailscaleNonDnsFirewallEnabled") instanceof Boolean)) {
+            throw new JSONException("The Tailscale non-DNS firewall setting is invalid.");
         }
 
         List<AccessRule> rules = new ArrayList<>();
@@ -147,10 +154,15 @@ public final class DnsFirewall {
         return new DnsFirewall(
             settings.optBoolean("firewallEnabled", false),
             settings.optBoolean("preventDnsOverrides", true),
+            settings.optBoolean("tailscaleNonDnsFirewallEnabled", false),
             rules,
             filters,
             false
         );
+    }
+
+    boolean shouldBlockTailscaleNonDnsPacket() {
+        return tailscaleNonDnsFirewallEnabled;
     }
 
     public Decision evaluate(byte[] query, String sourceAddress, String destinationAddress) {

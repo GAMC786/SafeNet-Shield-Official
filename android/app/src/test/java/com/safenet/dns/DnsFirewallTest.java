@@ -1,6 +1,7 @@
 package com.safenet.dns;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -202,6 +203,21 @@ public class DnsFirewallTest {
         ));
     }
 
+    @Test
+    public void nonDnsTrafficPolicyIsIndependentFromDnsFirewallSettings() throws Exception {
+        DnsFirewall disabled = DnsFirewall.fromJson(config(""));
+        DnsFirewall enabled = DnsFirewall.fromJson(
+            "{\"settings\":{\"firewallEnabled\":false,\"preventDnsOverrides\":true,"
+                + "\"tailscaleNonDnsFirewallEnabled\":true},\"rules\":[],\"blocklists\":[]}"
+        );
+
+        assertFalse(disabled.shouldBlockTailscaleNonDnsPacket());
+        assertTrue(enabled.shouldBlockTailscaleNonDnsPacket());
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            enabled.evaluate(query("example.com"), "100.64.0.2", "100.100.100.100")
+        );
+    }
     private static String config(String blocklists) {
         return "{\"settings\":" + SETTINGS + ",\"rules\":[],\"blocklists\":["
             + blocklists + "]}";
