@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { enqueueNativeCommand } from "@/lib/native-command-queue";
+import { waitForTailscaleAuthUrl, type TailscaleAuthStatus } from "@/lib/tailscale-auth";
 import { tailscaleStatusSchema } from "@shared/tailscale";
 
 const queryKey = ["/api/tailscale/status"];
@@ -14,12 +15,8 @@ export interface TailscaleExitNode {
   online: boolean;
 }
 
-export interface TailscaleNativeStatus {
+export interface TailscaleNativeStatus extends TailscaleAuthStatus {
   supported: boolean;
-  backendState: string;
-  connected: boolean;
-  loginRequired: boolean;
-  authUrl?: string | null;
   selfName?: string | null;
   tailnetName?: string | null;
   addresses?: string[];
@@ -84,13 +81,23 @@ export function useTailscaleNative() {
   const connect = useCallback(async () => {
     const nextStatus = await enqueueNativeCommand(() => SafeNetTailscale.connect());
     await refresh(nextStatus);
-    if (nextStatus.authUrl) {
+    const cachedStatus =
+      queryClient.getQueryData<TailscaleNativeStatus>(nativeQueryKey) ?? nextStatus;
+    const latestStatus = await waitForTailscaleAuthUrl(
+      cachedStatus,
+      async () => {
+        const polledStatus = await enqueueNativeCommand(() => SafeNetTailscale.getStatus());
+        queryClient.setQueryData(nativeQueryKey, polledStatus);
+        return polledStatus;
+      },
+    );
+    if (latestStatus.authUrl) {
       await enqueueNativeCommand(() =>
-        SafeNetTailscale.openLoginUrl({ url: nextStatus.authUrl! }),
+        SafeNetTailscale.openLoginUrl({ url: latestStatus.authUrl! }),
       );
     }
-    return nextStatus;
-  }, [refresh]);
+    return latestStatus;
+  }, [queryClient, refresh]);
 
   const disconnect = useCallback(async () => {
     const nextStatus = await enqueueNativeCommand(() => SafeNetTailscale.disconnect());

@@ -136,7 +136,13 @@ export default function Dashboard() {
     setTailscaleActionPending(true);
     try {
       const result = await tailscaleVpn.connect();
-      if (result.error) setTailscaleActionError(result.error);
+      if (result.error) {
+        setTailscaleActionError(result.error);
+      } else if (result.loginRequired && !result.authUrl) {
+        setTailscaleActionError(
+          "Tailscale has not provided a sign-in link yet. Tap Continue sign-in to retry.",
+        );
+      }
     } catch (error) {
       setTailscaleActionError(error instanceof Error ? error.message : "Could not connect to Tailscale.");
     } finally {
@@ -193,9 +199,10 @@ export default function Dashboard() {
     }
     if (tailscaleVpn.status?.loginRequired && tailscaleVpn.status.authUrl) {
       setTailscaleActionError(null);
+      setTailscaleActionPending(true);
       void tailscaleVpn.openLoginUrl(tailscaleVpn.status.authUrl).catch((error) => {
         setTailscaleActionError(error instanceof Error ? error.message : "Could not open Tailscale sign-in.");
-      });
+      }).finally(() => setTailscaleActionPending(false));
       return;
     }
     void runTailscaleConnect();
