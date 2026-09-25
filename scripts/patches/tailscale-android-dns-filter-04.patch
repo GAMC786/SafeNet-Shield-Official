@@ -1,0 +1,214 @@
++__TAB__}
++__TAB__for _, tt := range tests {
++__TAB____TAB__t.Run(tt.name, func(t *testing.T) {
++__TAB____TAB____TAB__appCtx := dnsFilterPolicyStub{blockDNS: tt.blockDNS, blockNonDNS: tt.blockNonDNS}
++__TAB____TAB____TAB__device := &multiTUN{appCtx: appCtx}
++__TAB____TAB____TAB__slab := append([]byte(nil), tt.packet...)
++__TAB____TAB____TAB__packets := []tun.ReadPacket{{Offset: 0, Size: len(slab)}}
++__TAB____TAB____TAB__got := device.filterTailscalePackets(&tunDevice{}, slab, packets, len(packets))
++__TAB____TAB____TAB__if got != tt.wantPacketsKept {
++__TAB____TAB____TAB____TAB__t.Fatalf("kept packets = %d, want %d", got, tt.wantPacketsKept)
++__TAB____TAB____TAB__}
++__TAB____TAB__})
++__TAB__}
++}
++
++type dnsFilterPolicyStub struct {
++__TAB__blockDNS    bool
++__TAB__blockNonDNS bool
++}
++
++func (s dnsFilterPolicyStub) ShouldBlockDNSPacket([]byte, string, string, bool, bool, bool) bool {
++__TAB__return s.blockDNS
++}
++
++func (dnsFilterPolicyStub) BlockedDNSResponse([]byte) []byte {
++__TAB__return testRefusedResponse()
++}
++
++func (s dnsFilterPolicyStub) ShouldBlockNonDNSPacket() bool {
++__TAB__return s.blockNonDNS
++}
++
++func testRefusedResponse() []byte {
++__TAB__response := make([]byte, 12)
++__TAB__binary.BigEndian.PutUint16(response[:2], 0x534e)
++__TAB__binary.BigEndian.PutUint16(response[2:4], 0x8005)
++__TAB__return response
++}
++
++func testDNSQuery(name string) []byte {
++__TAB__query := make([]byte, 12)
++__TAB__binary.BigEndian.PutUint16(query[:2], 0x534e)
++__TAB__binary.BigEndian.PutUint16(query[2:4], 0x0100)
++__TAB__binary.BigEndian.PutUint16(query[4:6], 1)
++__TAB__for _, label := range splitDNSLabels(name) {
++__TAB____TAB__query = append(query, byte(len(label)))
++__TAB____TAB__query = append(query, label...)
++__TAB__}
++__TAB__query = append(query, 0, 0, 1, 0, 1)
++__TAB__return query
++}
++
++func splitDNSLabels(name string) []string {
++__TAB__var labels []string
++__TAB__start := 0
++__TAB__for index := 0; index <= len(name); index++ {
++__TAB____TAB__if index == len(name) || name[index] == '.' {
++__TAB____TAB____TAB__labels = append(labels, name[start:index])
++__TAB____TAB____TAB__start = index + 1
++__TAB____TAB__}
++__TAB__}
++__TAB__return labels
++}
++
++func testIPv4DNSPacket(query []byte, fragmented, response bool, protocol byte) []byte {
++__TAB__transportLen := 8 + len(query)
++__TAB__if protocol == ipProtocolTCP {
++__TAB____TAB__transportLen = 20
++__TAB__}
++__TAB__packet := make([]byte, 20+transportLen)
++__TAB__packet[0] = 0x45
++__TAB__binary.BigEndian.PutUint16(packet[2:4], uint16(len(packet)))
++__TAB__if fragmented {
++__TAB____TAB__binary.BigEndian.PutUint16(packet[6:8], 0x2000)
++__TAB__}
++__TAB__packet[8] = 64
++__TAB__packet[9] = protocol
++__TAB__copy(packet[12:16], netip.MustParseAddr("10.0.0.2").AsSlice())
++__TAB__copy(packet[16:20], netip.MustParseAddr("100.100.100.100").AsSlice())
++__TAB__if protocol == ipProtocolTCP {
++__TAB____TAB__binary.BigEndian.PutUint16(packet[20:22], 53000)
++__TAB____TAB__binary.BigEndian.PutUint16(packet[22:24], dnsPort)
++__TAB____TAB__packet[32] = 0x50
++__TAB____TAB__packet[33] = 0x02 // SYN
++__TAB____TAB__return packet
++__TAB__}
++__TAB__binary.BigEndian.PutUint16(packet[20:22], 53000)
++__TAB__binary.BigEndian.PutUint16(packet[22:24], dnsPort)
++__TAB__binary.BigEndian.PutUint16(packet[24:26], uint16(8+len(query)))
++__TAB__if len(query) > 0 {
++__TAB____TAB__copy(packet[28:], query)
++__TAB__}
++__TAB__if response && len(query) >= 4 {
++__TAB____TAB__packet[30] |= 0x80
++__TAB__}
++__TAB__return packet
++}
++
++func testIPv6DNSPacket(query []byte, fragmented, response bool) []byte {
++__TAB__extLen := 0
++__TAB__if fragmented {
++__TAB____TAB__extLen = 8
++__TAB__}
++__TAB__packet := make([]byte, 40+extLen+8+len(query))
++__TAB__packet[0] = 0x60
++__TAB__binary.BigEndian.PutUint16(packet[4:6], uint16(len(packet)-40))
++__TAB__if fragmented {
++__TAB____TAB__packet[6] = 44
++__TAB____TAB__packet[40] = ipProtocolUDP
++__TAB____TAB__packet[41] = 0
++__TAB____TAB__packet[42] = 0
++__TAB____TAB__packet[43] = 1
++__TAB__} else {
++__TAB____TAB__packet[6] = ipProtocolUDP
++__TAB__}
++__TAB__packet[7] = 64
++__TAB__copy(packet[8:24], netip.MustParseAddr("2001:db8::2").AsSlice())
++__TAB__copy(packet[24:40], netip.MustParseAddr("fd00::53").AsSlice())
++__TAB__udpOffset := 40 + extLen
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset:udpOffset+2], 53000)
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset+2:udpOffset+4], dnsPort)
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset+4:udpOffset+6], uint16(8+len(query)))
++__TAB__copy(packet[udpOffset+8:], query)
++__TAB__if response && len(query) >= 4 {
++__TAB____TAB__packet[udpOffset+10] |= 0x80
++__TAB__}
++__TAB__return packet
++}
++
++func testIPv4NonInitialFragment() []byte {
++__TAB__packet := make([]byte, 28)
++__TAB__packet[0] = 0x45
++__TAB__binary.BigEndian.PutUint16(packet[2:4], uint16(len(packet)))
++__TAB__binary.BigEndian.PutUint16(packet[6:8], 1)
++__TAB__packet[9] = ipProtocolUDP
++__TAB__copy(packet[12:16], netip.MustParseAddr("10.0.0.2").AsSlice())
++__TAB__copy(packet[16:20], netip.MustParseAddr("100.100.100.100").AsSlice())
++__TAB__return packet
++}
++
++func testIPv4NonDNSPacket() []byte {
++__TAB__packet := make([]byte, 28)
++__TAB__packet[0] = 0x45
++__TAB__binary.BigEndian.PutUint16(packet[2:4], uint16(len(packet)))
++__TAB__packet[8] = 64
++__TAB__packet[9] = ipProtocolUDP
++__TAB__copy(packet[12:16], netip.MustParseAddr("10.0.0.2").AsSlice())
++__TAB__copy(packet[16:20], netip.MustParseAddr("100.100.100.100").AsSlice())
++__TAB__binary.BigEndian.PutUint16(packet[20:22], 53000)
++__TAB__binary.BigEndian.PutUint16(packet[22:24], 443)
++__TAB__binary.BigEndian.PutUint16(packet[24:26], 8)
++__TAB__return packet
++}
++
++func testIPv4ShortFirstFragment() []byte {
++__TAB__packet := make([]byte, 22)
++__TAB__packet[0] = 0x45
++__TAB__binary.BigEndian.PutUint16(packet[2:4], uint16(len(packet)))
++__TAB__binary.BigEndian.PutUint16(packet[6:8], 0x2000)
++__TAB__packet[9] = ipProtocolUDP
++__TAB__copy(packet[12:16], netip.MustParseAddr("10.0.0.2").AsSlice())
++__TAB__copy(packet[16:20], netip.MustParseAddr("100.100.100.100").AsSlice())
++__TAB__return packet
++}
++
++func checksumIPv4UDP(source, destination, udp []byte) uint16 {
++__TAB__pseudo := make([]byte, 12+len(udp))
++__TAB__copy(pseudo[:4], source)
++__TAB__copy(pseudo[4:8], destination)
++__TAB__pseudo[9] = ipProtocolUDP
++__TAB__binary.BigEndian.PutUint16(pseudo[10:12], uint16(len(udp)))
++__TAB__copy(pseudo[12:], udp)
++__TAB__return checksum(pseudo)
++}
++
++func checksumIPv6UDP(source, destination, udp []byte) uint16 {
++__TAB__pseudo := make([]byte, 40+len(udp))
++__TAB__copy(pseudo[:16], source)
++__TAB__copy(pseudo[16:32], destination)
++__TAB__binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(udp)))
++__TAB__pseudo[39] = ipProtocolUDP
++__TAB__copy(pseudo[40:], udp)
++__TAB__return checksum(pseudo)
++}
+diff --git a/libtailscale/dnsfilter_test_stubs_test.go b/libtailscale/dnsfilter_test_stubs_test.go
+new file mode 100644
+index 0000000..e7ac30d
+--- /dev/null
++++ b/libtailscale/dnsfilter_test_stubs_test.go
+@@ -0,0 +1,24 @@
++//go:build dnsfilter_standalone_test
++
++// This small harness runs packet parser tests without compiling Android-only
++// cgo sources from the surrounding libtailscale package.
++package libtailscale
++
++import (
++__TAB__"net/netip"
++)
++
++type AppContext interface {
++__TAB__ShouldBlockDNSPacket([]byte, string, string, bool, bool, bool) bool
++__TAB__BlockedDNSResponse([]byte) []byte
++__TAB__ShouldBlockNonDNSPacket() bool
++}
++
++type multiTUN struct {
++__TAB__appCtx AppContext
++}
++
++type tunDevice struct{}
++
++func (*multiTUN) isConfiguredDNSServer(netip.Addr) bool { return true }
++func (*multiTUN) injectPacket(*tunDevice, []byte) error { return nil }

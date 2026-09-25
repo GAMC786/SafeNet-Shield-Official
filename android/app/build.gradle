@@ -29,6 +29,8 @@ tasks.register("buildTailscaleAar", Exec) {
         new File(tailscaleSourceDir, "build-tags.sh"),
         new File(tailscaleSourceDir, "version-ldflags.sh"),
     )
+    inputs.file(rootProject.file("../scripts/build-tailscale-aar.sh"))
+    inputs.dir(rootProject.file("../scripts/patches"))
     inputs.dir(new File(tailscaleSourceDir, "libtailscale"))
     outputs.file(tailscaleAar)
 }

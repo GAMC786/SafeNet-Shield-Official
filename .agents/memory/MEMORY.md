@@ -14,6 +14,7 @@
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
 - [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.
 - [GitHub private npm lockfiles](github-private-npm-lockfile.md) — hosted Actions cannot resolve Replit-only tarball URLs recorded in package-lock files.
+- [Zero-context Git patches](zero-context-git-patches.md) — patches generated with `-U0` require `--unidiff-zero` for checks and application.
 - [Windows Bash preflight compatibility](windows-bash-preflight-compatibility.md) — Git Bash can rewrite paths and add warnings; isolate tool commands and parse readiness output defensively.
 - [Playwright UI test setup](playwright-ui-test-setup.md) — browser checks need an installed Chromium binary plus Linux runtime libraries; mock complete API schemas, not just fields the page reads.
 - [Playwright failure simulation](playwright-failure-simulation.md) — simulate client request failures with invalid JSON when strict no-console assertions would treat mocked HTTP errors as browser errors.

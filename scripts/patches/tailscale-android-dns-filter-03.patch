@@ -1,0 +1,225 @@
++
++func checksum(data []byte) uint16 {
++__TAB__var sum uint32
++__TAB__for len(data) >= 2 {
++__TAB____TAB__sum += uint32(binary.BigEndian.Uint16(data[:2]))
++__TAB____TAB__data = data[2:]
++__TAB__}
++__TAB__if len(data) == 1 {
++__TAB____TAB__sum += uint32(data[0]) << 8
++__TAB__}
++__TAB__for sum>>16 != 0 {
++__TAB____TAB__sum = (sum & 0xffff) + (sum >> 16)
++__TAB__}
++__TAB__return ^uint16(sum)
++}
++
++func udpChecksumIPv4(source, destination, udp []byte) uint16 {
++__TAB__pseudo := make([]byte, 12+len(udp))
++__TAB__copy(pseudo[0:4], source)
++__TAB__copy(pseudo[4:8], destination)
++__TAB__pseudo[9] = ipProtocolUDP
++__TAB__binary.BigEndian.PutUint16(pseudo[10:12], uint16(len(udp)))
++__TAB__copy(pseudo[12:], udp)
++__TAB__value := checksum(pseudo)
++__TAB__if value == 0 {
++__TAB____TAB__return 0xffff
++__TAB__}
++__TAB__return value
++}
++
++func udpChecksumIPv6(source, destination, udp []byte) uint16 {
++__TAB__pseudo := make([]byte, 40+len(udp))
++__TAB__copy(pseudo[0:16], source)
++__TAB__copy(pseudo[16:32], destination)
++__TAB__binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(udp)))
++__TAB__pseudo[39] = ipProtocolUDP
++__TAB__copy(pseudo[40:], udp)
++__TAB__value := checksum(pseudo)
++__TAB__if value == 0 {
++__TAB____TAB__return 0xffff
++__TAB__}
++__TAB__return value
++}
+diff --git a/libtailscale/dnsfilter_test.go b/libtailscale/dnsfilter_test.go
+new file mode 100644
+index 0000000..4a8ee3a
+--- /dev/null
++++ b/libtailscale/dnsfilter_test.go
+@@ -0,0 +1,360 @@
++// Copyright (c) Tailscale Inc & AUTHORS
++// SPDX-License-Identifier: BSD-3-Clause
++
++package libtailscale
++
++import (
++__TAB__"encoding/binary"
++__TAB__"net/netip"
++__TAB__"testing"
++
++__TAB__"github.com/tailscale/wireguard-go/tun"
++)
++
++func TestParseIPv4AndIPv6DNSQueries(t *testing.T) {
++__TAB__query := testDNSQuery("blocked.example")
++__TAB__tests := []struct {
++__TAB____TAB__name   string
++__TAB____TAB__packet []byte
++__TAB____TAB__src    netip.Addr
++__TAB____TAB__dst    netip.Addr
++__TAB__}{
++__TAB____TAB__{
++__TAB____TAB____TAB__name:   "IPv4",
++__TAB____TAB____TAB__packet: testIPv4DNSPacket(query, false, false, ipProtocolUDP),
++__TAB____TAB____TAB__src:    netip.MustParseAddr("10.0.0.2"),
++__TAB____TAB____TAB__dst:    netip.MustParseAddr("100.100.100.100"),
++__TAB____TAB__},
++__TAB____TAB__{
++__TAB____TAB____TAB__name:   "IPv6",
++__TAB____TAB____TAB__packet: testIPv6DNSPacket(query, false, false),
++__TAB____TAB____TAB__src:    netip.MustParseAddr("2001:db8::2"),
++__TAB____TAB____TAB__dst:    netip.MustParseAddr("fd00::53"),
++__TAB____TAB__},
++__TAB__}
++__TAB__for _, tt := range tests {
++__TAB____TAB__t.Run(tt.name, func(t *testing.T) {
++__TAB____TAB____TAB__got, ok := parseDNSPacket(tt.packet)
++__TAB____TAB____TAB__if !ok {
++__TAB____TAB____TAB____TAB__t.Fatal("parseDNSPacket did not recognize DNS query")
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__if got.source != tt.src || got.destination != tt.dst {
++__TAB____TAB____TAB____TAB__t.Fatalf("addresses = %s -> %s, want %s -> %s", got.source, got.destination, tt.src, tt.dst)
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__if got.sourcePort != 53000 || got.destinationPort != dnsPort {
++__TAB____TAB____TAB____TAB__t.Fatalf("ports = %d -> %d, want 53000 -> 53", got.sourcePort, got.destinationPort)
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__if got.isTCP || got.fragmented {
++__TAB____TAB____TAB____TAB__t.Fatalf("unexpected query flags: tcp=%v fragmented=%v", got.isTCP, got.fragmented)
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__if string(got.query) != string(query) {
++__TAB____TAB____TAB____TAB__t.Fatalf("query = %x, want %x", got.query, query)
++__TAB____TAB____TAB__}
++__TAB____TAB__})
++__TAB__}
++}
++
++func TestParseTCPAndFragmentedDNS(t *testing.T) {
++__TAB__query := testDNSQuery("blocked.example")
++__TAB__tcp := testIPv4DNSPacket(nil, false, false, ipProtocolTCP)
++__TAB__tcpInfo, ok := parseDNSPacket(tcp)
++__TAB__if !ok || !tcpInfo.isTCP {
++__TAB____TAB__t.Fatal("TCP DNS packet was not recognized")
++__TAB__}
++
++__TAB__fragment := testIPv4DNSPacket(query, true, false, ipProtocolUDP)
++__TAB__fragmentInfo, ok := parseDNSPacket(fragment)
++__TAB__if !ok || !fragmentInfo.fragmented {
++__TAB____TAB__t.Fatal("first DNS fragment was not recognized")
++__TAB__}
++__TAB__if buildDNSReplyPacket(fragmentInfo, testRefusedResponse()) != nil {
++__TAB____TAB__t.Fatal("fragmented DNS query must not receive a synthetic UDP reply")
++__TAB__}
++
++__TAB__shortFirstFragment := testIPv4ShortFirstFragment()
++__TAB__shortInfo, ok := parseDNSPacket(shortFirstFragment)
++__TAB__if !ok || !shortInfo.fragmented {
++__TAB____TAB__t.Fatal("truncated first fragment could hide destination port 53")
++__TAB__}
++
++__TAB__nonInitial := testIPv4NonInitialFragment()
++__TAB__if _, ok := parseDNSPacket(nonInitial); ok {
++__TAB____TAB__t.Fatal("non-initial fragment unexpectedly exposed DNS transport ports")
++__TAB__}
++}
++
++func TestBlockedUDPQueryGetsValidReversedDNSRefusedPacket(t *testing.T) {
++__TAB__query := testDNSQuery("blocked.example")
++__TAB__info, ok := parseDNSPacket(testIPv4DNSPacket(query, false, false, ipProtocolUDP))
++__TAB__if !ok {
++__TAB____TAB__t.Fatal("parseDNSPacket did not recognize DNS query")
++__TAB__}
++__TAB__response := testRefusedResponse()
++__TAB__if binary.BigEndian.Uint16(response[2:4])&0x000f != 5 {
++__TAB____TAB__t.Fatalf("DNS response code = %d, want REFUSED (5)", binary.BigEndian.Uint16(response[2:4])&0x000f)
++__TAB__}
++__TAB__packet := buildDNSReplyPacket(info, response)
++__TAB__if len(packet) == 0 {
++__TAB____TAB__t.Fatal("buildDNSReplyPacket returned no packet")
++__TAB__}
++__TAB__replySource := netip.AddrFrom4([4]byte{packet[12], packet[13], packet[14], packet[15]})
++__TAB__replyDestination := netip.AddrFrom4([4]byte{packet[16], packet[17], packet[18], packet[19]})
++__TAB__if replySource != info.destination || replyDestination != info.source {
++__TAB____TAB__t.Fatalf("reply addresses = %s -> %s, want %s -> %s", replySource, replyDestination, info.destination, info.source)
++__TAB__}
++__TAB__if gotSourcePort := binary.BigEndian.Uint16(packet[20:22]); gotSourcePort != dnsPort {
++__TAB____TAB__t.Fatalf("reply source port = %d, want 53", gotSourcePort)
++__TAB__}
++__TAB__if gotDestinationPort := binary.BigEndian.Uint16(packet[22:24]); gotDestinationPort != info.sourcePort {
++__TAB____TAB__t.Fatalf("reply destination port = %d, want %d", gotDestinationPort, info.sourcePort)
++__TAB__}
++__TAB__if checksum(packet[:20]) != 0 {
++__TAB____TAB__t.Fatal("IPv4 header checksum is invalid")
++__TAB__}
++__TAB__if checksumIPv4UDP(packet[12:16], packet[16:20], packet[20:]) != 0 {
++__TAB____TAB__t.Fatal("UDP checksum is invalid")
++__TAB__}
++}
++
++func TestBlockedIPv6QueryGetsValidUDPReply(t *testing.T) {
++__TAB__query := testDNSQuery("blocked.example")
++__TAB__info, ok := parseDNSPacket(testIPv6DNSPacket(query, false, false))
++__TAB__if !ok {
++__TAB____TAB__t.Fatal("parseDNSPacket did not recognize IPv6 DNS query")
++__TAB__}
++__TAB__packet := buildDNSReplyPacket(info, testRefusedResponse())
++__TAB__if len(packet) == 0 {
++__TAB____TAB__t.Fatal("buildDNSReplyPacket returned no packet")
++__TAB__}
++__TAB__if packet[0]>>4 != 6 {
++__TAB____TAB__t.Fatalf("reply IP version = %d, want 6", packet[0]>>4)
++__TAB__}
++__TAB__if checksumIPv6UDP(packet[8:24], packet[24:40], packet[40:]) != 0 {
++__TAB____TAB__t.Fatal("IPv6 UDP checksum is invalid")
++__TAB__}
++}
++
++func TestDNSResponsesAreNotTreatedAsQueries(t *testing.T) {
++__TAB__response := testDNSQuery("safe.example")
++__TAB__response[2] |= 0x80
++__TAB__if _, ok := parseDNSPacket(testIPv4DNSPacket(response, false, false, ipProtocolUDP)); ok {
++__TAB____TAB__t.Fatal("DNS response was recognized as an outbound query")
++__TAB__}
++}
++
++func TestTUNFirewallKeepsDNSSeparateFromNonDNSPolicy(t *testing.T) {
++__TAB__query := testDNSQuery("safe.example")
++__TAB__tests := []struct {
++__TAB____TAB__name            string
++__TAB____TAB__packet          []byte
++__TAB____TAB__blockDNS        bool
++__TAB____TAB__blockNonDNS     bool
++__TAB____TAB__wantPacketsKept int
++__TAB__}{
++__TAB____TAB__{
++__TAB____TAB____TAB__name:            "non-DNS passes when disabled",
++__TAB____TAB____TAB__packet:          testIPv4NonDNSPacket(),
++__TAB____TAB____TAB__wantPacketsKept: 1,
++__TAB____TAB__},
++__TAB____TAB__{
++__TAB____TAB____TAB__name:            "non-DNS is dropped when enabled",
++__TAB____TAB____TAB__packet:          testIPv4NonDNSPacket(),
++__TAB____TAB____TAB__blockNonDNS:     true,
++__TAB____TAB____TAB__wantPacketsKept: 0,
++__TAB____TAB__},
++__TAB____TAB__{
++__TAB____TAB____TAB__name:            "DNS is not blocked by non-DNS policy",
++__TAB____TAB____TAB__packet:          testIPv4DNSPacket(query, false, false, ipProtocolUDP),
++__TAB____TAB____TAB__blockNonDNS:     true,
++__TAB____TAB____TAB__wantPacketsKept: 1,
++__TAB____TAB__},
++__TAB____TAB__{
++__TAB____TAB____TAB__name:            "DNS policy still blocks port 53",
++__TAB____TAB____TAB__packet:          testIPv4DNSPacket(query, false, false, ipProtocolUDP),
++__TAB____TAB____TAB__blockDNS:        true,
++__TAB____TAB____TAB__wantPacketsKept: 0,
++__TAB____TAB__},

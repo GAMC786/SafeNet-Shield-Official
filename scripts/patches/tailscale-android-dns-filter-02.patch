@@ -1,0 +1,225 @@
++__TAB__}
++}
++
++func parseIPv4DNSPacket(packet []byte) (dnsPacketInfo, bool) {
++__TAB__if len(packet) < 20 {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__headerLen := int(packet[0]&0x0f) * 4
++__TAB__totalLen := int(binary.BigEndian.Uint16(packet[2:4]))
++__TAB__if headerLen < 20 || headerLen > len(packet) || totalLen < headerLen || totalLen > len(packet) {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__protocol := packet[9]
++__TAB__if protocol != ipProtocolUDP && protocol != ipProtocolTCP {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__fragmentField := binary.BigEndian.Uint16(packet[6:8])
++__TAB__fragmentOffset := fragmentField & 0x1fff
++__TAB__if fragmentOffset != 0 {
++__TAB____TAB__// Non-initial fragments have no transport ports. If an initial DNS
++__TAB____TAB__// fragment is blocked, the remaining fragments cannot form a query.
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__sourceBytes := [4]byte{packet[12], packet[13], packet[14], packet[15]}
++__TAB__destinationBytes := [4]byte{packet[16], packet[17], packet[18], packet[19]}
++__TAB__source := netip.AddrFrom4(sourceBytes)
++__TAB__destination := netip.AddrFrom4(destinationBytes)
++__TAB__fragmented := fragmentField&0x2000 != 0
++__TAB__if fragmented && totalLen-headerLen < 4 {
++__TAB____TAB__// A first fragment too short to expose the transport ports could
++__TAB____TAB__// otherwise be reassembled into a DNS packet after this filter passes it.
++__TAB____TAB__return dnsPacketInfo{
++__TAB____TAB____TAB__source:      source,
++__TAB____TAB____TAB__destination: destination,
++__TAB____TAB____TAB__fragmented:  true,
++__TAB____TAB____TAB__ipVersion:   4,
++__TAB____TAB__}, true
++__TAB__}
++__TAB__return parseTransportPacket(
++__TAB____TAB__packet[:totalLen],
++__TAB____TAB__headerLen,
++__TAB____TAB__protocol,
++__TAB____TAB__source,
++__TAB____TAB__destination,
++__TAB____TAB__fragmented,
++__TAB____TAB__4,
++__TAB__)
++}
++
++func parseIPv6DNSPacket(packet []byte) (dnsPacketInfo, bool) {
++__TAB__if len(packet) < 40 {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__payloadLen := int(binary.BigEndian.Uint16(packet[4:6]))
++__TAB__if payloadLen == 0 || payloadLen > len(packet)-40 {
++__TAB____TAB__// Jumbograms are not used by Android's DNS resolver and cannot be
++__TAB____TAB__// safely inspected by this bounded packet parser.
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__packet = packet[:40+payloadLen]
++__TAB__var sourceBytes, destinationBytes [16]byte
++__TAB__copy(sourceBytes[:], packet[8:24])
++__TAB__copy(destinationBytes[:], packet[24:40])
++__TAB__source := netip.AddrFrom16(sourceBytes)
++__TAB__destination := netip.AddrFrom16(destinationBytes)
++
++__TAB__nextHeader := packet[6]
++__TAB__offset := 40
++__TAB__fragmented := false
++__TAB__for extensionCount := 0; extensionCount < 8; extensionCount++ {
++__TAB____TAB__switch nextHeader {
++__TAB____TAB__case 0, 43, 60, 135, 139, 140: // Hop-by-hop, routing, destination, mobility, HIP, Shim6.
++__TAB____TAB____TAB__if offset+2 > len(packet) {
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__length := (int(packet[offset+1]) + 1) * 8
++__TAB____TAB____TAB__if length < 8 || offset+length > len(packet) {
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__nextHeader = packet[offset]
++__TAB____TAB____TAB__offset += length
++__TAB____TAB__case 44: // Fragment.
++__TAB____TAB____TAB__if offset+8 > len(packet) {
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__fragmentField := binary.BigEndian.Uint16(packet[offset+2 : offset+4])
++__TAB____TAB____TAB__if fragmentField&0xfff8 != 0 {
++__TAB____TAB____TAB____TAB__// Non-initial fragments do not carry transport ports.
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__fragmented = fragmentField&1 != 0
++__TAB____TAB____TAB__nextHeader = packet[offset]
++__TAB____TAB____TAB__offset += 8
++__TAB____TAB__case 51: // Authentication header.
++__TAB____TAB____TAB__if offset+2 > len(packet) {
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__length := (int(packet[offset+1]) + 2) * 4
++__TAB____TAB____TAB__if length < 8 || offset+length > len(packet) {
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{}, false
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__nextHeader = packet[offset]
++__TAB____TAB____TAB__offset += length
++__TAB____TAB__default:
++__TAB____TAB____TAB__if fragmented &&
++__TAB____TAB____TAB____TAB__(nextHeader == ipProtocolUDP || nextHeader == ipProtocolTCP) &&
++__TAB____TAB____TAB____TAB__offset+4 > len(packet) {
++__TAB____TAB____TAB____TAB__// Do not pass a truncated first fragment whose ports could be
++__TAB____TAB____TAB____TAB__// completed into a DNS destination after IP reassembly.
++__TAB____TAB____TAB____TAB__return dnsPacketInfo{
++__TAB____TAB____TAB____TAB____TAB__source:      source,
++__TAB____TAB____TAB____TAB____TAB__destination: destination,
++__TAB____TAB____TAB____TAB____TAB__fragmented:  true,
++__TAB____TAB____TAB____TAB____TAB__ipVersion:   6,
++__TAB____TAB____TAB____TAB__}, true
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__return parseTransportPacket(packet, offset, nextHeader, source, destination, fragmented, 6)
++__TAB____TAB__}
++__TAB__}
++__TAB__return dnsPacketInfo{}, false
++}
++
++func parseTransportPacket(
++__TAB__packet []byte,
++__TAB__offset int,
++__TAB__protocol byte,
++__TAB__source, destination netip.Addr,
++__TAB__fragmented bool,
++__TAB__ipVersion int,
++) (dnsPacketInfo, bool) {
++__TAB__if protocol != ipProtocolUDP && protocol != ipProtocolTCP {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__if offset < 0 || offset+4 > len(packet) {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__sourcePort := binary.BigEndian.Uint16(packet[offset : offset+2])
++__TAB__destinationPort := binary.BigEndian.Uint16(packet[offset+2 : offset+4])
++__TAB__if destinationPort != dnsPort {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__info := dnsPacketInfo{
++__TAB____TAB__source:          source,
++__TAB____TAB__destination:     destination,
++__TAB____TAB__sourcePort:      sourcePort,
++__TAB____TAB__destinationPort: destinationPort,
++__TAB____TAB__isTCP:           protocol == ipProtocolTCP,
++__TAB____TAB__fragmented:      fragmented,
++__TAB____TAB__ipVersion:       ipVersion,
++__TAB__}
++__TAB__if info.isTCP {
++__TAB____TAB__return info, true
++__TAB__}
++__TAB__if offset+8 > len(packet) {
++__TAB____TAB__return info, true
++__TAB__}
++__TAB__udpLength := int(binary.BigEndian.Uint16(packet[offset+4 : offset+6]))
++__TAB__if udpLength < 8 || (!fragmented && udpLength > len(packet)-offset) {
++__TAB____TAB__return info, true
++__TAB__}
++__TAB__payloadEnd := len(packet)
++__TAB__if !fragmented {
++__TAB____TAB__payloadEnd = offset + udpLength
++__TAB__}
++__TAB__info.query = packet[offset+8 : payloadEnd]
++__TAB__if len(info.query) >= 4 && info.query[2]&0x80 != 0 {
++__TAB____TAB__// This is a DNS response, not a query.
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__return info, true
++}
++
++func buildDNSReplyPacket(info dnsPacketInfo, dnsResponse []byte) []byte {
++__TAB__if info.isTCP || info.fragmented || len(dnsResponse) == 0 {
++__TAB____TAB__return nil
++__TAB__}
++__TAB__udpLen := 8 + len(dnsResponse)
++__TAB__packet := make([]byte, 0)
++__TAB__var source, destination []byte
++__TAB__switch info.ipVersion {
++__TAB__case 4:
++__TAB____TAB__if !info.source.Is4() || !info.destination.Is4() || 20+udpLen > 0xffff {
++__TAB____TAB____TAB__return nil
++__TAB____TAB__}
++__TAB____TAB__packet = make([]byte, 20+udpLen)
++__TAB____TAB__packet[0] = 0x45
++__TAB____TAB__binary.BigEndian.PutUint16(packet[2:4], uint16(len(packet)))
++__TAB____TAB__packet[8] = 64
++__TAB____TAB__packet[9] = ipProtocolUDP
++__TAB____TAB__sourceAddr := info.destination.As4()
++__TAB____TAB__destinationAddr := info.source.As4()
++__TAB____TAB__copy(packet[12:16], sourceAddr[:])
++__TAB____TAB__copy(packet[16:20], destinationAddr[:])
++__TAB____TAB__source, destination = packet[12:16], packet[16:20]
++__TAB__case 6:
++__TAB____TAB__if !info.source.Is6() || !info.destination.Is6() || udpLen > 0xffff {
++__TAB____TAB____TAB__return nil
++__TAB____TAB__}
++__TAB____TAB__packet = make([]byte, 40+udpLen)
++__TAB____TAB__packet[0] = 0x60
++__TAB____TAB__binary.BigEndian.PutUint16(packet[4:6], uint16(udpLen))
++__TAB____TAB__packet[6] = ipProtocolUDP
++__TAB____TAB__packet[7] = 64
++__TAB____TAB__sourceAddr := info.destination.As16()
++__TAB____TAB__destinationAddr := info.source.As16()
++__TAB____TAB__copy(packet[8:24], sourceAddr[:])
++__TAB____TAB__copy(packet[24:40], destinationAddr[:])
++__TAB____TAB__source, destination = packet[8:24], packet[24:40]
++__TAB__default:
++__TAB____TAB__return nil
++__TAB__}
++__TAB__udpOffset := len(packet) - udpLen
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset:udpOffset+2], info.destinationPort)
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset+2:udpOffset+4], info.sourcePort)
++__TAB__binary.BigEndian.PutUint16(packet[udpOffset+4:udpOffset+6], uint16(udpLen))
++__TAB__copy(packet[udpOffset+8:], dnsResponse)
++__TAB__udp := packet[udpOffset:]
++__TAB__if info.ipVersion == 4 {
++__TAB____TAB__binary.BigEndian.PutUint16(udp[6:8], udpChecksumIPv4(source, destination, udp))
++__TAB____TAB__binary.BigEndian.PutUint16(packet[10:12], checksum(packet[:20]))
++__TAB__} else {
++__TAB____TAB__binary.BigEndian.PutUint16(udp[6:8], udpChecksumIPv6(source, destination, udp))
++__TAB__}
++__TAB__return packet
++}

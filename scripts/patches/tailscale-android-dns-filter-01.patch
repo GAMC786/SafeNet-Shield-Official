@@ -1,0 +1,225 @@
+diff --git a/libtailscale/backend.go b/libtailscale/backend.go
+index bfd0a11..28c6ed1 100644
+--- a/libtailscale/backend.go
++++ b/libtailscale/backend.go
+@@ -298 +298 @@ func (a *App) newBackend(dataDir string, appCtx AppContext, store *stateStore,
+-__TAB____TAB__devices:  newTUNDevices(),
++__TAB____TAB__devices:  newTUNDevices(appCtx),
+diff --git a/libtailscale/interfaces.go b/libtailscale/interfaces.go
+index 8adbcc1..c83e1db 100644
+--- a/libtailscale/interfaces.go
++++ b/libtailscale/interfaces.go
+@@ -85,0 +86,12 @@ type AppContext interface {
++__TAB__// ShouldBlockDNSPacket evaluates a DNS packet against the current SafeNet
++__TAB__// firewall policy. isTCP and fragmented packets are blocked while the DNS
++__TAB__// firewall is enabled because their question cannot be safely inspected here.
++__TAB__ShouldBlockDNSPacket(query []byte, sourceAddress, destinationAddress string, isTCP, trustedResolver, fragmented bool) bool
++
++__TAB__// BlockedDNSResponse returns a DNS REFUSED response for an inspected UDP query.
++__TAB__BlockedDNSResponse(query []byte) []byte
++
++__TAB__// ShouldBlockNonDNSPacket reports whether packets other than UDP/TCP port 53
++__TAB__// should be blocked by the SafeNet Tailscale firewall.
++__TAB__ShouldBlockNonDNSPacket() bool
++
+diff --git a/libtailscale/multitun.go b/libtailscale/multitun.go
+index 4103c9f..d51125e 100644
+--- a/libtailscale/multitun.go
++++ b/libtailscale/multitun.go
+@@ -6,0 +7 @@ import (
++__TAB__"io"
+@@ -7,0 +9 @@ import (
++__TAB__"net/netip"
+@@ -20,0 +23,2 @@ type multiTUN struct {
++__TAB__appCtx AppContext
++
+@@ -47,0 +52,3 @@ type multiTUN struct {
++
++__TAB__dnsMu      sync.RWMutex
++__TAB__dnsServers map[netip.Addr]struct{}
+@@ -57,0 +65,6 @@ type tunDevice struct {
++__TAB__inject   chan packetInjection
++}
++
++type packetInjection struct {
++__TAB__packet []byte
++__TAB__reply  chan error
+@@ -87 +100 @@ type nameReply struct {
+-func newTUNDevices() *multiTUN {
++func newTUNDevices(appCtx AppContext) *multiTUN {
+@@ -88,0 +102 @@ func newTUNDevices() *multiTUN {
++__TAB____TAB__appCtx:       appCtx,
+@@ -98,0 +113 @@ func newTUNDevices() *multiTUN {
++__TAB____TAB__dnsServers:   make(map[netip.Addr]struct{}),
+@@ -168,0 +184 @@ func (d *multiTUN) run() {
++__TAB____TAB____TAB____TAB__inject:    make(chan packetInjection),
+@@ -210,0 +227,3 @@ func (d *multiTUN) readFrom(dev *tunDevice) {
++__TAB____TAB____TAB__if n > 0 {
++__TAB____TAB____TAB____TAB__n = d.filterTailscalePackets(dev, r.slab, r.packets, n)
++__TAB____TAB____TAB__}
+@@ -268,0 +288,6 @@ func (d *multiTUN) runDevice(dev *tunDevice) {
++__TAB____TAB__case injection := <-dev.inject:
++__TAB____TAB____TAB__n, err := dev.dev.Write([][]byte{injection.packet}, 0)
++__TAB____TAB____TAB__if n != 1 && err == nil {
++__TAB____TAB____TAB____TAB__err = io.ErrShortWrite
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__injection.reply <- err
+@@ -278,0 +304,39 @@ func (d *multiTUN) runDevice(dev *tunDevice) {
++func (d *multiTUN) setDNSServers(servers []netip.Addr) {
++__TAB__next := make(map[netip.Addr]struct{}, len(servers))
++__TAB__for _, server := range servers {
++__TAB____TAB__if server.IsValid() {
++__TAB____TAB____TAB__next[server.Unmap()] = struct{}{}
++__TAB____TAB__}
++__TAB__}
++__TAB__d.dnsMu.Lock()
++__TAB__d.dnsServers = next
++__TAB__d.dnsMu.Unlock()
++}
++
++func (d *multiTUN) isConfiguredDNSServer(address netip.Addr) bool {
++__TAB__d.dnsMu.RLock()
++__TAB___, ok := d.dnsServers[address.Unmap()]
++__TAB__d.dnsMu.RUnlock()
++__TAB__return ok
++}
++
++func (d *multiTUN) injectPacket(dev *tunDevice, packet []byte) error {
++__TAB__reply := make(chan error, 1)
++__TAB__request := packetInjection{packet: packet, reply: reply}
++__TAB__select {
++__TAB__case dev.inject <- request:
++__TAB__case <-dev.close:
++__TAB____TAB__return os.ErrClosed
++__TAB__case <-d.close:
++__TAB____TAB__return os.ErrClosed
++__TAB__}
++__TAB__select {
++__TAB__case err := <-reply:
++__TAB____TAB__return err
++__TAB__case <-dev.close:
++__TAB____TAB__return os.ErrClosed
++__TAB__case <-d.close:
++__TAB____TAB__return os.ErrClosed
++__TAB__}
++}
++
+diff --git a/libtailscale/net.go b/libtailscale/net.go
+index 5fc2d9f..e787083 100644
+--- a/libtailscale/net.go
++++ b/libtailscale/net.go
+@@ -110,0 +111 @@ func (b *backend) updateTUN(rcfg *router.Config, dcfg *dns.OSConfig) (err error)
++__TAB__var nameservers []netip.Addr
+@@ -112 +113 @@ func (b *backend) updateTUN(rcfg *router.Config, dcfg *dns.OSConfig) (err error)
+-__TAB____TAB__nameservers := dcfg.Nameservers
++__TAB____TAB__nameservers = dcfg.Nameservers
+@@ -127,0 +129 @@ func (b *backend) updateTUN(rcfg *router.Config, dcfg *dns.OSConfig) (err error)
++__TAB__b.devices.setDNSServers(nameservers)
+diff --git a/libtailscale/dnsfilter.go b/libtailscale/dnsfilter.go
+new file mode 100644
+index 0000000..e8212d5
+--- /dev/null
++++ b/libtailscale/dnsfilter.go
+@@ -0,0 +1,370 @@
++// Copyright (c) Tailscale Inc & AUTHORS
++// SPDX-License-Identifier: BSD-3-Clause
++
++package libtailscale
++
++import (
++__TAB__"encoding/binary"
++__TAB__"log"
++__TAB__"net/netip"
++
++__TAB__"github.com/tailscale/wireguard-go/tun"
++)
++
++const (
++__TAB__ipProtocolTCP = 6
++__TAB__ipProtocolUDP = 17
++__TAB__dnsPort       = 53
++)
++
++type dnsPacketInfo struct {
++__TAB__source          netip.Addr
++__TAB__destination     netip.Addr
++__TAB__sourcePort      uint16
++__TAB__destinationPort uint16
++__TAB__query           []byte
++__TAB__isTCP           bool
++__TAB__fragmented      bool
++__TAB__ipVersion       int
++}
++
++// filterTailscalePackets applies DNS and non-DNS firewall policy at the TUN
++// packet boundary, returning REFUSED replies for blocked, unfragmented UDP queries.
++func (d *multiTUN) filterTailscalePackets(dev *tunDevice, slab []byte, packets []tun.ReadPacket, count int) int {
++__TAB__if count <= 0 {
++__TAB____TAB__return 0
++__TAB__}
++__TAB__if count > len(packets) {
++__TAB____TAB__count = len(packets)
++__TAB__}
++__TAB__if d.appCtx == nil {
++__TAB____TAB__return count
++__TAB__}
++__TAB__kept := 0
++__TAB__for index := 0; index < count; index++ {
++__TAB____TAB__packet := packets[index]
++__TAB____TAB__if packet.Offset < 0 || packet.Size < 0 ||
++__TAB____TAB____TAB__packet.Offset > len(slab) || packet.Size > len(slab)-packet.Offset {
++__TAB____TAB____TAB__if d.appCtx.ShouldBlockNonDNSPacket() {
++__TAB____TAB____TAB____TAB__continue
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__packets[kept] = packet
++__TAB____TAB____TAB__kept++
++__TAB____TAB____TAB__continue
++__TAB____TAB__}
++__TAB____TAB__raw := slab[packet.Offset : packet.Offset+packet.Size]
++__TAB____TAB__info, ok := parseDNSPacket(raw)
++__TAB____TAB__if !ok {
++__TAB____TAB____TAB__if d.appCtx.ShouldBlockNonDNSPacket() {
++__TAB____TAB____TAB____TAB__continue
++__TAB____TAB____TAB__}
++__TAB____TAB____TAB__packets[kept] = packet
++__TAB____TAB____TAB__kept++
++__TAB____TAB____TAB__continue
++__TAB____TAB__}
++
++__TAB____TAB__block := d.appCtx.ShouldBlockDNSPacket(
++__TAB____TAB____TAB__info.query,
++__TAB____TAB____TAB__info.source.String(),
++__TAB____TAB____TAB__info.destination.String(),
++__TAB____TAB____TAB__info.isTCP,
++__TAB____TAB____TAB__d.isConfiguredDNSServer(info.destination),
++__TAB____TAB____TAB__info.fragmented,
++__TAB____TAB__)
++__TAB____TAB__if !block {
++__TAB____TAB____TAB__packets[kept] = packet
++__TAB____TAB____TAB__kept++
++__TAB____TAB____TAB__continue
++__TAB____TAB__}
++
++__TAB____TAB__if !info.isTCP && !info.fragmented {
++__TAB____TAB____TAB__response := d.appCtx.BlockedDNSResponse(info.query)
++__TAB____TAB____TAB__if replyPacket := buildDNSReplyPacket(info, response); len(replyPacket) > 0 {
++__TAB____TAB____TAB____TAB__if err := d.injectPacket(dev, replyPacket); err != nil {
++__TAB____TAB____TAB____TAB____TAB__log.Printf("Tailscale DNS firewall blocked a query but could not inject its REFUSED response: %v", err)
++__TAB____TAB____TAB____TAB__}
++__TAB____TAB____TAB__}
++__TAB____TAB__}
++__TAB__}
++__TAB__return kept
++}
++
++func parseDNSPacket(packet []byte) (dnsPacketInfo, bool) {
++__TAB__if len(packet) == 0 {
++__TAB____TAB__return dnsPacketInfo{}, false
++__TAB__}
++__TAB__switch packet[0] >> 4 {
++__TAB__case 4:
++__TAB____TAB__return parseIPv4DNSPacket(packet)
++__TAB__case 6:
++__TAB____TAB__return parseIPv6DNSPacket(packet)
++__TAB__default:
++__TAB____TAB__return dnsPacketInfo{}, false

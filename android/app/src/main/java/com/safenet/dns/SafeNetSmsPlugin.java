@@ -19,7 +19,7 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
-import com.getcapacitor.annotation.PluginMethod;
+import com.getcapacitor.PluginMethod;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.json.JSONException;
