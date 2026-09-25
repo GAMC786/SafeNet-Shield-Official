@@ -53,6 +53,7 @@
 - [Android SMS permission gating](android-sms-permission-gating.md) — status gates must match the runtime permission alias; keep WRITE_SMS out of the enablement gate.
  - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
 - [Android WebView system-bar insets](android-webview-system-bar-insets.md) — let CSS own WebView menu offsets; native WebView padding would double-shift fixed navigation.
+- [Framer Motion tab indicators](framer-motion-tab-indicators.md) — center shared-layout markers inside a full-width flex wrapper so layout transforms do not shift the bar.
  - [Android DNS upstream network](android-dns-upstream-network.md) — DNS-only VPN resolver sockets must bind to a non-VPN network and remain protected from the VPN loop.
 - [Android VPN intentional shutdown](android-vpn-intentional-shutdown.md) — mark user-requested VPN stops before closing the interface or onDestroy reports a false unexpected failure.
 - [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.

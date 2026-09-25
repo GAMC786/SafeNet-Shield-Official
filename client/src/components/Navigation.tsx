@@ -85,9 +85,11 @@ export function Navigation() {
                 {isActive && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    className="absolute -top-1 inset-x-0 flex justify-center"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  />
+                  >
+                    <div className="h-1 w-8 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
+                  </motion.div>
                 )}
                 <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
                 <span className={cn(navLabelClass, "text-center leading-tight")}>{item.label}</span>
