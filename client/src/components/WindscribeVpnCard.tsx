@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Radio, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CyberCard } from "@/components/CyberCard";
 import { Switch } from "@/components/ui/switch";
+import { WindscribeEulaDialog } from "@/components/WindscribeEulaDialog";
 import { useWindscribeVpn } from "@/hooks/use-windscribe";
 import type { WindscribeVpnStatus } from "@/hooks/use-windscribe";
+
+const WINDSCRIBE_EULA_STORAGE_KEY = "safenet-windscribe-eula-version";
+const WINDSCRIBE_EULA_VERSION = "2018-01-04";
+
+function hasAcceptedWindscribeEula() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(WINDSCRIBE_EULA_STORAGE_KEY) === WINDSCRIBE_EULA_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 type WindscribeTileWindow = Window & {
   __safenetWindscribeTileTogglePending?: boolean;
@@ -15,6 +28,9 @@ export function WindscribeVpnCard() {
   const vpn = useWindscribeVpn();
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [windscribeEulaAccepted, setWindscribeEulaAccepted] = useState(hasAcceptedWindscribeEula);
+  const [windscribeEulaOpen, setWindscribeEulaOpen] = useState(false);
+  const pendingConnectAfterEula = useRef(false);
   const status = vpn.status;
   const profileImported = status?.profileImported === true;
   const connected = status?.connected === true;
@@ -41,8 +57,37 @@ export function WindscribeVpnCard() {
       setActionError("Import a Windscribe WireGuard profile before connecting.");
       return;
     }
-    void perform(connected ? vpn.disconnect : vpn.connect);
-  }, [actionPending, connected, perform, profileImported, vpn.connect, vpn.disconnect]);
+    if (connected) {
+      void perform(vpn.disconnect);
+      return;
+    }
+    if (!windscribeEulaAccepted) {
+      pendingConnectAfterEula.current = true;
+      setWindscribeEulaOpen(true);
+      return;
+    }
+    void perform(vpn.connect);
+  }, [actionPending, connected, perform, profileImported, vpn.connect, vpn.disconnect, windscribeEulaAccepted]);
+
+  const acceptWindscribeEula = useCallback(() => {
+    const shouldConnect = pendingConnectAfterEula.current;
+    pendingConnectAfterEula.current = false;
+    try {
+      window.localStorage.setItem(WINDSCRIBE_EULA_STORAGE_KEY, WINDSCRIBE_EULA_VERSION);
+    } catch {
+      setActionError("Could not save Windscribe EULA acceptance. The VPN connection was not started.");
+      setWindscribeEulaOpen(false);
+      return;
+    }
+    setWindscribeEulaAccepted(true);
+    setWindscribeEulaOpen(false);
+    if (shouldConnect) void perform(vpn.connect);
+  }, [perform, vpn.connect]);
+
+  const handleWindscribeEulaOpenChange = useCallback((open: boolean) => {
+    setWindscribeEulaOpen(open);
+    if (!open) pendingConnectAfterEula.current = false;
+  }, []);
 
   useEffect(() => {
     if (!vpn.isAndroid) return;
@@ -78,6 +123,12 @@ export function WindscribeVpnCard() {
 
   return (
     <CyberCard className="flex min-h-[104px] w-full items-center">
+      <WindscribeEulaDialog
+        open={windscribeEulaOpen}
+        onOpenChange={handleWindscribeEulaOpenChange}
+        onAccept={acceptWindscribeEula}
+        onCancel={() => handleWindscribeEulaOpenChange(false)}
+      />
       <div className="w-full space-y-4 rounded-lg border border-white/10 bg-background/30 px-3 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           <div className="min-w-0 flex-1">
@@ -155,6 +206,16 @@ export function WindscribeVpnCard() {
               data-testid="link-windscribe-profile-generator"
             >
               Generate a profile
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <a
+              href="https://windscribe.com/terms/eula"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-primary underline underline-offset-2"
+              data-testid="link-windscribe-eula"
+            >
+              Windscribe EULA
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
             {profileImported && (

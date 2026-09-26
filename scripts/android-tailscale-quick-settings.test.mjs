@@ -10,6 +10,7 @@ const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetWindscr
 const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
 const app = read("../client/src/App.tsx");
 const windscribeCard = read("../client/src/components/WindscribeVpnCard.tsx");
+const windscribeEulaDialog = read("../client/src/components/WindscribeEulaDialog.tsx");
 
 test("Android exposes the SafeNet Windscribe VPN Quick Settings tile", () => {
   assert.match(manifest, /SafeNetWindscribeTileService/);
@@ -31,6 +32,16 @@ test("the tile reflects native tunnel state and routes taps through MainActivity
   assert.match(plugin, /onStateChange\(State state\)/);
 });
 
+test("Windscribe VPN connections require accepting the official EULA", () => {
+  assert.match(windscribeCard, /!windscribeEulaAccepted/);
+  assert.match(windscribeCard, /pendingConnectAfterEula\.current = true/);
+  assert.match(windscribeCard, /link-windscribe-eula/);
+  assert.match(windscribeCard, /WINDSCRIBE_EULA_STORAGE_KEY/);
+  assert.match(windscribeEulaDialog, /https:\/\/windscribe\.com\/terms\/eula/);
+  assert.match(windscribeEulaDialog, /data-testid="dialog-windscribe-eula"/);
+  assert.match(windscribeEulaDialog, /Agree &amp; Connect/);
+});
+
 test("Quick Settings toggles preserve App Lock and Android VPN consent", () => {
   assert.match(mainActivity, /AppLockManager\.isEnabled\(this\)/);
   assert.match(mainActivity, /AppLockManager\.isSessionAuthenticated\(\)/);
@@ -38,7 +49,8 @@ test("Quick Settings toggles preserve App Lock and Android VPN consent", () => {
   assert.match(app, /__safenetHandleWindscribeTileToggle/);
   assert.match(app, /setLocation\("\/"\)/);
   assert.match(windscribeCard, /safenet:windscribe-tile-toggle/);
-  assert.match(windscribeCard, /connected \? vpn\.disconnect : vpn\.connect/);
+  assert.match(windscribeCard, /if \(connected\) \{\s+void perform\(vpn\.disconnect\);/);
+  assert.match(windscribeCard, /void perform\(vpn\.connect\)/);
   assert.match(plugin, /VpnService\.prepare/);
   assert.match(plugin, /vpnConsentResult/);
 });
