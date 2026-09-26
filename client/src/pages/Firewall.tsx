@@ -358,8 +358,9 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Filters cleartext UDP DNS routed through Tailscale when connected; TCP/53 is blocked while this firewall is on.
-              DoH and DoT stay encrypted and are not inspected by SafeNet. Filtering for encrypted DNS happens at the resolver provider, if supported; SafeNet&apos;s custom rules do not apply to those queries. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Filters cleartext UDP DNS on the currently supported SafeNet VPN filtering path; Windscribe traffic is not filtered yet.
+              TCP/53 is blocked on that path while this firewall is on. DoH and DoT stay encrypted and are not inspected by SafeNet.
+              Filtering for encrypted DNS happens at the resolver provider, if supported; SafeNet&apos;s custom rules do not apply to those queries. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">Provider-side filtering</Badge>
@@ -409,10 +410,11 @@ export default function Firewall() {
             <div className="flex items-start gap-3">
               <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-orange-300" />
               <div>
-                <h2 className="font-display font-bold text-white">Tailscale Non-DNS Traffic</h2>
+                <h2 className="font-display font-bold text-white">Non-DNS Traffic</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Separately block non-DNS IP packets routed through Tailscale. UDP/TCP port 53 stays under
-                  the DNS Firewall policy above; this setting does not change DNS rules.
+                  Separately block non-DNS IP packets on the currently supported SafeNet VPN filtering path.
+                  Windscribe traffic is not covered yet. UDP/TCP port 53 stays under the DNS Firewall policy above;
+                  this setting does not change DNS rules.
                 </p>
                 <p className="mt-2 text-xs text-orange-200/80">
                   SafeNet does not inspect encrypted DoH/DoT by domain. This switch can only block those
@@ -426,7 +428,7 @@ export default function Firewall() {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ tailscaleNonDnsFirewallEnabled: checked })
               }
-              aria-label="Block non-DNS traffic routed through Tailscale"
+              aria-label="Block non-DNS traffic on the supported SafeNet VPN filtering path"
               data-testid="switch-tailscale-nondns-firewall"
             />
           </div>
@@ -453,13 +455,13 @@ export default function Firewall() {
                 <div>
                   <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Restrict Tailscale-routed DNS to its configured resolver addresses so apps cannot silently
-                    switch to another cleartext resolver.
+                    Restrict cleartext DNS handled by SafeNet&apos;s current packet filter to its configured resolver
+                    addresses so apps cannot silently switch to another cleartext resolver.
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "Enforced while DNS Firewall is On."
-                      : "Turn on DNS Firewall above to enforce this access rule."}
+                      ? "Applies only on the currently supported VPN filtering path while DNS Firewall is On; Windscribe is not covered yet."
+                      : "Turn on DNS Firewall above to apply this rule on the currently supported VPN filtering path."}
                   </p>
                 </div>
               </div>

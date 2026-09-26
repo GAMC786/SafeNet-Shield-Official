@@ -422,6 +422,11 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /isAndroid && \(/);
   assert.match(firewallSource, /switch-tailscale-nondns-firewall/);
   assert.match(firewallSource, /DoH and DoT stay encrypted and are not inspected by SafeNet/);
+  assert.match(firewallSource, /Windscribe traffic is not filtered yet/);
+  assert.match(firewallSource, /Windscribe traffic is not covered yet/);
+  assert.match(firewallSource, /Restrict cleartext DNS handled by SafeNet/);
+  assert.match(firewallSource, /Block non-DNS traffic on the supported SafeNet VPN filtering path/);
+  assert.doesNotMatch(firewallSource, /DNS routed through Tailscale|Tailscale-routed DNS|Tailscale Non-DNS Traffic|routed through Tailscale/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
