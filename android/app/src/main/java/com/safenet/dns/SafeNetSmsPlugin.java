@@ -122,7 +122,8 @@ public final class SafeNetSmsPlugin extends Plugin {
     public void setEnabled(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", false);
         JSObject current = status();
-        if (enabled && !SafeNetSmsFilter.canEnableFiltering(
+        if (enabled && !SafeNetSmsFilter.isEffectivelyEnabled(
+            true,
             current.optBoolean("roleHeld", false),
             current.optBoolean("filterPermissionGranted", false)
         )) {
@@ -280,7 +281,8 @@ public final class SafeNetSmsPlugin extends Plugin {
             ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED;
         boolean configuredEnabled = context.getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(SafeNetSmsFilter.PREF_ENABLED, false);
-        boolean enabled = configuredEnabled && SafeNetSmsFilter.canEnableFiltering(
+        boolean enabled = SafeNetSmsFilter.isEffectivelyEnabled(
+            configuredEnabled,
             roleHeld,
             filterPermissionGranted
         );

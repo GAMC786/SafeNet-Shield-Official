@@ -51,7 +51,7 @@
 - [Android physical connectivity recovery](android-physical-connectivity-recovery.md) — physical phones must use public resolvers; classify missing or emulated targets as access blocks.
  - [Android call-screening role fallback](android-call-screening-role-fallback.md) — role requests need a default-app settings fallback and must return the post-settings role state.
 - [Android SMS regex safety](android-sms-regex-safety.md) — incoming SMS rules run on the delivery path; keep user patterns inside a bounded, non-backtracking subset.
-- [Android SMS permission gating](android-sms-permission-gating.md) — status gates must match the runtime permission alias; keep WRITE_SMS out of the enablement gate.
+- [Android SMS permission gating](android-sms-permission-gating.md) — align reported status and incoming classification with the live default-SMS role and RECEIVE_SMS grant.
  - [Android WebView startup fallback](android-webview-startup-fallback.md) — keep an opaque native startup surface for real phones; hosted emulator smoke can pass while a device shows only the dark WebView background.
 - [Android WebView system-bar insets](android-webview-system-bar-insets.md) — let CSS own WebView menu offsets; native WebView padding would double-shift fixed navigation.
 - [Framer Motion tab indicators](framer-motion-tab-indicators.md) — center shared-layout markers inside a full-width flex wrapper so layout transforms do not shift the bar.

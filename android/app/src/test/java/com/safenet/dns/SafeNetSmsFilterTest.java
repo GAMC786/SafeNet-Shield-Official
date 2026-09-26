@@ -16,6 +16,14 @@ public class SafeNetSmsFilterTest {
     }
 
     @Test
+    public void effectiveFilterStateRequiresSavedToggleRoleAndReceivePermission() {
+        assertTrue(SafeNetSmsFilter.isEffectivelyEnabled(true, true, true));
+        assertFalse(SafeNetSmsFilter.isEffectivelyEnabled(false, true, true));
+        assertFalse(SafeNetSmsFilter.isEffectivelyEnabled(true, false, true));
+        assertFalse(SafeNetSmsFilter.isEffectivelyEnabled(true, true, false));
+    }
+
+    @Test
     public void filteringIsDisabledUntilUserEnablesIt() {
         SafeNetSmsFilter.Result result = SafeNetSmsFilter.classifyText(
             "+1 555 123 4567",

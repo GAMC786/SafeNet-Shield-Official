@@ -1,7 +1,11 @@
 package com.safenet.dns;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.provider.Telephony;
+import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -46,6 +50,14 @@ final class SafeNetSmsFilter {
         return roleHeld && receiveSmsPermissionGranted;
     }
 
+    static boolean isEffectivelyEnabled(
+        boolean configuredEnabled,
+        boolean roleHeld,
+        boolean receiveSmsPermissionGranted
+    ) {
+        return configuredEnabled && canEnableFiltering(roleHeld, receiveSmsPermissionGranted);
+    }
+
     static final class Result {
         final boolean blocked;
         final String reason;
@@ -58,10 +70,18 @@ final class SafeNetSmsFilter {
 
     static Result classify(Context context, String sender, String body) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean roleHeld = context.getPackageName().equals(Telephony.Sms.getDefaultSmsPackage(context));
+        boolean receiveSmsPermissionGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+                PackageManager.PERMISSION_GRANTED;
         return classifyText(
             sender,
             body,
-            preferences.getBoolean(PREF_ENABLED, false),
+            isEffectivelyEnabled(
+                preferences.getBoolean(PREF_ENABLED, false),
+                roleHeld,
+                receiveSmsPermissionGranted
+            ),
             readStringList(preferences, PREF_KEYWORDS),
             readStringList(preferences, PREF_REGEXES),
             readStringList(preferences, PREF_ALLOWED_SENDERS)
