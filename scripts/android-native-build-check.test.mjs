@@ -51,8 +51,8 @@ const dashboardSource = await readFile(
   new URL("../client/src/pages/Dashboard.tsx", import.meta.url),
   "utf8",
 );
-const tailscaleEulaSource = await readFile(
-  new URL("../client/src/components/TailscaleEulaDialog.tsx", import.meta.url),
+const windscribeCardSource = await readFile(
+  new URL("../client/src/components/WindscribeVpnCard.tsx", import.meta.url),
   "utf8",
 );
 const releaseSmokeSource = await readFile(
@@ -173,35 +173,26 @@ test("the native plugin keeps Private DNS and shared features", () => {
   );
 });
 
-test("the Android manifest declares only the real Tailscale VPN service, not a SafeNet DNS VPN", () => {
-  assert.match(manifestSource, /android:name="\.SafeNetTailscaleVpnService"/);
+test("the Android manifest declares the WireGuard backend VPN service", () => {
+  assert.match(
+    manifestSource,
+    /android:name="com\.wireguard\.android\.backend\.GoBackend\$VpnService"/,
+  );
   assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
   assert.match(manifestSource, /android\.permission\.FOREGROUND_SERVICE_SYSTEM_EXEMPTED/);
   assert.doesNotMatch(manifestSource, /overrideLibrary/);
   assert.match(androidVariablesSource, /minSdkVersion\s*=\s*26/);
-  assert.match(tailscaleServiceSource, /implements libtailscale\.IPNService/);
-  assert.doesNotMatch(manifestSource, /SafeNetDnsVpnService/);
-  assert.doesNotMatch(manifestSource, /SafeNetVpnTileService|SafeNetWireGuard/);
+  assert.doesNotMatch(manifestSource, /SafeNetTailscaleVpnService|SafeNetDnsVpnService/);
+  assert.doesNotMatch(manifestSource, /SafeNetVpnTileService/);
 });
 
-test("Tailscale UI separates control-plane health from this device and discloses VPN effects", () => {
-  assert.match(dashboardSource, /Control plane:/);
-  assert.match(dashboardSource, /Ctrl:/);
-  assert.match(dashboardSource, /hidden sm:inline" aria-hidden="true">Device:/);
-  assert.match(dashboardSource, /\{tailscaleDeviceStatusLabel\}/);
-  assert.match(dashboardSource, /button-tailscale-connect/);
-  assert.match(dashboardSource, /switch-tailscale-device-vpn/);
-  assert.match(dashboardSource, /tailscale-vpn-options/);
-  assert.match(dashboardSource, /select-tailscale-exit-node/);
-  assert.match(dashboardSource, /tailscale-no-exit-nodes/);
-  assert.match(dashboardSource, /No exit nodes are available in this tailnet/);
-  assert.match(dashboardSource, /tailscale\.com\/kb\/1103\/exit-nodes/);
-  assert.match(dashboardSource, /tailscale-lan-disabled-hint/);
-  assert.match(dashboardSource, /Select an exit node above to enable this option/);
-  assert.match(dashboardSource, /switch-tailscale-accept-routes/);
-  assert.match(dashboardSource, /switch-tailscale-dns/);
-  assert.match(tailscaleEulaSource, /Android allows one active VPN service at a time/);
-  assert.match(tailscaleEulaSource, /Private DNS setting is separate/);
+test("Windscribe UI discloses local profile storage and manual-profile limits", () => {
+  assert.match(dashboardSource, /WindscribeVpnCard/);
+  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-profile"/);
+  assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
+  assert.match(windscribeCardSource, /private key stay encrypted on this device/);
+  assert.match(windscribeCardSource, /Windscribe paid plan/);
+  assert.match(windscribeCardSource, /split tunneling/);
 });
 
 test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS package state", () => {

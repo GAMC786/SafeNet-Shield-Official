@@ -31,16 +31,16 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
     private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
-    private final Runnable tailscaleTileToggleDispatch =
-            this::dispatchPendingTailscaleTileToggle;
+    private final Runnable windscribeTileToggleDispatch =
+            this::dispatchPendingWindscribeTileToggle;
     private NativeStartupFallbackView startupFallback;
     private NativeAppLockView appLockView;
     private WebView appLockWebView;
     private boolean appLockHasResumed;
     private boolean appLockNeedsUnlockOnResume;
     private boolean appLockActivityActive;
-    private boolean pendingTailscaleTileToggle;
-    private int tailscaleTileToggleDispatchAttempts;
+    private boolean pendingWindscribeTileToggle;
+    private int windscribeTileToggleDispatchAttempts;
     private boolean pendingSmsCompose;
     private int smsComposeDispatchAttempts;
     private String pendingSmsRecipient = "";
@@ -51,7 +51,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
-        registerPlugin(SafeNetTailscalePlugin.class);
+        registerPlugin(SafeNetWindscribePlugin.class);
         registerPlugin(SafeNetSmsPlugin.class);
         super.onCreate(savedInstanceState);
 
@@ -69,7 +69,7 @@ public class MainActivity extends BridgeActivity {
         installNativeFallback(webView);
         installAppLock(webView);
         handleAppLockRecoveryIntent(getIntent());
-        captureTailscaleTileToggle(getIntent());
+        captureWindscribeTileToggle(getIntent());
         captureSmsComposeIntent(getIntent());
         webView.postDelayed(
                 () -> Log.i(
@@ -91,8 +91,8 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleAppLockRecoveryIntent(intent);
-        captureTailscaleTileToggle(intent);
-        dispatchPendingTailscaleTileToggle();
+        captureWindscribeTileToggle(intent);
+        dispatchPendingWindscribeTileToggle();
         captureSmsComposeIntent(intent);
         dispatchPendingSmsCompose();
     }
@@ -140,43 +140,43 @@ public class MainActivity extends BridgeActivity {
                 });
     }
 
-    private void captureTailscaleTileToggle(Intent intent) {
+    private void captureWindscribeTileToggle(Intent intent) {
         if (intent == null
-                || !SafeNetTailscaleTileService.ACTION_TOGGLE.equals(intent.getAction())) {
+                || !SafeNetWindscribeTileService.ACTION_TOGGLE.equals(intent.getAction())) {
             return;
         }
-        pendingTailscaleTileToggle = true;
-        tailscaleTileToggleDispatchAttempts = 0;
-        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
+        pendingWindscribeTileToggle = true;
+        windscribeTileToggleDispatchAttempts = 0;
+        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
     }
 
-    private void dispatchPendingTailscaleTileToggle() {
-        if (!pendingTailscaleTileToggle
+    private void dispatchPendingWindscribeTileToggle() {
+        if (!pendingWindscribeTileToggle
                 || (AppLockManager.isEnabled(this)
                         && !AppLockManager.isSessionAuthenticated())) {
             return;
         }
-        if (tailscaleTileToggleDispatchAttempts >= 40) {
-            pendingTailscaleTileToggle = false;
-            Log.w(TAG, "Tailscale Quick Settings action timed out before the app was ready");
+        if (windscribeTileToggleDispatchAttempts >= 40) {
+            pendingWindscribeTileToggle = false;
+            Log.w(TAG, "Windscribe Quick Settings action timed out before the app was ready");
             return;
         }
         WebView webView = getBridge() == null ? null : getBridge().getWebView();
         if (webView == null) {
-            tailscaleTileToggleDispatchAttempts++;
-            startupHandler.postDelayed(tailscaleTileToggleDispatch, 250L);
+            windscribeTileToggleDispatchAttempts++;
+            startupHandler.postDelayed(windscribeTileToggleDispatch, 250L);
             return;
         }
-        tailscaleTileToggleDispatchAttempts++;
+        windscribeTileToggleDispatchAttempts++;
         webView.evaluateJavascript(
-                "(function(){const action=window.__safenetHandleTailscaleTileToggle;" +
+                "(function(){const action=window.__safenetHandleWindscribeTileToggle;" +
                         "if(typeof action==='function'){action();return true;}return false;})()",
                 value -> {
                     if ("true".equals(value)) {
-                        pendingTailscaleTileToggle = false;
-                        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
-                    } else if (pendingTailscaleTileToggle) {
-                        startupHandler.postDelayed(tailscaleTileToggleDispatch, 250L);
+                        pendingWindscribeTileToggle = false;
+                        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
+                    } else if (pendingWindscribeTileToggle) {
+                        startupHandler.postDelayed(windscribeTileToggleDispatch, 250L);
                     }
                 }
         );
@@ -431,7 +431,7 @@ public class MainActivity extends BridgeActivity {
             appLockView.setVisibility(View.VISIBLE);
             appLockView.setMessage("Enter your SafeNet passcode to continue.");
         }
-        dispatchPendingTailscaleTileToggle();
+        dispatchPendingWindscribeTileToggle();
     }
 
     private void beginStartupCheck(WebView webView) {
@@ -491,7 +491,7 @@ public class MainActivity extends BridgeActivity {
         if (startupCheck != null) {
             startupHandler.removeCallbacks(startupCheck);
         }
-        startupHandler.removeCallbacks(tailscaleTileToggleDispatch);
+        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
         startupFallback = null;
         appLockView = null;
         appLockWebView = null;
@@ -535,7 +535,7 @@ public class MainActivity extends BridgeActivity {
             appLockNeedsUnlockOnResume = false;
             appLockView.post(this::requestAppUnlock);
         }
-        dispatchPendingTailscaleTileToggle();
+        dispatchPendingWindscribeTileToggle();
     }
 
     @Override

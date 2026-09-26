@@ -14,4 +14,7 @@
     <string name="tailscale_vpn_tile_label">SafeNet Tailscale VPN</string>
     <string name="tailscale_vpn_tile_connected">Connected</string>
     <string name="tailscale_vpn_tile_disconnected">Disconnected · tap to connect</string>
+    <string name="windscribe_vpn_tile_label">SafeNet Windscribe VPN</string>
+    <string name="windscribe_vpn_tile_connected">Connected</string>
+    <string name="windscribe_vpn_tile_disconnected">Disconnected · tap to connect</string>
 </resources>

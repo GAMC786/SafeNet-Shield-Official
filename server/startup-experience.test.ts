@@ -253,31 +253,35 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard opens Tailscale Admin and reports Tailscale status", () => {
-  const tailscaleHookSource = readFileSync(
-    path.join(clientRoot, "src/hooks/use-tailscale.ts"),
+test("the Dashboard imports and controls a local Windscribe WireGuard profile", () => {
+  const windscribeCardSource = readFileSync(
+    path.join(clientRoot, "src/components/WindscribeVpnCard.tsx"),
     "utf8",
   );
-  const tailscaleServiceSource = readFileSync(
-    path.resolve(process.cwd(), "server/tailscale-service.ts"),
+  const windscribeHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-windscribe.ts"),
     "utf8",
   );
-  assert.match(dashboardSource, /useTailscaleStatus/);
-  assert.match(dashboardSource, /Tailscale VPN with WireGuard \(Modems\+Routers\)/);
-  assert.match(dashboardSource, /useTailscaleNative/);
-  assert.match(dashboardSource, /data-testid="button-tailscale-connect"/);
-  assert.match(dashboardSource, /data-testid="switch-tailscale-device-vpn"/);
-  assert.match(dashboardSource, /data-testid="button-open-tailscale-dashboard"/);
-  assert.match(dashboardSource, /window\.open\(tailscaleDashboardUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(dashboardSource, /data-testid="button-refresh-tailscale"/);
-  assert.doesNotMatch(
-    dashboardSource,
-    /WG-Easy|wireguardAdminUrl|switch-wireguard-ui|tunnelVerification/,
+  const windscribePluginSource = readFileSync(
+    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetWindscribePlugin.java"),
+    "utf8",
   );
-  assert.match(tailscaleHookSource, /\/api\/tailscale\/status/);
-  assert.match(tailscaleServiceSource, /TAILSCALE_TAILNET/);
-  assert.match(tailscaleServiceSource, /TAILSCALE_OAUTH_CLIENT_SECRET/);
-  assert.match(routesSource, /api\.tailscale\.status\.path/);
+  const windscribeStoreSource = readFileSync(
+    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/WindscribeProfileStore.java"),
+    "utf8",
+  );
+  assert.match(dashboardSource, /WindscribeVpnCard/);
+  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-profile"/);
+  assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
+  assert.match(windscribeCardSource, /windscribe\.com\/getconfig\/wireguard/);
+  assert.match(windscribeHookSource, /SafeNetWindscribe/);
+  assert.doesNotMatch(windscribeHookSource, /\/api\/windscribe/);
+  assert.match(windscribePluginSource, /Intent\.ACTION_OPEN_DOCUMENT/);
+  assert.match(windscribePluginSource, /VpnService\.prepare/);
+  assert.doesNotMatch(windscribePluginSource, /fetch\(|\/api\//);
+  assert.match(windscribeStoreSource, /EncryptedSharedPreferences/);
+  assert.match(windscribeStoreSource, /MAX_PROFILE_BYTES/);
+  assert.doesNotMatch(dashboardSource, /useTailscaleStatus|useTailscaleNative/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {

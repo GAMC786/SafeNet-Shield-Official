@@ -434,17 +434,17 @@ function ClerkProviderWithRoutes() {
 
   useEffect(() => {
     const tileWindow = window as Window & {
-      __safenetHandleTailscaleTileToggle?: () => void;
-      __safenetTailscaleTileTogglePending?: boolean;
+      __safenetHandleWindscribeTileToggle?: () => void;
+      __safenetWindscribeTileTogglePending?: boolean;
       __safenetHandleSmsCompose?: (recipient: string, body: string) => void;
       __safenetPendingSmsCompose?: { recipient: string; body: string };
     };
-    const handleTailscaleTileToggle = () => {
-      tileWindow.__safenetTailscaleTileTogglePending = true;
+    const handleWindscribeTileToggle = () => {
+      tileWindow.__safenetWindscribeTileTogglePending = true;
       setLocation("/");
-      window.dispatchEvent(new Event("safenet:tailscale-tile-toggle"));
+      window.dispatchEvent(new Event("safenet:windscribe-tile-toggle"));
     };
-    tileWindow.__safenetHandleTailscaleTileToggle = handleTailscaleTileToggle;
+    tileWindow.__safenetHandleWindscribeTileToggle = handleWindscribeTileToggle;
     const handleSmsCompose = (recipient: string, body: string) => {
       tileWindow.__safenetPendingSmsCompose = { recipient, body };
       setLocation("/spam-call-blocker");
@@ -454,8 +454,8 @@ function ClerkProviderWithRoutes() {
     };
     tileWindow.__safenetHandleSmsCompose = handleSmsCompose;
     return () => {
-      if (tileWindow.__safenetHandleTailscaleTileToggle === handleTailscaleTileToggle) {
-        delete tileWindow.__safenetHandleTailscaleTileToggle;
+      if (tileWindow.__safenetHandleWindscribeTileToggle === handleWindscribeTileToggle) {
+        delete tileWindow.__safenetHandleWindscribeTileToggle;
       }
       if (tileWindow.__safenetHandleSmsCompose === handleSmsCompose) {
         delete tileWindow.__safenetHandleSmsCompose;

@@ -43,6 +43,11 @@ android {
     namespace "com.safenet.dns"
     compileSdk rootProject.ext.compileSdkVersion
     buildToolsVersion rootProject.ext.androidBuildToolsVersion
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
     buildFeatures {
         buildConfig true
         compose true
@@ -229,6 +234,8 @@ dependencies {
     implementation "org.tensorflow:tensorflow-lite:2.17.0"
     implementation project(':capacitor-cordova-android-plugins')
     implementation files("../../third_party/tailscale-android/android/libs/libtailscale.aar")
+    implementation "com.wireguard.android:tunnel:1.0.20230706"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.3"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
 }
 
