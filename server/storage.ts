@@ -1,8 +1,9 @@
 import { db } from "./db";
 import {
   dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
+  controlDCredentials,
   antivirusSettings, clamavVerifications, threatFeeds, antivirusEvents,
-  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule,
+  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule, type ControlDCredential,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
 import type { ClamAvVerificationRecord } from "./clamav-service";
@@ -10,6 +11,14 @@ import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
 import { and, eq, desc, asc, count, isNull, lt, or } from "drizzle-orm";
 
 export interface IStorage {
+  // Control D credentials are keyed only by the authenticated Clerk user ID.
+  getControlDCredential(userId: string): Promise<ControlDCredential | null>;
+  saveControlDCredential(
+    userId: string,
+    credential: Pick<ControlDCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">,
+  ): Promise<ControlDCredential>;
+  deleteControlDCredential(userId: string): Promise<void>;
+
   // DNS Servers
   getDnsServers(): Promise<DnsServer[]>;
   createDnsServer(server: InsertDnsServer): Promise<DnsServer>;
@@ -62,6 +71,34 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  async getControlDCredential(userId: string): Promise<ControlDCredential | null> {
+    const [credential] = await db.select().from(controlDCredentials)
+      .where(eq(controlDCredentials.userId, userId));
+    return credential ?? null;
+  }
+
+  async saveControlDCredential(
+    userId: string,
+    credential: Pick<ControlDCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">,
+  ): Promise<ControlDCredential> {
+    const [saved] = await db.insert(controlDCredentials)
+      .values({ userId, ...credential })
+      .onConflictDoUpdate({
+        target: controlDCredentials.userId,
+        set: {
+          ...credential,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return saved;
+  }
+
+  async deleteControlDCredential(userId: string): Promise<void> {
+    await db.delete(controlDCredentials)
+      .where(eq(controlDCredentials.userId, userId));
+  }
+
   async getDnsServers(): Promise<DnsServer[]> {
     return await db.select().from(dnsServers);
   }

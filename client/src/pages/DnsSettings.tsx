@@ -10,6 +10,7 @@ import type { DnsServer } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
+import ControlDIntegration from "@/components/ControlDIntegration";
 import { Globe, Lock, Pencil, Plus, Save, Server, Trash2, CheckCircle, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -458,6 +459,7 @@ export default function DnsSettings() {
         hostname={privateDns.expectedHostname}
       />
       <Header title="DNS Servers" subtitle="Manage Resolvers" />
+      <ControlDIntegration />
 
       <CyberCard className={privateDns.status?.running ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/20"}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

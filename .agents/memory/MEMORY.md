@@ -57,7 +57,7 @@
 - [Framer Motion tab indicators](framer-motion-tab-indicators.md) — center shared-layout markers inside a full-width flex wrapper so layout transforms do not shift the bar.
  - [Android DNS upstream network](android-dns-upstream-network.md) — DNS-only VPN resolver sockets must bind to a non-VPN network and remain protected from the VPN loop.
 - [Android VPN intentional shutdown](android-vpn-intentional-shutdown.md) — mark user-requested VPN stops before closing the interface or onDestroy reports a false unexpected failure.
-- [Anonymous access boundary](anonymous-access-boundary.md) — the app mounts and serves its API publicly; legacy PIN columns remain compatibility-only and are never authorization inputs.
+- [Anonymous access boundary](anonymous-access-boundary.md) — keep SafeNet public except for owner-scoped Control D management; legacy PIN fields are never authorization inputs.
 - [Tagged Android metadata proof](android-tagged-metadata-proof.md) — when the release gate waits on a dedicated runner, the standalone tagged APK workflow independently proves Gradle metadata and signed APK checks.
 - [Vite preview cache behavior](vite-preview-cache.md) — stale optimized dependency URLs can mimic a loader failure after workflow restarts; clear generated Vite cache before changing app code.
 - [Android native build validation](android-native-build-validation.md) — local SDK presence is not assumed; pinned setup and forced native assembly must run before APK packaging.

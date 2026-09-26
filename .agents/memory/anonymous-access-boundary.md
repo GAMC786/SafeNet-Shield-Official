@@ -3,8 +3,8 @@ name: Anonymous access boundary
 description: The current SafeNet authentication decision and compatibility limits for legacy account fields.
 ---
 
-SafeNet is intentionally public: the client mounts directly without Clerk configuration or sign-in, and API routes do not require a user session. Legacy PIN and session database columns are compatibility data only; they must not be accepted, returned, hashed, verified, or used for authorization.
+SafeNet's general app and API remain public. Only Control D account-management routes require an authenticated Clerk identity; derive the owner from that identity on the server, never from request data. Legacy PIN columns are compatibility data only and must not be accepted, returned, hashed, verified, or used for authorization.
 
-**Why:** The user explicitly superseded the earlier Clerk-only decision and requires no sign-in anywhere in the app.
+**Why:** The user approved sign-in specifically for connecting to and managing each user's Control D account, while requiring all other SafeNet features to remain public.
 
-**How to apply:** Keep startup, Android WebView checks, browser smoke coverage, and API tests anonymous. Do not reintroduce Clerk providers, sign-in routes, auth gates, or local session fallbacks unless the user explicitly changes this requirement.
+**How to apply:** Keep startup, Android WebView checks, browser smoke coverage, and non-Control-D APIs public. Protect Control D credentials and management routes with Clerk, and scope every read or mutation to the authenticated user.

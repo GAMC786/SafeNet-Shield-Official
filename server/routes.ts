@@ -40,6 +40,7 @@ import {
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
 import { getTailscaleDeviceStatus, getTailscaleStatus } from "./tailscale-service";
+import { registerControlDRoutes } from "./control-d-routes";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -125,6 +126,7 @@ export async function registerRoutes(
   options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
+  registerControlDRoutes(app, storage);
 
   app.post("/api/speedtest/upload", (req, res) => {
     const maxUploadBytes = 10 * 1024 * 1024;

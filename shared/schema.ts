@@ -89,6 +89,18 @@ export const appLockRecoveryChallenges = pgTable("app_lock_recovery_challenges",
   ),
 ]);
 
+// Control D API credentials are stored per authenticated SafeNet user and
+// contain only authenticated-encryption output, never the provider token.
+export const controlDCredentials = pgTable("control_d_credentials", {
+  userId: text("user_id").primaryKey(),
+  tokenCiphertext: text("token_ciphertext").notNull(),
+  tokenIv: text("token_iv").notNull(),
+  tokenAuthTag: text("token_auth_tag").notNull(),
+  encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+  connectedAt: timestamp("connected_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
   hostname: text("hostname").notNull(),
@@ -244,6 +256,8 @@ export type PublicAppSettings = z.infer<typeof publicAppSettingsSchema>;
 export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
 
 export type AppLockRecoveryChallenge = typeof appLockRecoveryChallenges.$inferSelect;
+
+export type ControlDCredential = typeof controlDCredentials.$inferSelect;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;
