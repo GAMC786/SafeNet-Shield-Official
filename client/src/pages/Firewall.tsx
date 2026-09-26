@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { Link } from "wouter";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -345,8 +346,18 @@ export default function Firewall() {
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
               Filters cleartext UDP DNS routed through Tailscale when connected; TCP/53 is blocked while this firewall is on.
-              DoH and DoT are encrypted and are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              DoH and DoT stay encrypted and are not inspected by SafeNet. Filtering for encrypted DNS happens at the resolver provider, if supported; SafeNet&apos;s custom rules do not apply to those queries. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="border-sky-400/30 text-sky-200">Provider-side filtering</Badge>
+              <Link
+                href="/dns"
+                className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
+                data-testid="link-filtered-dns-provider"
+              >
+                Choose an encrypted filtering resolver
+              </Link>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Switch
@@ -372,8 +383,8 @@ export default function Firewall() {
                   the DNS Firewall policy above; this setting does not change DNS rules.
                 </p>
                 <p className="mt-2 text-xs text-orange-200/80">
-                  DoH and DoT are encrypted and are not inspected by domain. When enabled, encrypted DNS
-                  traffic may be blocked as ordinary HTTPS/TLS traffic.
+                  SafeNet does not inspect encrypted DoH/DoT by domain. This switch can only block those
+                  connections as ordinary non-DNS traffic; use a filtering DNS provider to keep encryption.
                 </p>
               </div>
             </div>

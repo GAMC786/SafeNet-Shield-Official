@@ -388,6 +388,15 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
+test("encrypted DNS filtering stays provider-side and offers Cloudflare DoT profiles", () => {
+  assert.match(dnsResolversSource, /primaryAddress: "security\.cloudflare-dns\.com"/);
+  assert.match(dnsResolversSource, /primaryAddress: "family\.cloudflare-dns\.com"/);
+  assert.match(dnsResolversSource, /type: "dot"/);
+  assert.match(firewallSource, /Filtering for encrypted DNS happens at the resolver provider/);
+  assert.match(firewallSource, /SafeNet&apos;s custom rules do not apply to those queries/);
+  assert.match(firewallSource, /href="\/dns"/);
+});
+
 test("Settings use the current package version and expose only current controls", () => {
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
@@ -397,7 +406,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /status=\{isAnyFirewallActive \? "active" : "unprotected"\}/);
   assert.match(firewallSource, /isAndroid && \(/);
   assert.match(firewallSource, /switch-tailscale-nondns-firewall/);
-  assert.match(firewallSource, /DoH and DoT are encrypted and are not inspected by domain/);
+  assert.match(firewallSource, /DoH and DoT stay encrypted and are not inspected by SafeNet/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);
