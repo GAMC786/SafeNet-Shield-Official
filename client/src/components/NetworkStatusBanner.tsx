@@ -23,7 +23,7 @@ export function NetworkStatusBanner() {
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-[100] flex items-center justify-center gap-2 border-b border-primary/40 bg-primary/15 px-4 py-2 text-center text-xs font-semibold text-primary-foreground shadow-[0_0_18px_hsl(var(--primary)/0.18)] backdrop-blur-sm"
+      className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center text-xs font-semibold text-primary-foreground shadow-[0_0_18px_hsl(var(--primary)/0.18)] backdrop-blur-sm"
       role="status"
       aria-live="polite"
     >

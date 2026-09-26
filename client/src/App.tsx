@@ -66,7 +66,6 @@ function MainLayout() {
 
   return (
     <div className="flex h-screen min-h-0 h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
-      <NetworkStatusBanner />
       <SystemNavigation />
       <Navigation />
       
@@ -85,6 +84,7 @@ function MainLayout() {
         className="safenet-main-content min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"
         onRefresh={refreshActivePage}
       >
+        <NetworkStatusBanner />
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/command-center" component={Dashboard} />
