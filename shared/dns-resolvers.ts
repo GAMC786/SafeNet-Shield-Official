@@ -83,14 +83,6 @@ export type DnsResolverPreset = {
  */
 export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
   {
-    name: "Cloudflare (Block Malware)",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "security.cloudflare-dns.com",
-    secondaryAddress: null,
-    description: "Blocks malware and phishing. Cloudflare applies filtering while DNS stays encrypted.",
-  },
-  {
     name: "Cloudflare (Family)",
     type: "dot",
     ipVersion: "ipv4",

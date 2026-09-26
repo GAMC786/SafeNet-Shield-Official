@@ -388,8 +388,8 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("encrypted DNS filtering stays provider-side and offers Cloudflare DoT profiles", () => {
-  assert.match(dnsResolversSource, /primaryAddress: "security\.cloudflare-dns\.com"/);
+test("encrypted DNS filtering stays provider-side and keeps the Cloudflare Family DoT profile", () => {
+  assert.doesNotMatch(dnsResolversSource, /security\.cloudflare-dns\.com|Cloudflare \(Block Malware\)/);
   assert.match(dnsResolversSource, /primaryAddress: "family\.cloudflare-dns\.com"/);
   assert.match(dnsResolversSource, /type: "dot"/);
   assert.match(firewallSource, /Filtering for encrypted DNS happens at the resolver provider/);
