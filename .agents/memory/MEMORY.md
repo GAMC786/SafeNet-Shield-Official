@@ -97,3 +97,4 @@
 - [Tailscale hosted control plane](tailscale-hosted-control-plane.md) — SafeNet uses scoped OAuth for hosted status; Android mesh evidence must prove the real VPN route and peer probe.
 - [Tailscale Go working directory](tailscale-go-wrapper-working-directory.md) — enter the Android submodule before Make; `make -C` can preserve the caller's PWD and select the wrong Go toolchain.
 - [Tailscale DNS filtering boundary](tailscale-dns-filter-boundary.md) — enforce DNS at the actual TUN packet boundary; TCP/53 fails closed and DoH/DoT remain explicitly uninspected.
+- [Windscribe firewall boundary](windscribe-firewall-boundary.md) — stock GoBackend exposes no SafeNet packet-filter hook; keep Firewall UI explicit until a filtered tunnel is verified.

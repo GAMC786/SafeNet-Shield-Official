@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { useWindscribeVpn } from "@/hooks/use-windscribe";
 import { Link } from "wouter";
 
 export default function Firewall() {
@@ -38,8 +39,20 @@ export default function Firewall() {
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
   const tailscaleNonDnsFirewallEnabled = settings?.tailscaleNonDnsFirewallEnabled ?? false;
   const isAndroid = Capacitor.getPlatform() === "android";
+  const windscribe = useWindscribeVpn();
+  const windscribeStatus = windscribe.status;
+  const windscribeStatusLabel = !windscribe.isAndroid
+    ? "Android only"
+    : windscribe.isLoading
+      ? "Checking"
+      : windscribeStatus?.connected
+        ? "Connected"
+        : windscribeStatus?.profileImported
+          ? "Disconnected"
+          : "Profile required";
   const isProtected = firewallEnabled && preventDnsOverrides;
   const isAnyFirewallActive = isProtected || (isAndroid && tailscaleNonDnsFirewallEnabled);
+  const firewallHeaderStatus = isAnyFirewallActive ? "configured" : "unprotected";
 
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
@@ -334,7 +347,7 @@ export default function Firewall() {
       <Header 
         title="Firewall Rules" 
         subtitle="Access Control Lists" 
-        status={isAnyFirewallActive ? "active" : "unprotected"}
+        status={firewallHeaderStatus}
       />
 
       <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
@@ -368,6 +381,25 @@ export default function Firewall() {
               data-testid="switch-firewall-master"
             />
           </div>
+        </div>
+      </CyberCard>
+
+      <CyberCard className="border-white/10 bg-white/[0.03]">
+        <div
+          className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+          aria-label={`Windscribe VPN status: ${windscribeStatusLabel}. SafeNet firewall rules are not currently enforced on the Windscribe tunnel.`}
+          data-testid="windscribe-firewall-scope"
+        >
+          <div>
+            <h2 className="font-display font-bold text-white">Windscribe VPN</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Connection status: <span className="font-medium text-foreground">{windscribeStatusLabel}</span>
+            </p>
+          </div>
+          <p className="text-xs text-orange-200/90">
+            SafeNet firewall rules are not currently enforced on the Windscribe tunnel.
+          </p>
         </div>
       </CyberCard>
 

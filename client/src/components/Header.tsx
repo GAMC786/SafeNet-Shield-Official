@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 interface HeaderProps {
   title: string;
   subtitle?: string;
-  status?: "active" | "inactive" | "warning" | "unprotected" | "sharing" | "not-sharing";
+  status?: "active" | "inactive" | "warning" | "unprotected" | "configured" | "sharing" | "not-sharing";
   action?: ReactNode;
 }
 
@@ -35,7 +35,7 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
                status === "active" || status === "sharing" ? "bg-green-500/10 border-green-500/30 text-green-400" :
                status === "not-sharing" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
                status === "unprotected" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
-              status === "warning" ? "bg-red-500/10 border-red-500/30 text-red-400" :
+               status === "warning" ? "bg-red-500/10 border-red-500/30 text-red-400" :
               "bg-gray-500/10 border-gray-500/30 text-gray-400"
             )}>
                 {status === "active" || status === "sharing" ? <ShieldCheck className="w-3.5 h-3.5" /> :
@@ -46,6 +46,7 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
                  status === "sharing" ? "Sharing" :
                  status === "not-sharing" ? "Not Sharing" :
                 status === "unprotected" ? "Unprotected" :
+                status === "configured" ? "Rules configured" :
                status === "warning" ? "Threat Detected" : "Inactive"}
             </div>
           )}
