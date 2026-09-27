@@ -484,16 +484,16 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
-  const lightModeSwitch = page.getByRole("switch", { name: "Light Mode" });
-  await lightModeSwitch.waitFor();
-  assert.equal(await lightModeSwitch.getAttribute("data-state"), "unchecked");
+  const darkModeSwitch = page.getByRole("switch", { name: "Dark Mode" });
+  await darkModeSwitch.waitFor();
+  assert.equal(await darkModeSwitch.getAttribute("data-state"), "checked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   const darkBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
   assert.equal(darkBackground, "222 47% 11%");
-  await lightModeSwitch.click();
-  await waitForAttribute(lightModeSwitch, "data-state", "checked");
+  await darkModeSwitch.click();
+  await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
     (element) => getComputedStyle(element).color,
@@ -557,8 +557,8 @@ test("Settings show the current version without firewall controls", async () => 
   );
   assert.equal(lightBackground, "210 24% 97%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
-  await lightModeSwitch.click();
-  await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
+  await darkModeSwitch.click();
+  await waitForAttribute(darkModeSwitch, "data-state", "checked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
 
@@ -674,8 +674,8 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
     page.locator('nav[aria-label="System services"] .safenet-icon-glow').first().evaluate(
       (element) => getComputedStyle(element).filter,
     );
-  const blueRadio = page.getByRole("radio", { name: "Blue" });
-  assert.equal(await blueRadio.isChecked(), true);
+  const bluePaletteButton = page.getByRole("button", { name: "Blue + White" });
+  assert.equal(await bluePaletteButton.getAttribute("aria-pressed"), "true");
   assert.match(await readActiveNavigationGlow(), /rgba\(59, 130, 246, 0\.5\)/);
   const originalBluePalette = await readPalette();
   assert.deepEqual(originalBluePalette, {
@@ -683,7 +683,7 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
     accent: "199 89% 48%",
   });
 
-  await page.getByText("Red", { exact: true }).click();
+  await page.getByRole("button", { name: "Red + White" }).click();
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
   assert.deepEqual(await readPalette(), {
     primary: "0 76% 48%",
@@ -697,9 +697,20 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "red");
   await page.reload();
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
-  assert.equal(await page.getByRole("radio", { name: "Red" }).isChecked(), true);
+  assert.equal(
+    await page.getByRole("button", { name: "Red + White" }).getAttribute("aria-pressed"),
+    "true",
+  );
 
-  await page.getByText("Green", { exact: true }).click();
+  await page.goto(`${baseUrl}/firewall`);
+  await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
+  assert.equal(await page.locator("html").getAttribute("data-color-mode"), "red");
+  assert.equal((await readPalette()).primary, "0 76% 48%");
+  assert.match(await readActiveNavigationGlow(), /rgba\(239, 68, 68, 0\.5\)/);
+  await page.goto(`${baseUrl}/settings`);
+  await page.getByRole("heading", { name: "Appearance" }).waitFor();
+
+  await page.getByRole("button", { name: "Green + White" }).click();
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === "green");
   assert.deepEqual(await readPalette(), {
     primary: "142 62% 30%",
@@ -712,7 +723,7 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
   assert.match(await readActiveNavigationGlow(), /rgba\(34, 197, 94, 0\.5\)/);
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "green");
 
-  await page.getByRole("switch", { name: "Light Mode" }).click();
+  await page.getByRole("switch", { name: "Dark Mode" }).click();
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   const greenLightPalette = await readPalette();
   assert.deepEqual(greenLightPalette, {
@@ -725,7 +736,7 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
   assert.ok(greenLightContrast.buttonContrast >= 4.5, "Green primary button labels should remain readable");
   assert.ok(greenLightContrast.accentContrast >= 4.5, "Green selected-state labels should remain readable");
 
-  await page.getByText("Red", { exact: true }).click();
+  await page.getByRole("button", { name: "Red + White" }).click();
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
   assert.deepEqual(await readPalette(), {
     primary: "0 76% 42%",
@@ -736,13 +747,14 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
   assert.ok(redLightContrast.buttonContrast >= 4.5, "Red primary button labels should remain readable");
   assert.ok(redLightContrast.accentContrast >= 4.5, "Red selected-state labels should remain readable");
 
-  await page.getByText("Blue", { exact: true }).click();
+  await page.getByRole("button", { name: "Blue + White" }).click();
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === "blue");
   assert.deepEqual(await readPalette(), {
     primary: "217 91% 48%",
     accent: "199 89% 90%",
   });
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "blue");
+  assert.equal(await page.locator("html").getAttribute("data-color-mode"), "blue");
   await page.close();
 });
 
