@@ -356,7 +356,7 @@ export default function Firewall() {
             <Ban className="w-8 h-8 text-destructive" />
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
+            <h2 className="text-xl font-display font-bold text-white">Control D DNS + Windscribe VPN Firewall Rules</h2>
             <p className="text-muted-foreground">
               SafeNet DNS rules are sent to Windscribe for cleartext UDP/TCP port 53, but device-level Windscribe enforcement has not been verified on a real Android tunnel.
               DoH, DoT, and HTTPS stay encrypted and are not inspected by SafeNet.
