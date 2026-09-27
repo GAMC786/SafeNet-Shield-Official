@@ -494,6 +494,21 @@ test("Settings show the current version without firewall controls", async () => 
   assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  const bottomNavigation = page.getByTestId("bottom-navigation");
+  const getFooterBackground = () =>
+    bottomNavigation.evaluate((element) => getComputedStyle(element).backgroundColor);
+  assert.equal(
+    await bottomNavigation.evaluate((element) => element.classList.contains("safenet-settings-footer")),
+    true,
+  );
+  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
+  assert.equal(
+    await bottomNavigation.locator(".text-muted-foreground").first().evaluate(
+      (element) => getComputedStyle(element).color,
+    ),
+    "rgb(100, 116, 139)",
+    "inactive footer icons and labels should remain readable on white",
+  );
   const darkBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
@@ -502,6 +517,7 @@ test("Settings show the current version without firewall controls", async () => 
   await waitForAttribute(lightModeSwitch, "data-state", "checked");
   await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
   const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
     (element) => getComputedStyle(element).color,
   );
@@ -570,6 +586,7 @@ test("Settings show the current version without firewall controls", async () => 
   await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
+  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
 
   await page.getByRole("heading", { name: "DeepCleer Ai Detector" }).waitFor();
   const appearanceTop = await page.getByTestId("theme-mode-controls").evaluate(
@@ -605,6 +622,14 @@ test("Settings show the current version without firewall controls", async () => 
     await page.getByTestId("settings-version").textContent(),
     `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
+  await page.goto(`${baseUrl}/firewall`);
+  await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
+  assert.equal(
+    await bottomNavigation.evaluate((element) => element.classList.contains("safenet-settings-footer")),
+    false,
+    "the white footer styling should be limited to Settings",
+  );
+  assert.notEqual(await getFooterBackground(), "rgb(255, 255, 255)");
   await page.close();
 });
 

@@ -68,9 +68,17 @@ export function SystemNavigation() {
 
 export function Navigation() {
   const [location] = useLocation();
+  const isSettingsPage = location === "/settings";
 
   return (
-    <nav className="safenet-bottom-navigation fixed inset-x-0 z-50 rounded-t-2xl glass-panel border-t border-white/5 bg-black/80 backdrop-blur-xl">
+    <nav
+      className={cn(
+        "safenet-bottom-navigation fixed inset-x-0 z-50 rounded-t-2xl glass-panel border-t backdrop-blur-xl",
+        !isSettingsPage && "border-white/5 bg-black/80",
+        isSettingsPage && "safenet-settings-footer",
+      )}
+      data-testid="bottom-navigation"
+    >
       <div className="grid h-full w-full grid-cols-5">
         {navItems.map((item) => {
           const isActive = location === item.path;

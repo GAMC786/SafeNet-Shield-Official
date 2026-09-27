@@ -164,6 +164,22 @@
   box-shadow: 0 8px 24px hsl(222 47% 11% / 0.07);
 }
 
+.safenet-settings-footer {
+  border-color: #d8e2f0 !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  box-shadow: 0 8px 24px rgba(18, 26, 38, 0.08) !important;
+}
+
+.safenet-settings-footer .text-muted-foreground {
+  color: #64748b !important;
+}
+
+.safenet-settings-footer .text-muted-foreground:hover {
+  color: #121a26 !important;
+  background-color: #f4f7fc !important;
+}
+
 .light .safenet-system-navigation .text-muted-foreground:hover,
 .light .safenet-bottom-navigation .text-muted-foreground:hover {
   color: hsl(var(--foreground));
