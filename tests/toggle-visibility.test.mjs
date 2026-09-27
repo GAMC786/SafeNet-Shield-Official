@@ -724,14 +724,14 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   const wonderlandTokens = await readThemeTokens();
   assert.deepEqual(wonderlandTokens, {
     background: "0 0% 100%",
-    foreground: "216.8 32% 19%",
-    primary: "220.5 60.6% 51.2%",
+    foreground: "216 35.7% 11%",
+    primary: "216.3 86.7% 41.2%",
     primaryForeground: "0 0% 100%",
     card: "217.5 57.1% 97.3%",
-    brandAccent: "42.7 99.2% 53.3%",
-    success: "168.7 50.6% 50.8%",
-    info: "252.2 38.6% 72.5%",
-    interactive: "171 87.8% 38.6%",
+    brandAccent: "46.2 100% 53.9%",
+    success: "168.1 62.7% 47.3%",
+    info: "257.1 50.4% 75.5%",
+    interactive: "164.4 100% 34.7%",
   });
 
   const wonderlandAudit = await page.evaluate(() => {
@@ -807,7 +807,7 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await page.goto(`${baseUrl}/firewall`);
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
-  assert.equal((await readThemeTokens()).primary, "220.5 60.6% 51.2%", "Wonderland palette should apply across pages");
+  assert.equal((await readThemeTokens()).primary, "216.3 86.7% 41.2%", "Wonderland palette should apply across pages");
 
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "Appearance" }).waitFor();

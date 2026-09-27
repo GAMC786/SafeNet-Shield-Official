@@ -11,6 +11,38 @@ export default {
         sm: ".1875rem", /* 3px */
       },
       colors: {
+        brand: {
+          primary: {
+            DEFAULT: "#0E56C4",
+            dark: "#3B82F6",
+          },
+          accent: {
+            DEFAULT: "#FFC914",
+            dark: "#FCD34D",
+          },
+        },
+        functional: {
+          success: {
+            DEFAULT: "#2DC4A6",
+            dark: "#34D399",
+          },
+          link: "#00B183",
+          info: "#B3A1E0",
+        },
+        neutral: {
+          canvas: {
+            DEFAULT: "#FFFFFF",
+            dark: "#0B0F17",
+          },
+          surface: {
+            DEFAULT: "#F4F7FC",
+            dark: "#161F30",
+          },
+          text: {
+            DEFAULT: "#121A26",
+            dark: "#F4F7FC",
+          },
+        },
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
