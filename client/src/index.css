@@ -530,11 +530,13 @@
 }
 
 .safenet-settings-brand-footer h2 {
-  background-image: linear-gradient(to right, #212d40, #34445e);
+  background-image: none !important;
+  color: #000 !important;
+  -webkit-text-fill-color: #000;
 }
 
 .safenet-settings-brand-footer .text-muted-foreground {
-  color: #475569 !important;
+  color: #000 !important;
 }
 
 .safenet-settings-brand-footer .text-yellow-500 {
