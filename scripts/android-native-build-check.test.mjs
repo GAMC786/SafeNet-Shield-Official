@@ -47,6 +47,13 @@ const manifestSource = await readFile(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
 );
+const appLockManagerSource = await readFile(
+  new URL(
+    "../android/app/src/main/java/com/safenet/dns/AppLockManager.java",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const androidVariablesSource = await readFile(
   new URL("../android/variables.gradle", import.meta.url),
   "utf8",
@@ -312,6 +319,18 @@ test("the Android manifest declares the WireGuard backend VPN service", () => {
   assert.match(androidVariablesSource, /minSdkVersion\s*=\s*26/);
   assert.doesNotMatch(manifestSource, /SafeNetTailscaleVpnService|SafeNetDnsVpnService/);
   assert.doesNotMatch(manifestSource, /SafeNetVpnTileService/);
+});
+
+test("App Lock treats removed packages as no longer suspended", () => {
+  assert.match(
+    appLockManagerSource,
+    /private static boolean isPackageSuspendedSafely\([\s\S]*?catch \(PackageManager\.NameNotFoundException ignored\) \{\s*return false;/,
+  );
+  assert.equal(
+    [...appLockManagerSource.matchAll(/manager\.isPackageSuspended\(/g)].length,
+    1,
+    "the exception-handling helper should own direct DevicePolicyManager checks",
+  );
 });
 
 test("Windscribe UI discloses local profile storage and manual-profile limits", () => {

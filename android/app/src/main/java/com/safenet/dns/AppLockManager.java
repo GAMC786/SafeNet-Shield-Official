@@ -575,7 +575,20 @@ public final class AppLockManager {
         }
         DevicePolicyManager manager =
                 (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
-        return manager != null && manager.isPackageSuspended(adminComponent(context), packageName);
+        return manager != null
+                && isPackageSuspendedSafely(manager, adminComponent(context), packageName);
+    }
+
+    private static boolean isPackageSuspendedSafely(
+            DevicePolicyManager manager,
+            ComponentName admin,
+            String packageName
+    ) {
+        try {
+            return manager.isPackageSuspended(admin, packageName);
+        } catch (PackageManager.NameNotFoundException ignored) {
+            return false;
+        }
     }
 
     public static boolean isPackageHidden(Context context, String packageName) {
@@ -611,7 +624,8 @@ public final class AppLockManager {
             throw new IllegalStateException("Android Device Policy is unavailable.");
         }
         Set<String> managed = getManagedValues(context, PREF_MANAGED_SUSPENDED_PACKAGES);
-        boolean current = manager.isPackageSuspended(adminComponent(context), packageName);
+        boolean current =
+                isPackageSuspendedSafely(manager, adminComponent(context), packageName);
         if (suspended && !current) {
             String[] failed = manager.setPackagesSuspended(
                     adminComponent(context),
@@ -619,7 +633,11 @@ public final class AppLockManager {
                     true
             );
             if (containsPackage(failed, packageName)
-                    || !manager.isPackageSuspended(adminComponent(context), packageName)) {
+                    || !isPackageSuspendedSafely(
+                            manager,
+                            adminComponent(context),
+                            packageName
+                    )) {
                 throw new IllegalStateException("Android could not suspend this app.");
             }
             managed.add(packageName);
@@ -800,7 +818,7 @@ public final class AppLockManager {
             }
             if (suspended) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                        && manager.isPackageSuspended(admin, packageName)) {
+                        && isPackageSuspendedSafely(manager, admin, packageName)) {
                     String[] failed = manager.setPackagesSuspended(
                             admin,
                             new String[]{packageName},
@@ -811,7 +829,7 @@ public final class AppLockManager {
                                 "SafeNet could not restore suspended app " + packageName + "."
                         );
                     }
-                    if (manager.isPackageSuspended(admin, packageName)) {
+                    if (isPackageSuspendedSafely(manager, admin, packageName)) {
                         throw new IllegalStateException(
                                 "SafeNet could not restore suspended app " + packageName + "."
                         );
