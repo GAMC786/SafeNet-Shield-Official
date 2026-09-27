@@ -81,41 +81,41 @@
   color-scheme: light;
   --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
 
-  /* Wonderland Light Mode palette */
-  --safenet-brand-primary: 216.3 86.7% 41.2%;
-  --safenet-brand-accent: 46.2 100% 53.9%;
-  --safenet-success: 168.1 62.7% 47.3%;
-  --safenet-success-text: 167.3 100% 23.1%;
-  --safenet-info: 257.1 50.4% 75.5%;
-  --safenet-info-text: 262.2 27.6% 38.4%;
-  --safenet-interactive: 164.4 100% 34.7%;
-  --safenet-interactive-text: 167.3 100% 23.1%;
-  --safenet-gold-text: 42.9 100% 20.6%;
+  /* Wonderland colors sampled from the supplied iCash illustration. */
+  --safenet-brand-primary: 220.5 60.6% 51.2%;
+  --safenet-brand-accent: 42.7 99.2% 53.3%;
+  --safenet-success: 168.7 50.6% 50.8%;
+  --safenet-success-text: 171.2 100% 20%;
+  --safenet-info: 252.2 38.6% 72.5%;
+  --safenet-info-text: 252 25.4% 34.7%;
+  --safenet-interactive: 171 87.8% 38.6%;
+  --safenet-interactive-text: 170.9 100% 19.4%;
+  --safenet-gold-text: 41.4 100% 20.2%;
 
   --background: 0 0% 100%;
-  --foreground: 216 35.7% 11%;
+  --foreground: 216.8 32% 19%;
   --primary: var(--safenet-brand-primary);
   --primary-foreground: 0 0% 100%;
   --destructive: 0 72% 48%;
   --destructive-foreground: 0 0% 100%;
   --secondary: 217.5 57.1% 97.3%;
-  --secondary-foreground: 216 35.7% 11%;
+  --secondary-foreground: 216.8 32% 19%;
   --muted: 217.5 57.1% 97.3%;
   --muted-foreground: 215.3 19.3% 34.5%;
-  --accent: 257.1 50.4% 96%;
-  --accent-foreground: 216 35.7% 11%;
+  --accent: 252.2 38.6% 96%;
+  --accent-foreground: 216.8 32% 19%;
   --accent-text: var(--safenet-info-text);
   --popover: 0 0% 100%;
-  --popover-foreground: 216 35.7% 11%;
+  --popover-foreground: 216.8 32% 19%;
   --card: 217.5 57.1% 97.3%;
-  --card-foreground: 216 35.7% 11%;
+  --card-foreground: 216.8 32% 19%;
   --border: 215 44.4% 89.4%;
   --input: 215 44.4% 89.4%;
   --ring: var(--safenet-brand-primary);
-  --safenet-theme-glow: rgba(14, 86, 196, 0.32);
-  --safenet-icon-glow: rgba(14, 86, 196, 0.22);
-  --safenet-card-glow: rgba(14, 86, 196, 0.12);
-  --safenet-halo: rgba(14, 86, 196, 0.08);
+  --safenet-theme-glow: rgba(55, 104, 206, 0.32);
+  --safenet-icon-glow: rgba(55, 104, 206, 0.22);
+  --safenet-card-glow: rgba(55, 104, 206, 0.12);
+  --safenet-halo: rgba(55, 104, 206, 0.08);
 }
 
 .dark {
