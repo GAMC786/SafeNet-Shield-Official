@@ -15,6 +15,7 @@ import { useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useSoundtrack } from "@/hooks/use-soundtrack";
 import { useAppLock } from "@/hooks/use-app-lock";
+import { VpnProxyBrowserBlocker } from "@/components/VpnProxyBrowserBlocker";
 import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
@@ -237,6 +238,8 @@ export default function Dashboard() {
           </div>
         </div>
       </CyberCard>
+
+      <VpnProxyBrowserBlocker />
 
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:gap-6">

@@ -317,7 +317,7 @@ test("enabling, disabling, recovery, and passcode unlock use the native App Lock
 });
 
 test("App Lock identifies SafeNet in Android Device Administrator settings", () => {
-  assert.match(strings, /<string name="locklock_service_label">SafeNet App Lock<\/string>/);
+  assert.match(strings, /<string name="locklock_service_label">SafeNet App Lock and Launch Blocker<\/string>/);
   assert.doesNotMatch(strings, /OpenLock App Protection/);
 });
 
@@ -391,11 +391,19 @@ test("the lock surface and dashboard identify AppLock local passcode protection"
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
 
-test("VPN and proxy browser blocking is removed from the Android surface", () => {
-  assert.doesNotMatch(plugin, /VpnProxyBrowserBlocker/);
-  assert.doesNotMatch(service, /VpnProxyBrowserBlocker/);
-  assert.doesNotMatch(manifest, /VpnProxyBrowserBlocker/);
-  assert.doesNotMatch(dashboard, /VPN &amp; Proxy Browser Blocker/);
+test("VPN and proxy browser blocking uses a separate device-local Accessibility policy", async () => {
+  const [blockerManager, blockerUi] = await Promise.all([
+    readSource("android/app/src/main/java/com/safenet/dns/VpnProxyBrowserBlockerManager.java"),
+    readSource("client/src/components/VpnProxyBrowserBlocker.tsx"),
+  ]);
+
+  assert.match(plugin, /getVpnProxyBrowserBlockerStatus/);
+  assert.match(service, /VpnProxyBrowserBlockerManager\.shouldBlockPackage/);
+  assert.match(blockerManager, /safenet_vpn_proxy_browser_blocker/);
+  assert.match(blockerManager, /AppLockManager\.isAccessibilityServiceEnabled/);
+  assert.match(dashboard, /VpnProxyBrowserBlocker/);
+  assert.match(blockerUi, /VPN &amp; Proxy Browser Blocker/);
+  assert.match(blockerUi, /does not inspect or stop traffic inside encrypted VPN or proxy tunnels/);
 });
 
 test("instrumentation covers lifecycle, permissions, duplicate activity protection, and return flow", () => {

@@ -108,6 +108,61 @@ public class SafeNetVpnPlugin extends Plugin {
         call.resolve(AppLockManager.status(getContext()));
     }
 
+    @PluginMethod
+    public void getVpnProxyBrowserBlockerStatus(PluginCall call) {
+        call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+    }
+
+    @PluginMethod
+    public void setVpnProxyBrowserBlockerEnabled(PluginCall call) {
+        VpnProxyBrowserBlockerManager.setEnabled(
+                getContext(),
+                call.getBoolean("enabled", false)
+        );
+        call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+    }
+
+    @PluginMethod
+    public void setVpnProxyBrowserBlockedPackages(PluginCall call) {
+        JSArray requestedPackages = call.getArray("packageNames", new JSArray());
+        Set<String> packageNames = new HashSet<>();
+        for (int index = 0; index < requestedPackages.length(); index++) {
+            String packageName = requestedPackages.optString(index, "").trim();
+            if (!packageName.isEmpty()) {
+                packageNames.add(packageName);
+            }
+        }
+        VpnProxyBrowserBlockerManager.setBlockedPackages(getContext(), packageNames);
+        call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
+    }
+
+    @PluginMethod
+    public void getVpnProxyBrowserBlockerApps(PluginCall call) {
+        call.resolve(VpnProxyBrowserBlockerManager.launchableApps(getContext()));
+    }
+
+    @PluginMethod
+    public void openVpnProxyBrowserBlockerAccessibilitySettings(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject(
+                    "Android Accessibility Settings are unavailable.",
+                    "ACCESSIBILITY_SETTINGS_UNAVAILABLE"
+            );
+            return;
+        }
+        try {
+            activity.startActivity(AppLockManager.accessibilitySettingsIntent());
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject(
+                    "Could not open Android Accessibility Settings.",
+                    "ACCESSIBILITY_SETTINGS_UNAVAILABLE",
+                    error
+            );
+        }
+    }
+
     private void startAppLockActivity(PluginCall call, String mode) {
         if (getActivity() == null) {
             call.reject("Secure App Lock is unavailable.", "APP_LOCK_UNAVAILABLE");

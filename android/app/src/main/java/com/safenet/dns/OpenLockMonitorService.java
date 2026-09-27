@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.Toast;
 
 /**
  * AppLock-style foreground monitor.
@@ -32,6 +33,8 @@ public final class OpenLockMonitorService extends AccessibilityService {
 
     private String lastLaunchedPackage;
     private long lastLaunchAt;
+    private String lastBlockedPackage;
+    private long lastBlockAt;
     private String pendingPackage;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable retryPendingLaunch = () -> {
@@ -178,6 +181,12 @@ public final class OpenLockMonitorService extends AccessibilityService {
             return;
         }
 
+        if (VpnProxyBrowserBlockerManager.shouldBlockPackage(this, packageName)
+                && isActivityWindow(packageName, event.getClassName())) {
+            blockLaunch(packageName);
+            return;
+        }
+
         requestLock(packageName);
     }
 
@@ -236,6 +245,19 @@ public final class OpenLockMonitorService extends AccessibilityService {
             mainHandler.removeCallbacks(retryPendingLaunch);
             mainHandler.postDelayed(retryPendingLaunch, RETRY_DELAY_MS);
         }
+    }
+
+    private void blockLaunch(String packageName) {
+        long now = System.currentTimeMillis();
+        if (packageName.equals(lastBlockedPackage)
+                && now - lastBlockAt < RELAUNCH_GUARD_MS) {
+            return;
+        }
+
+        lastBlockedPackage = packageName;
+        lastBlockAt = now;
+        Toast.makeText(this, "SafeNet blocked this app.", Toast.LENGTH_SHORT).show();
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     @Override

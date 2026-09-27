@@ -107,6 +107,10 @@ const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
 );
+const vpnProxyBrowserBlockerSource = readFileSync(
+  path.join(clientRoot, "src/components/VpnProxyBrowserBlocker.tsx"),
+  "utf8",
+);
 const dnsSettingsSource = readFileSync(
   path.join(clientRoot, "src/pages/DnsSettings.tsx"),
   "utf8",
@@ -470,9 +474,11 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
 test("the Dashboard leaves Private DNS management to DNS Servers", () => {
   assert.doesNotMatch(dashboardSource, /SafeNet Private DNS/);
   assert.doesNotMatch(dashboardSource, /switch-safe-net-private-dns/);
-  assert.doesNotMatch(dashboardSource, /VPN &amp; Proxy Browser Blocker/);
-  assert.doesNotMatch(dashboardSource, /switch-vpn-proxy-browser-blocker/);
-  assert.doesNotMatch(dashboardSource, /button-configure-vpn-proxy-browser-blocker/);
+  assert.match(dashboardSource, /VpnProxyBrowserBlocker/);
+  assert.match(vpnProxyBrowserBlockerSource, /VPN &amp; Proxy Browser Blocker/);
+  assert.match(vpnProxyBrowserBlockerSource, /switch-vpn-proxy-browser-blocker/);
+  assert.match(vpnProxyBrowserBlockerSource, /does not inspect or stop traffic inside encrypted VPN or proxy tunnels/);
+  assert.match(vpnProxyBrowserBlockerSource, /App selection is stored on this device/);
   assert.match(
     dashboardSource,
     /const isProtected = isProtectionActive\(\{[\s\S]*privateDnsRunning: privateDns\.status\?\.running === true/,

@@ -175,6 +175,19 @@ interface SafeNetVpnPlugin {
   setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
   unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
   lockAppNow(): Promise<import("./use-app-lock").AppLockStatus>;
+  getVpnProxyBrowserBlockerStatus(): Promise<
+    import("./use-vpn-proxy-browser-blocker").VpnProxyBrowserBlockerStatus
+  >;
+  setVpnProxyBrowserBlockerEnabled(options: { enabled: boolean }): Promise<
+    import("./use-vpn-proxy-browser-blocker").VpnProxyBrowserBlockerStatus
+  >;
+  setVpnProxyBrowserBlockedPackages(options: { packageNames: string[] }): Promise<
+    import("./use-vpn-proxy-browser-blocker").VpnProxyBrowserBlockerStatus
+  >;
+  getVpnProxyBrowserBlockerApps(): Promise<{
+    apps: import("./use-vpn-proxy-browser-blocker").VpnProxyBrowserApp[];
+  }>;
+  openVpnProxyBrowserBlockerAccessibilitySettings(): Promise<void>;
   getTetherStatus(): Promise<import("./use-tether-share").TetherShareStatus>;
   startTetherShare(options?: { mode?: import("./use-tether-share").TetherShareMode }): Promise<import("./use-tether-share").TetherShareStatus>;
   stopTetherShare(): Promise<import("./use-tether-share").TetherShareStatus>;
