@@ -108,6 +108,16 @@ git -C "$wireguard_dir" diff --binary "$upstream_commit" > "$temp_dir/current.pa
 cmp -s "$patch_file" "$temp_dir/current.patch" ||
     fail "Unexpected edits are present in the WireGuard submodule; refusing to build from an unreviewed source tree."
 
+if [[ -e "$go_root" && ! -x "$go_root/bin/go" ]]; then
+    if [[ -d "$go_root" ]] &&
+        [[ -z "$(find "$go_root" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+        rmdir "$go_root" ||
+            fail "Could not clear the empty prepared Go cache directory: $go_root"
+    else
+        fail "The prepared Go cache exists but has no bin/go: $go_root"
+    fi
+fi
+
 if [[ -e "$go_root" ]]; then
     [[ -x "$go_root/bin/go" ]] ||
         fail "The prepared Go cache exists but has no bin/go: $go_root"

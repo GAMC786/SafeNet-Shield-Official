@@ -176,6 +176,11 @@ test("Android release workflows keep WireGuard and Tailscale on their pinned Go 
   assert.match(wireguardPrepareScript, /WIREGUARD_GO_ROOT/);
   assert.match(wireguardPrepareScript, /--print-go-version/);
   assert.match(wireguardPrepareScript, /GOROOT=\$wireguard_source_root/);
+  assert.match(
+    wireguardPrepareScript,
+    /find "\$go_root" -mindepth 1 -maxdepth 1 -print -quit/,
+  );
+  assert.match(wireguardPrepareScript, /rmdir "\$go_root"/);
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
