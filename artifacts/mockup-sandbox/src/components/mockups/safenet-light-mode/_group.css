@@ -1,0 +1,144 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Rajdhani:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+
+@theme inline {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Rajdhani", sans-serif;
+  --font-mono: "Space Mono", monospace;
+}
+
+:root {
+  --safenet-status-bar-inset: env(safe-area-inset-top, 0px);
+  --safenet-navigation-bar-inset: env(safe-area-inset-bottom, 0px);
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Rajdhani", sans-serif;
+  --font-mono: "Space Mono", monospace;
+
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 25% 74%;
+  --accent: 199 89% 48%;
+  --accent-foreground: 222 47% 11%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --card: 224 35% 14%;
+  --card-foreground: 210 40% 98%;
+  --border: 217 35% 32%;
+  --input: 217 35% 23%;
+  --ring: 217 91% 68%;
+  --radius: 0.5rem;
+}
+
+.light {
+  color-scheme: light;
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
+  --primary: 217 91% 48%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --secondary: 210 20% 92%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 20% 93%;
+  --muted-foreground: 215 16% 40%;
+  --accent: 199 89% 90%;
+  --accent-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 215 20% 78%;
+  --input: 215 20% 84%;
+  --ring: 217 91% 48%;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: hsl(var(--background));
+}
+
+body {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background-image:
+    radial-gradient(circle at 50% 0%, hsl(224 76% 48% / 0.15), transparent 40%),
+    radial-gradient(circle at 100% 100%, hsl(0 84% 60% / 0.05), transparent 30%);
+  background-attachment: fixed;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: transparent;
+  background-image: linear-gradient(to right, hsl(var(--foreground)), hsl(var(--foreground) / 0.85));
+  background-clip: text;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.light h1,
+.light h2,
+.light h3,
+.light h4,
+.light h5,
+.light h6 {
+  background-image: linear-gradient(to right, hsl(var(--foreground)), hsl(var(--foreground) / 0.85));
+}
+
+.glass-panel {
+  border: 1px solid hsl(0 0% 100% / 0.15);
+  background-color: hsl(var(--card) / 0.75);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  backdrop-filter: blur(24px);
+}
+
+.light .glass-panel {
+  border-color: hsl(var(--border) / 0.8);
+}
+
+.safenet-system-navigation {
+  top: 0;
+  height: calc(5rem + var(--safenet-status-bar-inset));
+  padding-top: var(--safenet-status-bar-inset);
+}
+
+.safenet-bottom-navigation {
+  bottom: 0;
+  height: calc(5rem + var(--safenet-navigation-bar-inset));
+  padding-bottom: var(--safenet-navigation-bar-inset);
+}
+
+.light .safenet-system-navigation,
+.light .safenet-bottom-navigation {
+  border-color: hsl(var(--border) / 0.65);
+  background-color: hsl(var(--background) / 0.92);
+}
+
+.light .safenet-system-navigation .text-muted-foreground:hover,
+.light .safenet-bottom-navigation .text-muted-foreground:hover {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.7);
+}
+
+.light [data-testid="ai-shield-controls"] .text-white {
+  color: hsl(var(--foreground));
+}

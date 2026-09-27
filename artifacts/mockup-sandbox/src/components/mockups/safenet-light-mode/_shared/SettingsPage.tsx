@@ -1,0 +1,75 @@
+import { AiShieldControls } from "./AiShieldControls";
+import { ThemeModeControls } from "./ThemeModeControls";
+import { Header } from "./Header";
+import { AlertTriangle } from "lucide-react";
+import wordmarkImage from "./assets/safenet-inc-logo.svg";
+import terryFoxImage from "./assets/terry-fox-marathon-of-hope.jpg";
+
+const terryFoxSourceUrl = "https://chatgpt.com/s/m_6a70d18637288191a25bc77259ddba66";
+
+export default function Settings() {
+  const appVersion = import.meta.env.VITE_APP_VERSION || "preview";
+
+  return (
+    <div className="space-y-6">
+      <Header
+        title="System Settings"
+        subtitle="Configuration & Security"
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="md:col-span-2">
+          <ThemeModeControls />
+        </div>
+
+        <div className="md:col-span-2">
+          <AiShieldControls />
+        </div>
+
+        <div className="md:col-span-2 space-y-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm">
+          <div className="border-b border-yellow-500/10 pb-4 text-center">
+            <a
+              href={terryFoxSourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open Terry Fox Marathon of Hope source"
+            >
+              <div className="mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded bg-white">
+                <img
+                  src={terryFoxImage}
+                  alt="Terry Fox Marathon of Hope"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            </a>
+            <h2 className="mt-3 font-display text-lg tracking-wider">Marathon of Hope</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-yellow-500">
+            <AlertTriangle className="w-4 h-4" />
+              <span className="font-mono uppercase" data-testid="settings-version">
+                SafeNet Shield DNS Server+ (Official) v{appVersion}
+            </span>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
+            <a
+              href="mailto:Post@SafeNetInc.Ca"
+              className="text-white underline-offset-4 hover:underline"
+            >
+              Contact Us: Post@SafeNetInc.Ca
+            </a>
+          </div>
+          <div className="flex items-center justify-center border-t border-yellow-500/10 pt-4">
+            <img
+              src={wordmarkImage}
+              alt="SafeNet Inc."
+              className="h-12 w-[220px] object-contain"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -495,10 +495,20 @@ test("Settings show the current version without firewall controls", async () => 
   await lightModeSwitch.click();
   await waitForAttribute(lightModeSwitch, "data-state", "checked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  assert.notEqual(settingsHeadingColor, "rgb(255, 255, 255)", "light mode headings must remain readable");
+  const legacyLightBorder = await page
+    .getByTestId("ai-shield-controls")
+    .locator('[class~="border-white/10"]')
+    .first()
+    .evaluate((element) => getComputedStyle(element).borderTopColor);
+  assert.notEqual(legacyLightBorder, "rgba(255, 255, 255, 0.1)", "legacy white borders must adapt in light mode");
   const lightBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
-  assert.equal(lightBackground, "210 20% 98%");
+  assert.equal(lightBackground, "210 24% 97%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
   await lightModeSwitch.click();
   await waitForAttribute(lightModeSwitch, "data-state", "unchecked");

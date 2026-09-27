@@ -74,12 +74,7 @@ function MainLayout() {
       <div className="scan-line" />
       
       {/* Background Grid */}
-      <div className="fixed inset-0 pointer-events-none z-[-1]" 
-           style={{ 
-             backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
-             backgroundSize: '40px 40px'
-           }} 
-      />
+      <div className="safenet-background-grid fixed inset-0 pointer-events-none z-[-1]" />
 
       <PullToRefresh
         className="safenet-main-content min-h-0 flex-1 w-full max-w-7xl mx-auto overflow-y-auto p-4 pb-24 pt-24 sm:p-6 sm:pb-24 sm:pt-28 lg:p-8 lg:pb-8 lg:pt-28"

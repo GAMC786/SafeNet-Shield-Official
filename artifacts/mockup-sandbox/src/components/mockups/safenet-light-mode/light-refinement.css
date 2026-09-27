@@ -1,0 +1,158 @@
+.light {
+  --background: 210 24% 97%;
+  --foreground: 222 47% 11%;
+  --primary: 217 91% 48%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --secondary: 210 22% 93%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 22% 94%;
+  --muted-foreground: 215 18% 38%;
+  --accent: 199 89% 90%;
+  --accent-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 214 20% 84%;
+  --input: 214 20% 82%;
+  --ring: 217 91% 48%;
+}
+
+.light body {
+  background-image:
+    radial-gradient(circle at 50% 0%, hsl(217 91% 60% / 0.075), transparent 42%),
+    radial-gradient(circle at 100% 100%, hsl(199 89% 48% / 0.04), transparent 32%);
+}
+
+.light h1,
+.light h2,
+.light h3,
+.light h4,
+.light h5,
+.light h6 {
+  background-image: linear-gradient(to right, hsl(var(--foreground)), hsl(var(--foreground) / 0.85));
+}
+
+.light .glass-panel {
+  border-color: hsl(var(--border) / 0.9);
+  background-color: hsl(var(--card) / 0.94);
+  box-shadow: 0 12px 36px hsl(222 47% 11% / 0.07);
+}
+
+.light .safenet-system-navigation,
+.light .safenet-bottom-navigation {
+  border-color: hsl(var(--border) / 0.9);
+  background-color: hsl(var(--card) / 0.94);
+  box-shadow: 0 8px 24px hsl(222 47% 11% / 0.07);
+}
+
+.light .safenet-system-navigation .text-muted-foreground:hover,
+.light .safenet-bottom-navigation .text-muted-foreground:hover {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.7);
+}
+
+.safenet-background-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.light .safenet-background-grid {
+  background-image:
+    linear-gradient(hsl(var(--border) / 0.36) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.36) 1px, transparent 1px);
+}
+
+.light .scan-line {
+  display: none;
+}
+
+.light [class~="text-white"],
+.light [class~="text-white/85"],
+.light [class~="hover:text-white"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+.light [class~="border-white/5"],
+.light [class~="border-white/10"],
+.light [class~="border-white/15"],
+.light [class~="border-white/30"],
+.light [class~="border-white/45"],
+.light [class~="border-white/75"] {
+  border-color: hsl(var(--border) / 0.9) !important;
+}
+
+.light [class~="bg-black/20"],
+.light [class~="bg-black/30"],
+.light [class~="bg-white/5"],
+.light [class~="bg-white/10"],
+.light [class~="bg-white/[0.03]"] {
+  background-color: hsl(var(--muted) / 0.72) !important;
+}
+
+.light [class~="bg-slate-950"],
+.light [class~="bg-slate-950/70"],
+.light [class~="bg-slate-950/80"] {
+  background-color: hsl(var(--card)) !important;
+}
+
+.light [class~="bg-slate-600/90"],
+.light [class~="bg-slate-500/90"] {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.light [class~="text-green-100"],
+.light [class~="text-green-200"],
+.light [class~="text-green-300"],
+.light [class~="text-green-400"],
+.light [class~="text-green-500"],
+.light [class~="text-emerald-200"],
+.light [class~="text-emerald-300"],
+.light [class~="text-emerald-400"] {
+  color: hsl(145 65% 28%) !important;
+}
+
+.light [class~="text-yellow-100"],
+.light [class~="text-yellow-100/80"],
+.light [class~="text-yellow-100/90"],
+.light [class~="text-yellow-200"],
+.light [class~="text-yellow-300"],
+.light [class~="text-yellow-400"],
+.light [class~="text-yellow-500"],
+.light [class~="text-amber-100"],
+.light [class~="text-amber-200"],
+.light [class~="text-amber-200/80"],
+.light [class~="text-amber-400"] {
+  color: hsl(32 88% 30%) !important;
+}
+
+.light [class~="text-red-50"],
+.light [class~="text-red-100"],
+.light [class~="text-red-200"],
+.light [class~="text-red-300"],
+.light [class~="text-red-400"],
+.light [class~="text-red-500"] {
+  color: hsl(0 72% 39%) !important;
+}
+
+.light [class~="text-gray-400"],
+.light [class~="text-gray-600"] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.light [class~="text-white"][class~="bg-primary"],
+.light [class~="text-white"][class~="bg-destructive"],
+.light [class~="text-white"][class~="bg-red-600"],
+.light [class~="text-white"][class~="bg-emerald-600"],
+.light [class~="text-white"][class~="bg-green-600"],
+.light [class~="text-white"][class~="bg-blue-600"] {
+  color: #fff !important;
+}
