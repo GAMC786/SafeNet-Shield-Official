@@ -6,6 +6,8 @@ export type SmsFilterStatus = {
   roleAvailable: boolean;
   roleHeld: boolean;
   filterPermissionGranted: boolean;
+  inboxPermissionGranted: boolean;
+  sendPermissionGranted: boolean;
   permissionsGranted: boolean;
   enabled: boolean;
   quarantineCount: number;
@@ -62,6 +64,8 @@ export function useSmsFilter() {
         roleAvailable: false,
         roleHeld: false,
         filterPermissionGranted: false,
+        inboxPermissionGranted: false,
+        sendPermissionGranted: false,
         permissionsGranted: false,
         enabled: false,
         quarantineCount: 0,
@@ -88,12 +92,12 @@ export function useSmsFilter() {
   }, [supported]);
 
   useEffect(() => {
-    if (!status?.roleHeld || !status.permissionsGranted) {
+    if (!status?.roleHeld || !status.inboxPermissionGranted) {
       setRecentMessages([]);
       return;
     }
     void refreshRecentMessages().catch(() => undefined);
-  }, [refreshRecentMessages, status?.permissionsGranted, status?.roleHeld]);
+  }, [refreshRecentMessages, status?.inboxPermissionGranted, status?.roleHeld]);
 
   useEffect(() => {
     if (!supported) return;

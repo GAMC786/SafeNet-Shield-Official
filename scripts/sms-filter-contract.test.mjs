@@ -29,6 +29,9 @@ test("SMS filtering stays local and uses a user-granted default SMS role", async
   assert.match(plugin, /alias = "receiveSms"/);
   assert.match(plugin, /requestPermissionForAlias\("receiveSms", call, "smsPermissionResult"\)/);
   assert.match(plugin, /filterPermissionGranted/);
+  assert.match(plugin, /alias = "sms",\s*strings = \{\s*Manifest\.permission\.READ_SMS,\s*Manifest\.permission\.SEND_SMS\s*\}/);
+  assert.match(plugin, /alias = "receiveSms",\s*strings = \{\s*Manifest\.permission\.RECEIVE_SMS\s*\}/);
+  assert.match(plugin, /boolean permissionsGranted = inboxPermissionGranted && sendPermissionGranted/);
   assert.doesNotMatch(plugin, /WRITE_SMS/);
   assert.match(plugin, /Manifest\.permission\.READ_SMS/);
   assert.match(plugin, /Manifest\.permission\.RECEIVE_SMS/);
@@ -39,6 +42,8 @@ test("SMS filtering stays local and uses a user-granted default SMS role", async
   assert.match(page, /Junkboy SMS Filter/);
   assert.match(page, /sms\.requestFilterPermission\(\)/);
   assert.match(page, /if \(!status\.filterPermissionGranted\)/);
+  assert.match(page, /sms\.status\.sendPermissionGranted/);
+  assert.match(page, /sms\.status\.inboxPermissionGranted/);
   assert.match(page, /MMS photos and group messages/);
   assert.match(backup, /safenet_sms_filter\.xml/);
   assert.doesNotMatch(plugin, /apiFetch|fetch\(/);
