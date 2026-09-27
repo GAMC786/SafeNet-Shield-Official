@@ -195,6 +195,23 @@ test("Android release workflows keep WireGuard and Tailscale on their pinned Go 
   assert.match(wireguardPrepareScript, /rmdir "\$go_root"/);
 });
 
+test("WireGuard preparation stays executable for release workflow invocations", async () => {
+  const scriptStats = await stat(
+    new URL("./prepare-wireguard-sdns.sh", import.meta.url),
+  );
+  assert.ok((scriptStats.mode & 0o111) !== 0);
+  for (const [name, workflow] of [
+    ["main Android workflow", mainWorkflow],
+    ["APK-only workflow", apkOnlyWorkflow],
+  ]) {
+    assert.match(
+      workflow,
+      /\.\/scripts\/prepare-wireguard-sdns\.sh --print-go-version/,
+      `${name} invokes the WireGuard preparation script directly`,
+    );
+  }
+});
+
 test("WireGuard wrapper compiles the upstream Java sources with Java 17", () => {
   assert.match(
     wireguardWrapperBuildScript,
