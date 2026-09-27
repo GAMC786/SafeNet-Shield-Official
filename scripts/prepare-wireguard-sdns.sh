@@ -9,7 +9,7 @@ alias_patch="$script_dir/patches/wireguard-tun-package-alias.patch"
 runtime_patcher="$script_dir/prepare-wireguard-go-runtime.py"
 upstream_commit="58789d6372e8948b87f5c47da7e5f2ad570eb531"
 patch_sha256="bb328edfb8b750e06177f7e40d70e00b4310f41f074a05225ffb65ff5ee621b6"
-alias_patch_sha256="fc1912f5a7a0fbf94b21f8aa36792190e7d4ca6753970e95d7063617f49741e7"
+alias_patch_sha256="8ffbccf366db1425d6204f6533ac0557b6a67c4764a06902658d613e960cce3b"
 go_version="1.26.5"
 
 if [[ "${1:-}" == "--print-go-version" && $# -eq 1 ]]; then

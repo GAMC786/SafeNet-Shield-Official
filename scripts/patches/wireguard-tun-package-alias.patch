@@ -1,10 +1,26 @@
 diff --git a/tunnel/tools/libwg-go/api-android.go b/tunnel/tools/libwg-go/api-android.go
-index 14c69f6..dcaf023 100644
+index 14c69f6..989445b 100644
 --- a/tunnel/tools/libwg-go/api-android.go
 +++ b/tunnel/tools/libwg-go/api-android.go
-@@ -30 +30 @@
+@@ -30 +30 @@ import (
 -	"golang.zx2c4.com/wireguard/tun"
 +	wgTun "golang.zx2c4.com/wireguard/tun"
-@@ -98 +98 @@
+@@ -50,0 +51,9 @@ func (l AndroidLogger) Printf(format string, args ...interface{}) {
++type interceptedTunnelDevice struct {
++	*sdns.Interceptor
++	tun wgTun.Device
++}
++
++func (d *interceptedTunnelDevice) File() *os.File {
++	return d.tun.File()
++}
++
+@@ -90 +99 @@ func wgTurnOn(interfaceName string, tunFd int32, settings string) int32 {
+-	tun, name, err := tun.CreateUnmonitoredTUNFromFD(int(tunFd))
++	tun, name, err := wgTun.CreateUnmonitoredTUNFromFD(int(tunFd))
+@@ -98 +107 @@ func wgTurnOn(interfaceName string, tunFd int32, settings string) int32 {
 -	var wrapped tun.Device = tun
 +	var wrapped wgTun.Device = tun
+@@ -129 +138 @@ func wgTurnOn(interfaceName string, tunFd int32, settings string) int32 {
+-		wrapped = interceptor
++		wrapped = &interceptedTunnelDevice{Interceptor: interceptor, tun: tun}

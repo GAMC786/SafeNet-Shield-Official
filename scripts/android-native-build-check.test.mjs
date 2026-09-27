@@ -223,12 +223,21 @@ test("WireGuard wrapper compiles the upstream Java sources with Java 17", () => 
   );
 });
 
-test("WireGuard SDNS patch avoids shadowing the imported TUN package", () => {
+test("WireGuard SDNS patch aliases the package and forwards the TUN file", () => {
   assert.match(
     wireguardTunAliasPatch,
     /wgTun "golang\.zx2c4\.com\/wireguard\/tun"/,
   );
+  assert.match(wireguardTunAliasPatch, /wgTun\.CreateUnmonitoredTUNFromFD/);
   assert.match(wireguardTunAliasPatch, /var wrapped wgTun\.Device = tun/);
+  assert.match(
+    wireguardTunAliasPatch,
+    /func \(d \*interceptedTunnelDevice\) File\(\) \*os\.File[\s\S]*?return d\.tun\.File\(\)/,
+  );
+  assert.match(
+    wireguardTunAliasPatch,
+    /wrapped = &interceptedTunnelDevice\{Interceptor: interceptor, tun: tun\}/,
+  );
   assert.match(
     wireguardPrepareScript,
     new RegExp(`alias_patch_sha256="${wireguardTunAliasPatchSha256}"`),
