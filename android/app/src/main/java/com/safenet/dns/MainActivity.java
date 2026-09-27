@@ -551,7 +551,9 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         getBridge().getWebView().evaluateJavascript(
-                "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
+                "(function(){const c=window.__safeNetSoundtrack;" +
+                        "if(c&&typeof c.suspend==='function'){c.suspend();return;}" +
+                        "const a=document.getElementById('safenet-soundtrack-audio');" +
                         "if(a){a.pause();a.currentTime=0;}})();",
                 null
         );
@@ -562,7 +564,9 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         getBridge().getWebView().evaluateJavascript(
-                "(function(){const a=document.getElementById('safenet-soundtrack-audio');" +
+                "(function(){const c=window.__safeNetSoundtrack;" +
+                        "if(c&&typeof c.resume==='function'){c.resume();return;}" +
+                        "const a=document.getElementById('safenet-soundtrack-audio');" +
                         "if(a&&!a.muted){const p=a.play();" +
                         "if(p&&typeof p.catch==='function'){p.catch(()=>{});}}})();",
                 null

@@ -33,50 +33,174 @@
         if (!(audio instanceof HTMLAudioElement)) return;
 
         const mutedKey = "safenet-soundtrack-muted";
+        const retryBaseMs = 1000;
+        const retryMaxMs = 30000;
+        const stallTimeoutMs = 30000;
         const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
+        audio.loop = true;
         audio.muted = savedMuted;
-         const stopAudio = () => {
-           audio.pause();
-           audio.currentTime = 0;
-         };
-         const startAudio = () => {
-            if (window.localStorage.getItem(mutedKey) === "true") {
-              audio.muted = true;
+
+        let suspended = false;
+        let retryTimer = null;
+        let retryDelayMs = retryBaseMs;
+        let reloadBeforeRetry = false;
+        let ignorePauseRecoveryUntil = 0;
+        let lastCurrentTime = audio.currentTime || 0;
+        let lastProgressAt = Date.now();
+
+        const preferenceEnabled = () =>
+          window.localStorage.getItem(mutedKey) !== "true";
+        const canPlay = () =>
+          preferenceEnabled() && !document.hidden && !suspended;
+
+        const clearRetry = () => {
+          if (retryTimer !== null) {
+            window.clearTimeout(retryTimer);
+            retryTimer = null;
+          }
+          reloadBeforeRetry = false;
+        };
+
+        const stopPlayback = () => {
+          clearRetry();
+          audio.pause();
+          try {
+            audio.currentTime = 0;
+          } catch {
+            // Some remote-media states temporarily reject seeks.
+          }
+          lastCurrentTime = 0;
+          lastProgressAt = Date.now();
+        };
+
+        const scheduleRetry = (reload = false) => {
+          if (!canPlay()) return;
+          reloadBeforeRetry = reloadBeforeRetry || reload;
+          if (retryTimer !== null) return;
+
+          const delay = retryDelayMs;
+          retryDelayMs = Math.min(retryDelayMs * 2, retryMaxMs);
+          retryTimer = window.setTimeout(() => {
+            retryTimer = null;
+            if (!canPlay()) {
+              reloadBeforeRetry = false;
               return;
             }
-            audio.muted = false;
-           const playback = audio.play();
-           if (playback && typeof playback.catch === "function") {
-             void playback.catch(() => undefined);
-           }
-         };
-         const syncAudioPreference = () => {
-           const isMuted = window.localStorage.getItem(mutedKey) === "true";
-           audio.muted = isMuted;
-           if (isMuted) {
-             stopAudio();
-           } else {
-             startAudio();
-           }
-         };
-         if (savedMuted) {
-           stopAudio();
-         } else {
-           startAudio();
-         }
-         window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
-         window.addEventListener("keydown", startAudio, { once: true });
-         window.addEventListener("safenet-soundtrack-change", syncAudioPreference);
-         window.addEventListener("pagehide", stopAudio);
-         document.addEventListener("visibilitychange", () => {
-           if (document.hidden) {
-             stopAudio();
-           } else {
-             startAudio();
-           }
-         });
-         audio.addEventListener("ended", startAudio);
+
+            const shouldReload = reloadBeforeRetry;
+            reloadBeforeRetry = false;
+            if (shouldReload) {
+              ignorePauseRecoveryUntil = Date.now() + retryBaseMs;
+              audio.load();
+            }
+            startAudio();
+          }, delay);
+        };
+
+        const startAudio = () => {
+          if (!preferenceEnabled()) {
+            audio.muted = true;
+            stopPlayback();
+            return;
+          }
+          if (document.hidden || suspended) return;
+
+          audio.muted = false;
+          if (audio.error) {
+            scheduleRetry(true);
+            return;
+          }
+          if (!audio.paused && !audio.ended) return;
+
+          let playback;
+          try {
+            playback = audio.play();
+          } catch {
+            scheduleRetry(Boolean(audio.error));
+            return;
+          }
+          if (playback && typeof playback.catch === "function") {
+            void playback.catch(() => scheduleRetry(Boolean(audio.error)));
+          }
+        };
+
+        const stopAudio = () => {
+          suspended = true;
+          stopPlayback();
+        };
+        const resumeAudio = () => {
+          suspended = false;
+          startAudio();
+        };
+        const syncAudioPreference = () => {
+          const isMuted = !preferenceEnabled();
+          audio.muted = isMuted;
+          if (isMuted) {
+            stopPlayback();
+          } else {
+            retryDelayMs = retryBaseMs;
+            startAudio();
+          }
+        };
+        const noteProgress = () => {
+          const currentTime = audio.currentTime || 0;
+          if (
+            currentTime > lastCurrentTime + 0.05 ||
+            currentTime < lastCurrentTime - 0.5
+          ) {
+            lastCurrentTime = currentTime;
+            lastProgressAt = Date.now();
+          }
+        };
+
+        if (savedMuted) {
+          stopPlayback();
+        } else {
+          startAudio();
+        }
+        window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
+        window.addEventListener("keydown", startAudio, { once: true });
+        window.addEventListener("safenet-soundtrack-change", syncAudioPreference);
+        window.addEventListener("pagehide", stopAudio);
+        window.addEventListener("pageshow", resumeAudio);
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) {
+            stopAudio();
+          } else {
+            resumeAudio();
+          }
+        });
+        audio.addEventListener("pause", () => {
+          if (canPlay() && Date.now() >= ignorePauseRecoveryUntil) {
+            scheduleRetry();
+          }
+        });
+        audio.addEventListener("ended", () => scheduleRetry());
+        audio.addEventListener("error", () => scheduleRetry(true));
+        audio.addEventListener("playing", () => {
+          retryDelayMs = retryBaseMs;
+          clearRetry();
+          lastCurrentTime = audio.currentTime || 0;
+          lastProgressAt = Date.now();
+        });
+        audio.addEventListener("timeupdate", noteProgress);
+        window.setInterval(() => {
+          if (!canPlay()) return;
+          noteProgress();
+          if (audio.error) {
+            scheduleRetry(true);
+          } else if (audio.paused || audio.ended) {
+            scheduleRetry(Boolean(audio.ended));
+          } else if (Date.now() - lastProgressAt >= stallTimeoutMs) {
+            scheduleRetry(true);
+          }
+        }, 10000);
+
+        window.__safeNetSoundtrack = {
+          suspend: stopAudio,
+          resume: resumeAudio,
+        };
 
       })();
     </script>
