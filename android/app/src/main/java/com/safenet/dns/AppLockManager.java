@@ -6,10 +6,14 @@ import android.view.accessibility.AccessibilityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.os.UserManager;
 
 import com.getcapacitor.JSObject;
 
@@ -55,6 +59,11 @@ public final class AppLockManager {
     private static final String PREF_COOLDOWN_LEVEL = "cooldown_level";
     private static final String PREF_LOCKED_PACKAGES = "locked_packages";
     private static final String PREF_RECOVERY_NONCE = "recovery_nonce";
+    private static final String PREF_MANAGED_RESTRICTIONS = "managed_device_owner_restrictions";
+    private static final String PREF_MANAGED_SUSPENDED_PACKAGES =
+            "managed_device_owner_suspended_packages";
+    private static final String PREF_MANAGED_HIDDEN_PACKAGES =
+            "managed_device_owner_hidden_packages";
     private static final int HASH_ROUNDS = 100_000;
     private static final int MAX_PIN_LENGTH = 12;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -119,15 +128,33 @@ public final class AppLockManager {
     }
 
     public static void setAntiUninstallEnabled(Context context, boolean enabled) {
-        prefs(context).edit().putBoolean(PREF_ANTI_UNINSTALL, enabled).apply();
-        if (!enabled) {
+        if (isDeviceOwnerEnabled(context)) {
+            DevicePolicyManager manager =
+                    (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (manager == null) {
+                throw new IllegalStateException("Android Device Policy is unavailable.");
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P && enabled) {
+                throw new IllegalStateException(
+                        "Anti-uninstall protection requires Android 9.0 or newer."
+                );
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                manager.setUninstallBlocked(
+                        adminComponent(context),
+                        context.getPackageName(),
+                        enabled
+                );
+            }
+        } else if (!enabled) {
             removeActiveDeviceAdmin(context);
         }
+        prefs(context).edit().putBoolean(PREF_ANTI_UNINSTALL, enabled).apply();
     }
 
     public static boolean disableAntiUninstall(Context context) {
-        prefs(context).edit().putBoolean(PREF_ANTI_UNINSTALL, false).apply();
-        return removeActiveDeviceAdmin(context);
+        setAntiUninstallEnabled(context, false);
+        return !isAntiUninstallEnabled(context);
     }
 
     public static Set<String> getLockedPackages(Context context) {
@@ -240,6 +267,12 @@ public final class AppLockManager {
         return manager != null && manager.isAdminActive(adminComponent(context));
     }
 
+    public static boolean isDeviceOwnerEnabled(Context context) {
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        return manager != null && manager.isDeviceOwnerApp(context.getPackageName());
+    }
+
     public static boolean isAuthenticationAvailable(Context context) {
         return isSupported(context) && hasPin(context);
     }
@@ -257,8 +290,8 @@ public final class AppLockManager {
         if (!isOverlayPermissionEnabled(context)) {
             return "Allow App Lock to display the lock screen over protected apps.";
         }
-        if (isAntiUninstallEnabled(context) && !isDeviceAdminEnabled(context)) {
-            return "Enable App Lock Device Administrator in Android Settings for anti-uninstall protection.";
+        if (isAntiUninstallEnabled(context) && !isDeviceOwnerEnabled(context)) {
+            return "Provision SafeNet as Device Owner from App Lock settings to enable anti-uninstall protection.";
         }
         return "SafeNet App Lock is ready with the local passcode and Accessibility Service.";
     }
@@ -271,6 +304,7 @@ public final class AppLockManager {
         boolean accessibilityServiceEnabled = isAccessibilityServiceEnabled(context);
         boolean overlayEnabled = isOverlayPermissionEnabled(context);
         boolean deviceAdminEnabled = isDeviceAdminEnabled(context);
+        boolean deviceOwnerEnabled = isDeviceOwnerEnabled(context);
         boolean antiUninstall = isAntiUninstallEnabled(context);
         boolean bruteForceProtected = getCooldownRemainingMs(context) > 0;
 
@@ -282,19 +316,26 @@ public final class AppLockManager {
         result.put("accessibilityServiceEnabled", accessibilityServiceEnabled);
         result.put("overlayEnabled", overlayEnabled);
         result.put("deviceAdminEnabled", deviceAdminEnabled);
+        result.put("deviceOwnerEnabled", deviceOwnerEnabled);
+        result.put(
+                "deviceOwnerProvisioningCommand",
+                deviceOwnerProvisioningCommand(context)
+        );
         result.put("antiUninstall", antiUninstall);
         result.put("bruteForceProtected", bruteForceProtected);
         String message;
         if (enabled) {
             message = accessibilityServiceEnabled && overlayEnabled
-                    ? (antiUninstall && !deviceAdminEnabled
-                        ? "Secure App Lock is active. Enable Device Administrator to finish anti-uninstall protection."
-                        : "SafeNet App Lock is active. Local passcode required when a protected app opens.")
+                    ? (antiUninstall && !deviceOwnerEnabled
+                        ? "SafeNet App Lock is active. Provision SafeNet as Device Owner to enable anti-uninstall and system-wide controls."
+                        : "SafeNet App Lock is active. Device Owner controls are available in App Lock settings.")
                     : !accessibilityServiceEnabled
                         ? "SafeNet App Lock is enabled. Enable the SafeNet Accessibility Service to monitor protected app launches."
                         : "SafeNet App Lock is enabled. Allow App Lock to display the lock screen over protected apps.";
+        } else if (deviceOwnerEnabled) {
+            message = "SafeNet App Lock is off. SafeNet remains Android Device Owner until you remove it in App Lock settings.";
         } else if (deviceAdminEnabled) {
-            message = "SafeNet App Lock is off. Deactivate SafeNet Device Administrator to remove anti-uninstall protection.";
+            message = "SafeNet App Lock is off. SafeNet Device Administrator is still active.";
         } else {
             message = availabilityMessage(context);
         }
@@ -447,6 +488,236 @@ public final class AppLockManager {
         return new ComponentName(context, LockLockDeviceAdminReceiver.class);
     }
 
+    public static String deviceOwnerProvisioningCommand(Context context) {
+        return "adb shell dpm set-device-owner "
+                + adminComponent(context).flattenToShortString();
+    }
+
+    public static boolean isUserRestrictionEnabled(Context context, String restriction) {
+        if (!isDeviceOwnerEnabled(context) || !isSupportedUserRestriction(restriction)) {
+            return false;
+        }
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        return manager != null
+                && manager.getUserRestrictions(adminComponent(context)).getBoolean(restriction);
+    }
+
+    public static boolean isUserRestrictionManagedBySafeNet(
+            Context context,
+            String restriction
+    ) {
+        return getManagedValues(context, PREF_MANAGED_RESTRICTIONS).contains(restriction);
+    }
+
+    public static void setManagedUserRestriction(
+            Context context,
+            String restriction,
+            boolean enabled
+    ) {
+        requireDeviceOwner(context);
+        if (!isSupportedUserRestriction(restriction)) {
+            throw new IllegalArgumentException("This Android restriction is not supported.");
+        }
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+
+        ComponentName admin = adminComponent(context);
+        Set<String> managed = getManagedValues(context, PREF_MANAGED_RESTRICTIONS);
+        boolean current = manager.getUserRestrictions(admin).getBoolean(restriction);
+        if (enabled) {
+            if (!current) {
+                manager.addUserRestriction(admin, restriction);
+                if (!manager.getUserRestrictions(admin).getBoolean(restriction)) {
+                    throw new IllegalStateException("Android did not apply this restriction.");
+                }
+                managed.add(restriction);
+                saveManagedValues(context, PREF_MANAGED_RESTRICTIONS, managed);
+            }
+            return;
+        }
+
+        if (managed.remove(restriction)) {
+            if (current) {
+                manager.clearUserRestriction(admin, restriction);
+                if (manager.getUserRestrictions(admin).getBoolean(restriction)) {
+                    managed.add(restriction);
+                    throw new IllegalStateException(
+                            "Android did not clear the SafeNet-managed restriction."
+                    );
+                }
+            }
+            saveManagedValues(context, PREF_MANAGED_RESTRICTIONS, managed);
+        }
+    }
+
+    public static boolean canManagePackagePolicy(Context context, String packageName) {
+        if (TextUtils.isEmpty(packageName)
+                || context.getPackageName().equals(packageName)
+                || !isDeviceOwnerEnabled(context)) {
+            return false;
+        }
+        try {
+            ApplicationInfo info = context.getPackageManager().getApplicationInfo(packageName, 0);
+            int systemFlags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP;
+            return (info.flags & systemFlags) == 0;
+        } catch (PackageManager.NameNotFoundException error) {
+            return false;
+        }
+    }
+
+    public static boolean isPackageSuspended(Context context, String packageName) {
+        if (!isDeviceOwnerEnabled(context) || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return false;
+        }
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        return manager != null && manager.isPackageSuspended(adminComponent(context), packageName);
+    }
+
+    public static boolean isPackageHidden(Context context, String packageName) {
+        if (!isDeviceOwnerEnabled(context)) {
+            return false;
+        }
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        return manager != null && manager.isApplicationHidden(adminComponent(context), packageName);
+    }
+
+    public static boolean isPackageSuspendedManagedBySafeNet(Context context, String packageName) {
+        return getManagedValues(context, PREF_MANAGED_SUSPENDED_PACKAGES).contains(packageName);
+    }
+
+    public static boolean isPackageHiddenManagedBySafeNet(Context context, String packageName) {
+        return getManagedValues(context, PREF_MANAGED_HIDDEN_PACKAGES).contains(packageName);
+    }
+
+    public static void setPackageSuspendedBySafeNet(
+            Context context,
+            String packageName,
+            boolean suspended
+    ) {
+        requireDeviceOwner(context);
+        requireManageablePackage(context, packageName);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            throw new IllegalStateException("App suspension requires Android 7.0 or newer.");
+        }
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+        Set<String> managed = getManagedValues(context, PREF_MANAGED_SUSPENDED_PACKAGES);
+        boolean current = manager.isPackageSuspended(adminComponent(context), packageName);
+        if (suspended && !current) {
+            String[] failed = manager.setPackagesSuspended(
+                    adminComponent(context),
+                    new String[]{packageName},
+                    true
+            );
+            if (containsPackage(failed, packageName)
+                    || !manager.isPackageSuspended(adminComponent(context), packageName)) {
+                throw new IllegalStateException("Android could not suspend this app.");
+            }
+            managed.add(packageName);
+            saveManagedValues(context, PREF_MANAGED_SUSPENDED_PACKAGES, managed);
+        } else if (!suspended && managed.remove(packageName)) {
+            if (current) {
+                String[] failed = manager.setPackagesSuspended(
+                        adminComponent(context),
+                        new String[]{packageName},
+                        false
+                );
+                if (containsPackage(failed, packageName)) {
+                    managed.add(packageName);
+                    throw new IllegalStateException("Android could not restore this app.");
+                }
+            }
+            saveManagedValues(context, PREF_MANAGED_SUSPENDED_PACKAGES, managed);
+        }
+    }
+
+    public static void setPackageHiddenBySafeNet(
+            Context context,
+            String packageName,
+            boolean hidden
+    ) {
+        requireDeviceOwner(context);
+        requireManageablePackage(context, packageName);
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+        Set<String> managed = getManagedValues(context, PREF_MANAGED_HIDDEN_PACKAGES);
+        boolean current = manager.isApplicationHidden(adminComponent(context), packageName);
+        if (hidden && !current) {
+            if (!manager.setApplicationHidden(adminComponent(context), packageName, true)) {
+                throw new IllegalStateException("Android could not hide this app.");
+            }
+            managed.add(packageName);
+            saveManagedValues(context, PREF_MANAGED_HIDDEN_PACKAGES, managed);
+        } else if (!hidden && managed.remove(packageName)) {
+            if (current && !manager.setApplicationHidden(adminComponent(context), packageName, false)) {
+                managed.add(packageName);
+                throw new IllegalStateException("Android could not restore this app.");
+            }
+            saveManagedValues(context, PREF_MANAGED_HIDDEN_PACKAGES, managed);
+        }
+    }
+
+    public static void restoreManagedPackagePolicies(Context context) {
+        requireDeviceOwner(context);
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+        ComponentName admin = adminComponent(context);
+        restoreManagedPackageSet(
+                context,
+                manager,
+                admin,
+                PREF_MANAGED_SUSPENDED_PACKAGES,
+                true
+        );
+        restoreManagedPackageSet(
+                context,
+                manager,
+                admin,
+                PREF_MANAGED_HIDDEN_PACKAGES,
+                false
+        );
+    }
+
+    public static void removeDeviceOwner(Context context) {
+        requireDeviceOwner(context);
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+
+        restoreManagedPackagePolicies(context);
+        restoreManagedUserRestrictions(context);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.setUninstallBlocked(adminComponent(context), context.getPackageName(), false);
+        }
+        manager.clearDeviceOwnerApp(context.getPackageName());
+        if (manager.isDeviceOwnerApp(context.getPackageName())) {
+            throw new IllegalStateException("Android did not remove SafeNet as Device Owner.");
+        }
+        prefs(context).edit()
+                .putBoolean(PREF_ANTI_UNINSTALL, false)
+                .remove(PREF_MANAGED_SUSPENDED_PACKAGES)
+                .remove(PREF_MANAGED_HIDDEN_PACKAGES)
+                .remove(PREF_MANAGED_RESTRICTIONS)
+                .apply();
+    }
+
     public static boolean shouldLockPackage(Context context, String packageName) {
         return isEnabled(context)
                 && getLockedPackages(context).contains(packageName)
@@ -489,6 +760,140 @@ public final class AppLockManager {
             return false;
         }
         return !manager.isAdminActive(component);
+    }
+
+    private static void restoreManagedUserRestrictions(Context context) {
+        DevicePolicyManager manager =
+                (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android Device Policy is unavailable.");
+        }
+        ComponentName admin = adminComponent(context);
+        Set<String> managed = getManagedValues(context, PREF_MANAGED_RESTRICTIONS);
+        for (String restriction : new HashSet<>(managed)) {
+            if (manager.getUserRestrictions(admin).getBoolean(restriction)) {
+                manager.clearUserRestriction(admin, restriction);
+                if (manager.getUserRestrictions(admin).getBoolean(restriction)) {
+                    throw new IllegalStateException(
+                            "SafeNet could not restore the Android restriction " + restriction + "."
+                    );
+                }
+            }
+            managed.remove(restriction);
+            saveManagedValues(context, PREF_MANAGED_RESTRICTIONS, managed);
+        }
+    }
+
+    private static void restoreManagedPackageSet(
+            Context context,
+            DevicePolicyManager manager,
+            ComponentName admin,
+            String preferenceKey,
+            boolean suspended
+    ) {
+        Set<String> managed = getManagedValues(context, preferenceKey);
+        for (String packageName : new HashSet<>(managed)) {
+            if (!isInstalledPackage(context, packageName)) {
+                managed.remove(packageName);
+                saveManagedValues(context, preferenceKey, managed);
+                continue;
+            }
+            if (suspended) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                        && manager.isPackageSuspended(admin, packageName)) {
+                    String[] failed = manager.setPackagesSuspended(
+                            admin,
+                            new String[]{packageName},
+                            false
+                    );
+                    if (containsPackage(failed, packageName)) {
+                        throw new IllegalStateException(
+                                "SafeNet could not restore suspended app " + packageName + "."
+                        );
+                    }
+                    if (manager.isPackageSuspended(admin, packageName)) {
+                        throw new IllegalStateException(
+                                "SafeNet could not restore suspended app " + packageName + "."
+                        );
+                    }
+                }
+            } else if (manager.isApplicationHidden(admin, packageName)
+                    && !manager.setApplicationHidden(admin, packageName, false)) {
+                throw new IllegalStateException(
+                        "SafeNet could not restore hidden app " + packageName + "."
+                );
+            }
+            managed.remove(packageName);
+            saveManagedValues(context, preferenceKey, managed);
+        }
+    }
+
+    private static void requireDeviceOwner(Context context) {
+        if (!isDeviceOwnerEnabled(context)) {
+            throw new IllegalStateException(
+                    "Provision SafeNet as Android Device Owner before changing system policies."
+            );
+        }
+    }
+
+    private static void requireManageablePackage(Context context, String packageName) {
+        if (!canManagePackagePolicy(context, packageName)) {
+            throw new IllegalArgumentException(
+                    "SafeNet cannot suspend or hide itself, a system app, or an unavailable app."
+            );
+        }
+    }
+
+    private static boolean isSupportedUserRestriction(String restriction) {
+        return UserManager.DISALLOW_SAFE_BOOT.equals(restriction)
+                || UserManager.DISALLOW_DEBUGGING_FEATURES.equals(restriction)
+                || UserManager.DISALLOW_FACTORY_RESET.equals(restriction)
+                || UserManager.DISALLOW_OUTGOING_CALLS.equals(restriction)
+                || UserManager.DISALLOW_SMS.equals(restriction)
+                || UserManager.DISALLOW_ADD_USER.equals(restriction)
+                || UserManager.DISALLOW_REMOVE_USER.equals(restriction)
+                || UserManager.DISALLOW_MODIFY_ACCOUNTS.equals(restriction)
+                || UserManager.DISALLOW_INSTALL_APPS.equals(restriction)
+                || UserManager.DISALLOW_UNINSTALL_APPS.equals(restriction)
+                || UserManager.DISALLOW_SET_WALLPAPER.equals(restriction)
+                || UserManager.DISALLOW_USB_FILE_TRANSFER.equals(restriction)
+                || UserManager.DISALLOW_CONFIG_PRIVATE_DNS.equals(restriction)
+                || UserManager.DISALLOW_CONFIG_VPN.equals(restriction)
+                || UserManager.DISALLOW_CONFIG_CREDENTIALS.equals(restriction);
+    }
+
+    private static Set<String> getManagedValues(Context context, String preferenceKey) {
+        Set<String> values = prefs(context).getStringSet(preferenceKey, null);
+        return values == null ? new HashSet<>() : new HashSet<>(values);
+    }
+
+    private static void saveManagedValues(
+            Context context,
+            String preferenceKey,
+            Set<String> values
+    ) {
+        prefs(context).edit().putStringSet(preferenceKey, new HashSet<>(values)).apply();
+    }
+
+    private static boolean containsPackage(String[] packages, String packageName) {
+        if (packages == null) {
+            return false;
+        }
+        for (String failedPackage : packages) {
+            if (packageName.equals(failedPackage)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isInstalledPackage(Context context, String packageName) {
+        try {
+            context.getPackageManager().getApplicationInfo(packageName, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException error) {
+            return false;
+        }
     }
 
     private static boolean isValidPin(String pin) {

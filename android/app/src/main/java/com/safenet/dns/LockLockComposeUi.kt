@@ -9,10 +9,14 @@
 package com.safenet.dns
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
 import android.graphics.drawable.Drawable
+import android.os.Build
+import android.os.UserManager
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -32,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +51,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -98,8 +104,109 @@ private data class LockLockApp(
     val icon: androidx.compose.ui.graphics.ImageBitmap,
 )
 
+private data class DeviceOwnerRestrictionOption(
+    val key: String,
+    val title: String,
+    val details: String,
+    val minimumSdk: Int = Build.VERSION_CODES.N,
+)
+
+private val DEVICE_OWNER_RESTRICTIONS = listOf(
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_SAFE_BOOT,
+        "Block Safe Mode",
+        "Can remove an emergency troubleshooting path.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_DEBUGGING_FEATURES,
+        "Block developer and USB debugging",
+        "Disables Android debugging features.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_FACTORY_RESET,
+        "Block factory reset in Settings",
+        "Restricts the Settings reset flow; it does not replace physical recovery or device reset controls.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_OUTGOING_CALLS,
+        "Block outgoing calls",
+        "May affect calls and communication apps.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_SMS,
+        "Block SMS",
+        "May disable SafeNet messaging and other default SMS apps.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_ADD_USER,
+        "Block adding Android users",
+        "Prevents creating additional device users.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_REMOVE_USER,
+        "Block removing Android users",
+        "Prevents removing additional device users.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_MODIFY_ACCOUNTS,
+        "Block account changes",
+        "Prevents adding or removing accounts.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_INSTALL_APPS,
+        "Block app installs",
+        "Prevents installing apps from Android installation flows.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_UNINSTALL_APPS,
+        "Block app removals",
+        "Applies to other apps too, not just SafeNet.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_SET_WALLPAPER,
+        "Block wallpaper changes",
+        "Prevents changing the system wallpaper.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_USB_FILE_TRANSFER,
+        "Block USB file transfer",
+        "Prevents USB file-transfer access to this device.",
+        Build.VERSION_CODES.LOLLIPOP,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_CONFIG_PRIVATE_DNS,
+        "Block Private DNS changes",
+        "May interfere with SafeNet Private DNS setup and recovery.",
+        Build.VERSION_CODES.Q,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_CONFIG_VPN,
+        "Block VPN changes",
+        "May interfere with SafeNet VPN configuration and other VPN apps.",
+        Build.VERSION_CODES.N,
+    ),
+    DeviceOwnerRestrictionOption(
+        UserManager.DISALLOW_CONFIG_CREDENTIALS,
+        "Block credential changes",
+        "Can prevent changing saved credentials and certificates.",
+        Build.VERSION_CODES.N,
+    ),
+)
+
 private enum class LockLockDialog {
     SETTINGS,
+    DEVICE_OWNER,
     ACCOUNT_RECOVERY,
     CHANGE_PASSCODE,
 }
@@ -207,9 +314,10 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
     var overlayEnabled by remember {
         mutableStateOf(AppLockManager.isOverlayPermissionEnabled(context))
     }
-    var deviceAdminEnabled by remember {
-        mutableStateOf(AppLockManager.isDeviceAdminEnabled(context))
+    var deviceOwnerEnabled by remember {
+        mutableStateOf(AppLockManager.isDeviceOwnerEnabled(context))
     }
+    var packagePolicyRevision by remember { mutableStateOf(0) }
     val protectionActive = protectionEnabled
         && configured
         && accessibilityEnabled
@@ -221,7 +329,7 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
         antiUninstall = AppLockManager.isAntiUninstallEnabled(context)
         accessibilityEnabled = AppLockManager.isAccessibilityServiceEnabled(context)
         overlayEnabled = AppLockManager.isOverlayPermissionEnabled(context)
-        deviceAdminEnabled = AppLockManager.isDeviceAdminEnabled(context)
+        deviceOwnerEnabled = AppLockManager.isDeviceOwnerEnabled(context)
     }
 
     LaunchedEffect(Unit) {
@@ -335,28 +443,35 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                     accessibilityEnabled = accessibilityEnabled,
                     overlayEnabled = overlayEnabled,
                     antiUninstall = antiUninstall,
-                    deviceAdminEnabled = deviceAdminEnabled,
+                    deviceOwnerEnabled = deviceOwnerEnabled,
                     onAccessibility = {
                         context.startActivity(AppLockManager.accessibilitySettingsIntent())
                     },
                     onOverlay = {
                         context.startActivity(AppLockManager.overlayPermissionIntent(context))
                     },
-                    onDeviceAdmin = {
-                        context.startActivity(AppLockManager.deviceAdminIntent(context))
+                    onDeviceOwner = {
+                        dialog = LockLockDialog.DEVICE_OWNER
                     },
                     onAntiUninstallChange = { checked ->
-                        antiUninstall = checked
-                        AppLockManager.setAntiUninstallEnabled(context, checked)
-                        if (checked && !deviceAdminEnabled) {
-                            context.startActivity(AppLockManager.deviceAdminIntent(context))
+                        if (checked && !deviceOwnerEnabled) {
+                            dialog = LockLockDialog.DEVICE_OWNER
+                        } else {
+                            try {
+                                AppLockManager.setAntiUninstallEnabled(context, checked)
+                                antiUninstall = checked
+                                refreshState()
+                            } catch (error: RuntimeException) {
+                                Toast.makeText(
+                                    context,
+                                    error.message ?: "Could not change anti-uninstall protection.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
                         }
                     },
                     onLegacyRecovery = {
-                        context.startActivity(
-                            Intent(context, LockLockActivity::class.java)
-                                .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_SETUP)
-                        )
+                        dialog = LockLockDialog.SETTINGS
                     },
                 )
             }
@@ -399,9 +514,36 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                 contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp),
             ) {
                 items(filteredApps.sortedBy { it.name }, key = { it.packageName }) { app ->
+                    val isSuspended = remember(app.packageName, packagePolicyRevision) {
+                        AppLockManager.isPackageSuspended(context, app.packageName)
+                    }
+                    val isHidden = remember(app.packageName, packagePolicyRevision) {
+                        AppLockManager.isPackageHidden(context, app.packageName)
+                    }
+                    val suspendedManaged = remember(app.packageName, packagePolicyRevision) {
+                        AppLockManager.isPackageSuspendedManagedBySafeNet(
+                            context,
+                            app.packageName,
+                        )
+                    }
+                    val hiddenManaged = remember(app.packageName, packagePolicyRevision) {
+                        AppLockManager.isPackageHiddenManagedBySafeNet(
+                            context,
+                            app.packageName,
+                        )
+                    }
                     LockLockAppSelectionItem(
                         app = app,
                         selected = selectedApps.contains(app.packageName),
+                        deviceOwnerEnabled = deviceOwnerEnabled,
+                        canManagePolicy = AppLockManager.canManagePackagePolicy(
+                            context,
+                            app.packageName,
+                        ),
+                        suspended = isSuspended,
+                        hidden = isHidden,
+                        suspendedManaged = suspendedManaged,
+                        hiddenManaged = hiddenManaged,
                         onToggle = { checked ->
                             if (checked) {
                                 if (!selectedApps.contains(app.packageName)) {
@@ -411,6 +553,54 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                                 selectedApps.remove(app.packageName)
                             }
                             AppLockManager.setLockedPackages(context, selectedApps.toSet())
+                        },
+                        onSuspendedChange = { suspended ->
+                            if (!suspended && isSuspended && !suspendedManaged) {
+                                Toast.makeText(
+                                    context,
+                                    "SafeNet will not restore an app state it did not apply.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                return@LockLockAppSelectionItem
+                            }
+                            try {
+                                AppLockManager.setPackageSuspendedBySafeNet(
+                                    context,
+                                    app.packageName,
+                                    suspended,
+                                )
+                                packagePolicyRevision++
+                            } catch (error: RuntimeException) {
+                                Toast.makeText(
+                                    context,
+                                    error.message ?: "Could not change app suspension.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                        onHiddenChange = { hidden ->
+                            if (!hidden && isHidden && !hiddenManaged) {
+                                Toast.makeText(
+                                    context,
+                                    "SafeNet will not restore an app state it did not apply.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                return@LockLockAppSelectionItem
+                            }
+                            try {
+                                AppLockManager.setPackageHiddenBySafeNet(
+                                    context,
+                                    app.packageName,
+                                    hidden,
+                                )
+                                packagePolicyRevision++
+                            } catch (error: RuntimeException) {
+                                Toast.makeText(
+                                    context,
+                                    error.message ?: "Could not change app visibility.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
                         },
                     )
                 }
@@ -450,13 +640,24 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
         LockLockDialog.SETTINGS -> {
             LockLockSettingsDialog(
                 antiUninstall = antiUninstall,
-                deviceAdminEnabled = deviceAdminEnabled,
+                deviceOwnerEnabled = deviceOwnerEnabled,
                 onDismiss = { dialog = null },
+                onOpenDeviceOwner = { dialog = LockLockDialog.DEVICE_OWNER },
                 onAntiUninstallChange = { checked ->
-                    antiUninstall = checked
-                    AppLockManager.setAntiUninstallEnabled(context, checked)
-                    if (checked && !deviceAdminEnabled) {
-                        context.startActivity(AppLockManager.deviceAdminIntent(context))
+                    if (checked && !deviceOwnerEnabled) {
+                        dialog = LockLockDialog.DEVICE_OWNER
+                    } else {
+                        try {
+                            AppLockManager.setAntiUninstallEnabled(context, checked)
+                            antiUninstall = checked
+                            refreshState()
+                        } catch (error: RuntimeException) {
+                            Toast.makeText(
+                                context,
+                                error.message ?: "Could not change anti-uninstall protection.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
                     }
                 },
                 onChangePasscode = {
@@ -473,6 +674,20 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                                 .putExtra(AppLockManager.EXTRA_MODE, AppLockManager.MODE_DISABLE)
                         )
                     }
+                },
+            )
+        }
+        LockLockDialog.DEVICE_OWNER -> {
+            DeviceOwnerSettingsDialog(
+                context = context,
+                deviceOwnerEnabled = deviceOwnerEnabled,
+                onDismiss = {
+                    dialog = LockLockDialog.SETTINGS
+                    refreshState()
+                },
+                onPoliciesChanged = {
+                    packagePolicyRevision++
+                    refreshState()
                 },
             )
         }
@@ -631,10 +846,10 @@ private fun PermissionSummary(
     accessibilityEnabled: Boolean,
     overlayEnabled: Boolean,
     antiUninstall: Boolean,
-    deviceAdminEnabled: Boolean,
+    deviceOwnerEnabled: Boolean,
     onAccessibility: () -> Unit,
     onOverlay: () -> Unit,
-    onDeviceAdmin: () -> Unit,
+    onDeviceOwner: () -> Unit,
     onAntiUninstallChange: (Boolean) -> Unit,
     onLegacyRecovery: () -> Unit,
 ) {
@@ -642,15 +857,9 @@ private fun PermissionSummary(
         Triple("Open Accessibility Settings", accessibilityEnabled, onAccessibility),
         Triple("Allow overlay", overlayEnabled, onOverlay),
         Triple(
-            if (antiUninstall && !deviceAdminEnabled) {
-                "Open Device Administrator"
-            } else {
-                "Enable anti-uninstall protection"
-            },
-            !antiUninstall || deviceAdminEnabled,
-            if (antiUninstall) onDeviceAdmin else {
-                { onAntiUninstallChange(true) }
-            },
+            if (deviceOwnerEnabled) "Device Owner is active" else "Provision SafeNet as Device Owner",
+            deviceOwnerEnabled,
+            onDeviceOwner,
         ),
     )
     Card(
@@ -681,7 +890,7 @@ private fun PermissionSummary(
                 onClick = { onAntiUninstallChange(!antiUninstall) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Enable anti-uninstall protection")
+                Text(if (antiUninstall) "Disable anti-uninstall protection" else "Enable anti-uninstall protection")
             }
             TextButton(
                 onClick = onLegacyRecovery,
@@ -724,7 +933,15 @@ private fun PermissionRow(title: String, granted: Boolean, onClick: () -> Unit) 
 private fun LockLockAppSelectionItem(
     app: LockLockApp,
     selected: Boolean,
+    deviceOwnerEnabled: Boolean,
+    canManagePolicy: Boolean,
+    suspended: Boolean,
+    hidden: Boolean,
+    suspendedManaged: Boolean,
+    hiddenManaged: Boolean,
     onToggle: (Boolean) -> Unit,
+    onSuspendedChange: (Boolean) -> Unit,
+    onHiddenChange: (Boolean) -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val scale by animateFloatAsState(
@@ -766,48 +983,90 @@ private fun LockLockAppSelectionItem(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 6.dp else 2.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        colorScheme.primary.copy(alpha = if (selected) 0.2f else 0.08f),
-                        CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(
-                    bitmap = app.icon,
-                    contentDescription = app.name,
-                    modifier = Modifier.size(28.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            colorScheme.primary.copy(alpha = if (selected) 0.2f else 0.08f),
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        bitmap = app.icon,
+                        contentDescription = app.name,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp),
+                ) {
+                    Text(
+                        app.name,
+                        color = contentColor,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        app.packageName,
+                        color = contentColor.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                LockLockSwitch(selected, onToggle)
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 16.dp),
-            ) {
-                Text(
-                    app.name,
-                    color = contentColor,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    app.packageName,
-                    color = contentColor.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            if (deviceOwnerEnabled) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "DEVICE OWNER ACTIONS",
+                        color = SafeNetMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (canManagePolicy) {
+                        if ((suspended && !suspendedManaged) || (hidden && !hiddenManaged)) {
+                            Text(
+                                "An app state SafeNet did not apply cannot be cleared here.",
+                                color = SafeNetMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Suspend app", modifier = Modifier.weight(1f))
+                            LockLockSwitch(suspended, onSuspendedChange)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Hide app", modifier = Modifier.weight(1f))
+                            LockLockSwitch(hidden, onHiddenChange)
+                        }
+                    } else {
+                        Text(
+                            "SafeNet and Android system apps cannot be suspended or hidden.",
+                            color = SafeNetMuted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
             }
-            LockLockSwitch(selected, onToggle)
         }
     }
 }
@@ -848,8 +1107,9 @@ private fun LockLockSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit)
 @Composable
 private fun LockLockSettingsDialog(
     antiUninstall: Boolean,
-    deviceAdminEnabled: Boolean,
+    deviceOwnerEnabled: Boolean,
     onDismiss: () -> Unit,
+    onOpenDeviceOwner: () -> Unit,
     onAntiUninstallChange: (Boolean) -> Unit,
     onChangePasscode: () -> Unit,
     onRecovery: () -> Unit,
@@ -883,18 +1143,23 @@ private fun LockLockSettingsDialog(
                     }
                 }
                 Text(
-                        "SECURITY CONTROL",
-                        color = SafeNetAccent,
-                        fontFamily = FontFamily.Monospace,
+                    "SECURITY CONTROL",
+                    color = SafeNetAccent,
+                    fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 )
+                SettingButton(
+                    "Device Owner and system controls",
+                    Icons.Default.Build,
+                    onOpenDeviceOwner,
+                )
                 SettingAction(
                     title = "Anti Uninstall",
-                    subtitle = if (deviceAdminEnabled) {
-                        "Device Administrator is active"
+                    subtitle = if (deviceOwnerEnabled) {
+                        "SafeNet is Device Owner"
                     } else {
-                        "Require Android Device Administrator before enabling"
+                        "Requires SafeNet Device Owner provisioning"
                     },
                     icon = Icons.Default.Lock,
                     checked = antiUninstall,
@@ -925,6 +1190,261 @@ private fun LockLockSettingsDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DeviceOwnerSettingsDialog(
+    context: Context,
+    deviceOwnerEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onPoliciesChanged: () -> Unit,
+) {
+    var refreshKey by remember { mutableStateOf(0) }
+    var confirmRemoval by remember { mutableStateOf(false) }
+    val command = remember(context) {
+        AppLockManager.deviceOwnerProvisioningCommand(context)
+    }
+
+    fun showPolicyError(error: RuntimeException) {
+        Toast.makeText(
+            context,
+            error.message ?: "Android could not update this Device Owner policy.",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .heightIn(max = 760.dp)
+                .padding(8.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SafeNetSurface),
+            border = BorderStroke(1.dp, SafeNetAccent.copy(alpha = 0.55f)),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Device Owner",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "ANDROID SYSTEM CONTROLS",
+                            color = SafeNetAccent,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Device Owner settings")
+                    }
+                }
+
+                if (deviceOwnerEnabled) {
+                    Text(
+                        "SafeNet is the Device Owner. System restrictions and app suspension are off unless you enable them below or on an app.",
+                        color = SafeNetBody,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+                    )
+                    SettingButton(
+                        "Restore apps SafeNet suspended or hid",
+                        Icons.Default.Clear,
+                    ) {
+                        try {
+                            AppLockManager.restoreManagedPackagePolicies(context)
+                            refreshKey++
+                            onPoliciesChanged()
+                            Toast.makeText(
+                                context,
+                                "SafeNet-managed app changes were restored.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } catch (error: RuntimeException) {
+                            showPolicyError(error)
+                        }
+                    }
+                    Text(
+                        "SYSTEM RESTRICTIONS",
+                        color = SafeNetAccent,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 390.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(DEVICE_OWNER_RESTRICTIONS, key = { it.key }) { option ->
+                            val supported = Build.VERSION.SDK_INT >= option.minimumSdk
+                            val enabled = remember(refreshKey, option.key) {
+                                AppLockManager.isUserRestrictionEnabled(context, option.key)
+                            }
+                            val owned = remember(refreshKey, option.key) {
+                                AppLockManager.isUserRestrictionManagedBySafeNet(
+                                    context,
+                                    option.key,
+                                )
+                            }
+                            if (supported) {
+                                SettingAction(
+                                    title = option.title,
+                                    subtitle = if (enabled && !owned) {
+                                        "Already active; SafeNet will not clear a restriction it did not apply."
+                                    } else {
+                                        option.details
+                                    },
+                                    icon = Icons.Default.Build,
+                                    checked = enabled,
+                                    onClick = {
+                                        try {
+                                            AppLockManager.setManagedUserRestriction(
+                                                context,
+                                                option.key,
+                                                !enabled,
+                                            )
+                                            refreshKey++
+                                            onPoliciesChanged()
+                                        } catch (error: RuntimeException) {
+                                            showPolicyError(error)
+                                        }
+                                    },
+                                )
+                            } else {
+                                Text(
+                                    "${option.title}: unavailable on this Android version.",
+                                    color = SafeNetMuted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(8.dp),
+                                )
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick = { confirmRemoval = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Text("Restore SafeNet policies and remove Device Owner")
+                    }
+                } else {
+                    Text(
+                        "Device Owner cannot be enabled from an app screen. Android requires an eligible, unmanaged device and external provisioning. This may require a factory reset and can make SafeNet difficult to remove if recovery is unavailable.",
+                        color = SafeNetBody,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
+                    )
+                    SettingButton("Refresh Device Owner status", Icons.Default.Refresh) {
+                        onPoliciesChanged()
+                    }
+                    Text(
+                        "Run this command from a computer with ADB after installing SafeNet:",
+                        color = SafeNetText,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        command,
+                        color = SafeNetAccent,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp)
+                            .background(SafeNetBackground, RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                    )
+                    SettingButton("Copy ADB command", Icons.Default.Build) {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                as? ClipboardManager
+                        if (clipboard == null) {
+                            Toast.makeText(
+                                context,
+                                "Clipboard is unavailable.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        } else {
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("SafeNet Device Owner command", command)
+                            )
+                            Toast.makeText(
+                                context,
+                                "ADB command copied.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                    Text(
+                        "The exact enrollment requirements vary by Android version and device. Do not enable restrictions until you have tested the authenticated removal flow and kept a working recovery path.",
+                        color = SafeNetMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Done")
+                }
+            }
+        }
+    }
+
+    if (confirmRemoval) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoval = false },
+            title = { Text("Remove SafeNet Device Owner?") },
+            text = {
+                Text(
+                    "SafeNet will first restore apps and restrictions it applied, then remove its Device Owner status. Existing Android restrictions that SafeNet did not apply will be left unchanged."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        try {
+                            AppLockManager.removeDeviceOwner(context)
+                            confirmRemoval = false
+                            onPoliciesChanged()
+                            Toast.makeText(
+                                context,
+                                "SafeNet Device Owner was removed.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            onDismiss()
+                        } catch (error: RuntimeException) {
+                            showPolicyError(error)
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Restore and remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemoval = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

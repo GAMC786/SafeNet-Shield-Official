@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { WindscribeVpnCard } from "@/components/WindscribeVpnCard";
 import { Button } from "@/components/ui/button";
-import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Settings2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -163,7 +163,7 @@ export default function Dashboard() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    SafeNet's AppLock-style protection with a local passcode and Accessibility Service using LockLock via GitHub
+                  AppLock-style protection with a local passcode and optional Device Owner controls for apps and Android system restrictions
                 </p>
               </div>
             </div>
@@ -199,18 +199,14 @@ export default function Dashboard() {
                 <p className="mt-1 text-xs text-muted-foreground">Monitors selected launches before showing the lock screen</p>
             </div>
             <div className="rounded-lg border border-white/10 bg-background/30 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Anti-uninstall</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Device Owner</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                {appLock.status.antiUninstall === true
-                  ? "Enabled"
-                  : appLock.status.deviceAdminEnabled === true
-                    ? "Active"
-                    : "Optional"}
+                {appLock.status.deviceOwnerEnabled === true ? "Active" : "Not provisioned"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {appLock.status.deviceAdminEnabled === true
-                  ? "Device Administrator is still active"
-                  : "Device Administrator protection"}
+                {appLock.status.deviceOwnerEnabled === true
+                  ? "System controls are available in App Lock settings"
+                  : "Optional ADB enrollment on an eligible device"}
               </p>
             </div>
           </div>
@@ -219,10 +215,24 @@ export default function Dashboard() {
             <div className="min-w-0">
               <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
               <p className="mt-1 text-[11px] text-muted-foreground/80">
-                 SafeNet stores a salted local passcode hash on-device. Accessibility Service, overlay, and Device Administrator permissions remain explicit Android opt-ins.
+                 SafeNet keeps passcode recovery on-device. Device Owner is separately provisioned; restrictions remain off until enabled, and SafeNet restores only policies it applied.
               </p>
             </div>
-            {appLock.status.enabled && appLock.supported && (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {appLock.supported && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void appLock.openSettings().catch(() => undefined)}
+                  disabled={appLock.isBusy}
+                  data-testid="button-manage-app-lock"
+                  className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10"
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Manage App Lock
+                </Button>
+              )}
+              {appLock.status.enabled && appLock.supported && (
               <Button
                 variant="outline"
                 size="sm"
@@ -234,7 +244,8 @@ export default function Dashboard() {
                 <LockKeyhole className="mr-2 h-4 w-4" />
                 Lock app now
               </Button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </CyberCard>

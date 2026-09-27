@@ -175,6 +175,7 @@ interface SafeNetVpnPlugin {
   setAppLockEnabled(options: { enabled: boolean }): Promise<import("./use-app-lock").AppLockStatus>;
   unlockAppLock(): Promise<import("./use-app-lock").AppLockStatus>;
   lockAppNow(): Promise<import("./use-app-lock").AppLockStatus>;
+  openAppLockSettings(): Promise<import("./use-app-lock").AppLockStatus>;
   getVpnProxyBrowserBlockerStatus(): Promise<
     import("./use-vpn-proxy-browser-blocker").VpnProxyBrowserBlockerStatus
   >;

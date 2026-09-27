@@ -1,16 +1,13 @@
-SafeNet's local SMS filtering rules adapt ideas and phrase patterns from:
+# AppLock Device Owner feature notice
 
-Junkboy SMS Filter — https://github.com/ovehbe/junkboy
-Copyright (c) 2025 Junkboy SMS Filter
-Licensed under the MIT License.
+SafeNet's Device Owner provisioning and system-policy configuration adapts
+behavior from AppLock by Jesús Alberto Developer:
 
-The TensorFlow Lite model included with Junkboy is documented by that project
-as a placeholder. SafeNet does not use it or claim to provide ML SMS
-classification.
+<https://github.com/jesusalbertodeveloper/AppLock>
+
+Copyright (c) 2026 Jesús Alberto Developer (jesusalbertodeveloper)
 
 MIT License
-
-Copyright (c) 2025 Junkboy SMS Filter
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,14 +26,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-## AppLock Device Owner feature
-
-SafeNet's Device Owner provisioning and system-policy configuration adapts
-behavior from AppLock by Jesús Alberto Developer:
-
-https://github.com/jesusalbertodeveloper/AppLock
-
-Copyright (c) 2026 Jesús Alberto Developer (jesusalbertodeveloper)
-Licensed under the MIT License. The license text is in
-`licenses/AppLock-NOTICE.md`.

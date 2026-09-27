@@ -109,6 +109,28 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openAppLockSettings(PluginCall call) {
+        if (getActivity() == null) {
+            call.reject("App Lock settings are unavailable.", "APP_LOCK_UNAVAILABLE");
+            return;
+        }
+        boolean configured = AppLockManager.hasPin(getContext());
+        Intent intent = new Intent(getContext(), AppLockActivity.class)
+                .putExtra(
+                        AppLockManager.EXTRA_MODE,
+                        configured ? AppLockManager.MODE_UNLOCK : AppLockManager.MODE_SETUP
+                )
+                .putExtra(
+                        AppLockManager.EXTRA_LOCKED_PACKAGE,
+                        getContext().getPackageName()
+                );
+        if (configured) {
+            intent.putExtra(AppLockManager.EXTRA_OPEN_DASHBOARD_AFTER_AUTH, true);
+        }
+        startActivityForResult(call, intent, "appLockActivityResult");
+    }
+
+    @PluginMethod
     public void getVpnProxyBrowserBlockerStatus(PluginCall call) {
         call.resolve(VpnProxyBrowserBlockerManager.status(getContext()));
     }

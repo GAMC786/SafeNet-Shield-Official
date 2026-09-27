@@ -168,7 +168,8 @@
             android:description="@string/locklock_device_admin_description"
             android:exported="true"
             android:label="@string/locklock_service_label"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:testOnly="true">
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>

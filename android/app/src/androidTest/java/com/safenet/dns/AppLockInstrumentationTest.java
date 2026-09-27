@@ -78,6 +78,19 @@ public class AppLockInstrumentationTest {
         }
     };
 
+    @Test
+    public void deviceOwnerStatusIncludesProvisioningCommandAndLiveState() {
+        JSObject status = AppLockManager.status(context);
+
+        assertEquals(
+                AppLockManager.isDeviceOwnerEnabled(context),
+                status.optBoolean("deviceOwnerEnabled", false)
+        );
+        String command = status.optString("deviceOwnerProvisioningCommand", "");
+        assertTrue(command.startsWith("adb shell dpm set-device-owner "));
+        assertTrue(command.contains(context.getPackageName()));
+    }
+
     @Before
     public void resetOpenLockState() throws Exception {
         originalAccessibilityServices = secureSetting("enabled_accessibility_services");
@@ -260,7 +273,11 @@ public class AppLockInstrumentationTest {
         assertFalse(AppLockManager.isDeviceAdminEnabled(context));
         JSObject status = AppLockManager.status(context);
         assertFalse(status.getBoolean("deviceAdminEnabled"));
-        assertTrue(status.getString("message").contains("Device Administrator"));
+        assertEquals(
+                AppLockManager.isDeviceOwnerEnabled(context),
+                status.optBoolean("deviceOwnerEnabled", false)
+        );
+        assertTrue(status.getString("deviceOwnerProvisioningCommand").contains("dpm set-device-owner"));
         Log.i(TAG, "LOCKLOCK_LIFECYCLE result=PASS");
     }
 
@@ -328,16 +345,15 @@ public class AppLockInstrumentationTest {
         );
 
         scrollToText("Enable anti-uninstall protection").click();
-        waitForPackage(SETTINGS_PACKAGE);
-        device.pressBack();
-        waitForPackage(context.getPackageName());
-        assertVisibleText("Open Device Administrator");
-        scrollToText("Open Device Administrator").click();
-        waitForPackage(SETTINGS_PACKAGE);
-        device.pressBack();
-        waitForPackage(context.getPackageName());
+        assertVisibleText("Run this command from a computer with ADB after installing SafeNet:");
+        assertVisibleText(AppLockManager.deviceOwnerProvisioningCommand(context));
+        scrollToText("Done").click();
+        assertVisibleText("Settings");
+        scrollToText("Done").click();
 
         scrollToText("Open passcode and recovery settings").click();
+        assertVisibleText("Forgot Passcode");
+        scrollToText("Forgot Passcode").click();
         assertVisibleText("Use email sign-in recovery");
         scrollToText("Use email sign-in recovery").click();
         assertVisibleText("Email-assisted recovery");
@@ -352,7 +368,7 @@ public class AppLockInstrumentationTest {
         Log.i(
                 TAG,
                 "APPLOCK_DASHBOARD result=PASS setup=PASS picker=PASS " +
-                        "overlay=PASS accessibility=PASS device_admin_return=PASS " +
+                        "overlay=PASS accessibility=PASS device_owner_instructions=PASS " +
                         "email_recovery=PASS"
         );
     }

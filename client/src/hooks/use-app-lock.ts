@@ -13,6 +13,8 @@ export interface AppLockStatus {
   accessibilityServiceEnabled?: boolean;
   overlayEnabled?: boolean;
   deviceAdminEnabled?: boolean;
+  deviceOwnerEnabled?: boolean;
+  deviceOwnerProvisioningCommand?: string;
   antiUninstall?: boolean;
   bruteForceProtected?: boolean;
 }
@@ -107,5 +109,22 @@ export function useAppLock() {
     }
   }, [supported]);
 
-  return { supported, status, isBusy, refresh, setEnabled, lockNow };
+  const openSettings = useCallback(async () => {
+    if (!supported) return null;
+    setIsBusy(true);
+    try {
+      const nextStatus = await enqueueNativeCommand(() =>
+        SafeNetVpn.openAppLockSettings(),
+      );
+      setStatus(nextStatus);
+      return nextStatus;
+    } catch (error) {
+      await refresh();
+      throw error;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [refresh, supported]);
+
+  return { supported, status, isBusy, refresh, setEnabled, lockNow, openSettings };
 }
