@@ -60,12 +60,13 @@ function hasAcceptedPrivateDnsEula() {
 }
 
 function resolverTypeLabel(type: DnsServer["type"]) {
-  return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : "Plain DNS";
+  return type === "doh" ? "DNS over HTTPS" : type === "dot" ? "DNS over TLS" : type === "sdns" ? "SDNS stamp" : "Plain DNS";
 }
 
 function resolverAddressPlaceholder(type: DnsServer["type"], ipVersion: ResolverForm["ipVersion"]) {
   if (type === "doh") return "https://dns.google/dns-query";
   if (type === "dot") return "dns.google";
+  if (type === "sdns") return "sdns://...";
   return ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1";
 }
 
@@ -90,6 +91,7 @@ function isValidResolverAddress(
       return false;
     }
   }
+  if (type === "sdns") return /^sdns:\/\/[A-Za-z0-9_-]{1,8184}$/.test(address);
   return /^[a-z0-9.-]+(?::\d{1,5})?$/i.test(address) || address.includes(":");
 }
 
@@ -252,7 +254,7 @@ export default function DnsSettings() {
     }
 
     if (checked) {
-      if (!activeDns || !privateDns.expectedHostname) {
+      if (!activeDns || activeDns.type === "sdns" || !privateDns.expectedHostname) {
         toast({
           title: "Private DNS hostname required",
           description: "Choose an active DNS-over-TLS or DNS-over-HTTPS resolver first.",
@@ -291,7 +293,7 @@ export default function DnsSettings() {
     if (!privateDns.expectedHostname) {
       toast({
         title: "Private DNS hostname required",
-        description: "Choose a DNS-over-TLS or DNS-over-HTTPS resolver first.",
+        description: "Choose a DNS-over-TLS or DNS-over-HTTPS resolver first; SDNS stamps use the Windscribe tunnel.",
         variant: "destructive",
       });
       return;
@@ -351,7 +353,7 @@ export default function DnsSettings() {
       });
       return;
     }
-    if (secondaryAddress && !isValidResolverAddress(formData.type, formData.ipVersion, secondaryAddress)) {
+    if (formData.type !== "sdns" && secondaryAddress && !isValidResolverAddress(formData.type, formData.ipVersion, secondaryAddress)) {
       toast({
         title: "Secondary address does not match the selection",
         description: "Use the same protocol and address family as the primary resolver.",
@@ -365,7 +367,7 @@ export default function DnsSettings() {
       type: formData.type,
       ipVersion: formData.ipVersion,
       primaryAddress,
-      secondaryAddress: secondaryAddress || null,
+      secondaryAddress: formData.type === "sdns" ? null : secondaryAddress || null,
     };
 
     try {
@@ -626,7 +628,8 @@ export default function DnsSettings() {
                 <SelectContent>
                   <SelectItem value="plain">Plain DNS</SelectItem>
                   <SelectItem value="doh">DNS over HTTPS</SelectItem>
-                  <SelectItem value="dot">DNS over TLS</SelectItem>
+                   <SelectItem value="dot">DNS over TLS</SelectItem>
+                   <SelectItem value="sdns">SDNS stamp (Windscribe)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -656,7 +659,9 @@ export default function DnsSettings() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="resolver-primary">Primary address</Label>
+              <Label htmlFor="resolver-primary">
+                {formData.type === "sdns" ? "SDNS stamp" : "Primary address"}
+              </Label>
               <Input
                 id="resolver-primary"
                 data-testid="input-resolver-primary"
@@ -666,7 +671,7 @@ export default function DnsSettings() {
                 required
               />
             </div>
-            <div className="space-y-2">
+            {formData.type !== "sdns" && <div className="space-y-2">
               <Label htmlFor="resolver-secondary">Secondary address (optional)</Label>
               <Input
                 id="resolver-secondary"
@@ -675,7 +680,7 @@ export default function DnsSettings() {
                 onChange={(event) => setFormData({ ...formData, secondaryAddress: event.target.value })}
                 placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
               />
-            </div>
+            </div>}
             <Button type="submit" disabled={isSaving} className="w-full">
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {isSaving ? "Saving..." : editingResolver ? "Save Changes" : "Add Resolver"}
@@ -707,7 +712,7 @@ export default function DnsSettings() {
             >
               <div className="flex min-w-0 items-center gap-4">
                 <div className={`rounded-lg p-3 ${server.isActive ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground"}`}>
-                  {server.type === "doh" ? <Globe className="h-6 w-6" /> : server.type === "dot" ? <Lock className="h-6 w-6" /> : <Server className="h-6 w-6" />}
+                  {server.type === "doh" ? <Globe className="h-6 w-6" /> : server.type === "dot" ? <Lock className="h-6 w-6" /> : server.type === "sdns" ? <Lock className="h-6 w-6" /> : <Server className="h-6 w-6" />}
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

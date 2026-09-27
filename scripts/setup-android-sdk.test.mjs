@@ -16,7 +16,8 @@ import test from "node:test";
 const scriptPath = new URL("./setup-android-sdk.sh", import.meta.url);
 const setupScript = readFileSync(scriptPath, "utf8");
 const variables = readFileSync(new URL("../android/variables.gradle", import.meta.url), "utf8");
-const tailscaleNdkVersion = setupScript.match(/tailscale_ndk_version="([^"]+)"/)?.[1];
+const androidNdkVersion = variables.match(/^\s*androidNdkVersion\s*=\s*'([^']+)'/m)?.[1];
+const androidCmakeVersion = variables.match(/^\s*androidCmakeVersion\s*=\s*'([^']+)'/m)?.[1];
 const compileSdkVersion = variables.match(/^\s*compileSdkVersion\s*=\s*(\d+)/m)?.[1];
 const buildToolsVersion = variables.match(
   /^\s*androidBuildToolsVersion\s*=\s*'([^']+)'/m,
@@ -24,7 +25,8 @@ const buildToolsVersion = variables.match(
 
 assert.ok(compileSdkVersion);
 assert.ok(buildToolsVersion);
-assert.ok(tailscaleNdkVersion);
+assert.ok(androidNdkVersion);
+assert.ok(androidCmakeVersion);
 
 function createHarness(mode) {
   const root = mkdtempSync(join(tmpdir(), "setup-android-sdk-"));
@@ -70,7 +72,8 @@ mkdir -p \
   ${JSON.stringify(join(sdkRoot, "platform-tools"))} \
   ${JSON.stringify(join(sdkRoot, `platforms/android-${compileSdkVersion}`))} \
   ${JSON.stringify(join(sdkRoot, `build-tools/${buildToolsVersion}`))} \
-  ${JSON.stringify(join(sdkRoot, `ndk/${tailscaleNdkVersion}`))}
+  ${JSON.stringify(join(sdkRoot, `ndk/${androidNdkVersion}`))} \
+  ${JSON.stringify(join(sdkRoot, `cmake/${androidCmakeVersion}`))}
 `,
   );
   chmodSync(sdkManager, 0o755);
@@ -111,7 +114,8 @@ test("retries transient repository failures and then installs the pinned package
   assert.ok(
     readdirSync(join(sdkRoot, "platforms")).includes(`android-${compileSdkVersion}`),
   );
-  assert.ok(existsSync(join(sdkRoot, `ndk/${tailscaleNdkVersion}`)));
+  assert.ok(existsSync(join(sdkRoot, `ndk/${androidNdkVersion}`)));
+  assert.ok(existsSync(join(sdkRoot, `cmake/${androidCmakeVersion}`)));
 });
 
 test("does not retry a persistent package-availability failure", () => {

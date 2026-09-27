@@ -42,6 +42,14 @@ $buildToolsVersion = Read-GradleValue `
     $variablesContent `
     "androidBuildToolsVersion" `
     "(?m)^\s*androidBuildToolsVersion\s*=\s*'([^']+)'.*$"
+$ndkVersion = Read-GradleValue `
+    $variablesContent `
+    "androidNdkVersion" `
+    "(?m)^\s*androidNdkVersion\s*=\s*'([^']+)'.*$"
+$cmakeVersion = Read-GradleValue `
+    $variablesContent `
+    "androidCmakeVersion" `
+    "(?m)^\s*androidCmakeVersion\s*=\s*'([^']+)'.*$"
 
 if ($compileSdkVersion -notmatch '^[0-9]+$') {
     Fail "The compileSdkVersion in $variablesFile is not a valid Android API level."
@@ -51,6 +59,12 @@ if ($targetSdkVersion -notmatch '^[0-9]+$') {
 }
 if ($buildToolsVersion -notmatch '^[0-9]+([.][0-9]+){2}$') {
     Fail "The androidBuildToolsVersion in $variablesFile is not a valid version."
+}
+if ($ndkVersion -notmatch '^[0-9]+([.][0-9]+){2,3}$') {
+    Fail "The androidNdkVersion in $variablesFile is not a valid version."
+}
+if ($cmakeVersion -notmatch '^[0-9]+([.][0-9]+){1,2}$') {
+    Fail "The androidCmakeVersion in $variablesFile is not a valid version."
 }
 
 $sdkRoot = $env:ANDROID_SDK_ROOT
@@ -122,7 +136,9 @@ if ([string]::IsNullOrWhiteSpace($sdkManager) -or
 $packages = @(
     "platform-tools",
     "platforms;android-$compileSdkVersion",
-    "build-tools;$buildToolsVersion"
+    "build-tools;$buildToolsVersion",
+    "ndk;$ndkVersion",
+    "cmake;$cmakeVersion"
 )
 if ($targetSdkVersion -ne $compileSdkVersion) {
     $packages += "platforms;android-$targetSdkVersion"
@@ -150,7 +166,9 @@ $missingPackages = @()
 $packageDirectories = @(
     "platform-tools",
     "platforms\android-$compileSdkVersion",
-    "build-tools\$buildToolsVersion"
+    "build-tools\$buildToolsVersion",
+    "ndk\$ndkVersion",
+    "cmake\$cmakeVersion"
 )
 if ($targetSdkVersion -ne $compileSdkVersion) {
     $packageDirectories += "platforms\android-$targetSdkVersion"
@@ -167,4 +185,4 @@ if ($missingPackages.Count -gt 0) {
     Fail "Required Android SDK package(s) are unavailable after installation: $($missingPackages -join ', '). In Android Studio, open Tools > SDK Manager, enable the appropriate SDK repository/channel, install the exact packages, and rerun this command. Change android\variables.gradle only for an intentional toolchain update."
 }
 
-Write-Host "Android SDK is ready for compile SDK $compileSdkVersion, target SDK $targetSdkVersion, and build-tools $buildToolsVersion."
+Write-Host "Android SDK is ready for compile SDK $compileSdkVersion, target SDK $targetSdkVersion, build-tools $buildToolsVersion, NDK $ndkVersion, and CMake $cmakeVersion."

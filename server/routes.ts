@@ -108,6 +108,16 @@ function validateDnsResolverAddresses(input: {
     }
     return;
   }
+  if (type === "sdns") {
+    const stamp = input.primaryAddress?.trim() ?? "";
+    if (!/^sdns:\/\/[A-Za-z0-9_-]{1,8184}$/.test(stamp)) {
+      throw new Error("SDNS resolvers must use a valid bounded sdns:// stamp.");
+    }
+    if (input.secondaryAddress?.trim()) {
+      throw new Error("SDNS resolvers cannot have a secondary address.");
+    }
+    return;
+  }
   for (const address of addresses) {
     if (type === "doh") {
       if (new URL(address).protocol !== "https:") {
@@ -310,6 +320,14 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && (
+        err.message.startsWith("A primary")
+        || err.message.startsWith("Every plain")
+        || err.message.startsWith("DNS over")
+        || err.message.startsWith("SDNS")
+      )) {
+        return res.status(400).json({ message: err.message });
       }
       res.status(404).json({ message: "DNS resolver not found" });
     }

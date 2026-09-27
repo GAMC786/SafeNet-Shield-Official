@@ -3,6 +3,8 @@ ext {
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidBuildToolsVersion = '36.0.0'
+    androidNdkVersion = '23.1.7779620'
+    androidCmakeVersion = '3.22.1'
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'
     androidxCoordinatorLayoutVersion = '1.3.0'

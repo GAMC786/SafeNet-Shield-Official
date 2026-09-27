@@ -92,11 +92,21 @@ $buildToolsMatch = [regex]::Match(
     $variablesContent,
     "(?m)^\s*androidBuildToolsVersion\s*=\s*'([^']+)'.*$"
 )
-Assert-Condition ($compileSdkMatch.Success -and $targetSdkMatch.Success -and $buildToolsMatch.Success) `
+ $ndkMatch = [regex]::Match(
+    $variablesContent,
+    "(?m)^\s*androidNdkVersion\s*=\s*'([^']+)'.*$"
+)
+$cmakeMatch = [regex]::Match(
+    $variablesContent,
+    "(?m)^\s*androidCmakeVersion\s*=\s*'([^']+)'.*$"
+)
+Assert-Condition ($compileSdkMatch.Success -and $targetSdkMatch.Success -and $buildToolsMatch.Success -and $ndkMatch.Success -and $cmakeMatch.Success) `
     "Could not read Android SDK pins from $variablesFile."
 $compileSdkVersion = $compileSdkMatch.Groups[1].Value
 $targetSdkVersion = $targetSdkMatch.Groups[1].Value
 $buildToolsVersion = $buildToolsMatch.Groups[1].Value
+$ndkVersion = $ndkMatch.Groups[1].Value
+$cmakeVersion = $cmakeMatch.Groups[1].Value
 
 $hadLocalProperties = Test-Path -LiteralPath $localPropertiesFile -PathType Leaf
 $originalLocalProperties = if ($hadLocalProperties) {
@@ -149,6 +159,12 @@ foreach ($package in $packages) {
         "^build-tools;(.+)$" {
             New-Item -ItemType Directory -Path (Join-Path $sdkRoot "build-tools\$($Matches[1])") -Force | Out-Null
         }
+        "^ndk;(.+)$" {
+            New-Item -ItemType Directory -Path (Join-Path $sdkRoot "ndk\$($Matches[1])") -Force | Out-Null
+        }
+        "^cmake;(.+)$" {
+            New-Item -ItemType Directory -Path (Join-Path $sdkRoot "cmake\$($Matches[1])") -Force | Out-Null
+        }
     }
 }
 
@@ -167,7 +183,7 @@ exit 0
         MOCK_SDKMANAGER_LOG = $mockLog
         MOCK_SDKMANAGER_MODE = "success"
         MOCK_SDKMANAGER_SDK_ROOT = $escapedSdkRoot
-        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion"
+        MOCK_SDKMANAGER_PACKAGES = "platform-tools|platforms;android-$compileSdkVersion|build-tools;$buildToolsVersion|ndk;$ndkVersion|cmake;$cmakeVersion"
     }
     Assert-Condition ($success.ExitCode -eq 0) `
         "Expected the mocked SDK setup to succeed, but it exited $($success.ExitCode): $($success.Output)"
@@ -185,7 +201,9 @@ exit 0
         "--install",
         "platform-tools",
         "platforms;android-$compileSdkVersion",
-        "build-tools;$buildToolsVersion"
+        "build-tools;$buildToolsVersion",
+        "ndk;$ndkVersion",
+        "cmake;$cmakeVersion"
     )
     if ($targetSdkVersion -ne $compileSdkVersion) {
         $expectedArguments += "platforms;android-$targetSdkVersion"

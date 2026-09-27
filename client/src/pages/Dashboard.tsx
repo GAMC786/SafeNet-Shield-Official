@@ -109,7 +109,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <WindscribeVpnCard />
+        <WindscribeVpnCard activeDns={activeDns} />
       </div>
 
       {/* Connection Status Bar */}

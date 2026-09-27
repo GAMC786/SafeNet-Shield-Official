@@ -1,0 +1,72 @@
+apply plugin: 'com.android.library'
+
+def wireguardSourceDir = rootProject.file("../third_party/wireguard-android/tunnel")
+def wireguardGoRoot = new File(
+    gradle.gradleUserHomeDir,
+    "caches/golang/go-1.26.5-safenet"
+)
+def prepareWireguardSdns = tasks.register("prepareWireguardSdns", Exec) {
+    workingDir rootProject.projectDir
+    commandLine "bash",
+        rootProject.file("../scripts/prepare-wireguard-sdns.sh").absolutePath,
+        wireguardGoRoot.absolutePath
+    inputs.files(
+        rootProject.file("../scripts/prepare-wireguard-sdns.sh"),
+        rootProject.file("../scripts/prepare-wireguard-go-runtime.py"),
+        rootProject.file("../scripts/patches/wireguard-android-sdns.patch.gz.b64")
+    )
+    outputs.dir(wireguardGoRoot)
+    outputs.upToDateWhen { false }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(prepareWireguardSdns)
+}
+tasks.configureEach {
+    if (name.startsWith("configureCMake") ||
+        name.startsWith("buildCMake") ||
+        name.startsWith("externalNativeBuild")) {
+        dependsOn(prepareWireguardSdns)
+    }
+}
+
+android {
+    namespace "com.wireguard.android.tunnel"
+    compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion rootProject.ext.androidNdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_PACKAGE_NAME=com.safenet.dns",
+                    "-DGRADLE_USER_HOME=${gradle.gradleUserHomeDir.absolutePath}",
+                    "-DGO_ROOT=${wireguardGoRoot.absolutePath}"
+                targets "libwg-go.so"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("CMakeLists.txt")
+            version rootProject.ext.androidCmakeVersion
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = [new File(wireguardSourceDir, "src/main/java")]
+            manifest.srcFile new File(wireguardSourceDir, "src/main/AndroidManifest.xml")
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.annotation:annotation:1.6.0"
+    implementation "androidx.collection:collection:1.2.0"
+    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+}

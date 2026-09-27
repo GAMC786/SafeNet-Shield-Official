@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   insertDnsServerSchema,
+  dnsServerInputSchema,
   insertBlocklistSchema,
   insertAppSettingsSchema,
   publicAppSettingsSchema,
@@ -47,7 +48,7 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/dns/:id',
-      input: insertDnsServerSchema.partial(),
+       input: dnsServerInputSchema.partial(),
       responses: {
         200: z.custom<typeof dnsServers.$inferSelect>(),
         404: errorSchemas.notFound,

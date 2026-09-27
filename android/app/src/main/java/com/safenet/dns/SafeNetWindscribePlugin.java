@@ -23,11 +23,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 @CapacitorPlugin(name = "SafeNetWindscribe")
 public final class SafeNetWindscribePlugin extends Plugin {
     private static final int MAX_PROFILE_BYTES = 64 * 1024;
     private static final String TUNNEL_NAME = "windscribe";
+    private static final Pattern SDNS_STAMP_PATTERN =
+            Pattern.compile("^sdns://[A-Za-z0-9_-]{1,8184}$");
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "safenet-windscribe-vpn");
         thread.setDaemon(true);
@@ -35,6 +38,7 @@ public final class SafeNetWindscribePlugin extends Plugin {
     });
     private static volatile boolean connected;
     private static volatile android.content.Context applicationContext;
+    private volatile String lastDnsError;
 
     private volatile GoBackend backend;
     private volatile WindscribeProfileStore profileStore;
@@ -64,7 +68,8 @@ public final class SafeNetWindscribePlugin extends Plugin {
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        runStatus(call, this::currentStatus, "Windscribe VPN status is unavailable.");
+        runStatus(call, () -> currentStatus(resolverStampForCall(call)),
+                "Windscribe VPN status is unavailable.");
     }
 
     @PluginMethod
@@ -97,6 +102,7 @@ public final class SafeNetWindscribePlugin extends Plugin {
                     getBackend().setState(tunnel, Tunnel.State.DOWN, null);
                 }
                 profileStore().saveProfile(profileText);
+                lastDnsError = null;
                 publishConnectionState(false);
                 call.resolve(currentStatus());
             } catch (Exception e) {
@@ -116,12 +122,19 @@ public final class SafeNetWindscribePlugin extends Plugin {
                 call.reject("Import a Windscribe WireGuard profile first.");
                 return;
             }
+            // Validate before opening the permission flow so malformed
+            // stamps fail immediately and do not leave a pending call.
+            resolverStampForCall(call);
             Intent consentIntent = VpnService.prepare(getActivity());
             if (consentIntent != null) {
                 startActivityForResult(call, consentIntent, "vpnConsentResult");
                 return;
             }
             connectWithProfile(call);
+        } catch (IllegalArgumentException e) {
+            call.reject(e.getMessage() == null
+                    ? "Enter a valid bounded sdns:// stamp."
+                    : e.getMessage());
         } catch (Exception e) {
             call.reject("The encrypted Windscribe profile could not be opened.");
         }
@@ -145,6 +158,7 @@ public final class SafeNetWindscribePlugin extends Plugin {
                         && activeBackend.getState(tunnel) == Tunnel.State.UP) {
                     activeBackend.setState(tunnel, Tunnel.State.DOWN, null);
                 }
+                lastDnsError = null;
                 publishConnectionState(false);
                 call.resolve(currentStatus());
             } catch (Exception e) {
@@ -163,6 +177,7 @@ public final class SafeNetWindscribePlugin extends Plugin {
                     activeBackend.setState(tunnel, Tunnel.State.DOWN, null);
                 }
                 profileStore().clearProfile();
+                lastDnsError = null;
                 publishConnectionState(false);
                 call.resolve(currentStatus());
             } catch (Exception e) {
@@ -176,9 +191,15 @@ public final class SafeNetWindscribePlugin extends Plugin {
             try {
                 String profileText = profileStore().readProfile();
                 Config config = WindscribeProfileStore.parseProfile(profileText);
-                getBackend().setState(tunnel, Tunnel.State.UP, config);
-                call.resolve(currentStatus());
+                String resolverStamp = resolverStampForCall(call);
+                getBackend().setState(tunnel, Tunnel.State.UP, config, resolverStamp);
+                if (call.getData().has("resolverStamp")) {
+                    profileStore().saveResolverStamp(resolverStamp);
+                }
+                lastDnsError = null;
+                call.resolve(currentStatus(resolverStamp));
             } catch (Exception e) {
+                lastDnsError = e.getMessage();
                 call.reject("Windscribe could not connect. Check the profile and internet connection.");
             }
         });
@@ -195,6 +216,10 @@ public final class SafeNetWindscribePlugin extends Plugin {
     }
 
     private JSObject currentStatus() throws Exception {
+        return currentStatus(profileStore().readResolverStamp());
+    }
+
+    private JSObject currentStatus(String resolverStamp) throws Exception {
         WindscribeProfileStore store = profileStore();
         boolean imported = store.hasProfile();
         boolean active = false;
@@ -206,7 +231,40 @@ public final class SafeNetWindscribePlugin extends Plugin {
         status.put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.O);
         status.put("profileImported", imported);
         status.put("connected", active);
+        String appliedStamp = store.readResolverStamp();
+        boolean stampConfigured = appliedStamp != null && !appliedStamp.isEmpty();
+        boolean selectedStampApplied = stampConfigured
+                && resolverStamp != null
+                && resolverStamp.equals(appliedStamp);
+        String statusDnsError = lastDnsError;
+        if (active && resolverStamp != null && !selectedStampApplied) {
+            statusDnsError = "Reconnect Windscribe to apply the selected SDNS resolver.";
+        }
+        status.put("resolverStampConfigured", stampConfigured);
+        status.put("sdnsApplied", active && selectedStampApplied);
+        status.put("sdnsError", resolverStamp != null ? statusDnsError : null);
+        status.put("dnsError", statusDnsError);
         return status;
+    }
+
+    /**
+     * An omitted option means "use the persisted selection"; an explicit null
+     * or empty value means clear it for this operation. This keeps old tile
+     * and background callers source-compatible while allowing the UI to
+     * intentionally switch SDNS off.
+     */
+    private String resolverStampForCall(PluginCall call) {
+        if (!call.getData().has("resolverStamp")) {
+            return profileStore().readResolverStamp();
+        }
+        String stamp = call.getString("resolverStamp");
+        if (stamp == null || stamp.isEmpty()) {
+            return null;
+        }
+        if (!SDNS_STAMP_PATTERN.matcher(stamp).matches()) {
+            throw new IllegalArgumentException("Enter a valid bounded sdns:// stamp.");
+        }
+        return stamp;
     }
 
     private GoBackend getBackend() {

@@ -25,6 +25,7 @@ export type PrivateDnsStatus = {
  */
 export function privateDnsHostnameForServer(server: DnsServer | null | undefined): string | null {
   if (!server) return null;
+  if (server.type === "sdns") return null;
   if (server.type === "dot") {
     return normalizeHostname(server.primaryAddress);
   }

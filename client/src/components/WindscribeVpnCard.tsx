@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { WindscribeEulaDialog } from "@/components/WindscribeEulaDialog";
 import { useWindscribeVpn } from "@/hooks/use-windscribe";
 import type { WindscribeVpnStatus } from "@/hooks/use-windscribe";
+import type { DnsServer } from "@shared/schema";
 
 const WINDSCRIBE_EULA_STORAGE_KEY = "safenet-windscribe-eula-version";
 const WINDSCRIBE_EULA_VERSION = "2018-01-04";
@@ -24,8 +25,10 @@ type WindscribeTileWindow = Window & {
   __safenetWindscribeTileTogglePending?: boolean;
 };
 
-export function WindscribeVpnCard() {
-  const vpn = useWindscribeVpn();
+export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
+  const sdnsSelected = activeDns?.type === "sdns";
+  const resolverStamp = sdnsSelected ? activeDns.primaryAddress : null;
+  const vpn = useWindscribeVpn(resolverStamp);
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [windscribeEulaAccepted, setWindscribeEulaAccepted] = useState(hasAcceptedWindscribeEula);
@@ -34,6 +37,8 @@ export function WindscribeVpnCard() {
   const status = vpn.status;
   const profileImported = status?.profileImported === true;
   const connected = status?.connected === true;
+  const sdnsApplied = status?.sdnsApplied === true;
+  const sdnsError = status?.sdnsError ?? status?.dnsError;
 
   const perform = useCallback(
     async (action: () => Promise<WindscribeVpnStatus>) => {
@@ -233,6 +238,22 @@ export function WindscribeVpnCard() {
             )}
           </div>
         </div>
+        {sdnsSelected && (
+          <div
+            className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
+            data-testid="windscribe-sdns-status"
+          >
+            <p className="font-medium text-foreground">
+              SDNS resolver: {activeDns.name}
+            </p>
+            <p className={sdnsError ? "mt-1 text-red-300" : "mt-1 text-muted-foreground"}>
+              {sdnsError
+                ?? (sdnsApplied
+                  ? "Applied inside the Windscribe tunnel."
+                  : "Waiting for the Windscribe tunnel to apply this resolver.")}
+            </p>
+          </div>
+        )}
 
         {(actionError || vpn.error || status?.error) && (
           <p className="text-xs text-red-300" role="alert" data-testid="windscribe-action-error">

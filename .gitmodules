@@ -2,3 +2,6 @@
 	path = third_party/tailscale-android
 	url = https://github.com/tailscale/tailscale-android.git
 	branch = main
+[submodule "third_party/wireguard-android"]
+	path = third_party/wireguard-android
+	url = https://github.com/WireGuard/wireguard-android.git

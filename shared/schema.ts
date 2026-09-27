@@ -28,7 +28,7 @@ export const session = pgTable("session", {
 export const dnsServers = pgTable("dns_servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  type: text("type", { enum: ["plain", "doh", "dot"] }).notNull(),
+  type: text("type", { enum: ["plain", "doh", "dot", "sdns"] }).notNull(),
   ipVersion: text("ip_version", { enum: ["ipv4", "ipv6"] }).notNull().default("ipv4"),
   primaryAddress: text("primary_address").notNull(),
   secondaryAddress: text("secondary_address"),
@@ -185,7 +185,24 @@ export const insertAntivirusSettingsSchema = createInsertSchema(antivirusSetting
 export const insertThreatFeedSchema = createInsertSchema(threatFeeds).omit({ id: true, lastSync: true, entriesCount: true });
 export const insertAntivirusEventSchema = createInsertSchema(antivirusEvents).omit({ id: true, timestamp: true });
 
-export const insertDnsServerSchema = createInsertSchema(dnsServers).omit({ id: true });
+const sdnsStampSchema = z.string()
+  .trim()
+  .min(8, "An SDNS stamp is required.")
+  .max(8192, "The SDNS stamp is too long.")
+  .regex(/^sdns:\/\/[A-Za-z0-9_-]+$/, "Enter a valid sdns:// stamp.");
+
+export const dnsServerInputSchema = createInsertSchema(dnsServers).omit({ id: true });
+export const insertDnsServerSchema = dnsServerInputSchema
+  .superRefine((value, ctx) => {
+    if (value.type === "sdns") {
+      if (!sdnsStampSchema.safeParse(value.primaryAddress).success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["primaryAddress"], message: "Enter a valid sdns:// stamp." });
+      }
+      if (value.secondaryAddress?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["secondaryAddress"], message: "SDNS resolvers cannot have a secondary address." });
+      }
+    }
+  });
 export const insertBlocklistSchema = createInsertSchema(blocklists).omit({ id: true });
 export const insertAccessLogSchema = createInsertSchema(accessLogs).omit({ id: true, timestamp: true });
 export const activityLogSchema = z.object({

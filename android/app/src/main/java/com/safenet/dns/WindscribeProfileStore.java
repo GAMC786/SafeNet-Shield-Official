@@ -17,6 +17,7 @@ import java.security.GeneralSecurityException;
 final class WindscribeProfileStore {
     private static final String PREFERENCES_FILE = "windscribe_wireguard_profile";
     private static final String CONFIG_KEY = "config";
+    private static final String RESOLVER_STAMP_KEY = "resolver_stamp";
     private static final int MAX_PROFILE_BYTES = 64 * 1024;
     private final Context context;
     private volatile SharedPreferences cachedPreferences;
@@ -39,8 +40,27 @@ final class WindscribeProfileStore {
         }
     }
 
+    String readResolverStamp() {
+        return preferences().getString(RESOLVER_STAMP_KEY, null);
+    }
+
+    void saveResolverStamp(String stamp) {
+        SharedPreferences.Editor editor = preferences().edit();
+        if (stamp == null || stamp.isEmpty()) {
+            editor.remove(RESOLVER_STAMP_KEY);
+        } else {
+            editor.putString(RESOLVER_STAMP_KEY, stamp);
+        }
+        if (!editor.commit()) {
+            throw new IllegalStateException("Could not save the encrypted Windscribe resolver.");
+        }
+    }
+
     void clearProfile() {
-        if (!preferences().edit().remove(CONFIG_KEY).commit()) {
+        if (!preferences().edit()
+                .remove(CONFIG_KEY)
+                .remove(RESOLVER_STAMP_KEY)
+                .commit()) {
             throw new IllegalStateException("Could not remove the encrypted Windscribe profile.");
         }
     }

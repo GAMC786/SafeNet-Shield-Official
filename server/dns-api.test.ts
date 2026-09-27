@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
 import type { AppSettings } from "@shared/schema";
+import { insertDnsServerSchema } from "@shared/schema";
 import type { IStorage } from "./storage";
 
 process.env.DATABASE_URL ??= "postgres://dns-smoke-test";
@@ -11,12 +12,37 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??= "dns-smoke-test";
 type TestDnsServer = {
   id: number;
   name: string;
-  type: "plain" | "doh" | "dot";
+  type: "plain" | "doh" | "dot" | "sdns";
   primaryAddress: string;
   secondaryAddress: string | null;
   isActive: boolean | null;
   isCustom: boolean | null;
 };
+
+test("SDNS resolver input requires a bounded stamp and no secondary address", () => {
+  const valid = insertDnsServerSchema.safeParse({
+    name: "Family SDNS",
+    type: "sdns",
+    primaryAddress: "sdns://AQcAAAAAAAAABzEuMC4wLjE",
+    secondaryAddress: null,
+  });
+  assert.equal(valid.success, true);
+
+  const withSecondary = insertDnsServerSchema.safeParse({
+    name: "Family SDNS",
+    type: "sdns",
+    primaryAddress: "sdns://AQcAAAAAAAAABzEuMC4wLjE",
+    secondaryAddress: "sdns://AQcAAAAAAAAABzEuMC4wLjI",
+  });
+  assert.equal(withSecondary.success, false);
+
+  const invalid = insertDnsServerSchema.safeParse({
+    name: "Invalid SDNS",
+    type: "sdns",
+    primaryAddress: "https://dns.example/dns-query",
+  });
+  assert.equal(invalid.success, false);
+});
 
 function createTestStorage(): IStorage {
   const servers = new Map<number, TestDnsServer>([
