@@ -35,6 +35,7 @@ const [
   strings,
   composeUi,
   lockLockNotice,
+  dnsSettings,
 ] = await Promise.all([
   readSource("android/app/build.gradle"),
   readSource("android/app/src/main/java/com/safenet/dns/AppLockManager.java"),
@@ -55,6 +56,7 @@ const [
   readSource("android/app/src/main/res/values/strings.xml"),
   readSource("android/app/src/main/java/com/safenet/dns/LockLockComposeUi.kt"),
   readSource("android/third_party/locklock/NOTICE.md"),
+  readSource("client/src/pages/DnsSettings.tsx"),
 ]);
 const clientApp = await readSource("client/src/App.tsx");
 const appLockActivity = await readSource(
@@ -292,6 +294,13 @@ test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
   assert.match(composeUi, /ANDROID PERMISSION GATE/);
   assert.match(composeUi, /SECURE LOCAL CONTROL/);
   assert.match(composeUi, /safeNetFieldColors/);
+});
+
+test("the Windscribe resolver option keeps the SDNS protocol and product label", () => {
+  assert.match(
+    dnsSettings,
+    /<SelectItem value="sdns">SDNS Stamp \(Windscribe \+ Control D\)<\/SelectItem>/,
+  );
 });
 
 test("Dashboard places the VPN and proxy browser blocker above App Lock Protection", () => {

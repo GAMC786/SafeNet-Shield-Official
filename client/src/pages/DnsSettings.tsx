@@ -629,7 +629,7 @@ export default function DnsSettings() {
                   <SelectItem value="plain">Plain DNS</SelectItem>
                   <SelectItem value="doh">DNS over HTTPS</SelectItem>
                    <SelectItem value="dot">DNS over TLS</SelectItem>
-                   <SelectItem value="sdns">SDNS stamp (Windscribe)</SelectItem>
+                   <SelectItem value="sdns">SDNS Stamp (Windscribe + Control D)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
