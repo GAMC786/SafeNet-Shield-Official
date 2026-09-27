@@ -162,7 +162,11 @@ export function useSmsFilter() {
       const nextStatus = await SmsFilterNative.restoreQuarantinedMessage({ id });
       setStatus(nextStatus);
       await refresh();
-      await refreshRecentMessages();
+      if (nextStatus.inboxPermissionGranted) {
+        await refreshRecentMessages();
+      } else {
+        setRecentMessages([]);
+      }
     } finally {
       setIsBusy(false);
     }
