@@ -300,7 +300,7 @@ export default function Billing() {
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-primary/20 p-3">
+              <div className="safenet-premium-feature rounded-lg bg-primary/20 p-3">
                 <ShieldCheck className="h-6 w-6 text-primary" />
               </div>
               <div>

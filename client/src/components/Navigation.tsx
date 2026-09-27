@@ -36,6 +36,7 @@ export function SystemNavigation() {
       <div className="mx-auto grid h-full w-full max-w-7xl grid-cols-5">
         {systemServiceItems.map((item) => {
           const isActive = location === item.path;
+          const isPremiumItem = item.path === "/billing";
           const Icon = item.icon;
 
           return (
@@ -44,6 +45,7 @@ export function SystemNavigation() {
                 className={cn(
                   navItemClass,
                   isActive ? "text-primary bg-primary/10" : navInactiveClass,
+                  isPremiumItem && "safenet-premium-nav-item",
                 )}
               >
                 {isActive && (

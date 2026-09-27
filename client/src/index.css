@@ -30,7 +30,7 @@
 }
 
 :root {
-  /* SafeNet Theme: Red/Gray/Blue - Cyberpunk Security Style */
+  /* SafeNet Cyberpunk Dark Mode */
   --safenet-status-bar-inset: env(safe-area-inset-top, 0px);
   --safenet-navigation-bar-inset: env(safe-area-inset-bottom, 0px);
   --font-display: 'Space Grotesk', sans-serif;
@@ -81,26 +81,41 @@
   color-scheme: light;
   --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
 
-  --background: 210 24% 97%;
-  --foreground: 222 47% 11%;
-  --primary: 217 91% 48%;
+  /* Wonderland Light Mode palette */
+  --safenet-brand-primary: 216.3 86.7% 41.2%;
+  --safenet-brand-accent: 46.2 100% 53.9%;
+  --safenet-success: 168.1 62.7% 47.3%;
+  --safenet-success-text: 167.3 100% 23.1%;
+  --safenet-info: 257.1 50.4% 75.5%;
+  --safenet-info-text: 262.2 27.6% 38.4%;
+  --safenet-interactive: 164.4 100% 34.7%;
+  --safenet-interactive-text: 167.3 100% 23.1%;
+  --safenet-gold-text: 42.9 100% 20.6%;
+
+  --background: 0 0% 100%;
+  --foreground: 216 35.7% 11%;
+  --primary: var(--safenet-brand-primary);
   --primary-foreground: 0 0% 100%;
   --destructive: 0 72% 48%;
   --destructive-foreground: 0 0% 100%;
-  --secondary: 210 22% 93%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 22% 94%;
-  --muted-foreground: 215 20% 33%;
-  --accent: 199 89% 90%;
-  --accent-foreground: 222 47% 11%;
-  --accent-text: 199 89% 30%;
+  --secondary: 217.5 57.1% 97.3%;
+  --secondary-foreground: 216 35.7% 11%;
+  --muted: 217.5 57.1% 97.3%;
+  --muted-foreground: 215.3 19.3% 34.5%;
+  --accent: 257.1 50.4% 96%;
+  --accent-foreground: 216 35.7% 11%;
+  --accent-text: var(--safenet-info-text);
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --border: 214 20% 80%;
-  --input: 214 20% 78%;
-  --ring: 217 91% 48%;
+  --popover-foreground: 216 35.7% 11%;
+  --card: 217.5 57.1% 97.3%;
+  --card-foreground: 216 35.7% 11%;
+  --border: 215 44.4% 89.4%;
+  --input: 215 44.4% 89.4%;
+  --ring: var(--safenet-brand-primary);
+  --safenet-theme-glow: rgba(14, 86, 196, 0.32);
+  --safenet-icon-glow: rgba(14, 86, 196, 0.22);
+  --safenet-card-glow: rgba(14, 86, 196, 0.12);
+  --safenet-halo: rgba(14, 86, 196, 0.08);
 }
 
 .dark {
@@ -123,157 +138,6 @@
   box-shadow: 0 0 18px var(--safenet-halo);
 }
 
-:root[data-color-mode="red"] {
-  --primary: 0 76% 48%;
-  --primary-foreground: 0 0% 100%;
-  --primary-text: 0 78% 68%;
-  --accent: 0 68% 48%;
-  --accent-foreground: 0 0% 100%;
-  --ring: 0 78% 62%;
-  --safenet-theme-glow: rgba(239, 68, 68, 0.8);
-  --safenet-icon-glow: rgba(239, 68, 68, 0.5);
-  --safenet-card-glow: rgba(239, 68, 68, 0.2);
-  --safenet-halo: rgba(239, 68, 68, 0.12);
-}
-
-.dark[data-color-mode="red"] [class~="text-primary"],
-.dark[data-color-mode="red"] [class~="hover:text-primary"]:hover,
-.dark[data-color-mode="red"] [class~="text-accent"] {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root.light[data-color-mode="red"] {
-  --primary: 0 76% 42%;
-  --primary-foreground: 0 0% 100%;
-  --primary-text: 0 72% 37%;
-  --accent: 0 65% 92%;
-  --accent-foreground: 0 72% 24%;
-  --accent-text: 0 72% 32%;
-  --ring: 0 76% 42%;
-}
-
-.light[data-color-mode="red"] [class~="text-primary"],
-.light[data-color-mode="red"] [class~="hover:text-primary"]:hover {
-  color: hsl(var(--primary-text)) !important;
-}
-
-.light[data-color-mode="red"] body {
-  background-image:
-    radial-gradient(circle at 50% 0%, hsl(0 76% 48% / 0.075), transparent 42%),
-    radial-gradient(circle at 100% 100%, hsl(0 70% 55% / 0.04), transparent 32%);
-}
-
-:root[data-color-mode="green"] {
-  --primary: 142 62% 30%;
-  --primary-foreground: 0 0% 100%;
-  --primary-text: 143 62% 68%;
-  --accent: 142 55% 30%;
-  --accent-foreground: 0 0% 100%;
-  --ring: 142 65% 54%;
-  --safenet-theme-glow: rgba(34, 197, 94, 0.8);
-  --safenet-icon-glow: rgba(34, 197, 94, 0.5);
-  --safenet-card-glow: rgba(34, 197, 94, 0.2);
-  --safenet-halo: rgba(34, 197, 94, 0.12);
-}
-
-.dark[data-color-mode="green"] [class~="text-primary"],
-.dark[data-color-mode="green"] [class~="hover:text-primary"]:hover,
-.dark[data-color-mode="green"] [class~="text-accent"] {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root.light[data-color-mode="green"] {
-  --primary: 142 68% 28%;
-  --primary-foreground: 0 0% 100%;
-  --primary-text: 142 68% 28%;
-  --accent: 142 55% 92%;
-  --accent-foreground: 142 70% 22%;
-  --accent-text: 142 70% 24%;
-  --ring: 142 68% 30%;
-}
-
-.light[data-color-mode="green"] [class~="text-primary"],
-.light[data-color-mode="green"] [class~="hover:text-primary"]:hover {
-  color: hsl(var(--primary-text)) !important;
-}
-
-.light[data-color-mode="green"] body {
-  background-image:
-    radial-gradient(circle at 50% 0%, hsl(142 62% 38% / 0.075), transparent 42%),
-    radial-gradient(circle at 100% 100%, hsl(142 55% 48% / 0.04), transparent 32%);
-}
-
-:root[data-color-mode="red"] [class~="text-sky-200"],
-:root[data-color-mode="red"] [class~="text-sky-300"],
-:root[data-color-mode="red"] [class~="text-cyan-100"],
-:root[data-color-mode="red"] [class~="text-cyan-200"],
-:root[data-color-mode="red"] [class~="text-cyan-300"] {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root[data-color-mode="red"] [class~="hover:text-sky-200"]:hover,
-:root[data-color-mode="red"] [class~="hover:text-cyan-100"]:hover {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root[data-color-mode="green"] [class~="text-sky-200"],
-:root[data-color-mode="green"] [class~="text-sky-300"],
-:root[data-color-mode="green"] [class~="text-cyan-100"],
-:root[data-color-mode="green"] [class~="text-cyan-200"],
-:root[data-color-mode="green"] [class~="text-cyan-300"] {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root[data-color-mode="green"] [class~="hover:text-sky-200"]:hover,
-:root[data-color-mode="green"] [class~="hover:text-cyan-100"]:hover {
-  color: hsl(var(--primary-text)) !important;
-}
-
-:root[data-color-mode="red"] [class~="border-sky-300"],
-:root[data-color-mode="red"] [class~="border-sky-400/20"],
-:root[data-color-mode="red"] [class~="border-sky-400/30"],
-:root[data-color-mode="red"] [class~="border-sky-400/40"],
-:root[data-color-mode="red"] [class~="border-cyan-300/40"],
-:root[data-color-mode="red"] [class~="border-cyan-400/20"] {
-  border-color: hsl(var(--primary) / 0.48) !important;
-}
-
-:root[data-color-mode="green"] [class~="border-sky-300"],
-:root[data-color-mode="green"] [class~="border-sky-400/20"],
-:root[data-color-mode="green"] [class~="border-sky-400/30"],
-:root[data-color-mode="green"] [class~="border-sky-400/40"],
-:root[data-color-mode="green"] [class~="border-cyan-300/40"],
-:root[data-color-mode="green"] [class~="border-cyan-400/20"] {
-  border-color: hsl(var(--primary) / 0.48) !important;
-}
-
-:root[data-color-mode="red"] [class~="hover:border-sky-300"]:hover,
-:root[data-color-mode="green"] [class~="hover:border-sky-300"]:hover {
-  border-color: hsl(var(--primary) / 0.65) !important;
-}
-
-:root[data-color-mode="red"] [class~="bg-sky-400/[0.03]"],
-:root[data-color-mode="red"] [class~="bg-sky-400/5"],
-:root[data-color-mode="red"] [class~="bg-sky-400/10"],
-:root[data-color-mode="red"] [class~="bg-sky-400/15"],
-:root[data-color-mode="red"] [class~="bg-cyan-300/10"],
-:root[data-color-mode="red"] [class~="bg-cyan-400/[0.04]"],
-:root[data-color-mode="red"] [class~="bg-cyan-400/5"],
-:root[data-color-mode="green"] [class~="bg-sky-400/[0.03]"],
-:root[data-color-mode="green"] [class~="bg-sky-400/5"],
-:root[data-color-mode="green"] [class~="bg-sky-400/10"],
-:root[data-color-mode="green"] [class~="bg-sky-400/15"],
-:root[data-color-mode="green"] [class~="bg-cyan-300/10"],
-:root[data-color-mode="green"] [class~="bg-cyan-400/[0.04]"],
-:root[data-color-mode="green"] [class~="bg-cyan-400/5"] {
-  background-color: hsl(var(--primary) / 0.1) !important;
-}
-
-:root[data-color-mode="red"] [class~="hover:bg-cyan-300/10"]:hover,
-:root[data-color-mode="green"] [class~="hover:bg-cyan-300/10"]:hover {
-  background-color: hsl(var(--primary) / 0.12) !important;
-}
-
 .light h1,
 .light h2,
 .light h3,
@@ -289,14 +153,14 @@
 
 .light .glass-panel {
   border-color: hsl(var(--border) / 0.9);
-  background-color: hsl(var(--card) / 0.94);
+  background-color: hsl(var(--card));
   box-shadow: 0 12px 36px hsl(222 47% 11% / 0.07);
 }
 
 .light .safenet-system-navigation,
 .light .safenet-bottom-navigation {
   border-color: hsl(var(--border) / 0.9);
-  background-color: hsl(var(--card) / 0.94);
+  background-color: hsl(var(--card));
   box-shadow: 0 8px 24px hsl(222 47% 11% / 0.07);
 }
 
@@ -310,9 +174,7 @@
   font-family: var(--font-body);
   line-height: 1.5;
   letter-spacing: normal;
-  background-image:
-    radial-gradient(circle at 50% 0%, hsl(217 91% 60% / 0.075), transparent 42%),
-    radial-gradient(circle at 100% 100%, hsl(199 89% 48% / 0.04), transparent 32%);
+  background-image: none;
 }
 
 .safenet-background-grid {
@@ -431,7 +293,7 @@
 .light [class~="bg-amber-400/5"],
 .light [class~="bg-orange-500/20"],
 .light [class~="bg-orange-400/5"] {
-  background-color: hsl(40 92% 48% / 0.13) !important;
+  background-color: hsl(var(--safenet-brand-accent) / 0.14) !important;
 }
 
 .light [class~="bg-emerald-500/10"],
@@ -440,7 +302,14 @@
 .light [class~="bg-emerald-400/5"],
 .light [class~="bg-green-500/10"],
 .light [class~="bg-green-500/20"] {
-  background-color: hsl(145 60% 34% / 0.1) !important;
+  background-color: hsl(var(--safenet-success) / 0.14) !important;
+}
+
+.light [class~="bg-green-400"],
+.light [class~="bg-green-500"],
+.light [class~="bg-emerald-400"],
+.light [class~="bg-emerald-500"] {
+  background-color: hsl(var(--safenet-success)) !important;
 }
 
 .light [class~="bg-sky-400/15"],
@@ -448,11 +317,15 @@
 .light [class~="bg-sky-400/5"],
 .light [class~="bg-cyan-300/10"],
 .light [class~="bg-cyan-400/5"] {
-  background-color: hsl(199 80% 38% / 0.1) !important;
+  background-color: hsl(var(--safenet-info) / 0.14) !important;
+}
+
+.light [class~="hover:bg-cyan-300/10"]:hover {
+  background-color: hsl(var(--safenet-info) / 0.14) !important;
 }
 
 .light [class~="bg-purple-500/20"] {
-  background-color: hsl(262 60% 45% / 0.1) !important;
+  background-color: hsl(var(--safenet-info) / 0.14) !important;
 }
 
 .light [class~="bg-gray-500/10"] {
@@ -467,7 +340,7 @@
 .light [class~="text-emerald-200"],
 .light [class~="text-emerald-300"],
 .light [class~="text-emerald-400"] {
-  color: hsl(145 65% 28%) !important;
+  color: hsl(var(--safenet-success-text)) !important;
 }
 
 .light [class~="text-yellow-100"],
@@ -481,7 +354,7 @@
 .light [class~="text-amber-200"],
 .light [class~="text-amber-200/80"],
 .light [class~="text-amber-400"] {
-  color: hsl(32 88% 30%) !important;
+  color: hsl(var(--safenet-gold-text)) !important;
 }
 
 .light [class~="text-red-50"],
@@ -514,7 +387,7 @@
 .light [class~="text-cyan-100"],
 .light [class~="text-cyan-200"],
 .light [class~="text-cyan-300"] {
-  color: hsl(199 89% 30%) !important;
+  color: hsl(var(--safenet-info-text)) !important;
 }
 
 .light [class~="text-orange-100/90"],
@@ -522,11 +395,11 @@
 .light [class~="text-orange-200/90"],
 .light [class~="text-orange-300"],
 .light [class~="text-orange-400"] {
-  color: hsl(25 82% 30%) !important;
+  color: hsl(var(--safenet-gold-text)) !important;
 }
 
 .light [class~="text-purple-400"] {
-  color: hsl(262 60% 38%) !important;
+  color: hsl(var(--safenet-info-text)) !important;
 }
 
 .light [class~="text-gray-400"],
@@ -550,7 +423,7 @@
 .light [class~="border-amber-500/40"],
 .light [class~="border-orange-400/20"],
 .light [class~="border-orange-500/30"] {
-  border-color: hsl(38 82% 38% / 0.5) !important;
+  border-color: hsl(var(--safenet-brand-accent) / 0.5) !important;
 }
 
 .light [class~="border-green-500/30"],
@@ -564,7 +437,7 @@
 .light [class~="border-emerald-500/30"],
 .light [class~="border-emerald-500/50"],
 .light [class~="border-emerald-500/20"] {
-  border-color: hsl(145 55% 31% / 0.48) !important;
+  border-color: hsl(var(--safenet-success) / 0.5) !important;
 }
 
 .light [class~="border-red-500/30"],
@@ -579,15 +452,51 @@
 .light [class~="border-sky-300"],
 .light [class~="border-cyan-400/20"],
 .light [class~="border-cyan-300/40"] {
-  border-color: hsl(199 78% 38% / 0.48) !important;
+  border-color: hsl(var(--safenet-info) / 0.5) !important;
 }
 
 .light [class~="hover:border-sky-300"]:hover {
-  border-color: hsl(199 78% 38% / 0.65) !important;
+  border-color: hsl(var(--safenet-info) / 0.65) !important;
 }
 
 .light [class~="border-purple-500/30"] {
-  border-color: hsl(262 60% 38% / 0.48) !important;
+  border-color: hsl(var(--safenet-info) / 0.5) !important;
+}
+
+.light a {
+  color: hsl(var(--safenet-interactive-text));
+}
+
+.light a[class~="text-primary"] {
+  color: hsl(var(--safenet-interactive-text)) !important;
+}
+
+.light [role="switch"][data-state="checked"] {
+  border-color: hsl(var(--safenet-interactive-text)) !important;
+  background-color: hsl(var(--safenet-interactive-text)) !important;
+  box-shadow: 0 0 12px hsl(var(--safenet-interactive-text) / 0.3);
+}
+
+.light .safenet-premium-nav-item {
+  color: hsl(var(--safenet-gold-text)) !important;
+}
+
+.light .safenet-premium-nav-item.bg-primary\/10 {
+  background-color: hsl(var(--safenet-brand-accent) / 0.14) !important;
+}
+
+.light .safenet-system-navigation .safenet-premium-nav-item:hover {
+  color: hsl(var(--safenet-gold-text)) !important;
+  background-color: hsl(var(--safenet-brand-accent) / 0.14) !important;
+}
+
+.light .safenet-premium-feature {
+  border: 1px solid hsl(var(--safenet-brand-accent) / 0.5);
+  background-color: hsl(var(--safenet-brand-accent) / 0.16) !important;
+}
+
+.light .safenet-premium-feature [class~="text-primary"] {
+  color: hsl(var(--safenet-gold-text)) !important;
 }
 
 /* Keep high-contrast labels on saturated action and status fills. */

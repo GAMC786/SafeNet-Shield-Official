@@ -14,7 +14,6 @@ import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { ColorModeProvider } from "@/components/ColorModeProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { SystemNavigation } from "@/components/Navigation";
@@ -503,6 +502,10 @@ function ClerkProviderWithRoutes() {
 }
 
 function App() {
+  useEffect(() => {
+    window.localStorage.removeItem("safenet-color-mode");
+  }, []);
+
   return (
     <Sentry.ErrorBoundary
       fallback={
@@ -532,11 +535,9 @@ function App() {
         enableSystem={false}
         storageKey="safenet-theme"
       >
-        <ColorModeProvider>
-          <WouterRouter base={basePath}>
-            <ClerkProviderWithRoutes />
-          </WouterRouter>
-        </ColorModeProvider>
+        <WouterRouter base={basePath}>
+          <ClerkProviderWithRoutes />
+        </WouterRouter>
       </ThemeProvider>
     </Sentry.ErrorBoundary>
   );

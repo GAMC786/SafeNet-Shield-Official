@@ -484,17 +484,21 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
-  const darkModeSwitch = page.getByRole("switch", { name: "Dark Mode" });
-  await darkModeSwitch.waitFor();
-  assert.equal(await darkModeSwitch.getAttribute("data-state"), "checked");
+  const appearanceModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
+  await appearanceModeSwitch.waitFor();
+  assert.equal(await appearanceModeSwitch.getAttribute("data-state"), "checked");
+  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
+  assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
+  assert.equal(await page.getByTestId("color-mode-red").count(), 0);
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   const darkBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
   assert.equal(darkBackground, "222 47% 11%");
-  await darkModeSwitch.click();
-  await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
+  await appearanceModeSwitch.click();
+  await waitForAttribute(appearanceModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Wonderland Light Mode");
   const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
     (element) => getComputedStyle(element).color,
   );
@@ -520,6 +524,7 @@ test("Settings show the current version without firewall controls", async () => 
       "text-rose-300",
       "text-purple-400",
       "text-accent",
+      "text-green-400",
     ];
     const samples = sampleClasses.map((className) => {
       const probe = document.createElement("span");
@@ -555,10 +560,10 @@ test("Settings show the current version without firewall controls", async () => 
   const lightBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
-  assert.equal(lightBackground, "210 24% 97%");
+  assert.equal(lightBackground, "0 0% 100%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
-  await darkModeSwitch.click();
-  await waitForAttribute(darkModeSwitch, "data-state", "checked");
+  await appearanceModeSwitch.click();
+  await waitForAttribute(appearanceModeSwitch, "data-state", "checked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
 
@@ -599,7 +604,7 @@ test("Settings show the current version without firewall controls", async () => 
   await page.close();
 });
 
-test("Light Mode keeps the Firewall overview readable on narrow screens", async () => {
+test("Wonderland Light Mode keeps the Firewall overview readable on narrow screens", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await page.addInitScript(() => localStorage.setItem("safenet-theme", "light"));
   mockApi(page);
@@ -617,144 +622,155 @@ test("Light Mode keeps the Firewall overview readable on narrow screens", async 
   await page.close();
 });
 
-test("Color modes preserve Blue Cyberpunk and persist Red and Green selections", async () => {
+test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk Dark Mode", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await page.addInitScript(() => {
-    if (sessionStorage.getItem("safenet-color-mode-test-initialized")) return;
+    if (sessionStorage.getItem("appearance-theme-test-initialized")) return;
     localStorage.removeItem("safenet-theme");
-    localStorage.removeItem("safenet-color-mode");
-    sessionStorage.setItem("safenet-color-mode-test-initialized", "true");
+    localStorage.setItem("safenet-color-mode", "red");
+    sessionStorage.setItem("appearance-theme-test-initialized", "true");
   });
   mockApi(page);
   await page.goto(`${baseUrl}/settings`);
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "blue");
   await page.getByRole("heading", { name: "Appearance" }).waitFor();
 
-  const readPalette = () =>
-    page.evaluate(() => ({
-      primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
-      accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
-    }));
-  const readThemeContrast = () =>
-    page.evaluate(() => {
-      const luminance = (color) => {
-        const channels = color.match(/\d+(?:\.\d+)?/g).slice(0, 3).map(Number);
-        const linear = channels.map((channel) => {
-          const value = channel / 255;
-          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-        });
-        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-      };
-      const contrast = (foreground, background) => {
-        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-        return (values[0] + 0.05) / (values[1] + 0.05);
-      };
-      const surface = document.createElement("div");
-      surface.className = "bg-background";
-      document.body.append(surface);
-      const background = getComputedStyle(surface).backgroundColor;
-      const text = document.createElement("span");
-      text.className = "text-primary";
-      surface.append(text);
-      const textContrast = contrast(getComputedStyle(text).color, background);
-      const button = document.createElement("button");
-      button.className = "bg-primary text-primary-foreground";
-      surface.append(button);
-      const buttonStyle = getComputedStyle(button);
-      const buttonContrast = contrast(buttonStyle.color, buttonStyle.backgroundColor);
-      const accent = document.createElement("span");
-      accent.className = "bg-accent text-accent-foreground";
-      surface.append(accent);
-      const accentStyle = getComputedStyle(accent);
-      const accentContrast = contrast(accentStyle.color, accentStyle.backgroundColor);
-      surface.remove();
-      return { textContrast, buttonContrast, accentContrast };
-    });
-  const readActiveNavigationGlow = () =>
-    page.locator("nav .safenet-icon-glow").first().evaluate(
-      (element) => getComputedStyle(element).filter,
-    );
-  const bluePaletteButton = page.getByRole("button", { name: "Blue + White" });
-  assert.equal(await bluePaletteButton.getAttribute("aria-pressed"), "true");
-  assert.match(await readActiveNavigationGlow(), /rgba\(59, 130, 246, 0\.5\)/);
-  const originalBluePalette = await readPalette();
-  assert.deepEqual(originalBluePalette, {
-    primary: "217 91% 60%",
-    accent: "199 89% 48%",
-  });
+  const appearanceModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
+  await appearanceModeSwitch.waitFor();
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  assert.equal(await appearanceModeSwitch.getAttribute("data-state"), "checked");
+  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
+  assert.equal(await page.locator("html").getAttribute("data-color-mode"), null);
+  await page.waitForFunction(() => localStorage.getItem("safenet-color-mode") === null);
 
-  await page.getByRole("button", { name: "Red + White" }).click();
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
-  assert.deepEqual(await readPalette(), {
-    primary: "0 76% 48%",
-    accent: "0 68% 48%",
-  });
-  const redDarkContrast = await readThemeContrast();
-  assert.ok(redDarkContrast.textContrast >= 4.5, "Red primary text should be readable in Dark Mode");
-  assert.ok(redDarkContrast.buttonContrast >= 4.5, "Red primary button labels should remain readable");
-  assert.ok(redDarkContrast.accentContrast >= 4.5, "Red selected-state labels should remain readable");
-  assert.match(await readActiveNavigationGlow(), /rgba\(239, 68, 68, 0\.5\)/);
-  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "red");
-  await page.reload();
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
-  assert.equal(
-    await page.getByRole("button", { name: "Red + White" }).getAttribute("aria-pressed"),
-    "true",
+  const readThemeTokens = () =>
+    page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const token = (name) => root.getPropertyValue(name).trim();
+      return {
+        background: token("--background"),
+        foreground: token("--foreground"),
+        primary: token("--primary"),
+        primaryForeground: token("--primary-foreground"),
+        card: token("--card"),
+        brandAccent: token("--safenet-brand-accent"),
+        success: token("--safenet-success"),
+        info: token("--safenet-info"),
+        interactive: token("--safenet-interactive"),
+      };
+    });
+  const darkTokens = await readThemeTokens();
+  assert.equal(darkTokens.background, "222 47% 11%");
+  assert.equal(darkTokens.primary, "217 91% 60%", "Cyberpunk primary blue must remain unchanged");
+  assert.equal(darkTokens.card, "224 35% 14%", "Cyberpunk card surface must remain unchanged");
+
+  await appearanceModeSwitch.click();
+  await waitForAttribute(appearanceModeSwitch, "data-state", "unchecked");
+  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Wonderland Light Mode");
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
+  assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
+  assert.equal(await page.getByTestId("color-mode-red").count(), 0);
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[data-testid="theme-mode-controls"]')).backgroundColor === "rgb(244, 247, 252)",
   );
 
+  const wonderlandTokens = await readThemeTokens();
+  assert.deepEqual(wonderlandTokens, {
+    background: "0 0% 100%",
+    foreground: "216 35.7% 11%",
+    primary: "216.3 86.7% 41.2%",
+    primaryForeground: "0 0% 100%",
+    card: "217.5 57.1% 97.3%",
+    brandAccent: "46.2 100% 53.9%",
+    success: "168.1 62.7% 47.3%",
+    info: "257.1 50.4% 75.5%",
+    interactive: "164.4 100% 34.7%",
+  });
+
+  const wonderlandAudit = await page.evaluate(() => {
+    const luminance = (color) => {
+      const channels = color.match(/\d+(?:\.\d+)?/g).slice(0, 3).map(Number);
+      const linear = channels.map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const contrast = (foreground, background) => {
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    };
+    const sampleClasses = [
+      "text-primary",
+      "text-slate-300",
+      "text-sky-300",
+      "text-cyan-100",
+      "text-orange-200/90",
+      "text-rose-300",
+      "text-purple-400",
+      "text-accent",
+      "text-green-400",
+    ];
+    const samples = sampleClasses.map((className) => {
+      const probe = document.createElement("span");
+      probe.className = className;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return { className, contrast: contrast(color, "rgb(255, 255, 255)") };
+    });
+    const link = document.createElement("a");
+    link.className = "text-primary";
+    document.body.append(link);
+    const interactiveContrast = contrast(getComputedStyle(link).color, "rgb(255, 255, 255)");
+    link.remove();
+    const button = document.createElement("button");
+    button.className = "bg-primary text-primary-foreground";
+    document.body.append(button);
+    const buttonStyle = getComputedStyle(button);
+    const buttonContrast = contrast(buttonStyle.color, buttonStyle.backgroundColor);
+    button.remove();
+    const premium = document.createElement("div");
+    premium.className = "safenet-premium-feature";
+    const premiumText = document.createElement("span");
+    premiumText.className = "text-primary";
+    premium.append(premiumText);
+    document.body.append(premium);
+    const premiumStyle = getComputedStyle(premium);
+    const premiumContrast = contrast(getComputedStyle(premiumText).color, premiumStyle.backgroundColor);
+    premium.remove();
+    return {
+      bodyBackground: getComputedStyle(document.body).backgroundImage,
+      cardBackground: getComputedStyle(document.querySelector('[data-testid="theme-mode-controls"]')).backgroundColor,
+      samples,
+      interactiveContrast,
+      buttonContrast,
+      premiumContrast,
+    };
+  });
+  assert.equal(wonderlandAudit.bodyBackground, "none");
+  assert.equal(wonderlandAudit.cardBackground, "rgb(244, 247, 252)");
+  for (const sample of wonderlandAudit.samples) {
+    assert.ok(sample.contrast >= 4.5, `${sample.className} should meet 4.5:1 contrast in Wonderland`);
+  }
+  assert.ok(wonderlandAudit.interactiveContrast >= 4.5, "interactive links should remain readable");
+  assert.ok(wonderlandAudit.buttonContrast >= 4.5, "primary button labels should remain readable");
+  assert.ok(wonderlandAudit.premiumContrast >= 4.5, "premium icon labels should remain readable");
+
   await page.goto(`${baseUrl}/firewall`);
+  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
-  assert.equal(await page.locator("html").getAttribute("data-color-mode"), "red");
-  assert.equal((await readPalette()).primary, "0 76% 48%");
-  assert.match(await readActiveNavigationGlow(), /rgba\(239, 68, 68, 0\.5\)/);
+  assert.equal((await readThemeTokens()).primary, "216.3 86.7% 41.2%", "Wonderland palette should apply across pages");
+
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "Appearance" }).waitFor();
-
-  await page.getByRole("button", { name: "Green + White" }).click();
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "green");
-  assert.deepEqual(await readPalette(), {
-    primary: "142 62% 30%",
-    accent: "142 55% 30%",
-  });
-  const greenDarkContrast = await readThemeContrast();
-  assert.ok(greenDarkContrast.textContrast >= 4.5, "Green primary text should be readable in Dark Mode");
-  assert.ok(greenDarkContrast.buttonContrast >= 4.5, "Green primary button labels should remain readable");
-  assert.ok(greenDarkContrast.accentContrast >= 4.5, "Green selected-state labels should remain readable");
-  assert.match(await readActiveNavigationGlow(), /rgba\(34, 197, 94, 0\.5\)/);
-  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "green");
-
-  await page.getByRole("switch", { name: "Dark Mode" }).click();
-  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
-  const greenLightPalette = await readPalette();
-  assert.deepEqual(greenLightPalette, {
-    primary: "142 68% 28%",
-    accent: "142 55% 92%",
-  });
-
-  const greenLightContrast = await readThemeContrast();
-  assert.ok(greenLightContrast.textContrast >= 4.5, "Green primary text should remain readable in Light Mode");
-  assert.ok(greenLightContrast.buttonContrast >= 4.5, "Green primary button labels should remain readable");
-  assert.ok(greenLightContrast.accentContrast >= 4.5, "Green selected-state labels should remain readable");
-
-  await page.getByRole("button", { name: "Red + White" }).click();
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
-  assert.deepEqual(await readPalette(), {
-    primary: "0 76% 42%",
-    accent: "0 65% 92%",
-  });
-  const redLightContrast = await readThemeContrast();
-  assert.ok(redLightContrast.textContrast >= 4.5, "Red primary text should remain readable in Light Mode");
-  assert.ok(redLightContrast.buttonContrast >= 4.5, "Red primary button labels should remain readable");
-  assert.ok(redLightContrast.accentContrast >= 4.5, "Red selected-state labels should remain readable");
-
-  await page.getByRole("button", { name: "Blue + White" }).click();
-  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "blue");
-  assert.deepEqual(await readPalette(), {
-    primary: "217 91% 48%",
-    accent: "199 89% 90%",
-  });
-  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "blue");
-  assert.equal(await page.locator("html").getAttribute("data-color-mode"), "blue");
+  const darkModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
+  await darkModeSwitch.click();
+  await waitForAttribute(darkModeSwitch, "data-state", "checked");
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
+  assert.equal((await readThemeTokens()).primary, "217 91% 60%");
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
   await page.close();
 });
 
