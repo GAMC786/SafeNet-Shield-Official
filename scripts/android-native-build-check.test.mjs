@@ -19,6 +19,10 @@ const wireguardPrepareScript = await readFile(
   new URL("./prepare-wireguard-sdns.sh", import.meta.url),
   "utf8",
 );
+const wireguardWrapperBuildScript = await readFile(
+  new URL("../android/windscribe-tunnel/build.gradle", import.meta.url),
+  "utf8",
+);
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -181,6 +185,17 @@ test("Android release workflows keep WireGuard and Tailscale on their pinned Go 
     /find "\$go_root" -mindepth 1 -maxdepth 1 -print -quit/,
   );
   assert.match(wireguardPrepareScript, /rmdir "\$go_root"/);
+});
+
+test("WireGuard wrapper compiles the upstream Java sources with Java 17", () => {
+  assert.match(
+    wireguardWrapperBuildScript,
+    /sourceCompatibility JavaVersion\.VERSION_17/,
+  );
+  assert.match(
+    wireguardWrapperBuildScript,
+    /targetCompatibility JavaVersion\.VERSION_17/,
+  );
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {

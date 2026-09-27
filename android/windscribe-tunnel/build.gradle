@@ -35,6 +35,11 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     ndkVersion rootProject.ext.androidNdkVersion
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
     defaultConfig {
         minSdk rootProject.ext.minSdkVersion
         ndk {
