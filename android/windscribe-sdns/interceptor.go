@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.zx2c4.com/wireguard/tun"
@@ -56,6 +57,7 @@ var (
 type Interceptor struct {
 	under     TunnelDevice
 	ex        Exchanger
+	firewall  atomic.Pointer[FirewallPolicy]
 	link      *channel.Endpoint
 	stack     *stack.Stack
 	out       chan []byte
@@ -70,14 +72,21 @@ type Interceptor struct {
 type fragmentDecision struct {
 	isDNS   bool
 	expires time.Time
+	info    packetDNSInfo
 }
 
 type packetDNSInfo struct {
-	isDNS      bool
-	fragmented bool
-	first      bool
-	more       bool
-	key        string
+	isDNS         bool
+	fragmented    bool
+	first         bool
+	more          bool
+	key           string
+	source        string
+	destination   string
+	protocol      uint8
+	payloadOffset int
+	packetEnd     int
+	virtual       bool
 }
 
 const (
@@ -86,8 +95,23 @@ const (
 )
 
 func NewInterceptor(under TunnelDevice, ex Exchanger) (*Interceptor, error) {
-	if under == nil || ex == nil {
-		return nil, errors.New("SDNS interceptor requires a tunnel and exchanger")
+	return newInterceptor(under, ex, allowAllFirewallPolicy())
+}
+
+// NewInterceptorWithFirewall starts an interceptor with the supplied
+// authenticated firewall snapshot. Invalid or unavailable snapshots fail
+// closed without preventing the tunnel itself from starting.
+func NewInterceptorWithFirewall(under TunnelDevice, ex Exchanger, serializedPolicy string) (*Interceptor, error) {
+	policy, err := parseFirewallPolicy(serializedPolicy)
+	if err != nil {
+		policy = failClosedFirewallPolicy()
+	}
+	return newInterceptor(under, ex, policy)
+}
+
+func newInterceptor(under TunnelDevice, ex Exchanger, policy *FirewallPolicy) (*Interceptor, error) {
+	if under == nil {
+		return nil, errors.New("SDNS interceptor requires a tunnel")
 	}
 	mtu, err := under.MTU()
 	if err != nil || mtu <= 0 {
@@ -132,11 +156,14 @@ func NewInterceptor(under TunnelDevice, ex Exchanger) (*Interceptor, error) {
 		done: make(chan struct{}), ctx: ctx, cancel: cancel,
 		fragments: make(map[string]fragmentDecision),
 	}
-	if err := i.startServers(); err != nil {
-		cancel()
-		link.Close()
-		s.Destroy()
-		return nil, err
+	i.firewall.Store(policy)
+	if ex != nil {
+		if err := i.startServers(); err != nil {
+			cancel()
+			link.Close()
+			s.Destroy()
+			return nil, err
+		}
 	}
 	i.wg.Add(2)
 	go i.readLoop()
@@ -144,13 +171,27 @@ func NewInterceptor(under TunnelDevice, ex Exchanger) (*Interceptor, error) {
 	return i, nil
 }
 
+// SetFirewallPolicy publishes a complete replacement snapshot atomically.
+// Invalid snapshots replace the current policy with fail-closed behavior.
+func (i *Interceptor) SetFirewallPolicy(serialized string) error {
+	policy, err := parseFirewallPolicy(serialized)
+	if err != nil {
+		policy = failClosedFirewallPolicy()
+	}
+	i.firewall.Store(policy)
+	return err
+}
+
 func (i *Interceptor) startServers() error {
 	var udps []*gonet.UDPConn
 	for _, a := range []struct {
-		netw  string
-		addr  tcpip.FullAddress
-		proto tcpip.NetworkProtocolNumber
-	}{{"udp4", tcpip.FullAddress{NIC: 1, Addr: virtual4, Port: 53}, header.IPv4ProtocolNumber}, {"udp6", tcpip.FullAddress{NIC: 1, Addr: virtual6, Port: 53}, header.IPv6ProtocolNumber}} {
+		addr        tcpip.FullAddress
+		proto       tcpip.NetworkProtocolNumber
+		destination string
+	}{
+		{tcpip.FullAddress{NIC: 1, Addr: virtual4, Port: 53}, header.IPv4ProtocolNumber, "198.18.0.1"},
+		{tcpip.FullAddress{NIC: 1, Addr: virtual6, Port: 53}, header.IPv6ProtocolNumber, "fd42:5341:4645::53"},
+	} {
 		c, err := gonet.DialUDP(i.stack, &a.addr, nil, a.proto)
 		if err != nil {
 			for _, u := range udps {
@@ -160,15 +201,16 @@ func (i *Interceptor) startServers() error {
 		}
 		udps = append(udps, c)
 		i.wg.Add(1)
-		go i.udpLoop(c)
+		go i.udpLoop(c, a.destination)
 	}
 	var tcps []*gonet.TCPListener
 	for _, a := range []struct {
-		addr  tcpip.FullAddress
-		proto tcpip.NetworkProtocolNumber
+		addr        tcpip.FullAddress
+		proto       tcpip.NetworkProtocolNumber
+		destination string
 	}{
-		{tcpip.FullAddress{NIC: 1, Addr: virtual4, Port: 53}, header.IPv4ProtocolNumber},
-		{tcpip.FullAddress{NIC: 1, Addr: virtual6, Port: 53}, header.IPv6ProtocolNumber},
+		{tcpip.FullAddress{NIC: 1, Addr: virtual4, Port: 53}, header.IPv4ProtocolNumber, "198.18.0.1"},
+		{tcpip.FullAddress{NIC: 1, Addr: virtual6, Port: 53}, header.IPv6ProtocolNumber, "fd42:5341:4645::53"},
 	} {
 		l, err := gonet.ListenTCP(i.stack, a.addr, a.proto)
 		if err != nil {
@@ -182,12 +224,12 @@ func (i *Interceptor) startServers() error {
 		}
 		tcps = append(tcps, l)
 		i.wg.Add(1)
-		go i.tcpLoop(l)
+		go i.tcpLoop(l, a.destination)
 	}
 	return nil
 }
 
-func (i *Interceptor) udpLoop(c *gonet.UDPConn) {
+func (i *Interceptor) udpLoop(c *gonet.UDPConn, destination string) {
 	defer i.wg.Done()
 	defer c.Close()
 	buf := make([]byte, 65535)
@@ -196,8 +238,18 @@ func (i *Interceptor) udpLoop(c *gonet.UDPConn) {
 		if err != nil {
 			return
 		}
+		query := append([]byte(nil), buf[:n]...)
+		if !i.firewall.Load().Allows(query, addressHost(peer), destination) {
+			if response := blockedDNSResponse(query); response != nil {
+				_, _ = c.WriteTo(response, peer)
+			}
+			continue
+		}
+		if i.ex == nil {
+			continue
+		}
 		ctx, cancel := context.WithTimeout(i.ctx, 10*time.Second)
-		resp, err := i.ex.Exchange(ctx, append([]byte(nil), buf[:n]...))
+		resp, err := i.ex.Exchange(ctx, query)
 		cancel()
 		if err == nil {
 			_, _ = c.WriteTo(resp, peer)
@@ -205,7 +257,7 @@ func (i *Interceptor) udpLoop(c *gonet.UDPConn) {
 	}
 }
 
-func (i *Interceptor) tcpLoop(l *gonet.TCPListener) {
+func (i *Interceptor) tcpLoop(l *gonet.TCPListener, destination string) {
 	defer i.wg.Done()
 	defer l.Close()
 	for {
@@ -214,11 +266,11 @@ func (i *Interceptor) tcpLoop(l *gonet.TCPListener) {
 			return
 		}
 		i.wg.Add(1)
-		go func() { defer i.wg.Done(); i.tcpConn(c) }()
+		go func() { defer i.wg.Done(); i.tcpConn(c, destination) }()
 	}
 }
 
-func (i *Interceptor) tcpConn(c net.Conn) {
+func (i *Interceptor) tcpConn(c net.Conn, destination string) {
 	defer c.Close()
 	for {
 		var h [2]byte
@@ -231,6 +283,23 @@ func (i *Interceptor) tcpConn(c net.Conn) {
 		}
 		q := make([]byte, n)
 		if _, err := io.ReadFull(c, q); err != nil {
+			return
+		}
+		if !i.firewall.Load().Allows(q, addressHost(c.RemoteAddr()), destination) {
+			resp := blockedDNSResponse(q)
+			if resp == nil {
+				return
+			}
+			binary.BigEndian.PutUint16(h[:], uint16(len(resp)))
+			if _, err := c.Write(h[:]); err != nil {
+				return
+			}
+			if _, err := c.Write(resp); err != nil {
+				return
+			}
+			continue
+		}
+		if i.ex == nil {
 			return
 		}
 		ctx, cancel := context.WithTimeout(i.ctx, 10*time.Second)
@@ -249,6 +318,56 @@ func (i *Interceptor) tcpConn(c net.Conn) {
 	}
 }
 
+func addressHost(address net.Addr) string {
+	if address == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(address.String())
+	if err != nil {
+		return address.String()
+	}
+	return host
+}
+
+func blockedDNSResponse(query []byte) []byte {
+	if len(query) < 12 {
+		return nil
+	}
+	questionCount := int(binary.BigEndian.Uint16(query[4:6]))
+	if questionCount == 0 || questionCount > 64 {
+		return nil
+	}
+	offset := 12
+	for range questionCount {
+		for {
+			if offset >= len(query) {
+				return nil
+			}
+			length := int(query[offset])
+			offset++
+			if length == 0 {
+				break
+			}
+			if length&0xc0 != 0 || length > 63 || offset+length > len(query) {
+				return nil
+			}
+			offset += length
+		}
+		if offset+4 > len(query) {
+			return nil
+		}
+		offset += 4
+	}
+	response := append([]byte(nil), query[:offset]...)
+	flags := binary.BigEndian.Uint16(query[2:4])
+	flags = (flags & 0x7930) | 0x8000 | 0x0005
+	binary.BigEndian.PutUint16(response[2:4], flags)
+	binary.BigEndian.PutUint16(response[6:8], 0)
+	binary.BigEndian.PutUint16(response[8:10], 0)
+	binary.BigEndian.PutUint16(response[10:12], 0)
+	return response
+}
+
 func (i *Interceptor) readLoop() {
 	defer i.wg.Done()
 	buf := make([]byte, 65535)
@@ -262,18 +381,75 @@ func (i *Interceptor) readLoop() {
 			continue
 		}
 		p := append([]byte(nil), buf[:n]...)
-		if !i.interceptsDNSPacket(p) {
-			i.enqueue(p)
-			continue
-		}
-		pk := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(p)})
-		if p[0]>>4 == 4 {
-			i.link.InjectInbound(header.IPv4ProtocolNumber, pk)
-		} else {
-			i.link.InjectInbound(header.IPv6ProtocolNumber, pk)
-		}
-		pk.DecRef()
+		i.handleOutboundPacket(p)
 	}
+}
+
+func (i *Interceptor) handleOutboundPacket(packet []byte) {
+	info, ok := inspectDNSPacket(packet)
+	if !ok {
+		i.enqueue(packet)
+		return
+	}
+	if info.fragmented && !info.first {
+		remembered, found := i.fragmentInfo(info.key)
+		if !i.interceptsDNSPacket(packet) {
+			i.enqueue(packet)
+			return
+		}
+		if !found {
+			return
+		}
+		info = remembered
+	} else if info.fragmented {
+		if !i.interceptsDNSPacket(packet) {
+			i.enqueue(packet)
+			return
+		}
+	} else if !info.isDNS {
+		i.enqueue(packet)
+		return
+	}
+
+	if !info.virtual {
+		policy := i.firewall.Load()
+		if info.fragmented {
+			if policy.BlocksUninspectableDNS() {
+				return
+			}
+			i.enqueue(packet)
+			return
+		}
+		if info.protocol == 6 {
+			if policy.BlocksUninspectableDNS() {
+				return
+			}
+			i.enqueue(packet)
+			return
+		}
+		if info.payloadOffset < 0 || info.payloadOffset > info.packetEnd || info.packetEnd > len(packet) ||
+			!policy.Allows(packet[info.payloadOffset:info.packetEnd], info.source, info.destination) {
+			return
+		}
+		i.enqueue(packet)
+		return
+	}
+
+	if i.ex == nil {
+		return
+	}
+	pk := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
+	if packet[0]>>4 == 4 {
+		i.link.InjectInbound(header.IPv4ProtocolNumber, pk)
+	} else {
+		i.link.InjectInbound(header.IPv6ProtocolNumber, pk)
+	}
+	pk.DecRef()
+}
+
+func (i *Interceptor) fragmentInfo(key string) (packetDNSInfo, bool) {
+	decision, found := i.fragments[key]
+	return decision.info, found
 }
 
 func isDNSPacket(p []byte) bool {
@@ -290,8 +466,7 @@ func inspectDNSPacket(p []byte) (packetDNSInfo, bool) {
 	switch p[0] >> 4 {
 	case 4:
 		headerLen := int(p[0]&0x0f) * 4
-		if headerLen < 20 || headerLen+4 > len(p) ||
-			p[16] != 198 || p[17] != 18 || p[18] != 0 || p[19] != 1 {
+		if headerLen < 20 || headerLen > len(p) {
 			return info, false
 		}
 		protocol := p[9]
@@ -305,34 +480,76 @@ func inspectDNSPacket(p []byte) (packetDNSInfo, bool) {
 		info.first = offset == 0
 		if info.fragmented {
 			info.key = "4" + string(p[12:20]) + string(p[4:6]) + string([]byte{protocol})
-			if !info.first {
-				return info, true
-			}
 		}
-		info.isDNS = binary.BigEndian.Uint16(p[headerLen+2:headerLen+4]) == 53
+		info.source = net.IP(p[12:16]).String()
+		info.destination = net.IP(p[16:20]).String()
+		info.virtual = info.destination == "198.18.0.1"
+		info.packetEnd = len(p)
+		totalLength := int(binary.BigEndian.Uint16(p[2:4]))
+		if totalLength >= headerLen && totalLength < info.packetEnd {
+			info.packetEnd = totalLength
+		}
+		if !info.first {
+			return info, true
+		}
+		if protocol == 17 {
+			if headerLen+8 > info.packetEnd {
+				return packetDNSInfo{}, false
+			}
+			info.isDNS = binary.BigEndian.Uint16(p[headerLen+2:headerLen+4]) == 53
+			info.payloadOffset = headerLen + 8
+		} else {
+			if headerLen+20 > info.packetEnd {
+				return packetDNSInfo{}, false
+			}
+			tcpHeaderLen := int(p[headerLen+12]>>4) * 4
+			if tcpHeaderLen < 20 || headerLen+tcpHeaderLen > info.packetEnd {
+				return packetDNSInfo{}, false
+			}
+			info.isDNS = binary.BigEndian.Uint16(p[headerLen+2:headerLen+4]) == 53
+			info.payloadOffset = headerLen + tcpHeaderLen
+		}
+		info.protocol = protocol
 		return info, true
 
 	case 6:
 		if len(p) < 40 {
 			return info, false
 		}
-		v := virtual6.As16()
-		if string(p[24:40]) != string(v[:]) {
-			return info, false
-		}
+		info.first = true
 		end := len(p)
 		payloadLen := int(binary.BigEndian.Uint16(p[4:6]))
 		if payloadLen > 0 && 40+payloadLen < end {
 			end = 40 + payloadLen
 		}
+		info.source = net.IP(p[8:24]).String()
+		info.destination = net.IP(p[24:40]).String()
+		info.virtual = info.destination == "fd42:5341:4645::53"
+		info.packetEnd = end
 		nextHeader := p[6]
 		offset := 40
 		for steps := 0; steps < 8; steps++ {
 			switch nextHeader {
 			case 6, 17:
-				if offset+4 > end {
-					return packetDNSInfo{}, false
+				if !info.first {
+					return info, true
 				}
+				if nextHeader == 17 {
+					if offset+8 > end {
+						return packetDNSInfo{}, false
+					}
+					info.payloadOffset = offset + 8
+				} else {
+					if offset+20 > end {
+						return packetDNSInfo{}, false
+					}
+					tcpHeaderLen := int(p[offset+12]>>4) * 4
+					if tcpHeaderLen < 20 || offset+tcpHeaderLen > end {
+						return packetDNSInfo{}, false
+					}
+					info.payloadOffset = offset + tcpHeaderLen
+				}
+				info.protocol = nextHeader
 				info.isDNS = binary.BigEndian.Uint16(p[offset+2:offset+4]) == 53
 				return info, true
 			case 44: // Fragment header
@@ -396,7 +613,7 @@ func (i *Interceptor) interceptsDNSPacket(p []byte) bool {
 	}
 	if info.first {
 		if info.more {
-			i.rememberFragment(info.key, info.isDNS, now)
+			i.rememberFragment(info.key, info, now)
 		}
 		return info.isDNS
 	}
@@ -411,7 +628,7 @@ func (i *Interceptor) interceptsDNSPacket(p []byte) bool {
 	return decision.isDNS
 }
 
-func (i *Interceptor) rememberFragment(key string, isDNS bool, now time.Time) {
+func (i *Interceptor) rememberFragment(key string, info packetDNSInfo, now time.Time) {
 	if i.fragments == nil {
 		i.fragments = make(map[string]fragmentDecision)
 	}
@@ -425,7 +642,7 @@ func (i *Interceptor) rememberFragment(key string, isDNS bool, now time.Time) {
 		}
 		delete(i.fragments, oldestKey)
 	}
-	i.fragments[key] = fragmentDecision{isDNS: isDNS, expires: now.Add(fragmentDecisionTTL)}
+	i.fragments[key] = fragmentDecision{isDNS: info.isDNS, expires: now.Add(fragmentDecisionTTL), info: info}
 }
 
 func (i *Interceptor) outputLoop() {

@@ -169,6 +169,13 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
         </div>
 
         <div className="space-y-3 border-t border-white/10 pt-3">
+          <p
+            className="rounded-md border border-orange-400/20 bg-orange-400/5 px-3 py-2 text-xs text-orange-100/90"
+            role="status"
+            data-testid="windscribe-firewall-verification"
+          >
+            SafeNet DNS rules apply to cleartext UDP/TCP port 53 only. Device-level Windscribe enforcement has not been verified until a real Android tunnel test passes; HTTPS, DoH, and DoT are not inspected.
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-foreground">On-device WireGuard profile</p>

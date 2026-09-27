@@ -65,7 +65,7 @@ func (fakeExchange) Exchange(_ context.Context, _ []byte) ([]byte, error) {
 	return nil, errors.New("not expected for passthrough")
 }
 
-func TestIsDNSPacketRequiresVirtualDestinationAndPort53(t *testing.T) {
+func TestIsDNSPacketRecognizesCleartextDNSAcrossResolvers(t *testing.T) {
 	ip := make([]byte, 28)
 	ip[0], ip[9] = 0x45, 17
 	copy(ip[16:20], []byte{198, 18, 0, 1})
@@ -82,13 +82,18 @@ func TestIsDNSPacketRequiresVirtualDestinationAndPort53(t *testing.T) {
 	if isDNSPacket(ip) {
 		t.Fatal("non-TCP/UDP traffic was intercepted")
 	}
-	ip[9] = 6
+	ip = ipv4TCP53()
 	if !isDNSPacket(ip) {
 		t.Fatal("TCP DNS packet was not recognized")
 	}
-	ip[19] = 2
+	binary.BigEndian.PutUint16(ip[22:24], 5353)
 	if isDNSPacket(ip) {
-		t.Fatal("non-virtual packet was intercepted")
+		t.Fatal("TCP packet on a non-DNS port was intercepted")
+	}
+	binary.BigEndian.PutUint16(ip[22:24], 53)
+	ip[19] = 2
+	if !isDNSPacket(ip) {
+		t.Fatal("DNS packet to a non-virtual resolver was not recognized")
 	}
 }
 
@@ -207,12 +212,12 @@ func fragmentIPv4Packet(packet []byte, firstPayloadLength int) ([]byte, []byte) 
 func TestInterceptorUDPExchangeWritesReplyToTunnel(t *testing.T) {
 	f := newFakeTunnel()
 	ex := countingExchange{seen: make(chan []byte, 1)}
-	i, err := NewInterceptor(f, ex)
+	i, err := NewInterceptorWithFirewall(f, ex, `{"settings":{"firewallEnabled":true,"preventDnsOverrides":true},"rules":[],"blocklists":[{"type":"domain","content":"blocked.example","action":"block"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer i.Close()
-	q := dnsQuery()
+	q := dnsQueryForName("safe.example")
 	f.in <- ipv4UDP(q)
 	select {
 	case seen := <-ex.seen:
@@ -253,7 +258,7 @@ func TestInterceptorCloseUnblocksRead(t *testing.T) {
 func TestInterceptorTCPExchangeWithGVisorClient(t *testing.T) {
 	f := newFakeTunnel()
 	ex := countingExchange{seen: make(chan []byte, 1)}
-	i, err := NewInterceptor(f, ex)
+	i, err := NewInterceptorWithFirewall(f, ex, `{"settings":{"firewallEnabled":true,"preventDnsOverrides":true},"rules":[],"blocklists":[{"type":"domain","content":"blocked.example","action":"block"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +320,7 @@ func TestInterceptorTCPExchangeWithGVisorClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	q := dnsQuery()
+	q := dnsQueryForName("safe.example")
 	var frame [2]byte
 	binary.BigEndian.PutUint16(frame[:], uint16(len(q)))
 	if _, err := conn.Write(append(frame[:], q...)); err != nil {
@@ -338,6 +343,27 @@ func TestInterceptorTCPExchangeWithGVisorClient(t *testing.T) {
 	}
 	if string(reply) != string(q) {
 		t.Fatalf("unexpected TCP DNS response")
+	}
+
+	blockedQuery := dnsQueryForName("blocked.example")
+	binary.BigEndian.PutUint16(frame[:], uint16(len(blockedQuery)))
+	if _, err := conn.Write(append(frame[:], blockedQuery...)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(conn, frame[:]); err != nil {
+		t.Fatal(err)
+	}
+	blockedReply := make([]byte, binary.BigEndian.Uint16(frame[:]))
+	if _, err := io.ReadFull(conn, blockedReply); err != nil {
+		t.Fatal(err)
+	}
+	if len(blockedReply) < 4 || binary.BigEndian.Uint16(blockedReply[2:4])&0x000f != 5 {
+		t.Fatalf("blocked TCP DNS query did not receive REFUSED: %x", blockedReply)
+	}
+	select {
+	case <-ex.seen:
+		t.Fatal("blocked TCP DNS query reached the upstream exchanger")
+	case <-time.After(100 * time.Millisecond):
 	}
 	<-bridgeDone
 }

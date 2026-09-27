@@ -103,6 +103,26 @@ public class DnsFirewallTest {
     }
 
     @Test
+    public void windscribeResolversAreTrustedButStillUseDomainRules() throws Exception {
+        DnsFirewall firewall = DnsFirewall.fromJson(config(
+            "{\"type\":\"domain\",\"content\":\"blocked.example\",\"action\":\"block\",\"isActive\":true}"
+        ));
+
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            firewall.evaluate(query("safe.example"), "10.0.0.2", "198.18.0.1")
+        );
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            firewall.evaluate(query("safe.example"), "fd00::2", "fd42:5341:4645::53")
+        );
+        assertEquals(
+            DnsFirewall.Decision.BLOCK,
+            firewall.evaluate(query("blocked.example"), "10.0.0.2", "198.18.0.1")
+        );
+    }
+
+    @Test
     public void disabledDnsOverrideProtectionLeavesExternalAccessRuleBehaviorIntact() throws Exception {
         DnsFirewall firewall = DnsFirewall.fromJson(
             "{\"settings\":{\"firewallEnabled\":true,\"preventDnsOverrides\":false}"

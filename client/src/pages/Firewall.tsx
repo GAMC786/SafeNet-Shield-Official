@@ -358,8 +358,8 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Filters cleartext UDP DNS on the currently supported SafeNet VPN filtering path; Windscribe traffic is not filtered yet.
-              TCP/53 is blocked on that path while this firewall is on. DoH and DoT stay encrypted and are not inspected by SafeNet.
+              SafeNet DNS rules are sent to Windscribe for cleartext UDP/TCP port 53, but device-level Windscribe enforcement has not been verified on a real Android tunnel.
+              DoH, DoT, and HTTPS stay encrypted and are not inspected by SafeNet.
               Filtering for encrypted DNS happens at the resolver provider, if supported; SafeNet&apos;s custom rules do not apply to those queries. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -389,7 +389,7 @@ export default function Firewall() {
         <div
           className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
           role="status"
-          aria-label={`Windscribe VPN status: ${windscribeStatusLabel}. SafeNet firewall rules are not currently enforced on the Windscribe tunnel.`}
+          aria-label={`Windscribe VPN status: ${windscribeStatusLabel}. Device-level DNS rule enforcement has not been verified on a real Android tunnel.`}
           data-testid="windscribe-firewall-scope"
         >
           <div>
@@ -399,7 +399,7 @@ export default function Firewall() {
             </p>
           </div>
           <p className="text-xs text-orange-200/90">
-            SafeNet firewall rules are not currently enforced on the Windscribe tunnel.
+            DNS policy scope: cleartext UDP/TCP port 53 only. Device-level Windscribe enforcement is unverified until a real Android tunnel test passes; HTTPS, DoH, and DoT are not inspected.
           </p>
         </div>
       </CyberCard>
@@ -412,9 +412,9 @@ export default function Firewall() {
               <div>
                 <h2 className="font-display font-bold text-white">Non-DNS Traffic</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Separately block non-DNS IP packets on the currently supported SafeNet VPN filtering path.
-                  Windscribe traffic is not covered yet. UDP/TCP port 53 stays under the DNS Firewall policy above;
-                  this setting does not change DNS rules.
+                  Separately block non-DNS IP packets on the supported SafeNet VPN filtering path.
+                  Windscribe is not covered by this non-DNS setting. Cleartext UDP/TCP port 53 uses the separate DNS policy above;
+                  Windscribe device enforcement remains unverified.
                 </p>
                 <p className="mt-2 text-xs text-orange-200/80">
                   SafeNet does not inspect encrypted DoH/DoT by domain. This switch can only block those
@@ -455,13 +455,12 @@ export default function Firewall() {
                 <div>
                   <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Restrict cleartext DNS handled by SafeNet&apos;s current packet filter to its configured resolver
-                    addresses so apps cannot silently switch to another cleartext resolver.
+                    Restrict cleartext UDP/TCP port 53 to the configured SafeNet resolver addresses so apps cannot silently switch to another cleartext resolver.
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "Applies only on the currently supported VPN filtering path while DNS Firewall is On; Windscribe is not covered yet."
-                      : "Turn on DNS Firewall above to apply this rule on the currently supported VPN filtering path."}
+                      ? "Applies to the supported SafeNet and Windscribe DNS paths while DNS Firewall is On. Windscribe device enforcement is not verified on a real Android tunnel."
+                      : "Turn on DNS Firewall above to apply this rule to the supported DNS packet paths."}
                   </p>
                 </div>
               </div>

@@ -26,6 +26,7 @@ final class FirewallConfigStore {
     private static final int GCM_TAG_BITS = 128;
     private static final int IV_BYTES = 12;
     private static volatile DnsFirewall cachedFirewall;
+    private static volatile String cachedSerialized;
 
     private FirewallConfigStore() {}
 
@@ -47,6 +48,7 @@ final class FirewallConfigStore {
                 throw new IllegalStateException("Android did not persist the firewall rules.");
             }
             cachedFirewall = firewall;
+            cachedSerialized = serialized;
         } catch (org.json.JSONException error) {
             throw error;
         } catch (Exception error) {
@@ -63,12 +65,14 @@ final class FirewallConfigStore {
             // A missing authenticated policy must never silently disable
             // system-wide DNS blocking while the VPN is active.
             cachedFirewall = DnsFirewall.failClosed();
+            cachedSerialized = null;
             return cachedFirewall;
         }
         try {
             byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
             if (payload.length <= IV_BYTES) {
                 cachedFirewall = DnsFirewall.failClosed();
+                cachedSerialized = null;
                 return cachedFirewall;
             }
             byte[] iv = new byte[IV_BYTES];
@@ -77,15 +81,21 @@ final class FirewallConfigStore {
             System.arraycopy(payload, IV_BYTES, encrypted, 0, encrypted.length);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, getKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
-            cachedFirewall = DnsFirewall.fromJson(
-                new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8)
-            );
+            String serialized = new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+            cachedFirewall = DnsFirewall.fromJson(serialized);
+            cachedSerialized = serialized;
             return cachedFirewall;
         } catch (Exception error) {
             // A damaged or tampered cached policy must not turn protection off.
             cachedFirewall = DnsFirewall.failClosed();
+            cachedSerialized = null;
             return cachedFirewall;
         }
+    }
+
+    static synchronized String loadSerialized(Context context) {
+        load(context);
+        return cachedSerialized;
     }
 
     private static SharedPreferences preferences(Context context) {

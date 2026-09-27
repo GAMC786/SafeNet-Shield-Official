@@ -7,7 +7,7 @@ wireguard_dir="$project_root/third_party/wireguard-android"
 payload="$script_dir/patches/wireguard-android-sdns.patch.gz.b64"
 runtime_patcher="$script_dir/prepare-wireguard-go-runtime.py"
 upstream_commit="58789d6372e8948b87f5c47da7e5f2ad570eb531"
-patch_sha256="259e772b3ec319e459f130d06085df085a0f85a23cc7f3700c5463624b94eb26"
+patch_sha256="bb328edfb8b750e06177f7e40d70e00b4310f41f074a05225ffb65ff5ee621b6"
 go_version="1.26.5"
 
 fail() {

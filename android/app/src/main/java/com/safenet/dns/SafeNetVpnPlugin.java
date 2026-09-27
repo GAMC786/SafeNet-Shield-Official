@@ -24,6 +24,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.PermissionState;
 import org.json.JSONObject;
+import com.wireguard.android.backend.GoBackend;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.List;
@@ -572,6 +573,13 @@ public class SafeNetVpnPlugin extends Plugin {
         try {
             String serialized = config.toString();
             FirewallConfigStore.save(getContext(), serialized);
+            if (!GoBackend.updateSdnsFirewallPolicy(getContext().getApplicationContext(), serialized)) {
+                call.reject(
+                    "The firewall snapshot was saved, but the active Windscribe tunnel could not apply it.",
+                    "FIREWALL_POLICY_UPDATE_FAILED"
+                );
+                return;
+            }
             JSObject result = new JSObject();
             result.put("synced", true);
             result.put("firewallEnabled", config.optBoolean("firewallEnabled", false));

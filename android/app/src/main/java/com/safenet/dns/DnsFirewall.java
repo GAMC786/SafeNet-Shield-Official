@@ -42,6 +42,8 @@ public final class DnsFirewall {
     private static final String ALL = "all";
     private static final String VIRTUAL_DNS_V4 = "10.248.0.1";
     private static final String VIRTUAL_DNS_V6 = "fd00:534e:5348::1";
+    private static final String WINDSCRIBE_DNS_V4 = "198.18.0.1";
+    private static final String WINDSCRIBE_DNS_V6 = "fd42:5341:4645::53";
 
     private final boolean enabled;
     private final boolean preventDnsOverrides;
@@ -265,7 +267,8 @@ public final class DnsFirewall {
             return false;
         }
         String normalized = destinationAddress.trim().toLowerCase(Locale.US);
-        return normalized.equals(VIRTUAL_DNS_V4) || normalized.equals(VIRTUAL_DNS_V6);
+        return normalized.equals(VIRTUAL_DNS_V4) || normalized.equals(VIRTUAL_DNS_V6)
+            || normalized.equals(WINDSCRIBE_DNS_V4) || normalized.equals(WINDSCRIBE_DNS_V6);
     }
 
     public static String queryDomain(byte[] query) {

@@ -192,7 +192,11 @@ public final class SafeNetWindscribePlugin extends Plugin {
                 String profileText = profileStore().readProfile();
                 Config config = WindscribeProfileStore.parseProfile(profileText);
                 String resolverStamp = resolverStampForCall(call);
-                getBackend().setState(tunnel, Tunnel.State.UP, config, resolverStamp);
+                String firewallPolicy = FirewallConfigStore.loadSerialized(getContext());
+                getBackend().setState(
+                    tunnel, Tunnel.State.UP, config, resolverStamp,
+                    firewallPolicy == null ? "" : firewallPolicy
+                );
                 if (call.getData().has("resolverStamp")) {
                     profileStore().saveResolverStamp(resolverStamp);
                 }
