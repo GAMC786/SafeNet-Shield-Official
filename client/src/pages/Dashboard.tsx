@@ -148,6 +148,8 @@ export default function Dashboard() {
         </div>
       </CyberCard>
 
+      <VpnProxyBrowserBlocker />
+
       <CyberCard className="col-span-1 sm:col-span-2">
         <div className="space-y-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -249,8 +251,6 @@ export default function Dashboard() {
           </div>
         </div>
       </CyberCard>
-
-      <VpnProxyBrowserBlocker />
 
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:gap-6">

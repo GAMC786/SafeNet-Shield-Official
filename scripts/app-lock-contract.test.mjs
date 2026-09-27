@@ -294,6 +294,12 @@ test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
   assert.match(composeUi, /safeNetFieldColors/);
 });
 
+test("Dashboard places the VPN and proxy browser blocker above App Lock Protection", () => {
+  const blockerIndex = dashboard.indexOf("<VpnProxyBrowserBlocker />");
+  const appLockIndex = dashboard.indexOf(">App Lock Protection</h3>");
+  assert.ok(blockerIndex >= 0 && appLockIndex >= 0 && blockerIndex < appLockIndex);
+});
+
 test("configured users authenticate before opening AppLock management", () => {
   assert.match(mainActivity, /AppLockManager\.MODE_UNLOCK/);
   assert.match(mainActivity, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
