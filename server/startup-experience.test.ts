@@ -411,10 +411,11 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
   assert.match(firewallSource, /const isProtected = firewallEnabled && preventDnsOverrides/);
-  assert.match(firewallSource, /const firewallHeaderStatus = isAnyFirewallActive \? "configured" : "unprotected"/);
+  assert.match(firewallSource, /const firewallHeaderStatus = isAnyFirewallActive \? "active" : "unprotected"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
-  assert.doesNotMatch(firewallSource, /status=\{isAnyFirewallActive \? "active"/);
-  assert.match(readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8"), /status === "configured" \? "Rules configured"/);
+  const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
+  assert.match(headerSource, /status === "active" \? "Protected"/);
+  assert.doesNotMatch(headerSource, /Rules configured/);
   assert.match(firewallSource, /useWindscribeVpn/);
   assert.match(firewallSource, /data-testid="windscribe-firewall-scope"/);
   assert.match(firewallSource, /Connection status:/);

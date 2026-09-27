@@ -52,7 +52,7 @@ export default function Firewall() {
           : "Profile required";
   const isProtected = firewallEnabled && preventDnsOverrides;
   const isAnyFirewallActive = isProtected || (isAndroid && tailscaleNonDnsFirewallEnabled);
-  const firewallHeaderStatus = isAnyFirewallActive ? "configured" : "unprotected";
+  const firewallHeaderStatus = isAnyFirewallActive ? "active" : "unprotected";
 
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(

@@ -598,7 +598,12 @@ for (const viewport of viewports) {
     const firewallMaster = page.getByTestId("switch-firewall-master");
     await firewallMaster.click();
     await waitForAttribute(firewallMaster, "aria-checked", "true");
-    assert.match(await page.getByText("Enforced while DNS Firewall is On.").textContent(), /Enforced/);
+    assert.match(
+      await page
+        .getByText(/Applies to the supported SafeNet and Windscribe DNS paths while DNS Firewall is On/)
+        .textContent(),
+      /Applies to the supported SafeNet and Windscribe DNS paths/,
+    );
     await page.getByText("Protected", { exact: true }).waitFor();
     assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
 

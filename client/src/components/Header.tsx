@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 interface HeaderProps {
   title: string;
   subtitle?: string;
-  status?: "active" | "inactive" | "warning" | "unprotected" | "configured" | "sharing" | "not-sharing";
+  status?: "active" | "inactive" | "warning" | "unprotected" | "sharing" | "not-sharing";
   action?: ReactNode;
 }
 
@@ -46,7 +46,6 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
                  status === "sharing" ? "Sharing" :
                  status === "not-sharing" ? "Not Sharing" :
                 status === "unprotected" ? "Unprotected" :
-                status === "configured" ? "Rules configured" :
                status === "warning" ? "Threat Detected" : "Inactive"}
             </div>
           )}
