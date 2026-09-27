@@ -307,7 +307,7 @@ public final class SafeNetSmsPlugin extends Plugin {
                         ? "Grant permission to receive SMS before enabling incoming-text filtering."
                         : !permissionsGranted
                             ? "Incoming SMS filtering is ready. Inbox reading and sending are optional."
-                        : "SMS filtering and sending are available. MMS is not supported.");
+                        : "SMS filtering, inbox access, and sending are available. MMS is not supported.");
         return result;
     }
 

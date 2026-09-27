@@ -778,7 +778,7 @@ export default function SpamCallBlocker() {
                     if (status.roleHeld) {
                       toast({
                         title: "SafeNet selected as the default SMS app",
-                        description: "Grant SMS access, then turn on local filtering.",
+                        description: "Turn on local filtering above. Inbox and sending access are optional.",
                       });
                     }
                   })

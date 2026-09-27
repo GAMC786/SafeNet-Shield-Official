@@ -140,7 +140,7 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                <p className="min-w-0 text-sm font-medium text-foreground">Windscribe VPN</p>
+                <p className="min-w-0 text-sm font-medium text-foreground">Windscribe VPN with Control D</p>
               </div>
               <Button
                 variant="ghost"
