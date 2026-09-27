@@ -499,6 +499,53 @@ test("Settings show the current version without firewall controls", async () => 
     (element) => getComputedStyle(element).color,
   );
   assert.notEqual(settingsHeadingColor, "rgb(255, 255, 255)", "light mode headings must remain readable");
+  const lightThemeAudit = await page.evaluate(() => {
+    const luminance = (color) => {
+      const channels = color.match(/\d+(?:\.\d+)?/g).slice(0, 3).map(Number);
+      const linear = channels.map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const contrast = (foreground, background) => {
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    };
+    const sampleClasses = [
+      "text-slate-300",
+      "text-sky-300",
+      "text-cyan-100",
+      "text-orange-200/90",
+      "text-rose-300",
+      "text-purple-400",
+      "text-accent",
+    ];
+    const samples = sampleClasses.map((className) => {
+      const probe = document.createElement("span");
+      probe.className = className;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return { className, contrast: contrast(color, "rgb(255, 255, 255)") };
+    });
+    const action = document.createElement("button");
+    action.className = "bg-primary text-white";
+    document.body.append(action);
+    const actionStyle = getComputedStyle(action);
+    const actionContrast = contrast(actionStyle.color, actionStyle.backgroundColor);
+    action.remove();
+    return {
+      bodyFontFamily: getComputedStyle(document.body).fontFamily,
+      samples,
+      actionContrast,
+    };
+  });
+  assert.match(lightThemeAudit.bodyFontFamily, /system-ui/, "light mode should use a more legible system font");
+  for (const sample of lightThemeAudit.samples) {
+    assert.ok(sample.contrast >= 4.5, `${sample.className} contrast should meet 4.5:1 on white`);
+  }
+  assert.ok(lightThemeAudit.actionContrast >= 4.5, "primary button labels should retain strong contrast");
   const legacyLightBorder = await page
     .getByTestId("ai-shield-controls")
     .locator('[class~="border-white/10"]')
@@ -549,6 +596,24 @@ test("Settings show the current version without firewall controls", async () => 
     await page.getByTestId("settings-version").textContent(),
     `SafeNet Shield DNS Server+ (Official) v${packageVersion}`,
   );
+  await page.close();
+});
+
+test("Light Mode keeps the Firewall overview readable on narrow screens", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.addInitScript(() => localStorage.setItem("safenet-theme", "light"));
+  mockApi(page);
+  await page.goto(`${baseUrl}/firewall`);
+  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
+
+  const overview = page.locator(".firewall-overview-card > .flex.items-center.gap-4");
+  const layout = await overview.evaluate((element) => ({
+    display: getComputedStyle(element).display,
+    contentWidth: element.children[1].getBoundingClientRect().width,
+  }));
+  assert.equal(layout.display, "grid");
+  assert.ok(layout.contentWidth >= 220, "overview copy should have room to wrap naturally");
   await page.close();
 });
 

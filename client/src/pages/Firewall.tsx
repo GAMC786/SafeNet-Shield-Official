@@ -350,7 +350,7 @@ export default function Firewall() {
         status={firewallHeaderStatus}
       />
 
-      <CyberCard className="bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
+      <CyberCard className="firewall-overview-card bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
         <div className="flex items-center gap-4">
           <div className="p-4 bg-destructive/20 rounded-full shadow-[0_0_20px_var(--destructive)]">
             <Ban className="w-8 h-8 text-destructive" />

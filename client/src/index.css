@@ -75,6 +75,7 @@
 
 .light {
   color-scheme: light;
+  --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
 
   --background: 210 24% 97%;
   --foreground: 222 47% 11%;
@@ -85,15 +86,15 @@
   --secondary: 210 22% 93%;
   --secondary-foreground: 222 47% 11%;
   --muted: 210 22% 94%;
-  --muted-foreground: 215 18% 38%;
+  --muted-foreground: 215 20% 33%;
   --accent: 199 89% 90%;
   --accent-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
-  --border: 214 20% 84%;
-  --input: 214 20% 82%;
+  --border: 214 20% 80%;
+  --input: 214 20% 78%;
   --ring: 217 91% 48%;
 }
 
@@ -134,6 +135,9 @@
 }
 
 .light body {
+  font-family: var(--font-body);
+  line-height: 1.5;
+  letter-spacing: normal;
   background-image:
     radial-gradient(circle at 50% 0%, hsl(217 91% 60% / 0.075), transparent 42%),
     radial-gradient(circle at 100% 100%, hsl(199 89% 48% / 0.04), transparent 32%);
@@ -154,6 +158,41 @@
 
 .light .scan-line {
   display: none;
+}
+
+@media (max-width: 479px) {
+  .light .firewall-overview-card > .flex.items-center.gap-4 {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    align-items: start;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+  }
+
+  .light .firewall-overview-card > .flex.items-center.gap-4 > :first-child {
+    padding: 0.75rem;
+  }
+
+  .light .firewall-overview-card > .flex.items-center.gap-4 > :first-child svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .light .firewall-overview-card > .flex.items-center.gap-4 > :nth-child(2) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .light .firewall-overview-card > .flex.items-center.gap-4 > :nth-child(2) h2 {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .light .firewall-overview-card > .flex.items-center.gap-4 > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
 }
 
 /* Reconcile legacy dark utility classes with the active light palette. */
@@ -187,8 +226,64 @@
   background-color: hsl(var(--card)) !important;
 }
 
+.light [class~="bg-slate-900"],
+.light [class~="bg-slate-900/90"],
+.light [class~="bg-slate-900/80"],
+.light [class~="bg-slate-800"],
+.light [class~="bg-slate-700"] {
+  background-color: hsl(var(--card)) !important;
+}
+
 .light [class~="bg-slate-600/90"],
 .light [class~="bg-slate-500/90"] {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.light [class~="hover:bg-slate-800"]:hover,
+.light [class~="hover:bg-slate-700"]:hover {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.light [class~="bg-red-950/50"],
+.light [class~="bg-red-950/40"],
+.light [class~="bg-red-500/10"],
+.light [class~="bg-rose-400/5"] {
+  background-color: hsl(var(--destructive) / 0.09) !important;
+}
+
+.light [class~="bg-yellow-500/20"],
+.light [class~="bg-yellow-500/10"],
+.light [class~="bg-yellow-500/5"],
+.light [class~="bg-amber-500/10"],
+.light [class~="bg-amber-400/10"],
+.light [class~="bg-amber-400/5"],
+.light [class~="bg-orange-500/20"],
+.light [class~="bg-orange-400/5"] {
+  background-color: hsl(40 92% 48% / 0.13) !important;
+}
+
+.light [class~="bg-emerald-500/10"],
+.light [class~="bg-emerald-500/5"],
+.light [class~="bg-emerald-400/10"],
+.light [class~="bg-emerald-400/5"],
+.light [class~="bg-green-500/10"],
+.light [class~="bg-green-500/20"] {
+  background-color: hsl(145 60% 34% / 0.1) !important;
+}
+
+.light [class~="bg-sky-400/15"],
+.light [class~="bg-sky-400/10"],
+.light [class~="bg-sky-400/5"],
+.light [class~="bg-cyan-300/10"],
+.light [class~="bg-cyan-400/5"] {
+  background-color: hsl(199 80% 38% / 0.1) !important;
+}
+
+.light [class~="bg-purple-500/20"] {
+  background-color: hsl(262 60% 45% / 0.1) !important;
+}
+
+.light [class~="bg-gray-500/10"] {
   background-color: hsl(var(--muted)) !important;
 }
 
@@ -222,13 +317,105 @@
 .light [class~="text-red-200"],
 .light [class~="text-red-300"],
 .light [class~="text-red-400"],
-.light [class~="text-red-500"] {
+.light [class~="text-red-500"],
+.light [class~="text-rose-200"],
+.light [class~="text-rose-300"],
+.light [class~="text-rose-400"] {
   color: hsl(0 72% 39%) !important;
+}
+
+.light [class~="text-slate-200"],
+.light [class~="text-slate-300"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+.light [class~="text-slate-400"] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.light [class~="text-accent"] {
+  color: hsl(199 89% 30%) !important;
+}
+
+.light [class~="text-sky-200"],
+.light [class~="text-sky-300"],
+.light [class~="text-cyan-100"],
+.light [class~="text-cyan-200"],
+.light [class~="text-cyan-300"] {
+  color: hsl(199 89% 30%) !important;
+}
+
+.light [class~="text-orange-100/90"],
+.light [class~="text-orange-200/80"],
+.light [class~="text-orange-200/90"],
+.light [class~="text-orange-300"],
+.light [class~="text-orange-400"] {
+  color: hsl(25 82% 30%) !important;
+}
+
+.light [class~="text-purple-400"] {
+  color: hsl(262 60% 38%) !important;
 }
 
 .light [class~="text-gray-400"],
 .light [class~="text-gray-600"] {
   color: hsl(var(--muted-foreground)) !important;
+}
+
+.light [class~="border-slate-700"],
+.light [class~="border-gray-500/30"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+.light [class~="border-yellow-500/40"],
+.light [class~="border-yellow-500/30"],
+.light [class~="border-yellow-500/20"],
+.light [class~="border-yellow-500/10"],
+.light [class~="border-yellow-300/20"],
+.light [class~="border-yellow-300/40"],
+.light [class~="border-amber-400/20"],
+.light [class~="border-amber-400/40"],
+.light [class~="border-amber-500/40"],
+.light [class~="border-orange-400/20"],
+.light [class~="border-orange-500/30"] {
+  border-color: hsl(38 82% 38% / 0.5) !important;
+}
+
+.light [class~="border-green-500/30"],
+.light [class~="border-green-500/20"],
+.light [class~="border-green-400/40"],
+.light [class~="border-green-300/20"],
+.light [class~="border-emerald-400/40"],
+.light [class~="border-emerald-400/30"],
+.light [class~="border-emerald-400/20"],
+.light [class~="border-emerald-500/40"],
+.light [class~="border-emerald-500/30"],
+.light [class~="border-emerald-500/50"],
+.light [class~="border-emerald-500/20"] {
+  border-color: hsl(145 55% 31% / 0.48) !important;
+}
+
+.light [class~="border-red-500/30"],
+.light [class~="border-red-500/40"],
+.light [class~="border-rose-400/20"] {
+  border-color: hsl(var(--destructive) / 0.48) !important;
+}
+
+.light [class~="border-sky-400/20"],
+.light [class~="border-sky-400/40"],
+.light [class~="border-sky-400/30"],
+.light [class~="border-sky-300"],
+.light [class~="border-cyan-400/20"],
+.light [class~="border-cyan-300/40"] {
+  border-color: hsl(199 78% 38% / 0.48) !important;
+}
+
+.light [class~="hover:border-sky-300"]:hover {
+  border-color: hsl(199 78% 38% / 0.65) !important;
+}
+
+.light [class~="border-purple-500/30"] {
+  border-color: hsl(262 60% 38% / 0.48) !important;
 }
 
 /* Keep high-contrast labels on saturated action and status fills. */
@@ -239,6 +426,10 @@
 .light [class~="text-white"][class~="bg-green-600"],
 .light [class~="text-white"][class~="bg-blue-600"] {
   color: #fff !important;
+}
+
+.light [class~="hover:bg-red-500"]:hover {
+  background-color: hsl(0 72% 39%) !important;
 }
 
 .light [data-testid="ai-shield-controls"] [class~="border-white/10"] {
