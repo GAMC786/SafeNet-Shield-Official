@@ -484,7 +484,35 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
+  const lightModeSwitch = page.getByRole("switch", { name: "Light Mode" });
+  await lightModeSwitch.waitFor();
+  assert.equal(await lightModeSwitch.getAttribute("data-state"), "unchecked");
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  const darkBackground = await page.locator("html").evaluate(
+    (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
+  );
+  assert.equal(darkBackground, "222 47% 11%");
+  await lightModeSwitch.click();
+  await waitForAttribute(lightModeSwitch, "data-state", "checked");
+  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  const lightBackground = await page.locator("html").evaluate(
+    (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
+  );
+  assert.equal(lightBackground, "210 20% 98%");
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
+  await lightModeSwitch.click();
+  await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
+
   await page.getByRole("heading", { name: "DeepCleer Ai Detector" }).waitFor();
+  const appearanceTop = await page.getByTestId("theme-mode-controls").evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  const aiShieldTop = await page.getByTestId("ai-shield-controls").evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  assert.ok(appearanceTop < aiShieldTop, "appearance switch should appear above DeepCleer");
   assert.equal(await page.getByTestId("switch-ai-camera").count(), 1);
   assert.equal(await page.getByTestId("switch-ai-screen").count(), 1);
   for (const mediaType of ["images", "videos", "livestreams", "texts", "audios"]) {

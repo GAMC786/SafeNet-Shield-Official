@@ -73,6 +73,71 @@
   --radius: 0.5rem;
 }
 
+.light {
+  color-scheme: light;
+
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
+  --primary: 217 91% 48%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --secondary: 210 20% 92%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 20% 93%;
+  --muted-foreground: 215 16% 40%;
+  --accent: 199 89% 90%;
+  --accent-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 215 20% 78%;
+  --input: 215 20% 84%;
+  --ring: 217 91% 48%;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+.light h1,
+.light h2,
+.light h3,
+.light h4,
+.light h5,
+.light h6 {
+  background-image: linear-gradient(
+    to right,
+    hsl(var(--foreground)),
+    hsl(var(--foreground) / 0.85)
+  );
+}
+
+.light .glass-panel {
+  border-color: hsl(var(--border) / 0.8);
+}
+
+.light .safenet-system-navigation,
+.light .safenet-bottom-navigation {
+  border-color: hsl(var(--border) / 0.65);
+  background-color: hsl(var(--background) / 0.92);
+}
+
+.light .safenet-system-navigation .text-muted-foreground:hover,
+.light .safenet-bottom-navigation .text-muted-foreground:hover {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.7);
+}
+
+.light [data-testid="ai-shield-controls"] .text-white {
+  color: hsl(var(--foreground));
+}
+
+.light [data-testid="ai-shield-controls"] [class~="border-white/10"] {
+  border-color: hsl(var(--border));
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -1,4 +1,5 @@
 import { AiShieldControls } from "@/components/AiShieldControls";
+import { ThemeModeControls } from "@/components/ThemeModeControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { AlertTriangle } from "lucide-react";
@@ -18,6 +19,10 @@ export default function Settings() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="md:col-span-2">
+          <ThemeModeControls />
+        </div>
+
         <div className="md:col-span-2">
           <AiShieldControls />
         </div>
