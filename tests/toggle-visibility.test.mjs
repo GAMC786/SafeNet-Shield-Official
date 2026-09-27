@@ -671,7 +671,7 @@ test("Color modes preserve Blue Cyberpunk and persist Red and Green selections",
       return { textContrast, buttonContrast, accentContrast };
     });
   const readActiveNavigationGlow = () =>
-    page.locator('nav[aria-label="System services"] .safenet-icon-glow').first().evaluate(
+    page.locator("nav .safenet-icon-glow").first().evaluate(
       (element) => getComputedStyle(element).filter,
     );
   const bluePaletteButton = page.getByRole("button", { name: "Blue + White" });
