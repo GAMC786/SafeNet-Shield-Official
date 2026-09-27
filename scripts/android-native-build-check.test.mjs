@@ -15,6 +15,10 @@ const tailscaleBuildScript = await readFile(
   new URL("./build-tailscale-aar.sh", import.meta.url),
   "utf8",
 );
+const wireguardPrepareScript = await readFile(
+  new URL("./prepare-wireguard-sdns.sh", import.meta.url),
+  "utf8",
+);
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -123,6 +127,55 @@ test("release-capable workflows compile native sources before packaging", () => 
   assert.notEqual(releaseCompileIndex, -1, "main Android workflow is missing release instrumentation preflight");
   assert.notEqual(releasePackageIndex, -1, "main Android workflow is missing signed instrumentation packaging");
   assert.ok(releaseCompileIndex < releasePackageIndex);
+});
+
+test("Android release workflows keep WireGuard and Tailscale on their pinned Go versions", () => {
+  for (const [name, workflow] of [
+    ["main Android workflow", mainWorkflow],
+    ["APK-only workflow", apkOnlyWorkflow],
+  ]) {
+    const wireguardVersionIndex = workflow.indexOf(
+      "Resolve pinned WireGuard Go version",
+    );
+    const wireguardSetupIndex = workflow.indexOf(
+      "Set up Go for the pinned WireGuard runtime",
+    );
+    const wireguardRootIndex = workflow.indexOf(
+      "Capture pinned WireGuard Go root",
+    );
+    const tailscaleSetupIndex = workflow.indexOf(
+      "Set up Go for the pinned Tailscale engine",
+    );
+    assert.notEqual(wireguardVersionIndex, -1, `${name} is missing WireGuard Go version resolution`);
+    assert.notEqual(wireguardSetupIndex, -1, `${name} is missing Go 1.26.5 setup`);
+    assert.notEqual(wireguardRootIndex, -1, `${name} is missing WireGuard GOROOT capture`);
+    assert.notEqual(tailscaleSetupIndex, -1, `${name} is missing Tailscale Go setup`);
+    assert.ok(
+      wireguardVersionIndex < wireguardSetupIndex &&
+        wireguardSetupIndex < wireguardRootIndex &&
+        wireguardRootIndex < tailscaleSetupIndex,
+      `${name} must capture Go 1.26.5 before restoring Tailscale's toolchain`,
+    );
+    assert.match(
+      workflow.slice(wireguardVersionIndex, wireguardSetupIndex),
+      /prepare-wireguard-sdns\.sh --print-go-version/,
+    );
+    assert.match(
+      workflow.slice(wireguardSetupIndex, wireguardRootIndex),
+      /go-version:\s*\$\{\{\s*steps\.wireguard_go_version\.outputs\.version\s*\}\}/,
+    );
+    assert.match(
+      workflow.slice(wireguardRootIndex, tailscaleSetupIndex),
+      /WIREGUARD_GO_ROOT=%s.*go env GOROOT/s,
+    );
+    assert.match(
+      workflow.slice(tailscaleSetupIndex, tailscaleSetupIndex + 400),
+      /go-version-file:\s*third_party\/tailscale-android\/go\.mod/,
+    );
+  }
+  assert.match(wireguardPrepareScript, /WIREGUARD_GO_ROOT/);
+  assert.match(wireguardPrepareScript, /--print-go-version/);
+  assert.match(wireguardPrepareScript, /GOROOT=\$wireguard_source_root/);
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {

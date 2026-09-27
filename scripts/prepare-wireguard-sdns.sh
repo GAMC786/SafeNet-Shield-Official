@@ -10,6 +10,11 @@ upstream_commit="58789d6372e8948b87f5c47da7e5f2ad570eb531"
 patch_sha256="bb328edfb8b750e06177f7e40d70e00b4310f41f074a05225ffb65ff5ee621b6"
 go_version="1.26.5"
 
+if [[ "${1:-}" == "--print-go-version" && $# -eq 1 ]]; then
+    printf '%s\n' "$go_version"
+    exit 0
+fi
+
 fail() {
     echo "ERROR: $*" >&2
     exit 1
@@ -27,12 +32,23 @@ actual_commit="$(git -C "$wireguard_dir" rev-parse HEAD 2>/dev/null)" ||
 [[ "$actual_commit" == "$upstream_commit" ]] ||
     fail "WireGuard must start at upstream commit $upstream_commit; found $actual_commit."
 
-go_bin="$(command -v go || true)"
-[[ -n "$go_bin" ]] || fail "Go $go_version is required to build WireGuard."
-go_version_output="$("$go_bin" version 2>/dev/null || true)"
+go_env_prefix=()
+if [[ -n "${WIREGUARD_GO_ROOT:-}" ]]; then
+    [[ -d "$WIREGUARD_GO_ROOT" ]] ||
+        fail "The pinned WireGuard Go root does not exist: $WIREGUARD_GO_ROOT"
+    wireguard_source_root="$(cd -- "$WIREGUARD_GO_ROOT" && pwd -P)"
+    go_bin="$wireguard_source_root/bin/go"
+    [[ -x "$go_bin" ]] ||
+        fail "The pinned WireGuard Go root is missing bin/go: $wireguard_source_root"
+    go_env_prefix=(env "GOROOT=$wireguard_source_root")
+else
+    go_bin="$(command -v go || true)"
+    [[ -n "$go_bin" ]] || fail "Go $go_version is required to build WireGuard."
+fi
+go_version_output="$("${go_env_prefix[@]}" "$go_bin" version 2>/dev/null || true)"
 [[ "$go_version_output" == *"go$go_version "* ]] ||
     fail "WireGuard requires Go $go_version; found ${go_version_output:-no working Go toolchain}."
-source_go_root="$("$go_bin" env GOROOT)"
+source_go_root="$("${go_env_prefix[@]}" "$go_bin" env GOROOT)"
 [[ -x "$source_go_root/bin/go" ]] ||
     fail "The Go toolchain did not report a usable GOROOT: $source_go_root"
 source_go_root="$(cd -- "$source_go_root" && pwd -P)"

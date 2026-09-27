@@ -22,6 +22,25 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Resolve pinned WireGuard Go version
+        id: wireguard_go_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'version=%s\n' "$(./scripts/prepare-wireguard-sdns.sh --print-go-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go for the pinned WireGuard runtime
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.wireguard_go_version.outputs.version }}
+          cache: false
+
+      - name: Capture pinned WireGuard Go root
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'WIREGUARD_GO_ROOT=%s\n' "$(go env GOROOT)" >> "$GITHUB_ENV"
+
       - name: Set up Go for the pinned Tailscale engine
         uses: actions/setup-go@v5
         with:
