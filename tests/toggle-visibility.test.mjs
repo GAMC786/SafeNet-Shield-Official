@@ -686,6 +686,17 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await darkModeSwitch.getAttribute("data-state"), "checked");
   assert.equal(await lightModeSwitch.getAttribute("data-state"), "unchecked");
+  const assertCheckedToggleOnLabelsAreWhite = async () => {
+    const colors = await page
+      .locator('[role="switch"][data-state="checked"] .safenet-switch-on-label')
+      .evaluateAll((labels) => labels.map((label) => getComputedStyle(label).color));
+    assert.ok(colors.length > 0, "at least one toggle should be on");
+    assert.ok(
+      colors.every((color) => color === "rgb(255, 255, 255)"),
+      "every visible On label should be white",
+    );
+  };
+  await assertCheckedToggleOnLabelsAreWhite();
   assert.equal(await page.locator("html").getAttribute("data-color-mode"), null);
   await page.waitForFunction(() => localStorage.getItem("safenet-color-mode") === null);
 
@@ -714,6 +725,7 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await waitForAttribute(lightModeSwitch, "data-state", "checked");
   await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  await assertCheckedToggleOnLabelsAreWhite();
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
   assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);

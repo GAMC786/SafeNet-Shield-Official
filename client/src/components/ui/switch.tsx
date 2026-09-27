@@ -19,7 +19,7 @@ const Switch = React.forwardRef<
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 flex items-center justify-between px-1.5 text-[9px] font-bold leading-none tracking-wide text-white/85"
     >
-      <span className="opacity-0 transition-opacity group-data-[state=checked]:opacity-100">ON</span>
+      <span className="safenet-switch-on-label opacity-0 transition-opacity group-data-[state=checked]:opacity-100">ON</span>
       <span className="opacity-0 transition-opacity group-data-[state=unchecked]:opacity-100">OFF</span>
     </span>
     <SwitchPrimitives.Thumb

@@ -477,6 +477,10 @@
   box-shadow: 0 0 12px hsl(var(--safenet-interactive-text) / 0.3);
 }
 
+.safenet-switch-on-label {
+  color: #fff !important;
+}
+
 .light .safenet-premium-nav-item {
   color: hsl(var(--safenet-gold-text)) !important;
 }
