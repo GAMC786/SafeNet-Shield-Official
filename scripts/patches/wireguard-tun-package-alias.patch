@@ -1,0 +1,10 @@
+diff --git a/tunnel/tools/libwg-go/api-android.go b/tunnel/tools/libwg-go/api-android.go
+index 14c69f6..dcaf023 100644
+--- a/tunnel/tools/libwg-go/api-android.go
++++ b/tunnel/tools/libwg-go/api-android.go
+@@ -30 +30 @@
+-	"golang.zx2c4.com/wireguard/tun"
++	wgTun "golang.zx2c4.com/wireguard/tun"
+@@ -98 +98 @@
+-	var wrapped tun.Device = tun
++	var wrapped wgTun.Device = tun

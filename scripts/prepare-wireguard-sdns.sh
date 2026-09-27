@@ -5,9 +5,11 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/.." && pwd)"
 wireguard_dir="$project_root/third_party/wireguard-android"
 payload="$script_dir/patches/wireguard-android-sdns.patch.gz.b64"
+alias_patch="$script_dir/patches/wireguard-tun-package-alias.patch"
 runtime_patcher="$script_dir/prepare-wireguard-go-runtime.py"
 upstream_commit="58789d6372e8948b87f5c47da7e5f2ad570eb531"
 patch_sha256="bb328edfb8b750e06177f7e40d70e00b4310f41f074a05225ffb65ff5ee621b6"
+alias_patch_sha256="fc1912f5a7a0fbf94b21f8aa36792190e7d4ca6753970e95d7063617f49741e7"
 go_version="1.26.5"
 
 if [[ "${1:-}" == "--print-go-version" && $# -eq 1 ]]; then
@@ -65,7 +67,11 @@ go_root="$go_root_parent/$(basename -- "$go_root")"
 
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/prepare-wireguard-sdns.XXXXXX")"
 staging_parent=""
+alias_patch_was_reversed=0
 cleanup() {
+    if [[ "$alias_patch_was_reversed" == "1" ]]; then
+        git -C "$wireguard_dir" apply --unidiff-zero "$alias_patch" >/dev/null 2>&1 || true
+    fi
     if [[ -n "$staging_parent" && -d "$staging_parent" ]]; then
         chmod -R u+w "$staging_parent" 2>/dev/null || true
         rm -rf "$staging_parent"
@@ -98,15 +104,30 @@ if actual_sha256 != expected_sha256:
 Path(patch_path).write_bytes(patch)
 PY
 
+[[ -f "$alias_patch" ]] ||
+    fail "The pinned WireGuard TUN package-alias patch is missing: $alias_patch"
+actual_alias_patch_sha256="$(sha256sum "$alias_patch" | cut -d' ' -f1)"
+[[ "$actual_alias_patch_sha256" == "$alias_patch_sha256" ]] ||
+    fail "WireGuard TUN package-alias patch checksum mismatch: expected $alias_patch_sha256, found $actual_alias_patch_sha256."
+if git -C "$wireguard_dir" apply --unidiff-zero --reverse --check "$alias_patch" >/dev/null 2>&1; then
+    git -C "$wireguard_dir" apply --unidiff-zero --reverse "$alias_patch"
+    alias_patch_was_reversed=1
+fi
+
 if git -C "$wireguard_dir" apply --check "$patch_file" >/dev/null 2>&1; then
     git -C "$wireguard_dir" apply "$patch_file"
 elif ! git -C "$wireguard_dir" apply --reverse --check "$patch_file" >/dev/null 2>&1; then
     fail "The WireGuard source differs from both the pinned upstream and the expected SafeNet patch."
 fi
 
-git -C "$wireguard_dir" diff --binary "$upstream_commit" > "$temp_dir/current.patch"
+git -C "$wireguard_dir" -c core.abbrev=7 diff --binary "$upstream_commit" > "$temp_dir/current.patch"
 cmp -s "$patch_file" "$temp_dir/current.patch" ||
     fail "Unexpected edits are present in the WireGuard submodule; refusing to build from an unreviewed source tree."
+
+git -C "$wireguard_dir" apply --unidiff-zero --check "$alias_patch" ||
+    fail "The pinned WireGuard TUN package-alias patch does not apply cleanly."
+git -C "$wireguard_dir" apply --unidiff-zero "$alias_patch"
+alias_patch_was_reversed=0
 
 if [[ -e "$go_root" && ! -x "$go_root/bin/go" ]]; then
     if [[ -d "$go_root" ]] &&

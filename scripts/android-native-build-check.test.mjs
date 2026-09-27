@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
@@ -23,6 +24,13 @@ const wireguardWrapperBuildScript = await readFile(
   new URL("../android/windscribe-tunnel/build.gradle", import.meta.url),
   "utf8",
 );
+const wireguardTunAliasPatch = await readFile(
+  new URL("./patches/wireguard-tun-package-alias.patch", import.meta.url),
+  "utf8",
+);
+const wireguardTunAliasPatchSha256 = createHash("sha256")
+  .update(wireguardTunAliasPatch)
+  .digest("hex");
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -195,6 +203,27 @@ test("WireGuard wrapper compiles the upstream Java sources with Java 17", () => 
   assert.match(
     wireguardWrapperBuildScript,
     /targetCompatibility JavaVersion\.VERSION_17/,
+  );
+});
+
+test("WireGuard SDNS patch avoids shadowing the imported TUN package", () => {
+  assert.match(
+    wireguardTunAliasPatch,
+    /wgTun "golang\.zx2c4\.com\/wireguard\/tun"/,
+  );
+  assert.match(wireguardTunAliasPatch, /var wrapped wgTun\.Device = tun/);
+  assert.match(
+    wireguardPrepareScript,
+    new RegExp(`alias_patch_sha256="${wireguardTunAliasPatchSha256}"`),
+  );
+  assert.match(
+    wireguardPrepareScript,
+    /git -C "\$wireguard_dir" -c core\.abbrev=7 diff --binary/,
+  );
+  assert.match(wireguardPrepareScript, /apply --unidiff-zero/);
+  assert.match(
+    wireguardWrapperBuildScript,
+    /wireguard-tun-package-alias\.patch/,
   );
 });
 

@@ -13,7 +13,8 @@ def prepareWireguardSdns = tasks.register("prepareWireguardSdns", Exec) {
     inputs.files(
         rootProject.file("../scripts/prepare-wireguard-sdns.sh"),
         rootProject.file("../scripts/prepare-wireguard-go-runtime.py"),
-        rootProject.file("../scripts/patches/wireguard-android-sdns.patch.gz.b64")
+        rootProject.file("../scripts/patches/wireguard-android-sdns.patch.gz.b64"),
+        rootProject.file("../scripts/patches/wireguard-tun-package-alias.patch")
     )
     outputs.dir(wireguardGoRoot)
     outputs.upToDateWhen { false }
