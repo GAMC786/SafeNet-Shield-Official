@@ -277,7 +277,7 @@ test("the active AppLock configuration is the LockLock Compose integration", () 
     /LockLockSwitch\(checked\) \{ newChecked ->\s*if \(newChecked != checked\) onClick\(\)/,
   );
   assert.match(composeUi, /https:\/\/github\.com\/nethical6\/LockLock/);
-  assert.match(composeUi, /Select Apps/);
+  assert.match(composeUi, /SELECT APPS/);
   assert.match(composeUi, /LockLockRecoveryDialog/);
   assert.match(composeUi, /LockLockAppSelectionItem/);
   assert.match(composeUi, /Not protecting apps — check permissions/);
@@ -289,7 +289,13 @@ test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
   assert.match(composeUi, /SafeNetBackground/);
   assert.match(composeUi, /SafeNetPrimary/);
   assert.match(composeUi, /SafeNetAccent/);
-  assert.match(composeUi, /FontFamily\.Monospace/);
+  assert.match(composeUi, /SafeNetMonoFontFamily/);
+  assert.match(composeUi, /Font\(R\.font\.safenet_space_grotesk_variable/);
+  assert.match(composeUi, /Font\(R\.font\.safenet_rajdhani_regular/);
+  assert.match(composeUi, /Font\(R\.font\.safenet_space_mono_regular/);
+  assert.match(composeUi, /RoundedCornerShape\(8\.dp\)/);
+  assert.match(composeUi, /SafeNetBackground = Color\.hsl\(222f, 0\.47f, 0\.11f\)/);
+  assert.match(composeUi, /Brush\.radialGradient/);
   assert.match(composeUi, /BorderStroke/);
   assert.match(composeUi, /ANDROID PERMISSION GATE/);
   assert.match(composeUi, /SECURE LOCAL CONTROL/);
