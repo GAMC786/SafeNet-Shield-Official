@@ -154,7 +154,7 @@ export default function Dashboard() {
         <div className="space-y-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_rgba(59,130,246,0.12)]">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary safenet-halo">
                 <LockKeyhole className="h-5 w-5" />
               </div>
               <div className="min-w-0">

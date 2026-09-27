@@ -49,11 +49,11 @@ export function SystemNavigation() {
                 {isActive && (
                   <motion.div
                     layoutId="activeSystemTab"
-                    className="absolute -bottom-1 inset-x-0 z-10 mx-auto h-1 w-8 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                    className="absolute -bottom-1 inset-x-0 z-10 mx-auto h-1 w-8 rounded-full bg-primary safenet-theme-glow"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
-                <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                <Icon className={cn(navIconClass, isActive && "safenet-icon-glow")} />
                 <span className={cn(navLabelClass, "text-center leading-tight")}>{item.label}</span>
               </div>
             </Link>
@@ -88,10 +88,10 @@ export function Navigation() {
                     className="absolute -top-1 inset-x-0 flex justify-center"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   >
-                    <div className="h-1 w-8 rounded-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
+                    <div className="h-1 w-8 rounded-full bg-primary safenet-theme-glow" />
                   </motion.div>
                 )}
-                <Icon className={cn(navIconClass, isActive && "drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]")} />
+                <Icon className={cn(navIconClass, isActive && "safenet-icon-glow")} />
                 <span className={cn(navLabelClass, "text-center leading-tight")}>{item.label}</span>
               </div>
             </Link>

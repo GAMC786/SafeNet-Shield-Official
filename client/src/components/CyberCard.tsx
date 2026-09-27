@@ -17,7 +17,7 @@ export function CyberCard({
       {...props}
       className={cn(
         "glass-panel rounded-xl p-6 relative overflow-hidden transition-all duration-300 group",
-        glow && "hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] hover:border-primary/50",
+        glow && "safenet-card-glow hover:border-primary/50",
         className
       )}
     >

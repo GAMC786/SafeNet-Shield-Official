@@ -617,6 +617,135 @@ test("Light Mode keeps the Firewall overview readable on narrow screens", async 
   await page.close();
 });
 
+test("Color modes preserve Blue Cyberpunk and persist Red and Green selections", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("safenet-color-mode-test-initialized")) return;
+    localStorage.removeItem("safenet-theme");
+    localStorage.removeItem("safenet-color-mode");
+    sessionStorage.setItem("safenet-color-mode-test-initialized", "true");
+  });
+  mockApi(page);
+  await page.goto(`${baseUrl}/settings`);
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "blue");
+  await page.getByRole("heading", { name: "Appearance" }).waitFor();
+
+  const readPalette = () =>
+    page.evaluate(() => ({
+      primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+      accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
+    }));
+  const readThemeContrast = () =>
+    page.evaluate(() => {
+      const luminance = (color) => {
+        const channels = color.match(/\d+(?:\.\d+)?/g).slice(0, 3).map(Number);
+        const linear = channels.map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      };
+      const contrast = (foreground, background) => {
+        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+        return (values[0] + 0.05) / (values[1] + 0.05);
+      };
+      const surface = document.createElement("div");
+      surface.className = "bg-background";
+      document.body.append(surface);
+      const background = getComputedStyle(surface).backgroundColor;
+      const text = document.createElement("span");
+      text.className = "text-primary";
+      surface.append(text);
+      const textContrast = contrast(getComputedStyle(text).color, background);
+      const button = document.createElement("button");
+      button.className = "bg-primary text-primary-foreground";
+      surface.append(button);
+      const buttonStyle = getComputedStyle(button);
+      const buttonContrast = contrast(buttonStyle.color, buttonStyle.backgroundColor);
+      const accent = document.createElement("span");
+      accent.className = "bg-accent text-accent-foreground";
+      surface.append(accent);
+      const accentStyle = getComputedStyle(accent);
+      const accentContrast = contrast(accentStyle.color, accentStyle.backgroundColor);
+      surface.remove();
+      return { textContrast, buttonContrast, accentContrast };
+    });
+  const readActiveNavigationGlow = () =>
+    page.locator('nav[aria-label="System services"] .safenet-icon-glow').first().evaluate(
+      (element) => getComputedStyle(element).filter,
+    );
+  const blueRadio = page.getByRole("radio", { name: "Blue" });
+  assert.equal(await blueRadio.isChecked(), true);
+  assert.match(await readActiveNavigationGlow(), /rgba\(59, 130, 246, 0\.5\)/);
+  const originalBluePalette = await readPalette();
+  assert.deepEqual(originalBluePalette, {
+    primary: "217 91% 60%",
+    accent: "199 89% 48%",
+  });
+
+  await page.getByText("Red", { exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
+  assert.deepEqual(await readPalette(), {
+    primary: "0 76% 48%",
+    accent: "0 68% 48%",
+  });
+  const redDarkContrast = await readThemeContrast();
+  assert.ok(redDarkContrast.textContrast >= 4.5, "Red primary text should be readable in Dark Mode");
+  assert.ok(redDarkContrast.buttonContrast >= 4.5, "Red primary button labels should remain readable");
+  assert.ok(redDarkContrast.accentContrast >= 4.5, "Red selected-state labels should remain readable");
+  assert.match(await readActiveNavigationGlow(), /rgba\(239, 68, 68, 0\.5\)/);
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "red");
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
+  assert.equal(await page.getByRole("radio", { name: "Red" }).isChecked(), true);
+
+  await page.getByText("Green", { exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "green");
+  assert.deepEqual(await readPalette(), {
+    primary: "142 62% 30%",
+    accent: "142 55% 30%",
+  });
+  const greenDarkContrast = await readThemeContrast();
+  assert.ok(greenDarkContrast.textContrast >= 4.5, "Green primary text should be readable in Dark Mode");
+  assert.ok(greenDarkContrast.buttonContrast >= 4.5, "Green primary button labels should remain readable");
+  assert.ok(greenDarkContrast.accentContrast >= 4.5, "Green selected-state labels should remain readable");
+  assert.match(await readActiveNavigationGlow(), /rgba\(34, 197, 94, 0\.5\)/);
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "green");
+
+  await page.getByRole("switch", { name: "Light Mode" }).click();
+  await page.waitForFunction(() => document.documentElement.classList.contains("light"));
+  const greenLightPalette = await readPalette();
+  assert.deepEqual(greenLightPalette, {
+    primary: "142 68% 28%",
+    accent: "142 55% 92%",
+  });
+
+  const greenLightContrast = await readThemeContrast();
+  assert.ok(greenLightContrast.textContrast >= 4.5, "Green primary text should remain readable in Light Mode");
+  assert.ok(greenLightContrast.buttonContrast >= 4.5, "Green primary button labels should remain readable");
+  assert.ok(greenLightContrast.accentContrast >= 4.5, "Green selected-state labels should remain readable");
+
+  await page.getByText("Red", { exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "red");
+  assert.deepEqual(await readPalette(), {
+    primary: "0 76% 42%",
+    accent: "0 65% 92%",
+  });
+  const redLightContrast = await readThemeContrast();
+  assert.ok(redLightContrast.textContrast >= 4.5, "Red primary text should remain readable in Light Mode");
+  assert.ok(redLightContrast.buttonContrast >= 4.5, "Red primary button labels should remain readable");
+  assert.ok(redLightContrast.accentContrast >= 4.5, "Red selected-state labels should remain readable");
+
+  await page.getByText("Blue", { exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorMode === "blue");
+  assert.deepEqual(await readPalette(), {
+    primary: "217 91% 48%",
+    accent: "199 89% 90%",
+  });
+  assert.equal(await page.evaluate(() => localStorage.getItem("safenet-color-mode")), "blue");
+  await page.close();
+});
+
 async function waitForAttribute(locator, attribute, expected) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if ((await locator.getAttribute(attribute)) === expected) return;
