@@ -495,19 +495,34 @@ test("Settings show the current version without firewall controls", async () => 
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   const bottomNavigation = page.getByTestId("bottom-navigation");
-  const getFooterBackground = () =>
+  const settingsBrandFooter = page.getByTestId("settings-brand-footer");
+  const getBottomNavigationBackground = () =>
     bottomNavigation.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const getSettingsBrandFooterBackground = () =>
+    settingsBrandFooter.evaluate((element) => getComputedStyle(element).backgroundColor);
   assert.equal(
     await bottomNavigation.evaluate((element) => element.classList.contains("safenet-settings-footer")),
-    true,
+    false,
+    "the shared navigation should retain its normal theme styling",
   );
-  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
+  assert.notEqual(await getBottomNavigationBackground(), "rgb(255, 255, 255)");
+  assert.equal(await getSettingsBrandFooterBackground(), "rgb(255, 255, 255)");
+  const brandFooterColors = await settingsBrandFooter.evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    subtitle: getComputedStyle(element.querySelector("p")).color,
+    warning: getComputedStyle(element.querySelector(".text-yellow-500")).color,
+    contact: getComputedStyle(element.querySelector(".safenet-settings-brand-footer-link")).color,
+    titleBackground: getComputedStyle(element.querySelector("h2")).backgroundImage,
+  }));
+  assert.equal(brandFooterColors.foreground, "rgb(33, 45, 64)");
+  assert.equal(brandFooterColors.subtitle, "rgb(71, 85, 105)");
+  assert.equal(brandFooterColors.warning, "rgb(103, 71, 0)");
+  assert.equal(brandFooterColors.contact, "rgb(0, 99, 84)");
+  assert.match(brandFooterColors.titleBackground, /rgb\(33, 45, 64\)/);
   assert.equal(
-    await bottomNavigation.locator(".text-muted-foreground").first().evaluate(
-      (element) => getComputedStyle(element).color,
-    ),
-    "rgb(100, 116, 139)",
-    "inactive footer icons and labels should remain readable on white",
+    await settingsBrandFooter.locator("img[alt='Terry Fox Marathon of Hope']").count(),
+    1,
+    "the white footer panel should contain the Terry Fox image",
   );
   const darkBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
@@ -517,7 +532,7 @@ test("Settings show the current version without firewall controls", async () => 
   await waitForAttribute(lightModeSwitch, "data-state", "checked");
   await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
-  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
+  assert.equal(await getSettingsBrandFooterBackground(), "rgb(255, 255, 255)");
   const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
     (element) => getComputedStyle(element).color,
   );
@@ -586,7 +601,8 @@ test("Settings show the current version without firewall controls", async () => 
   await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
-  assert.equal(await getFooterBackground(), "rgb(255, 255, 255)");
+  assert.equal(await getSettingsBrandFooterBackground(), "rgb(255, 255, 255)");
+  assert.notEqual(await getBottomNavigationBackground(), "rgb(255, 255, 255)");
 
   await page.getByRole("heading", { name: "DeepCleer Ai Detector" }).waitFor();
   const appearanceTop = await page.getByTestId("theme-mode-controls").evaluate(
@@ -627,9 +643,9 @@ test("Settings show the current version without firewall controls", async () => 
   assert.equal(
     await bottomNavigation.evaluate((element) => element.classList.contains("safenet-settings-footer")),
     false,
-    "the white footer styling should be limited to Settings",
+    "the Terry Fox panel styling should not affect shared navigation",
   );
-  assert.notEqual(await getFooterBackground(), "rgb(255, 255, 255)");
+  assert.notEqual(await getBottomNavigationBackground(), "rgb(255, 255, 255)");
   await page.close();
 });
 

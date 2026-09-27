@@ -27,8 +27,11 @@ export default function Settings() {
           <AiShieldControls />
         </div>
 
-        <div className="md:col-span-2 space-y-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm">
-          <div className="border-b border-yellow-500/10 pb-4 text-center">
+        <div
+          className="safenet-settings-brand-footer md:col-span-2 space-y-4 rounded border p-4 text-sm"
+          data-testid="settings-brand-footer"
+        >
+          <div className="border-b pb-4 text-center">
             <a
               href={terryFoxSourceUrl}
               target="_blank"
@@ -54,15 +57,15 @@ export default function Settings() {
                 SafeNet Shield DNS Server+ (Official) v{appVersion}
             </span>
           </div>
-          <div className="flex flex-col items-center justify-center gap-3 border-t border-yellow-500/10 pt-4 text-center sm:flex-row sm:gap-5">
+          <div className="flex flex-col items-center justify-center gap-3 border-t pt-4 text-center sm:flex-row sm:gap-5">
             <a
               href="mailto:Post@SafeNetInc.Ca"
-              className="text-white underline-offset-4 hover:underline"
+              className="safenet-settings-brand-footer-link underline-offset-4 hover:underline"
             >
               Contact Us: Post@SafeNetInc.Ca
             </a>
           </div>
-          <div className="flex items-center justify-center border-t border-yellow-500/10 pt-4">
+          <div className="flex items-center justify-center border-t pt-4">
             <img
               src={wordmarkImage}
               alt="SafeNet Inc."
