@@ -748,14 +748,19 @@ export default function SpamCallBlocker() {
             {sms.status?.roleHeld && (
               <Badge variant="outline">
                 {sms.status.filterPermissionGranted
-                  ? sms.status.permissionsGranted
-                    ? "Filter, inbox, and sending access granted"
-                    : "Filter access granted"
+                  ? "Receive SMS access granted"
                   : "Receive SMS permission needed"}
               </Badge>
             )}
+            {sms.status?.permissionsGranted && (
+              <Badge variant="outline">Inbox and sending access granted</Badge>
+            )}
             <Badge variant="outline">{sms.quarantinedMessages.length} quarantined</Badge>
           </div>
+
+          {isAndroid && sms.status && (
+            <p className="text-xs leading-5 text-muted-foreground">{sms.status.message}</p>
+          )}
 
           {!isAndroid && (
             <p className="text-xs text-muted-foreground">
@@ -788,7 +793,8 @@ export default function SpamCallBlocker() {
               {sms.isBusy ? "Opening Android settings..." : "Set SafeNet as default SMS app"}
             </Button>
           )}
-          {isAndroid && sms.status?.roleHeld && !sms.status.permissionsGranted && (
+          {isAndroid && sms.status?.roleHeld &&
+            (!sms.status.inboxPermissionGranted || !sms.status.sendPermissionGranted) && (
             <Button
               variant="outline"
               className="w-fit"
@@ -948,7 +954,7 @@ export default function SpamCallBlocker() {
                           variant="ghost"
                           aria-label={`Restore message from ${message.sender}`}
                           title="Restore to Android inbox"
-                          disabled={!sms.status?.roleHeld || !sms.status.permissionsGranted || sms.isBusy}
+                          disabled={!sms.status?.roleHeld || sms.isBusy}
                           onClick={() => void restoreSms(String(message.id))}
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -994,7 +1000,7 @@ export default function SpamCallBlocker() {
                   <p className="text-xs text-muted-foreground">Sent texts are saved in the Android sent folder.</p>
                   <Button
                     onClick={() => void sendSms()}
-                    disabled={!isAndroid || !sms.status?.roleHeld || !sms.status.permissionsGranted || sms.isBusy}
+                    disabled={!isAndroid || !sms.status?.roleHeld || !sms.status.sendPermissionGranted || sms.isBusy}
                   >
                     {sms.isBusy ? "Sending..." : "Send SMS"}
                   </Button>
@@ -1007,7 +1013,7 @@ export default function SpamCallBlocker() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!sms.status?.roleHeld || !sms.status.permissionsGranted}
+                    disabled={!sms.status?.roleHeld || !sms.status.inboxPermissionGranted}
                     onClick={() => {
                       void sms.refreshRecentMessages().catch((error) => toast({
                         title: "Recent messages could not be loaded",
