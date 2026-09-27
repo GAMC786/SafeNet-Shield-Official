@@ -89,6 +89,7 @@
   --muted-foreground: 215 20% 33%;
   --accent: 199 89% 90%;
   --accent-foreground: 222 47% 11%;
+  --accent-text: 199 89% 30%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --card: 0 0% 100%;
@@ -100,6 +101,78 @@
 
 .dark {
   color-scheme: dark;
+}
+
+:root[data-color-mode="red"] {
+  --primary: 0 76% 51%;
+  --primary-foreground: 0 0% 100%;
+  --primary-text: 0 78% 68%;
+  --accent: 0 68% 49%;
+  --accent-foreground: 0 0% 100%;
+  --ring: 0 78% 62%;
+}
+
+.dark[data-color-mode="red"] [class~="text-primary"],
+.dark[data-color-mode="red"] [class~="hover:text-primary"]:hover,
+.dark[data-color-mode="red"] [class~="text-accent"] {
+  color: hsl(var(--primary-text)) !important;
+}
+
+:root.light[data-color-mode="red"] {
+  --primary: 0 76% 42%;
+  --primary-foreground: 0 0% 100%;
+  --primary-text: 0 72% 37%;
+  --accent: 0 65% 92%;
+  --accent-foreground: 0 72% 24%;
+  --accent-text: 0 72% 32%;
+  --ring: 0 76% 42%;
+}
+
+.light[data-color-mode="red"] [class~="text-primary"],
+.light[data-color-mode="red"] [class~="hover:text-primary"]:hover {
+  color: hsl(var(--primary-text)) !important;
+}
+
+.light[data-color-mode="red"] body {
+  background-image:
+    radial-gradient(circle at 50% 0%, hsl(0 76% 48% / 0.075), transparent 42%),
+    radial-gradient(circle at 100% 100%, hsl(0 70% 55% / 0.04), transparent 32%);
+}
+
+:root[data-color-mode="green"] {
+  --primary: 142 62% 39%;
+  --primary-foreground: 0 0% 100%;
+  --primary-text: 143 62% 68%;
+  --accent: 142 55% 39%;
+  --accent-foreground: 0 0% 100%;
+  --ring: 142 65% 54%;
+}
+
+.dark[data-color-mode="green"] [class~="text-primary"],
+.dark[data-color-mode="green"] [class~="hover:text-primary"]:hover,
+.dark[data-color-mode="green"] [class~="text-accent"] {
+  color: hsl(var(--primary-text)) !important;
+}
+
+:root.light[data-color-mode="green"] {
+  --primary: 142 68% 30%;
+  --primary-foreground: 0 0% 100%;
+  --primary-text: 142 68% 30%;
+  --accent: 142 55% 92%;
+  --accent-foreground: 142 70% 22%;
+  --accent-text: 142 70% 24%;
+  --ring: 142 68% 30%;
+}
+
+.light[data-color-mode="green"] [class~="text-primary"],
+.light[data-color-mode="green"] [class~="hover:text-primary"]:hover {
+  color: hsl(var(--primary-text)) !important;
+}
+
+.light[data-color-mode="green"] body {
+  background-image:
+    radial-gradient(circle at 50% 0%, hsl(142 62% 38% / 0.075), transparent 42%),
+    radial-gradient(circle at 100% 100%, hsl(142 55% 48% / 0.04), transparent 32%);
 }
 
 .light h1,
@@ -334,7 +407,7 @@
 }
 
 .light [class~="text-accent"] {
-  color: hsl(199 89% 30%) !important;
+  color: hsl(var(--accent-text)) !important;
 }
 
 .light [class~="text-sky-200"],

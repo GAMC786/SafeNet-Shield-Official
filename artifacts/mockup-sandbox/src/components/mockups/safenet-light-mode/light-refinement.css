@@ -12,6 +12,7 @@
   --muted-foreground: 215 20% 33%;
   --accent: 199 89% 90%;
   --accent-foreground: 222 47% 11%;
+  --accent-text: 199 89% 30%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --card: 0 0% 100%;
@@ -227,7 +228,7 @@
 }
 
 .light [class~="text-accent"] {
-  color: hsl(199 89% 30%) !important;
+  color: hsl(var(--accent-text)) !important;
 }
 
 .light [class~="text-sky-200"],

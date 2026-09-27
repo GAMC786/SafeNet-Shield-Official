@@ -14,6 +14,7 @@ import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
+import { ColorModeProvider } from "@/components/ColorModeProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { SystemNavigation } from "@/components/Navigation";
@@ -531,9 +532,11 @@ function App() {
         enableSystem={false}
         storageKey="safenet-theme"
       >
-        <WouterRouter base={basePath}>
-          <ClerkProviderWithRoutes />
-        </WouterRouter>
+        <ColorModeProvider>
+          <WouterRouter base={basePath}>
+            <ClerkProviderWithRoutes />
+          </WouterRouter>
+        </ColorModeProvider>
       </ThemeProvider>
     </Sentry.ErrorBoundary>
   );
