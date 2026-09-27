@@ -484,10 +484,13 @@ test("Settings show the current version without firewall controls", async () => 
   await mockApi(page, { settingsDelayMs: 12_000 });
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "System Settings" }).waitFor();
-  const appearanceModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
-  await appearanceModeSwitch.waitFor();
-  assert.equal(await appearanceModeSwitch.getAttribute("data-state"), "checked");
-  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
+  const darkModeSwitch = page.getByRole("switch", { name: "Cyberpunk Dark Mode" });
+  const lightModeSwitch = page.getByRole("switch", { name: "Wonderland Light Mode" });
+  await darkModeSwitch.waitFor();
+  await lightModeSwitch.waitFor();
+  assert.equal(await darkModeSwitch.getAttribute("data-state"), "checked");
+  assert.equal(await lightModeSwitch.getAttribute("data-state"), "unchecked");
+  assert.equal(await page.getByRole("group", { name: "Appearance modes" }).count(), 1);
   assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
@@ -495,10 +498,10 @@ test("Settings show the current version without firewall controls", async () => 
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
   assert.equal(darkBackground, "222 47% 11%");
-  await appearanceModeSwitch.click();
-  await waitForAttribute(appearanceModeSwitch, "data-state", "unchecked");
+  await lightModeSwitch.click();
+  await waitForAttribute(lightModeSwitch, "data-state", "checked");
+  await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
-  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Wonderland Light Mode");
   const settingsHeadingColor = await page.getByRole("heading", { name: "System Settings" }).evaluate(
     (element) => getComputedStyle(element).color,
   );
@@ -562,8 +565,9 @@ test("Settings show the current version without firewall controls", async () => 
   );
   assert.equal(lightBackground, "0 0% 100%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
-  await appearanceModeSwitch.click();
-  await waitForAttribute(appearanceModeSwitch, "data-state", "checked");
+  await darkModeSwitch.click();
+  await waitForAttribute(darkModeSwitch, "data-state", "checked");
+  await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
 
@@ -634,11 +638,13 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "Appearance" }).waitFor();
 
-  const appearanceModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
-  await appearanceModeSwitch.waitFor();
+  const darkModeSwitch = page.getByRole("switch", { name: "Cyberpunk Dark Mode" });
+  const lightModeSwitch = page.getByRole("switch", { name: "Wonderland Light Mode" });
+  await darkModeSwitch.waitFor();
+  await lightModeSwitch.waitFor();
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
-  assert.equal(await appearanceModeSwitch.getAttribute("data-state"), "checked");
-  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
+  assert.equal(await darkModeSwitch.getAttribute("data-state"), "checked");
+  assert.equal(await lightModeSwitch.getAttribute("data-state"), "unchecked");
   assert.equal(await page.locator("html").getAttribute("data-color-mode"), null);
   await page.waitForFunction(() => localStorage.getItem("safenet-color-mode") === null);
 
@@ -663,10 +669,10 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   assert.equal(darkTokens.primary, "217 91% 60%", "Cyberpunk primary blue must remain unchanged");
   assert.equal(darkTokens.card, "224 35% 14%", "Cyberpunk card surface must remain unchanged");
 
-  await appearanceModeSwitch.click();
-  await waitForAttribute(appearanceModeSwitch, "data-state", "unchecked");
+  await lightModeSwitch.click();
+  await waitForAttribute(lightModeSwitch, "data-state", "checked");
+  await waitForAttribute(darkModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
-  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Wonderland Light Mode");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
   assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);
@@ -764,11 +770,10 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
 
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "Appearance" }).waitFor();
-  const darkModeSwitch = page.getByRole("switch", { name: "Appearance mode" });
   await darkModeSwitch.click();
   await waitForAttribute(darkModeSwitch, "data-state", "checked");
+  await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
-  assert.equal(await page.getByTestId("appearance-mode-label").textContent(), "Cyberpunk Dark Mode");
   assert.equal((await readThemeTokens()).primary, "217 91% 60%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
   await page.close();

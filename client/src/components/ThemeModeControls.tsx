@@ -5,8 +5,7 @@ import { Switch } from "@/components/ui/switch";
 export function ThemeModeControls() {
   const { setTheme, theme } = useTheme();
   const darkModeEnabled = theme !== "light";
-  const activeMode = darkModeEnabled ? "Cyberpunk Dark Mode" : "Wonderland Light Mode";
-  const nextMode = darkModeEnabled ? "Wonderland Light Mode" : "Cyberpunk Dark Mode";
+  const lightModeEnabled = theme === "light";
 
   return (
     <CyberCard className="space-y-4" data-testid="theme-mode-controls">
@@ -17,31 +16,57 @@ export function ThemeModeControls() {
         </p>
       </div>
 
-      <label
-        htmlFor="switch-appearance-mode"
-        className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background/40 p-3 sm:max-w-lg"
-      >
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-foreground" data-testid="appearance-mode-label">
-            {activeMode}
+      <div role="group" aria-label="Appearance modes" className="space-y-2 sm:max-w-lg">
+        <label
+          htmlFor="switch-appearance-dark"
+          className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background/40 p-3"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground">
+              Cyberpunk Dark Mode
+            </span>
+            <span
+              id="appearance-dark-description"
+              className="mt-1 block text-xs text-muted-foreground"
+            >
+              SafeNet&apos;s original Cyberpunk appearance.
+            </span>
           </span>
-          <span
-            id="appearance-mode-description"
-            className="mt-1 block text-xs text-muted-foreground"
-          >
-            Switch to {nextMode}
+          <Switch
+            id="switch-appearance-dark"
+            checked={darkModeEnabled}
+            onCheckedChange={(enabled) => setTheme(enabled ? "dark" : "light")}
+            aria-label="Cyberpunk Dark Mode"
+            aria-describedby="appearance-dark-description"
+            data-testid="switch-appearance-dark"
+          />
+        </label>
+
+        <label
+          htmlFor="switch-appearance-light"
+          className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background/40 p-3"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground">
+              Wonderland Light Mode
+            </span>
+            <span
+              id="appearance-light-description"
+              className="mt-1 block text-xs text-muted-foreground"
+            >
+              Use the Wonderland color palette.
+            </span>
           </span>
-        </span>
-        <Switch
-          id="switch-appearance-mode"
-          checked={darkModeEnabled}
-          onCheckedChange={(enabled) => setTheme(enabled ? "dark" : "light")}
-          aria-label="Appearance mode"
-          aria-describedby="appearance-mode-description"
-          aria-valuetext={activeMode}
-          data-testid="switch-appearance-mode"
-        />
-      </label>
+          <Switch
+            id="switch-appearance-light"
+            checked={lightModeEnabled}
+            onCheckedChange={(enabled) => setTheme(enabled ? "light" : "dark")}
+            aria-label="Wonderland Light Mode"
+            aria-describedby="appearance-light-description"
+            data-testid="switch-appearance-light"
+          />
+        </label>
+      </div>
     </CyberCard>
   );
 }
