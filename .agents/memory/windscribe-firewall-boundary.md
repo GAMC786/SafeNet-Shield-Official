@@ -8,3 +8,9 @@ The stock WireGuard Android GoBackend does not expose an app-level TUN packet-fi
 **Why:** DNS redirection to an encrypted resolver is not DNS firewall enforcement. Native policy evaluation now exists, but it does not inspect HTTPS, DoH, or DoT, and device-level Windscribe enforcement has not been verified by a real Android tunnel test.
 
 **How to apply:** Keep Windscribe claims scoped to cleartext DNS on UDP/TCP port 53; do not imply HTTPS, DoH, or DoT inspection. Preserve the visible warning that device-level enforcement is unverified until a real Android tunnel test passes, including startup-policy and live-update behavior.
+
+Control D DoH stamps need a literal bootstrap IP in the stamp's server-address field because the tunnel resolver rejects hostname bootstrap. Control D documents `76.76.2.22` and `76.76.10.22` as DoH endpoints with valid TLS certificates; keep `dns.controld.com` as the TLS hostname and the Endpoint ID in the URL path.
+
+**Why:** Resolving a bootstrap hostname from inside the VPN can recurse through the tunnel and fail before the encrypted upstream exists.
+
+**How to apply:** When creating a Control D stamp for the Windscribe tunnel, configure a documented DoH IP as the address, retain the hostname for TLS validation, and use `/<Resolver ID>` as the path.
