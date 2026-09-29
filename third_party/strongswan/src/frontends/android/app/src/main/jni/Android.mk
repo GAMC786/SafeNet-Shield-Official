@@ -24,6 +24,15 @@ openssl_PATH := $(LOCAL_PATH)/openssl/include
 
 include $(strongswan_PATH)/Android.common.mk
 
+ifneq ($(SAFENET_SDNS_LIB),)
+include $(CLEAR_VARS)
+LOCAL_MODULE := safenetsdns
+LOCAL_SRC_FILES := $(SAFENET_SDNS_LIB)
+LOCAL_EXPORT_C_INCLUDES := $(SAFENET_SDNS_INCLUDE)
+LOCAL_MODULE_TAGS := optional
+include $(PREBUILT_SHARED_LIBRARY)
+endif
+
 # CFLAGS (partially from a configure run using droid-gcc)
 strongswan_CFLAGS := \
 	-Wall \
@@ -41,6 +50,7 @@ strongswan_CFLAGS := \
 	-DHAVE_ALLOCA_H \
 	-DHAVE_ALLOCA \
 	-DHAVE_CLOCK_GETTIME \
+	-DHAVE_SIGWAITINFO \
 	-DHAVE_DLADDR \
 	-DHAVE_PRCTL \
 	-DHAVE_LINUX_UDP_H \

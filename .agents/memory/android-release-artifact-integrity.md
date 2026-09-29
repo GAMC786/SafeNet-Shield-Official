@@ -14,3 +14,9 @@ Hosted emulator action scripts must use a single shell-safe command and avoid Ba
 **Why:** `reactivecircus/android-emulator-runner` invokes its inline script through `/usr/bin/sh`; multiline continuations and `set -o pipefail` were passed through incompatibly and blocked an otherwise valid release.
 
 **How to apply:** Keep strict Bash behavior inside the invoked `.sh` file, but pass the command as one line in the action input and let the script return the smoke result.
+
+Modern Android tooling may add native-library alignment extra fields that make Info-ZIP `unzip -t` report invalid field lengths even when the APK is intact.
+
+**Why:** A 16 KiB-aligned APK passed Android `zipalign`, signature verification, and per-entry CRC checks while Info-ZIP rejected its native-library extra fields.
+
+**How to apply:** Validate APKs with `apksigner verify`, `zipalign -c -P 16 -v 4`, and entry CRC checks; do not treat the Info-ZIP warning alone as corruption.

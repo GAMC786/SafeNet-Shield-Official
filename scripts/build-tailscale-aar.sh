@@ -69,7 +69,27 @@ echo "Building Tailscale Android engine from pinned revision $expected_revision"
 # Enter it first so gomobile uses Tailscale's runtime fork, not host Go.
 (
     cd "$source_dir"
-    make libtailscale
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        # gomobile detects Apple SDK support by probing xcrun. Some Linux
+        # environments provide an xcrun shim that falsely reports Xcode as
+        # available, then fails while resolving the iPhone SDK. This build
+        # only targets Android, so make that Apple-toolchain probe fail closed.
+        # Cross-ABI Go compilation can also exceed Linux /tmp quotas, so keep
+        # temporary compiler output on the runner or workspace volume.
+        android_work_temp="${RUNNER_TEMP:-$project_root/.tmp-android}"
+        mkdir -p "$android_work_temp"
+        no_apple_tools_dir="$temporary_dir/no-apple-tools"
+        mkdir -p "$no_apple_tools_dir"
+        cat > "$no_apple_tools_dir/xcrun" <<'EOF'
+#!/usr/bin/env sh
+exit 127
+EOF
+        chmod +x "$no_apple_tools_dir/xcrun"
+        TMPDIR="$android_work_temp" GOTMPDIR="$android_work_temp" \
+            PATH="$no_apple_tools_dir:$PATH" make libtailscale
+    else
+        make libtailscale
+    fi
 )
 [[ -s "$source_dir/android/libs/libtailscale.aar" ]] ||
     fail "Tailscale Android build completed without producing libtailscale.aar."

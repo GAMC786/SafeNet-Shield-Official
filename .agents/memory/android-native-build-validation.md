@@ -9,6 +9,12 @@ The Android SDK is not guaranteed to be installed in the development workspace. 
 
 **How to apply:** Keep the SDK versions sourced from the Android Gradle pins, use the shared setup path for hosted validation, and run the native assembly gate before release signing or upload.
 
+Large multi-ABI gomobile links can exceed this workspace's `/tmp` quota even when `df` reports free space; set both `TMPDIR` and `GOTMPDIR` to runner or workspace storage.
+
+**Why:** The four-ABI Tailscale AAR failed while writing intermediates under `/tmp`, then completed after Go scratch output moved to the workspace volume.
+
+**How to apply:** Set these variables on the `make libtailscale` subprocess, not only on the Gradle caller.
+
 Hosted Android proof runs can also fail inside the SDK setup action before APK packaging, leaving the smoke job skipped even when TypeScript, workflow lint, and application tests pass.
 
 **Why:** Resolver evidence cannot be produced without a packaged APK and instrumentation APK, so a green application test suite does not prove the hosted smoke path ran.
@@ -38,3 +44,15 @@ The official APK workflow must be dispatched from a branch containing the valida
 **Why:** A successful workflow on the official default branch can produce an older APK, while a source branch release can expose Java-only compilation gaps before publication.
 
 **How to apply:** Publish the exact validated commit to a dedicated official release branch, dispatch the signed workflow against that branch, and verify the formal release tag and checksum assets afterward.
+
+Vendored strongSwan menu handlers must compare non-final `R.id` values at runtime instead of using them in `switch` labels; `android.nonFinalResIds=false` did not restore compile-time IDs for this library.
+
+**Why:** A forced Android rebuild with regenerated resources still rejected `case R.id.*` labels as non-constant; replacing them with `if` comparisons passed strongSwan Java compilation.
+
+**How to apply:** Avoid resource-ID switch cases when updating bundled strongSwan Java sources, and validate with the Android native compile gate.
+
+Pass variable overrides to Android `ndkBuild.arguments` as `NAME=value`, not compiler-style `-DNAME=value`; the latter reaches GNU make as an unsupported option.
+
+**Why:** The pinned NDK's bundled make rejected `-DSAFENET_SDNS_*` during its configure probe, while Android.mk consumes those names as make variables.
+
+**How to apply:** Use plain assignments for values read by Android.mk and reserve `-D` for compiler flags inside `LOCAL_CPPFLAGS` or `LOCAL_CFLAGS`.

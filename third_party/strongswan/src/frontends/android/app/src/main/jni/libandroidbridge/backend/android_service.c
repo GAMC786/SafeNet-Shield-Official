@@ -17,13 +17,18 @@
  */
 
 #include <errno.h>
+#include <stdint.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "android_jni.h"
 #include "android_service.h"
 #include "android_dns_proxy.h"
 #include "../charonservice.h"
 #include "../vpnservice_builder.h"
+#ifdef SAFENET_SDNS
+#include "safenetsdns.h"
+#endif
 
 #include <daemon.h>
 #include <library.h>
@@ -83,7 +88,76 @@ struct private_android_service_t {
 	 * Whether to use the DNS proxy or not
 	 */
 	bool use_dns_proxy;
+
+	/**
+	 * SafeNet plaintext packet filter handle.
+	 */
+	int64_t safenet_filter;
+
+	/**
+	 * Whether failure to create the configured filter must fail the tunnel.
+	 */
+	bool safenet_filter_required;
 };
+
+static char *safenet_stamp;
+static char *safenet_policy;
+static private_android_service_t *safenet_current;
+
+bool android_service_set_safenet_filter(const char *stamp, const char *policy)
+{
+	char *new_stamp = stamp ? strdup(stamp) : NULL;
+	char *new_policy = policy ? strdup(policy) : NULL;
+	if ((stamp && !new_stamp) || (policy && !new_policy))
+	{
+		free(new_stamp);
+		free(new_policy);
+		return FALSE;
+	}
+	free(safenet_stamp);
+	free(safenet_policy);
+	safenet_stamp = new_stamp;
+	safenet_policy = new_policy;
+	if (safenet_current)
+	{
+		bool failed = FALSE;
+		safenet_current->lock->write_lock(safenet_current->lock);
+#ifdef SAFENET_SDNS
+		if (!safenet_current->safenet_filter ||
+			SafeNetFilterUpdatePolicy(safenet_current->safenet_filter,
+									  safenet_policy ?: "") < 0)
+		{
+			failed = TRUE;
+		}
+#else
+		failed = TRUE;
+#endif
+		safenet_current->lock->unlock(safenet_current->lock);
+		if (failed)
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+static bool create_safenet_filter(private_android_service_t *this, int tunfd)
+{
+	if (!safenet_stamp && !safenet_policy)
+	{
+		this->safenet_filter = 0;
+		this->safenet_filter_required = FALSE;
+		return TRUE;
+	}
+	this->safenet_filter_required = TRUE;
+#ifdef SAFENET_SDNS
+	this->safenet_filter = SafeNetFilterCreate(tunfd, safenet_stamp,
+											 safenet_policy ?: "");
+#else
+	this->safenet_filter = 0;
+#endif
+	return this->safenet_filter != 0;
+}
 
 CALLBACK(send_esp, void,
 	void *data, esp_packet_t *packet, bool encap)
@@ -183,6 +257,34 @@ static job_requeue_t handle_plain(private_android_service_t *this)
 		return JOB_REQUEUE_FAIR;
 	}
 	raw.len = len;
+
+	this->lock->read_lock(this->lock);
+	if (this->safenet_filter_required)
+	{
+#ifdef SAFENET_SDNS
+		int result = this->safenet_filter
+			? SafeNetFilterOutboundPacket(this->safenet_filter, raw.ptr, raw.len)
+			: -1;
+#else
+		int result = -1;
+#endif
+		this->lock->unlock(this->lock);
+		if (result != 1)
+		{
+		/* Only an explicit 1 reaches IKE encryption.  Zero is consumed or
+		 * blocked; negative values are fatal filter errors and fail closed. */
+			if (result < 0)
+			{
+				DBG1(DBG_DMN, "SafeNet packet filter failed; dropping packet");
+			}
+			chunk_free(&raw);
+			return JOB_REQUEUE_DIRECT;
+		}
+	}
+	else
+	{
+		this->lock->unlock(this->lock);
+	}
 
 	packet = ip_packet_create(raw);
 	if (packet)
@@ -342,10 +444,24 @@ static bool setup_tun_device(private_android_service_t *this,
 	this->lock->write_lock(this->lock);
 	if (this->tunfd > 0)
 	{	/* close previously opened TUN device */
+		if (this->safenet_filter)
+		{
+#ifdef SAFENET_SDNS
+			SafeNetFilterClose(this->safenet_filter);
+#endif
+			this->safenet_filter = 0;
+		}
 		close(this->tunfd);
 		already_registered = true;
 	}
 	this->tunfd = tunfd;
+	if (!create_safenet_filter(this, tunfd))
+	{
+		this->tunfd = -1;
+		this->lock->unlock(this->lock);
+		close(tunfd);
+		return FALSE;
+	}
 	this->lock->unlock(this->lock);
 
 	DBG1(DBG_DMN, "successfully created TUN device");
@@ -385,9 +501,23 @@ static bool setup_tun_device_without_dns(private_android_service_t *this)
 	this->lock->write_lock(this->lock);
 	if (this->tunfd > 0)
 	{	/* close previously opened TUN device, this should always be the case */
+		if (this->safenet_filter)
+		{
+#ifdef SAFENET_SDNS
+			SafeNetFilterClose(this->safenet_filter);
+#endif
+			this->safenet_filter = 0;
+		}
 		close(this->tunfd);
 	}
 	this->tunfd = tunfd;
+	if (!create_safenet_filter(this, tunfd))
+	{
+		this->tunfd = -1;
+		this->lock->unlock(this->lock);
+		close(tunfd);
+		return FALSE;
+	}
 	this->lock->unlock(this->lock);
 
 	DBG1(DBG_DMN, "successfully created TUN device without DNS");
@@ -409,6 +539,14 @@ static void close_tun_device(private_android_service_t *this)
 	}
 	tunfd = this->tunfd;
 	this->tunfd = -1;
+	if (this->safenet_filter)
+	{
+#ifdef SAFENET_SDNS
+		SafeNetFilterClose(this->safenet_filter);
+#endif
+		this->safenet_filter = 0;
+	}
+	this->safenet_filter_required = FALSE;
 	this->lock->unlock(this->lock);
 
 	this->dns_proxy->unregister_cb(this->dns_proxy, deliver_plain);
@@ -926,6 +1064,10 @@ METHOD(android_service_t, destroy, void,
 	charon->bus->remove_listener(charon->bus, &this->public.listener);
 	/* make sure the tun device is actually closed */
 	close_tun_device(this);
+	if (safenet_current == this)
+	{
+		safenet_current = NULL;
+	}
 	this->dns_proxy->destroy(this->dns_proxy);
 	this->lock->destroy(this->lock);
 	this->settings->destroy(this->settings);
@@ -958,6 +1100,7 @@ android_service_t *android_service_create(android_creds_t *creds,
 		.tunfd = -1,
 		.mtu = settings->get_int(settings, "global.mtu", ANDROID_DEFAULT_MTU),
 	);
+	safenet_current = this;
 	/* only allow queries for the VPN gateway */
 	this->dns_proxy->add_hostname(this->dns_proxy,
 			this->settings->get_str(this->settings, "connection.server", NULL));

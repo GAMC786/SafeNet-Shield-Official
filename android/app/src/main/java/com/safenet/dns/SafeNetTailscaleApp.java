@@ -1,6 +1,5 @@
 package com.safenet.dns;
 
-import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
@@ -20,9 +19,10 @@ import java.util.Collections;
 import org.json.JSONArray;
 import libtailscale.Libtailscale;
 import java.nio.charset.StandardCharsets;
+import org.strongswan.android.logic.StrongSwanApplication;
 
 /** Small SafeNet-owned host for the upstream gomobile Tailscale engine. */
-public final class SafeNetTailscaleApp extends Application implements libtailscale.AppContext {
+public final class SafeNetTailscaleApp extends StrongSwanApplication implements libtailscale.AppContext {
     private volatile libtailscale.Application engine;
     private volatile Network underlyingNetwork;
     private ConnectivityManager.NetworkCallback networkCallback;

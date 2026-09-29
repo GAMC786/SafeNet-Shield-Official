@@ -58,6 +58,12 @@ LOCAL_LDLIBS := -llog
 
 LOCAL_SHARED_LIBRARIES := libstrongswan libipsec libcharon
 
+ifneq ($(SAFENET_SDNS_LIB),)
+LOCAL_SHARED_LIBRARIES += safenetsdns
+LOCAL_C_INCLUDES += $(SAFENET_SDNS_INCLUDE)
+LOCAL_CFLAGS += -DSAFENET_SDNS
+endif
+
 ifneq ($(strongswan_USE_BYOD),)
 LOCAL_SHARED_LIBRARIES += libimcv libtncif libtnccs libtpmtss
 endif

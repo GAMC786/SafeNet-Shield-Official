@@ -6,7 +6,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const manifest = read("../android/app/src/main/AndroidManifest.xml");
 const strings = read("../android/app/src/main/res/values/strings.xml");
 const tile = read("../android/app/src/main/java/com/safenet/dns/SafeNetWindscribeTileService.java");
-const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetWindscribePlugin.java");
+const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetWindscribeIkePlugin.java");
 const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
 const app = read("../client/src/App.tsx");
 const windscribeCard = read("../client/src/components/WindscribeVpnCard.tsx");
@@ -22,7 +22,7 @@ test("Android exposes the SafeNet Windscribe VPN Quick Settings tile", () => {
 });
 
 test("the tile reflects native tunnel state and routes taps through MainActivity", () => {
-  assert.match(tile, /SafeNetWindscribePlugin\.isConnected\(\)/);
+  assert.match(tile, /SafeNetWindscribeIkePlugin\.isConnected\(\)/);
   assert.match(tile, /Tile\.STATE_ACTIVE/);
   assert.match(tile, /Tile\.STATE_INACTIVE/);
   assert.match(tile, /setAction\(ACTION_TOGGLE\)/);

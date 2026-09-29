@@ -17,6 +17,7 @@ const scriptPath = new URL("./setup-android-sdk.sh", import.meta.url);
 const setupScript = readFileSync(scriptPath, "utf8");
 const variables = readFileSync(new URL("../android/variables.gradle", import.meta.url), "utf8");
 const androidNdkVersion = variables.match(/^\s*androidNdkVersion\s*=\s*'([^']+)'/m)?.[1];
+const strongswanNdkVersion = variables.match(/^\s*strongswanNdkVersion\s*=\s*'([^']+)'/m)?.[1];
 const androidCmakeVersion = variables.match(/^\s*androidCmakeVersion\s*=\s*'([^']+)'/m)?.[1];
 const compileSdkVersion = variables.match(/^\s*compileSdkVersion\s*=\s*(\d+)/m)?.[1];
 const buildToolsVersion = variables.match(
@@ -26,6 +27,7 @@ const buildToolsVersion = variables.match(
 assert.ok(compileSdkVersion);
 assert.ok(buildToolsVersion);
 assert.ok(androidNdkVersion);
+assert.ok(strongswanNdkVersion);
 assert.ok(androidCmakeVersion);
 
 function createHarness(mode) {
@@ -73,6 +75,7 @@ mkdir -p \
   ${JSON.stringify(join(sdkRoot, `platforms/android-${compileSdkVersion}`))} \
   ${JSON.stringify(join(sdkRoot, `build-tools/${buildToolsVersion}`))} \
   ${JSON.stringify(join(sdkRoot, `ndk/${androidNdkVersion}`))} \
+  ${JSON.stringify(join(sdkRoot, `ndk/${strongswanNdkVersion}`))} \
   ${JSON.stringify(join(sdkRoot, `cmake/${androidCmakeVersion}`))}
 `,
   );
@@ -115,6 +118,7 @@ test("retries transient repository failures and then installs the pinned package
     readdirSync(join(sdkRoot, "platforms")).includes(`android-${compileSdkVersion}`),
   );
   assert.ok(existsSync(join(sdkRoot, `ndk/${androidNdkVersion}`)));
+  assert.ok(existsSync(join(sdkRoot, `ndk/${strongswanNdkVersion}`)));
   assert.ok(existsSync(join(sdkRoot, `cmake/${androidCmakeVersion}`)));
 });
 

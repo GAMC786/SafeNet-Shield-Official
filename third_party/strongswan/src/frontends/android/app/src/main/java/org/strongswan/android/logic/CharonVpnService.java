@@ -77,7 +77,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.SortedSet;
+import java.util.UUID;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
@@ -89,6 +92,8 @@ public class CharonVpnService extends VpnService implements Runnable, VpnStateSe
 	private static final String VPN_SERVICE_ACTION = "android.net.VpnService";
 	public static final String DISCONNECT_ACTION = "org.strongswan.android.CharonVpnService.DISCONNECT";
 	private static final String NOTIFICATION_CHANNEL = "org.strongswan.android.CharonVpnService.VPN_STATE_NOTIFICATION";
+	private static final String SAFENET_PROFILE_TOKEN = "safenet_profile_token";
+	private static final Map<String, VpnProfile> SAFENET_PROFILES = new HashMap<>();
 	public static final String LOG_FILE = "charon.log";
 	public static final String KEY_IS_RETRY = "retry";
 	public static final int VPN_STATE_NOTIFICATION_ID = 1;
@@ -152,8 +157,22 @@ public class CharonVpnService extends VpnService implements Runnable, VpnStateSe
 		{
 			VpnProfile profile = null;
 			boolean retry = false;
+			String safeNetToken = intent.getStringExtra(SAFENET_PROFILE_TOKEN);
+			if (safeNetToken != null)
+			{
+				synchronized (SAFENET_PROFILES)
+				{
+					/* One-shot token: credentials remain process-local and never enter
+					 * SQLite or Intent extras. */
+					profile = SAFENET_PROFILES.remove(safeNetToken);
+				}
+			}
 
-			if (VPN_SERVICE_ACTION.equals(intent.getAction()))
+			if (profile != null)
+			{
+				/* SafeNet profiles are already complete in memory. */
+			}
+			else if (VPN_SERVICE_ACTION.equals(intent.getAction()))
 			{	/* triggered when Always-on VPN is activated */
 				SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(this);
 				String uuid = pref.getString(Constants.PREF_DEFAULT_VPN_PROFILE, null);
@@ -163,7 +182,7 @@ public class CharonVpnService extends VpnService implements Runnable, VpnStateSe
 				}
 				profile = mDataSource.getVpnProfile(uuid);
 			}
-			else if (!DISCONNECT_ACTION.equals(intent.getAction()))
+			else if (safeNetToken == null && !DISCONNECT_ACTION.equals(intent.getAction()))
 			{
 				Bundle bundle = intent.getExtras();
 				if (bundle != null)
@@ -821,6 +840,50 @@ public class CharonVpnService extends VpnService implements Runnable, VpnStateSe
 	 * Initiate VPN, provided by libandroidbridge.so
 	 */
 	public native void initiate(String config);
+
+	/**
+	 * Set the resolver stamp and authenticated firewall snapshot used by
+	 * SafeNet's plaintext packet filter. Must be called before starting a
+	 * connection; the policy may also be replaced while connected.
+	 *
+	 * @return false if the native filter could not accept the configuration
+	 */
+	public static native boolean setSafeNetPacketFilter(String resolverStamp, String firewallPolicy);
+
+	/**
+	 * Start a profile without writing it to the strongSwan SQLite data source.
+	 * Only a random one-shot token crosses the service Intent; credentials stay
+	 * in this process-local map.
+	 */
+	public static boolean startSafeNetProfile(Context context, VpnProfile profile,
+											 String resolverStamp, String firewallPolicy)
+	{
+		if (context == null || profile == null ||
+			!setSafeNetPacketFilter(resolverStamp, firewallPolicy))
+		{
+			return false;
+		}
+		String token = UUID.randomUUID().toString();
+		synchronized (SAFENET_PROFILES)
+		{
+			SAFENET_PROFILES.put(token, profile);
+		}
+		Intent intent = new Intent(context.getApplicationContext(), CharonVpnService.class);
+		intent.putExtra(SAFENET_PROFILE_TOKEN, token);
+		try
+		{
+			ContextCompat.startForegroundService(context.getApplicationContext(), intent);
+			return true;
+		}
+		catch (RuntimeException ex)
+		{
+			synchronized (SAFENET_PROFILES)
+			{
+				SAFENET_PROFILES.remove(token);
+			}
+			return false;
+		}
+	}
 
 	/**
 	 * Adapter for VpnService.Builder which is used to access it safely via JNI.

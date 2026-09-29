@@ -8,3 +8,7 @@ vite.config.ts.*
 .auth/
 tmp.*/preflight-ca.crt
 tmp.*/preflight-ca.key
+
+# Local Android SDK and native-build scratch space
+/.android-sdk/
+/.tmp-android/

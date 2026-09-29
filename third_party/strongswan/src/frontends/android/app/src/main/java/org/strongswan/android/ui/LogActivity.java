@@ -56,12 +56,15 @@ public class LogActivity extends AppCompatActivity
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item)
 	{
-		switch (item.getItemId())
 		{
-			case android.R.id.home:
+			int itemId = item.getItemId();
+			if (itemId == android.R.id.home)
+			{
 				finish();
 				return true;
-			case R.id.menu_send_log:
+			}
+			if (itemId == R.id.menu_send_log)
+			{
 				File logfile = new File(getFilesDir(), CharonVpnService.LOG_FILE);
 				if (!logfile.exists() || logfile.length() == 0)
 				{
@@ -86,6 +89,7 @@ public class LogActivity extends AppCompatActivity
 				intent.putExtra(Intent.EXTRA_STREAM, LogContentProvider.createContentUri());
 				startActivity(Intent.createChooser(intent, getString(R.string.send_log)));
 				return true;
+			}
 		}
 		return super.onOptionsItemSelected(item);
 	}

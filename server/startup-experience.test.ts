@@ -257,7 +257,7 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard imports and controls a local Windscribe WireGuard profile", () => {
+test("the Dashboard configures Windscribe IKEv2 and retains the legacy WireGuard fallback", () => {
   const windscribeCardSource = readFileSync(
     path.join(clientRoot, "src/components/WindscribeVpnCard.tsx"),
     "utf8",
@@ -270,13 +270,26 @@ test("the Dashboard imports and controls a local Windscribe WireGuard profile", 
     path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetWindscribePlugin.java"),
     "utf8",
   );
+  const windscribeIkePluginSource = readFileSync(
+    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetWindscribeIkePlugin.java"),
+    "utf8",
+  );
   const windscribeStoreSource = readFileSync(
     path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/WindscribeProfileStore.java"),
     "utf8",
   );
+  const windscribeIkeStoreSource = readFileSync(
+    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/WindscribeIkeCredentialStore.java"),
+    "utf8",
+  );
   assert.match(dashboardSource, /WindscribeVpnCard/);
-  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-profile"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-host"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-username"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-password"/);
+  assert.match(windscribeCardSource, /data-testid="button-save-windscribe-credentials"/);
   assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
+  assert.match(windscribeCardSource, /data-testid="legacy-windscribe-wireguard-fallback"/);
+  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-wireguard-fallback"/);
   assert.match(windscribeCardSource, /windscribe\.com\/getconfig\/wireguard/);
   assert.match(windscribeHookSource, /SafeNetWindscribe/);
   assert.doesNotMatch(windscribeHookSource, /\/api\/windscribe/);
@@ -285,6 +298,10 @@ test("the Dashboard imports and controls a local Windscribe WireGuard profile", 
   assert.doesNotMatch(windscribePluginSource, /fetch\(|\/api\//);
   assert.match(windscribeStoreSource, /EncryptedSharedPreferences/);
   assert.match(windscribeStoreSource, /MAX_PROFILE_BYTES/);
+  assert.match(windscribeIkePluginSource, /WindscribeIkeCredentialStore/);
+  assert.match(windscribeIkePluginSource, /startSafeNetProfile/);
+  assert.doesNotMatch(windscribeIkePluginSource, /putExtra\([^)]*(password|username)/i);
+  assert.match(windscribeIkeStoreSource, /EncryptedSharedPreferences/);
   assert.doesNotMatch(dashboardSource, /useTailscaleStatus|useTailscaleNative/);
 });
 
@@ -423,7 +440,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /"Android only"/);
   assert.match(firewallSource, /"Checking"/);
   assert.match(firewallSource, /"Disconnected"/);
-  assert.match(firewallSource, /"Profile required"/);
+  assert.match(firewallSource, /"IKEv2 credentials required"/);
   assert.match(firewallSource, /isAndroid && \(/);
   assert.match(firewallSource, /switch-tailscale-nondns-firewall/);
   assert.match(firewallSource, /DoH, DoT, and HTTPS stay encrypted and are not inspected by SafeNet/);

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, Radio, RefreshCw, Trash2, Upload } from "lucide-react";
+import { ExternalLink, Radio, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CyberCard } from "@/components/CyberCard";
 import { Switch } from "@/components/ui/switch";
 import { WindscribeEulaDialog } from "@/components/WindscribeEulaDialog";
-import { useWindscribeVpn } from "@/hooks/use-windscribe";
-import type { WindscribeVpnStatus } from "@/hooks/use-windscribe";
+import { useWindscribeVpn, useWindscribeWireGuardFallback } from "@/hooks/use-windscribe";
+import type { WindscribeCredentialInput, WindscribeVpnStatus } from "@/hooks/use-windscribe";
 import type { DnsServer } from "@shared/schema";
 
 const WINDSCRIBE_EULA_STORAGE_KEY = "safenet-windscribe-eula-version";
@@ -29,14 +29,23 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
   const sdnsSelected = activeDns?.type === "sdns";
   const resolverStamp = sdnsSelected ? activeDns.primaryAddress : null;
   const vpn = useWindscribeVpn(resolverStamp);
+  const wireGuardFallback = useWindscribeWireGuardFallback(resolverStamp);
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [serverHost, setServerHost] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [windscribeEulaAccepted, setWindscribeEulaAccepted] = useState(hasAcceptedWindscribeEula);
   const [windscribeEulaOpen, setWindscribeEulaOpen] = useState(false);
   const pendingConnectAfterEula = useRef(false);
   const status = vpn.status;
-  const profileImported = status?.profileImported === true;
+  const wireGuardStatus = wireGuardFallback.status;
+  const credentialsConfigured =
+    status?.credentialsConfigured === true || status?.profileImported === true;
   const connected = status?.connected === true;
+  const connecting = status?.connecting === true;
+  const wireGuardProfileImported = wireGuardStatus?.profileImported === true;
+  const wireGuardConnected = wireGuardStatus?.connected === true;
   const sdnsApplied = status?.sdnsApplied === true;
   const sdnsError = status?.sdnsError ?? status?.dnsError;
 
@@ -58,8 +67,8 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
 
   const toggleVpn = useCallback(() => {
     if (actionPending) return;
-    if (!profileImported) {
-      setActionError("Import a Windscribe WireGuard profile before connecting.");
+    if (!credentialsConfigured) {
+      setActionError("Save your generated Windscribe IKEv2 credentials before connecting.");
       return;
     }
     if (connected) {
@@ -72,7 +81,7 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
       return;
     }
     void perform(vpn.connect);
-  }, [actionPending, connected, perform, profileImported, vpn.connect, vpn.disconnect, windscribeEulaAccepted]);
+  }, [actionPending, connected, credentialsConfigured, perform, vpn.connect, vpn.disconnect, windscribeEulaAccepted]);
 
   const acceptWindscribeEula = useCallback(() => {
     const shouldConnect = pendingConnectAfterEula.current;
@@ -114,16 +123,49 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
       ? "Checking"
       : status?.connected
         ? "Connected"
-        : status?.profileImported
+        : connecting
+          ? "Connecting"
+          : credentialsConfigured
           ? "Disconnected"
-          : "Profile required";
+          : "Credentials required";
   const statusClass = connected
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
     : "border-white/15 bg-white/5 text-muted-foreground";
 
+  const saveCredentials = () => {
+    const credentials: WindscribeCredentialInput = { serverHost, username, password };
+    void perform(async () => {
+      const nextStatus = await vpn.saveCredentials(credentials);
+      if (!nextStatus.error) {
+        setServerHost("");
+        setUsername("");
+        setPassword("");
+      }
+      return nextStatus;
+    });
+  };
+
   const removeProfile = () => {
-    if (!window.confirm("Remove the saved Windscribe profile from this device?")) return;
+    if (!window.confirm("Remove the encrypted Windscribe IKEv2 credentials from this device?")) return;
     void perform(vpn.removeProfile);
+  };
+
+  const toggleWireGuardFallback = () => {
+    if (actionPending) return;
+    if (connected || connecting) {
+      setActionError("Disconnect Windscribe IKEv2 before using the WireGuard fallback.");
+      return;
+    }
+    if (!wireGuardProfileImported) {
+      setActionError("Import a Windscribe WireGuard profile before connecting the fallback.");
+      return;
+    }
+    void perform(wireGuardConnected ? wireGuardFallback.disconnect : wireGuardFallback.connect);
+  };
+
+  const removeWireGuardFallback = () => {
+    if (!window.confirm("Remove the saved legacy WireGuard profile from this device?")) return;
+    void perform(wireGuardFallback.removeProfile);
   };
 
   return (
@@ -140,7 +182,7 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Radio className="h-4 w-4 shrink-0 text-primary" />
-                <p className="min-w-0 text-sm font-medium text-foreground">Windscribe VPN with Control D</p>
+                <p className="min-w-0 text-sm font-medium text-foreground">Windscribe IKEv2 with Control D</p>
               </div>
               <Button
                 variant="ghost"
@@ -155,7 +197,7 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
               </Button>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Import a WireGuard profile generated in your Windscribe account. Your profile and private key stay encrypted on this device and are never uploaded to SafeNet.
+              Enter the IKEv2 hostname and credentials generated in Windscribe. SafeNet stores them encrypted on this device and does not upload them to SafeNet servers.
             </p>
           </div>
           <Badge
@@ -174,13 +216,13 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
             role="status"
             data-testid="windscribe-firewall-verification"
           >
-            SafeNet DNS rules apply to cleartext UDP/TCP port 53 only. Device-level Windscribe enforcement has not been verified until a real Android tunnel test passes; HTTPS, DoH, and DoT are not inspected.
+            SafeNet DNS rules apply to cleartext UDP/TCP port 53 only. IKEv2 tunnel enforcement still needs a real Android device test; HTTPS, DoH, and DoT are not inspected.
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-foreground">On-device WireGuard profile</p>
+              <p className="text-xs font-medium text-foreground">On-device IKEv2 credentials</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Manual profiles require a Windscribe paid plan and do not include all features of the Windscribe app, such as its firewall and split tunneling.
+                Use the server hostname, username, and password generated for IKEv2 by Windscribe.
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -190,7 +232,7 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
                 disabled={
                   !vpn.isAndroid
                   || status?.supported === false
-                  || !profileImported
+                  || !credentialsConfigured
                   || actionPending
                 }
                 aria-label={`Windscribe VPN ${statusLabel}`}
@@ -199,51 +241,201 @@ export function WindscribeVpnCard({ activeDns }: { activeDns?: DnsServer }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void perform(vpn.importProfile)}
-              disabled={!vpn.isAndroid || status?.supported === false || actionPending}
-              data-testid="button-import-windscribe-profile"
-            >
-              <Upload className="mr-2 h-3.5 w-3.5" />
-              {profileImported ? "Replace profile" : "Import profile"}
-            </Button>
-            <a
-              href="https://windscribe.com/getconfig/wireguard"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-primary underline underline-offset-2"
-              data-testid="link-windscribe-profile-generator"
-            >
-              Generate a profile
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-            <a
-              href="https://windscribe.com/terms/eula"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-primary underline underline-offset-2"
-              data-testid="link-windscribe-eula"
-            >
-              Windscribe EULA
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-            {profileImported && (
+          <form
+            className="space-y-3"
+            autoComplete="off"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveCredentials();
+            }}
+          >
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="group" aria-label="Windscribe IKEv2 credentials">
+              <label className="min-w-0 space-y-1 text-xs font-medium text-foreground">
+                Server hostname
+                <input
+                  type="text"
+                  name="safenet-windscribe-ike-host"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={253}
+                  value={serverHost}
+                  onChange={(event) => setServerHost(event.target.value)}
+                  placeholder="server.example.com"
+                  className="h-10 w-full rounded-md border border-white/15 bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  disabled={!vpn.isAndroid || status?.supported === false || actionPending || connected || connecting}
+                  data-testid="input-windscribe-ike-host"
+                />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-medium text-foreground">
+                IKEv2 username
+                <input
+                  type="text"
+                  name="safenet-windscribe-ike-username"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={512}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Generated username"
+                  className="h-10 w-full rounded-md border border-white/15 bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  disabled={!vpn.isAndroid || status?.supported === false || actionPending || connected || connecting}
+                  data-testid="input-windscribe-ike-username"
+                />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-medium text-foreground">
+                IKEv2 password
+                <input
+                  type="password"
+                  name="safenet-windscribe-ike-password"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={512}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Generated password"
+                  className="h-10 w-full rounded-md border border-white/15 bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  disabled={!vpn.isAndroid || status?.supported === false || actionPending || connected || connecting}
+                  data-testid="input-windscribe-ike-password"
+                />
+              </label>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Credentials are passed directly to Android's encrypted store and kept out of browser storage.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
               <Button
-                variant="ghost"
+                type="submit"
+                variant="outline"
                 size="sm"
-                onClick={removeProfile}
-                disabled={actionPending}
-                className="ml-auto text-muted-foreground hover:text-red-300"
-                data-testid="button-remove-windscribe-profile"
+                disabled={
+                  !vpn.isAndroid
+                  || status?.supported === false
+                  || actionPending
+                  || connected
+                  || connecting
+                  || !serverHost.trim()
+                  || !username.trim()
+                  || !password
+                }
+                data-testid="button-save-windscribe-credentials"
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Remove
+                {credentialsConfigured ? "Replace credentials" : "Save credentials"}
               </Button>
-            )}
-          </div>
+              <a
+                href="https://windscribe.com/terms/eula"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-primary underline underline-offset-2"
+                data-testid="link-windscribe-eula"
+              >
+                Windscribe EULA
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+              {credentialsConfigured && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={removeProfile}
+                  disabled={actionPending}
+                  className="ml-auto text-muted-foreground hover:text-red-300"
+                  data-testid="button-remove-windscribe-credentials"
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Remove credentials
+                </Button>
+              )}
+            </div>
+          </form>
+          <details
+            className="rounded-md border border-white/10 bg-background/20 px-3 py-2"
+            data-testid="legacy-windscribe-wireguard-fallback"
+          >
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+              Existing WireGuard profile fallback
+            </summary>
+            <div className="mt-3 space-y-3">
+              <p className="text-[11px] text-muted-foreground">
+                Keep using the previous tunnel while IKEv2 device verification is pending. Only one Android VPN can carry traffic at a time.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                  {wireGuardFallback.isLoading
+                    ? "Checking"
+                    : wireGuardConnected
+                      ? "Connected"
+                      : wireGuardProfileImported
+                        ? "Disconnected"
+                        : "Profile required"}
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void perform(wireGuardFallback.importProfile)}
+                  disabled={
+                    !vpn.isAndroid
+                    || wireGuardStatus?.supported === false
+                    || actionPending
+                    || connected
+                    || connecting
+                  }
+                  data-testid="button-import-windscribe-wireguard-fallback"
+                >
+                  Import WireGuard profile
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleWireGuardFallback}
+                  disabled={
+                    !vpn.isAndroid
+                    || wireGuardStatus?.supported === false
+                    || !wireGuardProfileImported
+                    || actionPending
+                    || connected
+                    || connecting
+                  }
+                  data-testid="button-toggle-windscribe-wireguard-fallback"
+                >
+                  {wireGuardConnected ? "Disconnect fallback" : "Connect fallback"}
+                </Button>
+                <a
+                  href="https://windscribe.com/getconfig/wireguard"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-primary underline underline-offset-2"
+                  data-testid="link-windscribe-wireguard-profile-generator"
+                >
+                  Generate a profile
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+                {wireGuardProfileImported && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={removeWireGuardFallback}
+                    disabled={actionPending || wireGuardConnected}
+                    className="text-muted-foreground hover:text-red-300"
+                    data-testid="button-remove-windscribe-wireguard-fallback"
+                  >
+                    Remove fallback
+                  </Button>
+                )}
+              </div>
+              {(wireGuardStatus?.error || wireGuardFallback.error) && (
+                <p className="text-xs text-red-300" role="alert">
+                  {wireGuardStatus?.error
+                    ?? (wireGuardFallback.error instanceof Error
+                      ? wireGuardFallback.error.message
+                      : "The WireGuard fallback status is unavailable.")}
+                </p>
+              )}
+            </div>
+          </details>
         </div>
         {sdnsSelected && (
           <div

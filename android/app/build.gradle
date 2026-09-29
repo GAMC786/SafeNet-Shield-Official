@@ -38,6 +38,7 @@ tasks.register("buildTailscaleAar", Exec) {
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(tasks.named("buildTailscaleAar"))
     dependsOn(":windscribe-tunnel:prepareWireguardSdns")
+    dependsOn(":strongswan-tunnel:buildSafeNetSdns")
 }
 
 android {
@@ -97,6 +98,7 @@ tasks.register("verifyAndroidToolchain") {
             "platforms;android-${rootProject.ext.targetSdkVersion}",
             "build-tools;${rootProject.ext.androidBuildToolsVersion}",
             "ndk;${rootProject.ext.androidNdkVersion}",
+            "ndk;${rootProject.ext.strongswanNdkVersion}",
             "cmake;${rootProject.ext.androidCmakeVersion}"
         ].unique()
         def sdkDirectory = android.sdkDirectory
@@ -117,7 +119,7 @@ tasks.register("verifyAndroidToolchain") {
                 "compileSdkVersion=${rootProject.ext.compileSdkVersion}, " +
                 "targetSdkVersion=${rootProject.ext.targetSdkVersion}, and " +
                 "buildToolsVersion=${rootProject.ext.androidBuildToolsVersion}, " +
-                "NDK=${rootProject.ext.androidNdkVersion}, and " +
+                "NDKs=${rootProject.ext.androidNdkVersion},${rootProject.ext.strongswanNdkVersion}, and " +
                 "CMake=${rootProject.ext.androidCmakeVersion}. " +
                 "Missing SDK package(s): ${missingPackages.join(', ')}. " +
                 "Install the pinned Android SDK packages before building."
@@ -240,6 +242,7 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
     implementation files("../../third_party/tailscale-android/android/libs/libtailscale.aar")
     implementation project(':windscribe-tunnel')
+    implementation project(':strongswan-tunnel')
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.3"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
 }

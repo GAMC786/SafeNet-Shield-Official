@@ -47,9 +47,9 @@ export default function Firewall() {
       ? "Checking"
       : windscribeStatus?.connected
         ? "Connected"
-        : windscribeStatus?.profileImported
+        : windscribeStatus?.credentialsConfigured || windscribeStatus?.profileImported
           ? "Disconnected"
-          : "Profile required";
+          : "IKEv2 credentials required";
   const isProtected = firewallEnabled && preventDnsOverrides;
   const isAnyFirewallActive = isProtected || (isAndroid && tailscaleNonDnsFirewallEnabled);
   const firewallHeaderStatus = isAnyFirewallActive ? "active" : "unprotected";

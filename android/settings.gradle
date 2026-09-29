@@ -3,5 +3,7 @@ include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 include ':windscribe-tunnel'
 project(':windscribe-tunnel').projectDir = new File('./windscribe-tunnel/')
+include ':strongswan-tunnel'
+project(':strongswan-tunnel').projectDir = new File('./strongswan-tunnel/')
 
 apply from: 'capacitor.settings.gradle'

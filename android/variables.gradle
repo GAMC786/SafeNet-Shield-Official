@@ -4,6 +4,9 @@ ext {
     targetSdkVersion = 36
     androidBuildToolsVersion = '36.0.0'
     androidNdkVersion = '23.1.7779620'
+    strongswanNdkVersion = '27.3.13750724'
+    strongswanOpenSSLVersion = '3.5.8'
+    strongswanOpenSSLSha256 = 'a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2'
     androidCmakeVersion = '3.22.1'
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'

@@ -38,7 +38,7 @@ public final class SafeNetWindscribeTileService extends TileService {
     private void updateTileState() {
         Tile tile = getQsTile();
         if (tile == null) return;
-        boolean isConnected = SafeNetWindscribePlugin.isConnected();
+        boolean isConnected = SafeNetWindscribeIkePlugin.isConnected();
         tile.setLabel(getString(R.string.windscribe_vpn_tile_label));
         tile.setState(isConnected ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

@@ -573,9 +573,14 @@ public class SafeNetVpnPlugin extends Plugin {
         try {
             String serialized = config.toString();
             FirewallConfigStore.save(getContext(), serialized);
-            if (!GoBackend.updateSdnsFirewallPolicy(getContext().getApplicationContext(), serialized)) {
+            boolean legacyUpdated = !SafeNetWindscribePlugin.isConnected()
+                || GoBackend.updateSdnsFirewallPolicy(
+                    getContext().getApplicationContext(), serialized);
+            boolean ikeUpdated = SafeNetWindscribeIkePlugin.updateFirewallPolicy(
+                getContext().getApplicationContext(), serialized);
+            if (!legacyUpdated || !ikeUpdated) {
                 call.reject(
-                    "The firewall snapshot was saved, but the active Windscribe tunnel could not apply it.",
+                    "The firewall snapshot was saved, but an active Windscribe tunnel could not apply it.",
                     "FIREWALL_POLICY_UPDATE_FAILED"
                 );
                 return;

@@ -58,4 +58,10 @@ struct android_service_t {
 android_service_t *android_service_create(android_creds_t *creds,
 										  settings_t *settings);
 
+/**
+ * Configure SafeNet's optional plaintext packet filter.  The strings are
+ * copied and may be updated while a connection is active.
+ */
+bool android_service_set_safenet_filter(const char *stamp, const char *policy);
+
 #endif /** ANDROID_SERVICE_H_ @}*/

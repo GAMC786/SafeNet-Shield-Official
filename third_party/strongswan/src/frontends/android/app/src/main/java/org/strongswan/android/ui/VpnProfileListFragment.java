@@ -310,18 +310,17 @@ public class VpnProfileListFragment extends Fragment implements MenuProvider
 		@Override
 		public boolean onActionItemClicked(ActionMode mode, MenuItem item)
 		{
-			switch (item.getItemId())
 			{
-				case R.id.edit_profile:
+				int itemId = item.getItemId();
+				if (itemId == R.id.edit_profile)
 				{
 					int position = mSelected.iterator().next();
 					VpnProfile profile = (VpnProfile)mListView.getItemAtPosition(position);
 					Intent connectionIntent = new Intent(getActivity(), VpnProfileDetailActivity.class);
 					connectionIntent.putExtra(VpnProfileDataSource.KEY_UUID, profile.getUUID().toString());
 					startActivity(connectionIntent);
-					break;
 				}
-				case R.id.copy_profile:
+				else if (itemId == R.id.copy_profile)
 				{
 					int position = mSelected.iterator().next();
 					VpnProfile profile = (VpnProfile)mListView.getItemAtPosition(position);
@@ -337,9 +336,8 @@ public class VpnProfileListFragment extends Fragment implements MenuProvider
 					Intent connectionIntent = new Intent(getActivity(), VpnProfileDetailActivity.class);
 					connectionIntent.putExtra(VpnProfileDataSource.KEY_UUID, profile.getUUID().toString());
 					startActivity(connectionIntent);
-					break;
 				}
-				case R.id.delete_profile:
+				else if (itemId == R.id.delete_profile)
 				{
 					ArrayList<VpnProfile> profiles = new ArrayList<>();
 					for (int position : mSelected)
@@ -358,10 +356,11 @@ public class VpnProfileListFragment extends Fragment implements MenuProvider
 					LocalBroadcastManager.getInstance(getActivity()).sendBroadcast(intent);
 					Toast.makeText(VpnProfileListFragment.this.getActivity(),
 								   R.string.profiles_deleted, Toast.LENGTH_SHORT).show();
-					break;
 				}
-				default:
+				else
+				{
 					return false;
+				}
 			}
 			mode.finish();
 			return true;

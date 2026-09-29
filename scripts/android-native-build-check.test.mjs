@@ -111,7 +111,16 @@ test("Android native check is executable and supports bounded debug and release 
 test("Tailscale AAR build enters the submodule before invoking Make", () => {
   assert.match(
     tailscaleBuildScript,
-    /\(\s*cd "\$source_dir"\s*make libtailscale\s*\)/,
+    /\(\s*cd "\$source_dir"[\s\S]*?make libtailscale[\s\S]*?\)/,
+  );
+  assert.match(tailscaleBuildScript, /no_apple_tools_dir="\$temporary_dir\/no-apple-tools"/);
+  assert.match(
+    tailscaleBuildScript,
+    /PATH="\$no_apple_tools_dir:\$PATH" make libtailscale/,
+  );
+  assert.match(
+    tailscaleBuildScript,
+    /TMPDIR="\$android_work_temp" GOTMPDIR="\$android_work_temp"/,
   );
   assert.doesNotMatch(tailscaleBuildScript, /make -C "\$source_dir"/);
 });
@@ -333,13 +342,23 @@ test("App Lock treats removed packages as no longer suspended", () => {
   );
 });
 
-test("Windscribe UI discloses local profile storage and manual-profile limits", () => {
+test("Windscribe IKEv2 UI stores generated credentials and retains the WireGuard fallback", () => {
   assert.match(dashboardSource, /WindscribeVpnCard/);
-  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-profile"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-host"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-username"/);
+  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-password"/);
+  assert.match(windscribeCardSource, /data-testid="button-save-windscribe-credentials"/);
+  assert.match(
+    windscribeCardSource,
+    /<form[\s\S]*?data-testid="input-windscribe-ike-password"[\s\S]*?type="submit"[\s\S]*?<\/form>/,
+  );
   assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
-  assert.match(windscribeCardSource, /private key stay encrypted on this device/);
-  assert.match(windscribeCardSource, /Windscribe paid plan/);
-  assert.match(windscribeCardSource, /split tunneling/);
+  assert.match(windscribeCardSource, /encrypted on this device/);
+  assert.match(windscribeCardSource, /does not upload them to SafeNet servers/);
+  assert.match(windscribeCardSource, /type="password"/);
+  assert.match(windscribeCardSource, /data-testid="legacy-windscribe-wireguard-fallback"/);
+  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-wireguard-fallback"/);
+  assert.match(windscribeCardSource, /Only one Android VPN can carry traffic at a time/);
 });
 
 test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS package state", () => {

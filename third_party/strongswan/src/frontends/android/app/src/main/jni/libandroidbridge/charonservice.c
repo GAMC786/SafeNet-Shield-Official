@@ -786,6 +786,21 @@ JNI_METHOD(CharonVpnService, initiate, void,
 }
 
 /**
+ * Configure SafeNet's optional plaintext packet filter.  This is called before
+ * initiation and may also replace the live firewall policy.
+ */
+JNI_METHOD(CharonVpnService, setSafeNetPacketFilter, jboolean,
+	jstring jstamp, jstring jpolicy)
+{
+	char *stamp = jstamp ? androidjni_convert_jstring(env, jstamp) : NULL;
+	char *policy = jpolicy ? androidjni_convert_jstring(env, jpolicy) : NULL;
+	bool success = android_service_set_safenet_filter(stamp, policy);
+	free(stamp);
+	free(policy);
+	return success ? TRUE : FALSE;
+}
+
+/**
  * Utility function to verify proposal strings (static, so `this` is the class)
  */
 JNI_METHOD_P(org_strongswan_android_utils, Utils, isProposalValid, jboolean,
