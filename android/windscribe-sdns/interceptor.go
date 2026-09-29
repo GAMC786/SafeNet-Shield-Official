@@ -55,18 +55,20 @@ var (
 // packets addressed to the two virtual resolver addresses and port 53 are
 // consumed; every other packet is returned byte-for-byte by Read.
 type Interceptor struct {
-	under     TunnelDevice
-	ex        Exchanger
-	firewall  atomic.Pointer[FirewallPolicy]
-	link      *channel.Endpoint
-	stack     *stack.Stack
-	out       chan []byte
-	done      chan struct{}
-	once      sync.Once
-	wg        sync.WaitGroup
-	ctx       context.Context
-	cancel    context.CancelFunc
-	fragments map[string]fragmentDecision
+	under            TunnelDevice
+	ex               Exchanger
+	firewall         atomic.Pointer[FirewallPolicy]
+	link             *channel.Endpoint
+	stack            *stack.Stack
+	out              chan []byte
+	done             chan struct{}
+	once             sync.Once
+	wg               sync.WaitGroup
+	ctx              context.Context
+	cancel           context.CancelFunc
+	fragmentMu       sync.Mutex
+	fragments        map[string]fragmentDecision
+	packetFilterOnly bool
 }
 
 type fragmentDecision struct {
@@ -95,7 +97,7 @@ const (
 )
 
 func NewInterceptor(under TunnelDevice, ex Exchanger) (*Interceptor, error) {
-	return newInterceptor(under, ex, allowAllFirewallPolicy())
+	return newInterceptor(under, ex, allowAllFirewallPolicy(), false)
 }
 
 // NewInterceptorWithFirewall starts an interceptor with the supplied
@@ -106,10 +108,22 @@ func NewInterceptorWithFirewall(under TunnelDevice, ex Exchanger, serializedPoli
 	if err != nil {
 		policy = failClosedFirewallPolicy()
 	}
-	return newInterceptor(under, ex, policy)
+	return newInterceptor(under, ex, policy, false)
 }
 
-func newInterceptor(under TunnelDevice, ex Exchanger, policy *FirewallPolicy) (*Interceptor, error) {
+// NewPacketFilterWithFirewall creates an outbound packet filter for a tunnel
+// engine that owns the TUN read loop. FilterOutboundPacket returns true when
+// the packet may be sent through the encrypted tunnel. Virtual-resolver
+// queries are answered through under.Write and return false.
+func NewPacketFilterWithFirewall(under TunnelDevice, ex Exchanger, serializedPolicy string) (*Interceptor, error) {
+	policy, err := parseFirewallPolicy(serializedPolicy)
+	if err != nil {
+		policy = failClosedFirewallPolicy()
+	}
+	return newInterceptor(under, ex, policy, true)
+}
+
+func newInterceptor(under TunnelDevice, ex Exchanger, policy *FirewallPolicy, packetFilterOnly bool) (*Interceptor, error) {
 	if under == nil {
 		return nil, errors.New("SDNS interceptor requires a tunnel")
 	}
@@ -154,7 +168,8 @@ func newInterceptor(under TunnelDevice, ex Exchanger, policy *FirewallPolicy) (*
 	i := &Interceptor{
 		under: under, ex: ex, link: link, stack: s, out: make(chan []byte, 1024),
 		done: make(chan struct{}), ctx: ctx, cancel: cancel,
-		fragments: make(map[string]fragmentDecision),
+		fragments:        make(map[string]fragmentDecision),
+		packetFilterOnly: packetFilterOnly,
 	}
 	i.firewall.Store(policy)
 	if ex != nil {
@@ -165,8 +180,12 @@ func newInterceptor(under TunnelDevice, ex Exchanger, policy *FirewallPolicy) (*
 			return nil, err
 		}
 	}
-	i.wg.Add(2)
-	go i.readLoop()
+	if packetFilterOnly {
+		i.wg.Add(1)
+	} else {
+		i.wg.Add(2)
+		go i.readLoop()
+	}
 	go i.outputLoop()
 	return i, nil
 }
@@ -386,57 +405,52 @@ func (i *Interceptor) readLoop() {
 }
 
 func (i *Interceptor) handleOutboundPacket(packet []byte) {
+	if i.FilterOutboundPacket(packet) {
+		i.enqueue(packet)
+	}
+}
+
+// FilterOutboundPacket evaluates one plaintext packet at the tunnel boundary.
+// It is safe to call concurrently. The packet-filter-only constructor leaves
+// packet reads and encrypted-tunnel writes to the caller.
+func (i *Interceptor) FilterOutboundPacket(packet []byte) bool {
 	info, ok := inspectDNSPacket(packet)
 	if !ok {
-		i.enqueue(packet)
-		return
+		return true
 	}
-	if info.fragmented && !info.first {
-		remembered, found := i.fragmentInfo(info.key)
-		if !i.interceptsDNSPacket(packet) {
-			i.enqueue(packet)
-			return
-		}
-		if !found {
-			return
-		}
-		info = remembered
-	} else if info.fragmented {
-		if !i.interceptsDNSPacket(packet) {
-			i.enqueue(packet)
-			return
+	if info.fragmented {
+		var isDNS bool
+		info, isDNS = i.fragmentDecisionForPacket(info)
+		if !isDNS {
+			return true
 		}
 	} else if !info.isDNS {
-		i.enqueue(packet)
-		return
+		return true
 	}
 
 	if !info.virtual {
 		policy := i.firewall.Load()
 		if info.fragmented {
 			if policy.BlocksUninspectableDNS() {
-				return
+				return false
 			}
-			i.enqueue(packet)
-			return
+			return true
 		}
 		if info.protocol == 6 {
 			if policy.BlocksUninspectableDNS() {
-				return
+				return false
 			}
-			i.enqueue(packet)
-			return
+			return true
 		}
 		if info.payloadOffset < 0 || info.payloadOffset > info.packetEnd || info.packetEnd > len(packet) ||
 			!policy.Allows(packet[info.payloadOffset:info.packetEnd], info.source, info.destination) {
-			return
+			return false
 		}
-		i.enqueue(packet)
-		return
+		return true
 	}
 
 	if i.ex == nil {
-		return
+		return false
 	}
 	pk := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
 	if packet[0]>>4 == 4 {
@@ -445,9 +459,12 @@ func (i *Interceptor) handleOutboundPacket(packet []byte) {
 		i.link.InjectInbound(header.IPv6ProtocolNumber, pk)
 	}
 	pk.DecRef()
+	return false
 }
 
 func (i *Interceptor) fragmentInfo(key string) (packetDNSInfo, bool) {
+	i.fragmentMu.Lock()
+	defer i.fragmentMu.Unlock()
 	decision, found := i.fragments[key]
 	return decision.info, found
 }
@@ -605,7 +622,16 @@ func (i *Interceptor) interceptsDNSPacket(p []byte) bool {
 		return info.isDNS
 	}
 
+	_, isDNS := i.fragmentDecisionForPacket(info)
+	return isDNS
+}
+
+// fragmentDecisionForPacket atomically updates fragment tracking and returns
+// the first fragment's metadata and DNS decision for this packet.
+func (i *Interceptor) fragmentDecisionForPacket(info packetDNSInfo) (packetDNSInfo, bool) {
 	now := time.Now()
+	i.fragmentMu.Lock()
+	defer i.fragmentMu.Unlock()
 	for key, decision := range i.fragments {
 		if !now.Before(decision.expires) {
 			delete(i.fragments, key)
@@ -613,22 +639,22 @@ func (i *Interceptor) interceptsDNSPacket(p []byte) bool {
 	}
 	if info.first {
 		if info.more {
-			i.rememberFragment(info.key, info, now)
+			i.rememberFragmentLocked(info.key, info, now)
 		}
-		return info.isDNS
+		return info, info.isDNS
 	}
 	decision, found := i.fragments[info.key]
 	if !found || !now.Before(decision.expires) {
 		delete(i.fragments, info.key)
-		return false
+		return info, false
 	}
 	if !info.more {
 		delete(i.fragments, info.key)
 	}
-	return decision.isDNS
+	return decision.info, decision.isDNS
 }
 
-func (i *Interceptor) rememberFragment(key string, info packetDNSInfo, now time.Time) {
+func (i *Interceptor) rememberFragmentLocked(key string, info packetDNSInfo, now time.Time) {
 	if i.fragments == nil {
 		i.fragments = make(map[string]fragmentDecision)
 	}

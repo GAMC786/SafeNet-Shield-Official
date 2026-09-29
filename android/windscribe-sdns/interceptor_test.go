@@ -160,6 +160,62 @@ func TestInterceptorPassesUnrelatedPacket(t *testing.T) {
 	}
 }
 
+func TestPacketFilterOnlyReturnsTunnelDecision(t *testing.T) {
+	filter, err := NewPacketFilterWithFirewall(
+		newFakeTunnel(),
+		fakeExchange{},
+		firewallTestSnapshot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer filter.Close()
+
+	if !filter.FilterOutboundPacket([]byte{4, 1, 2, 3, 4}) {
+		t.Fatal("unrelated packet was blocked")
+	}
+
+	allowed := ipv4UDP(dnsQueryForName("safe.example"))
+	copy(allowed[16:20], []byte{9, 9, 9, 9})
+	if !filter.FilterOutboundPacket(allowed) {
+		t.Fatal("permitted DNS packet was blocked")
+	}
+
+	blocked := ipv4UDP(dnsQueryForName("blocked.example"))
+	copy(blocked[16:20], []byte{9, 9, 9, 9})
+	if filter.FilterOutboundPacket(blocked) {
+		t.Fatal("blocked DNS packet was passed to the tunnel engine")
+	}
+}
+
+func TestPacketFilterOnlyAnswersVirtualResolverQueries(t *testing.T) {
+	f := newFakeTunnel()
+	ex := countingExchange{seen: make(chan []byte, 1)}
+	filter, err := NewPacketFilterWithFirewall(f, ex, firewallTestSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer filter.Close()
+
+	query := dnsQueryForName("safe.example")
+	if filter.FilterOutboundPacket(ipv4UDP(query)) {
+		t.Fatal("virtual-resolver query was passed to the encrypted tunnel")
+	}
+	select {
+	case seen := <-ex.seen:
+		if string(seen) != string(query) {
+			t.Fatal("exchanger saw the wrong query")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("virtual-resolver query did not reach the exchanger")
+	}
+	select {
+	case <-f.writes:
+	case <-time.After(2 * time.Second):
+		t.Fatal("virtual-resolver response was not written to the TUN device")
+	}
+}
+
 type countingExchange struct{ seen chan []byte }
 
 func (e countingExchange) Exchange(_ context.Context, q []byte) ([]byte, error) {
