@@ -1,5 +1,37 @@
 {
   "schema_version": 1,
   "retention_runs": 24,
-  "runs": []
+  "runs": [
+    {
+      "run_id": "36853883910",
+      "run_attempt": 1,
+      "event": "schedule",
+      "recorded_at": "2026-10-01T11:13:30Z",
+      "ref": "main",
+      "commit": "4bb5a70347ef7deca4ec0b6e260dc4fc2ead805a",
+      "results": [
+        {
+          "platform": "Windows",
+          "architecture": "x64",
+          "runner": "windows-latest",
+          "stage": "workflow lint setup",
+          "outcome": "failure"
+        },
+        {
+          "platform": "macOS",
+          "architecture": "arm64",
+          "runner": "macos-14",
+          "stage": "completed",
+          "outcome": "success"
+        },
+        {
+          "platform": "macOS",
+          "architecture": "x64",
+          "runner": "macos-15-intel",
+          "stage": "completed",
+          "outcome": "success"
+        }
+      ]
+    }
+  ]
 }
