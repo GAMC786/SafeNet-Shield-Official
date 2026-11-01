@@ -3,6 +3,37 @@
   "retention_runs": 24,
   "runs": [
     {
+      "run_id": "41302250473",
+      "run_attempt": 1,
+      "event": "schedule",
+      "recorded_at": "2026-11-01T11:32:34Z",
+      "ref": "main",
+      "commit": "786f36bf5abc985b22c6c8c5a130e4a30089c014",
+      "results": [
+        {
+          "platform": "Windows",
+          "architecture": "x64",
+          "runner": "windows-latest",
+          "stage": "workflow lint setup",
+          "outcome": "failure"
+        },
+        {
+          "platform": "macOS",
+          "architecture": "arm64",
+          "runner": "macos-14",
+          "stage": "completed",
+          "outcome": "success"
+        },
+        {
+          "platform": "macOS",
+          "architecture": "x64",
+          "runner": "macos-15-intel",
+          "stage": "completed",
+          "outcome": "success"
+        }
+      ]
+    },
+    {
       "run_id": "36853883910",
       "run_attempt": 1,
       "event": "schedule",
