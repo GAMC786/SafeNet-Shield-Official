@@ -1,7 +1,6 @@
 # Local development caches and package stores; none are needed by the web app.
 .cache/
 .local/
-node_modules/
 
 # Android SDKs and native build scratch output are only used for local builds.
 .android-sdk/
