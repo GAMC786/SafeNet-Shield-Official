@@ -53,6 +53,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SafeNetVpnPlugin.class);
         registerPlugin(SafeNetWindscribePlugin.class);
         registerPlugin(SafeNetWindscribeIkePlugin.class);
+        registerPlugin(SafeNetTrustTunnelPlugin.class);
         registerPlugin(SafeNetSmsPlugin.class);
         super.onCreate(savedInstanceState);
 

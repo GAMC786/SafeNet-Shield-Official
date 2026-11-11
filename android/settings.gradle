@@ -6,4 +6,10 @@ project(':windscribe-tunnel').projectDir = new File('./windscribe-tunnel/')
 include ':strongswan-tunnel'
 project(':strongswan-tunnel').projectDir = new File('./strongswan-tunnel/')
 
+includeBuild('../third_party/trusttunnel-client/platform/android') {
+    dependencySubstitution {
+        substitute module('com.adguard.trusttunnel:trusttunnel-client-android') using project(':lib')
+    }
+}
+
 apply from: 'capacitor.settings.gradle'
