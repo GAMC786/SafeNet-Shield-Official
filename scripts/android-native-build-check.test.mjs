@@ -119,6 +119,18 @@ test("Tailscale AAR build enters the submodule before invoking Make", () => {
   assert.doesNotMatch(tailscaleBuildScript, /make -C "\$source_dir"/);
 });
 
+test("Tailscale AAR build regenerates missing version metadata", () => {
+  assert.match(
+    tailscaleBuildScript,
+    /if \[\[ -f "\$source_dir\/tailscale\.version" \]\]; then[\s\S]*?original-tailscale\.version/,
+  );
+  assert.match(
+    tailscaleBuildScript,
+    /if \[\[ ! -s tailscale\.version \]\]; then\s+rm -f tailscale\.version/,
+  );
+  assert.doesNotMatch(tailscaleBuildScript, /touch tailscale\.version/);
+});
+
 test("release-capable workflows compile native sources before packaging", () => {
   for (const [name, workflow] of [
     ["main Android workflow", mainWorkflow],

@@ -41,10 +41,15 @@ temporary_dir="$(mktemp -d)"
 bridge_dir="$source_dir/libtailscale/safenetvpn"
 bridge_dir_created=0
 restore_build_inputs() {
-    for file in go.mod go.sum Makefile tailscale.version; do
+    for file in go.mod go.sum Makefile; do
         [[ -f "$temporary_dir/original-$file" ]] &&
             cp -p "$temporary_dir/original-$file" "$source_dir/$file"
     done
+    if [[ -f "$temporary_dir/original-tailscale.version" ]]; then
+        cp -p "$temporary_dir/original-tailscale.version" "$source_dir/tailscale.version"
+    else
+        rm -f "$source_dir/tailscale.version"
+    fi
     if [[ "$bridge_dir_created" == "1" ]]; then
         rm -rf "$bridge_dir"
     fi
@@ -77,9 +82,12 @@ else
         fail "Could not apply the Tailscale firewall patch."
 fi
 
-for file in go.mod go.sum Makefile tailscale.version; do
+for file in go.mod go.sum Makefile; do
     cp -p "$source_dir/$file" "$temporary_dir/original-$file"
 done
+if [[ -f "$source_dir/tailscale.version" ]]; then
+    cp -p "$source_dir/tailscale.version" "$temporary_dir/original-tailscale.version"
+fi
 [[ ! -e "$bridge_dir" ]] || fail "Unexpected existing SafeNet bridge source directory: $bridge_dir"
 mkdir -p "$bridge_dir"
 cp "$project_root/third_party/netvalve/netstack/bridge.go" \
@@ -104,7 +112,9 @@ if new not in text and old not in text:
 if old in text:
     path.write_text(text.replace(old, new, 1))
 PY
-    touch tailscale.version
+    if [[ ! -s tailscale.version ]]; then
+        rm -f tailscale.version
+    fi
 )
 
 export ANDROID_SDK_ROOT="$sdk_root"
