@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@clerk/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { Check, Copy, Loader2, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +55,6 @@ async function controlDRequest<T>(
 
 function ControlDIntegration() {
   const { isLoaded, isSignedIn, userId } = useAuth();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [apiToken, setApiToken] = useState("");
@@ -167,10 +165,7 @@ function ControlDIntegration() {
     }
   };
 
-  const openSignIn = () => {
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    setLocation(`/sign-in?redirect_url=${encodeURIComponent(returnTo)}`);
-  };
+  if (!isLoaded || !isSignedIn || !userId) return null;
 
   return (
     <CyberCard className="border-sky-400/20 bg-sky-400/[0.03]">
@@ -184,26 +179,12 @@ function ControlDIntegration() {
               Control D account
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Connect your account to view its endpoints and assign profiles. Control D management is the only SafeNet feature here that requires sign-in.
+              View your Control D endpoints and assign profiles.
             </p>
           </div>
         </div>
 
-        {!isLoaded ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Checking sign-in…
-          </div>
-        ) : !isSignedIn ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Sign in only to connect or manage your Control D account. The rest of SafeNet stays public.
-            </p>
-            <Button type="button" onClick={openSignIn} className="shrink-0">
-              Sign in to connect
-            </Button>
-          </div>
-        ) : connectionQuery.isLoading ? (
+        {connectionQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             Loading connection status…
