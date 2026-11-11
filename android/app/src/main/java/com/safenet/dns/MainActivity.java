@@ -426,6 +426,9 @@ public class MainActivity extends BridgeActivity {
 
                             if (!loaderPresent && pagePainted) {
                                 Log.i(TAG, "WebView startup handoff complete");
+                                if (getBridge() != null && webView == getBridge().getWebView()) {
+                                    webView.postDelayed(MainActivity.this::resumeSoundtrack, 200L);
+                                }
                                 return;
                             }
                             startupHandler.postDelayed(this, 1000L);

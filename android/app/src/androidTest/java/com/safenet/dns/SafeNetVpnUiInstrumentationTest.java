@@ -447,6 +447,13 @@ abstract class SafeNetUiInstrumentationTestBase {
             "document.getElementById('startup-loader') === null && " +
                 "document.readyState === 'complete'"
         );
+        waitForWebView(
+            "(() => {" +
+                "const audio = document.getElementById('safenet-soundtrack-audio');" +
+                "return audio instanceof HTMLAudioElement && !audio.paused && " +
+                    "!audio.muted && audio.currentTime > 0;" +
+            "})()"
+        );
 
         JSONObject navigation = callWebView(
             "(() => {" +
