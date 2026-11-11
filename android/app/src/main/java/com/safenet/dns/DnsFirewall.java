@@ -161,14 +161,6 @@ public final class DnsFirewall {
         String sourceAddress,
         String destinationAddress
     ) {
-        return evaluateWithReason(query, sourceAddress, destinationAddress);
-    }
-
-    private Evaluation evaluateWithReason(
-        byte[] query,
-        String sourceAddress,
-        String destinationAddress
-    ) {
         if (!enabled) {
             return new Evaluation(Decision.ALLOW, "firewall_disabled");
         }
