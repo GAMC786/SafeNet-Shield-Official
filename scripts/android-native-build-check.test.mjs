@@ -240,6 +240,9 @@ test("the local VPN filters DNS-based ads and offers Android System Private DNS"
   assert.match(localVpnCardSource, /Protects this phone only/);
   assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
   assert.match(localVpnCardSource, /System \/ Private DNS/);
+  assert.match(localVpnCardSource, /<Switch/);
+  assert.match(localVpnCardSource, /checked=\{vpn\.connected\}/);
+  assert.match(localVpnCardSource, /onCheckedChange=\{toggleLocalProtection\}/);
   assert.match(localVpnCardSource, /useDnsServers/);
   assert.match(localVpnCardSource, /Selected DNS server:/);
   assert.match(localVpnCardSource, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);

@@ -25,6 +25,10 @@ test("Dashboard offers phone-only ad filtering and Android Private DNS mode", ()
   assert.match(card, /Protects this phone only/);
   assert.match(card, /DNS-based in-app ads and trackers/);
   assert.match(card, /System \/ Private DNS/);
+  assert.match(card, /<Switch/);
+  assert.match(card, /checked=\{vpn\.connected\}/);
+  assert.match(card, /onCheckedChange=\{toggleLocalProtection\}/);
+  assert.match(card, /Select an active DNS server to turn on protection/);
   assert.match(card, /active DNS server/);
   assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
 });

@@ -3,6 +3,8 @@ import { Globe2, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CyberCard } from "@/components/CyberCard";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { usePrivateDns } from "@/hooks/use-private-dns";
 import { useDnsServers } from "@/hooks/use-dns";
@@ -36,6 +38,22 @@ export function LocalVpnCard() {
     }
   };
 
+  const toggleLocalProtection = (enabled: boolean) => {
+    if (enabled) {
+      if (activeDns) void vpn.start(activeDns);
+    } else {
+      void vpn.stop();
+    }
+  };
+
+  const protectionStatus = vpn.busy
+    ? "Applying protection change…"
+    : vpn.connected
+      ? "Protection is on for this phone."
+      : activeDns
+        ? "Off · switch on to protect this phone."
+        : "Select an active DNS server to turn on protection.";
+
   return (
     <CyberCard className="w-full">
       <div className="space-y-4 rounded-lg border border-white/10 bg-background/30 p-4">
@@ -62,12 +80,23 @@ export function LocalVpnCard() {
           </Button>
         </div>
         {mode === "local" ? (
-          <Button
-            disabled={!vpn.supported || vpn.busy || (!vpn.connected && !activeDns)}
-            onClick={() => void (vpn.connected ? vpn.stop() : activeDns && vpn.start(activeDns))}
-          >
-            {vpn.busy ? "Working…" : vpn.connected ? "Stop protection" : "Protect this phone"}
-          </Button>
+          <div className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-background/30 p-3">
+            <div className="space-y-1">
+              <Label htmlFor="local-vpn-protection" className="cursor-pointer">
+                Protect this phone
+              </Label>
+              <p id="local-vpn-protection-status" aria-live="polite" className="text-xs text-muted-foreground">
+                {protectionStatus}
+              </p>
+            </div>
+            <Switch
+              id="local-vpn-protection"
+              aria-describedby="local-vpn-protection-status"
+              checked={vpn.connected}
+              disabled={!vpn.supported || vpn.busy || (!vpn.connected && !activeDns)}
+              onCheckedChange={toggleLocalProtection}
+            />
+          </div>
         ) : (
           <Button disabled={!privateDns.supported || privateDns.isBusy} variant="outline" onClick={() => void configureSystemDns()}>
             <Globe2 className="mr-2 h-4 w-4" />
