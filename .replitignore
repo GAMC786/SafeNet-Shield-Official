@@ -1,0 +1,15 @@
+# Local development caches and package stores; none are needed by the web app.
+.cache/
+.local/
+node_modules/
+
+# Android SDKs and native build scratch output are only used for local builds.
+.android-sdk/
+.tmp-android/
+android/.gradle/
+android/**/.gradle/
+android/**/build/
+
+# Desktop packaging and the separate mockup preview's installed dependencies.
+dist-electron/
+artifacts/mockup-sandbox/node_modules/
