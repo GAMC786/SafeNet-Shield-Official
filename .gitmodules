@@ -5,3 +5,6 @@
 [submodule "third_party/wireguard-android"]
 	path = third_party/wireguard-android
 	url = https://github.com/WireGuard/wireguard-android.git
+[submodule "third_party/netvalve"]
+	path = third_party/netvalve
+	url = https://github.com/IEAmir/NetValve.git
