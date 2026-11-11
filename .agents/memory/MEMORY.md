@@ -13,7 +13,7 @@
 - [Actionlint custom runner labels](actionlint-custom-runner-labels.md) — declare intentional self-hosted labels so strict runner validation remains enabled.
 - [Hosted-runner lint history](hosted-runner-lint-history.md) — preserve per-platform and architecture outcomes in a bounded, trigger-gated machine-readable run history.
 - [Actionlint context compatibility](actionlint-context-compatibility.md) — strict actionlint schemas may reject newer GitHub context properties; emit dynamic timestamps through a shell step.
-- [GitHub workflow validation access](github-workflow-validation-access.md) — the connector may block `.github/workflows` writes; use a disposable authenticated Git branch and clean it up after validation.
+- [GitHub workflow validation access](github-workflow-validation-access.md) — workflow-file pushes require the correct GitHub workflow scope; reauthorize after a scope rejection.
 - [GitHub private npm lockfiles](github-private-npm-lockfile.md) — hosted Actions cannot resolve Replit-only tarball URLs recorded in package-lock files.
 - [Zero-context Git patches](zero-context-git-patches.md) — patches generated with `-U0` require `--unidiff-zero` for checks and application.
 - [Windows Bash preflight compatibility](windows-bash-preflight-compatibility.md) — Git Bash can rewrite paths and add warnings; isolate tool commands and parse readiness output defensively.
@@ -96,5 +96,5 @@
 - [Android resource cleanup](android-resource-cleanup.md) — removing a native component must remove its obsolete resources; hosted AAPT can reject stale string entries during release builds.
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
-- [Android gomobile runtime aggregation](gomobile-runtime-aggregation.md) — bind Go-backed features into one app-level AAR to avoid duplicate Java and JNI runtimes.
+- [SafeNet Local VPN Go runtime](gomobile-runtime-aggregation.md) — keep the packet engine and DNSCrypt in one AAR, with gomobile declared as module tools.
 - [Windscribe firewall boundary](windscribe-firewall-boundary.md) — the SDNS wrapper redirects virtual-resolver queries but does not enforce synced SafeNet DNS policy.
