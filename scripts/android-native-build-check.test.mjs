@@ -105,6 +105,8 @@ test("Tailscale AAR build enters the submodule before invoking Make", () => {
     tailscaleBuildScript,
     /\(\s*cd "\$source_dir"[\s\S]*?make libtailscale[\s\S]*?\)/,
   );
+  assert.match(tailscaleBuildScript, /if new not in text and old not in text:/);
+  assert.match(tailscaleBuildScript, /if old in text:/);
   assert.match(tailscaleBuildScript, /no_apple_tools_dir="\$temporary_dir\/no-apple-tools"/);
   assert.match(
     tailscaleBuildScript,

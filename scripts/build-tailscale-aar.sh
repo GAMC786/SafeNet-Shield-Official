@@ -99,9 +99,10 @@ path = Path("Makefile")
 text = path.read_text()
 old = "-o $(ABS_UNSTRIPPED_AAR) ./libtailscale ||"
 new = "-o $(ABS_UNSTRIPPED_AAR) ./libtailscale ./libtailscale/safenetvpn ||"
-if old not in text:
+if new not in text and old not in text:
     raise SystemExit("Tailscale gomobile bind command changed unexpectedly")
-path.write_text(text.replace(old, new, 1))
+if old in text:
+    path.write_text(text.replace(old, new, 1))
 PY
     touch tailscale.version
 )
