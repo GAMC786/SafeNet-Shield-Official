@@ -47,7 +47,7 @@ export function privateDnsHostnameForServer(server: DnsServer | null | undefined
 }
 
 function normalizeHostname(value: string) {
-  const trimmed = value.trim().replace(/\.$/, "");
+  const trimmed = value.trim().replace(/^(?:tls|dot):\/\//i, "").replace(/\.$/, "");
   if (!trimmed || trimmed.includes("/") || trimmed.includes(" ")) return null;
   if (trimmed.includes(":")) {
     const portMatch = trimmed.match(/^([^:]+):\d{1,5}$/);

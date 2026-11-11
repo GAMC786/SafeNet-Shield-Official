@@ -250,7 +250,8 @@ test("the local VPN filters DNS-based ads and offers Android System Private DNS"
   assert.match(localVpnServiceSource, /"plain" -> plainQuery/);
   assert.match(localVpnServiceSource, /"dot" -> dotQuery/);
   assert.match(localVpnServiceSource, /"doh" -> dohQuery/);
-  assert.match(localVpnServiceSource, /"sdns" -> tunnel\?\.dnscryptQuery/);
+  assert.match(localVpnServiceSource, /"sdns" -> dnscryptResolver\?\.query/);
+  assert.match(localVpnServiceSource, /Bridge\.newDnscryptResolver\(\)/);
   assert.match(localVpnPluginSource, /putExtra\("primaryAddress"/);
   assert.match(localVpnServiceSource, /protect\(raw\)/);
   assert.match(localVpnPluginSource, /@CapacitorPlugin\(name = "SafeNetLocalVpn"\)/);

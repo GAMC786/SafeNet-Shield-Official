@@ -84,7 +84,7 @@ done
 mkdir -p "$bridge_dir"
 cp "$project_root/third_party/netvalve/netstack/bridge.go" \
     "$project_root/third_party/netvalve/netstack/conn.go" \
-    "$project_root/third_party/netvalve/netstack/dnscrypt.go" "$bridge_dir/"
+    "$project_root/android/local-vpn-bridge/dnscrypt.go" "$bridge_dir/"
 bridge_dir_created=1
 (
     cd "$source_dir"
@@ -132,11 +132,20 @@ echo "Building Tailscale Android engine from pinned revision $expected_revision"
 exit 127
 EOF
         chmod +x "$no_apple_tools_dir/xcrun"
+        rm -f "$source_dir/libgojni.so.unstripped" "$source_dir/libgojni.so.stripped" \
+            "$source_dir/android/libs/libtailscale.aar"
         TMPDIR="$android_work_temp" GOTMPDIR="$android_work_temp" \
             PATH="$no_apple_tools_dir:$PATH" make libtailscale
     else
+        rm -f "$source_dir/libgojni.so.unstripped" "$source_dir/libgojni.so.stripped" \
+            "$source_dir/android/libs/libtailscale.aar"
         make libtailscale
     fi
 )
 [[ -s "$source_dir/android/libs/libtailscale.aar" ]] ||
     fail "Tailscale Android build completed without producing libtailscale.aar."
+classes_jar="$temporary_dir/classes.jar"
+unzip -p "$source_dir/android/libs/libtailscale.aar" classes.jar > "$classes_jar"
+if ! unzip -p "$classes_jar" bridge/Bridge.class | grep -a -q 'newDnscryptResolver'; then
+    fail "The stripped Tailscale AAR does not include SafeNet's DNSCrypt resolver bridge."
+fi

@@ -9,6 +9,8 @@ const dashboard = read("../client/src/pages/Dashboard.tsx");
 const card = read("../client/src/components/LocalVpnCard.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
+const dnscryptBridge = read("../android/local-vpn-bridge/dnscrypt.go");
+const privateDnsHook = read("../client/src/hooks/use-private-dns.ts");
 
 test("SafeNet declares a local Android VPN service without the old VPN service", () => {
   assert.match(manifest, /android:name="\.SafeNetLocalVpnService"/);
@@ -34,7 +36,12 @@ test("local packet forwarding captures direct DNS and protects upstream sockets"
   assert.match(service, /"plain" -> plainQuery/);
   assert.match(service, /"dot" -> dotQuery/);
   assert.match(service, /"doh" -> dohQuery/);
-  assert.match(service, /"sdns" -> tunnel\?\.dnscryptQuery/);
+  assert.match(service, /"sdns" -> dnscryptResolver\?\.query/);
+  assert.match(service, /Bridge\.newDnscryptResolver\(\)/);
+  assert.match(dnscryptBridge, /type DnscryptResolver struct/);
+  assert.match(dnscryptBridge, /github\.com\/ameshkov\/dnscrypt\/v2/);
+  assert.match(dnscryptBridge, /client\.Exchange\(query, info\)/);
+  assert.ok(privateDnsHook.includes("tls|dot"));
   assert.match(service, /protect\(raw\)/);
   assert.match(service, /protect\(socket\)/);
   assert.match(plugin, /VpnService\.prepare/);

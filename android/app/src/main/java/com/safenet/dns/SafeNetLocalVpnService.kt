@@ -41,12 +41,13 @@ class SafeNetLocalVpnService : VpnService() {
         private const val CHANNEL = "safenet-local-vpn"
     }
 
-    @Volatile private var resolverType = "dot"
-    @Volatile private var resolverPrimary = "family.adguard-dns.com"
+    @Volatile private var resolverType = ""
+    @Volatile private var resolverPrimary = ""
     @Volatile private var resolverSecondary: String? = null
     @Volatile private var pool = Executors.newCachedThreadPool()
     private var tun: ParcelFileDescriptor? = null
     private var tunnel: bridge.Tunnel? = null
+    private var dnscryptResolver: bridge.DnscryptResolver? = null
     private val stopped = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -71,6 +72,9 @@ class SafeNetLocalVpnService : VpnService() {
     }
 
     private fun startTunnel() {
+        require(resolverType in setOf("plain", "dot", "doh", "sdns") && resolverPrimary.isNotBlank()) {
+            "Choose an active DNS server before starting the local VPN."
+        }
         if (pool.isShutdown) pool = Executors.newCachedThreadPool()
         stopped.set(false)
         lastError = null
@@ -98,6 +102,7 @@ class SafeNetLocalVpnService : VpnService() {
         tun = pfd
         try {
             tunnel = Bridge.newTunnel(pfd.detachFd().toLong(), 1500L, "RELAY", FlowHandler())
+            dnscryptResolver = Bridge.newDnscryptResolver()
             running = true
         } catch (error: Exception) {
             lastError = error.message ?: "The local packet engine could not start."
@@ -213,8 +218,8 @@ class SafeNetLocalVpnService : VpnService() {
             "plain" -> plainQuery(query, address)
             "dot" -> dotQuery(query, address)
             "doh" -> dohQuery(query, address)
-            "sdns" -> tunnel?.dnscryptQuery(address, query)
-                ?: throw IllegalStateException("The local DNSCrypt tunnel is not ready.")
+            "sdns" -> dnscryptResolver?.query(address, query)
+                ?: throw IllegalStateException("The local DNSCrypt resolver is not ready.")
             else -> throw IllegalStateException("The active DNS server uses an unsupported protocol.")
         }
 
@@ -231,7 +236,30 @@ class SafeNetLocalVpnService : VpnService() {
             val response = ByteArray(65535)
             val packet = DatagramPacket(response, response.size)
             socket.receive(packet)
-            return packet.data.copyOf(packet.length)
+            val answer = packet.data.copyOf(packet.length)
+            if (answer.size >= 4 && (answer[2].toInt() and 0x02) != 0) {
+                return plainTcpQuery(query, target, network)
+            }
+            return answer
+        } finally {
+            socket.close()
+        }
+    }
+
+    private fun plainTcpQuery(query: ByteArray, target: InetAddress, network: Network?): ByteArray {
+        val socket = Socket()
+        try {
+            network?.bindSocket(socket)
+            if (!protect(socket)) throw IllegalStateException("Could not protect DNS socket")
+            socket.connect(InetSocketAddress(target, 53), 8000)
+            val output = java.io.DataOutputStream(socket.getOutputStream())
+            output.writeShort(query.size)
+            output.write(query)
+            output.flush()
+            val input = java.io.DataInputStream(socket.getInputStream())
+            val size = input.readUnsignedShort()
+            require(size in 12..65535) { "Invalid DNS-over-TCP response length" }
+            return ByteArray(size).also { input.readFully(it) }
         } finally {
             socket.close()
         }
@@ -259,7 +287,7 @@ class SafeNetLocalVpnService : VpnService() {
     }
 
     private fun parseHostPort(address: String, defaultPort: Int): Pair<String, Int> {
-        val value = address.trim()
+        val value = address.trim().replace(Regex("^(?:tls|dot)://", RegexOption.IGNORE_CASE), "")
         if (value.startsWith("[")) {
             val end = value.indexOf(']')
             require(end > 0) { "Invalid DNS-over-TLS address." }
@@ -373,6 +401,7 @@ class SafeNetLocalVpnService : VpnService() {
         running = false
         runCatching { tunnel?.stop() }
         tunnel = null
+        dnscryptResolver = null
         runCatching { tun?.close() }
         tun = null
         pool.shutdownNow()
