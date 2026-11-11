@@ -7,6 +7,7 @@ const manifest = read("../android/app/src/main/AndroidManifest.xml");
 const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
 const dashboard = read("../client/src/pages/Dashboard.tsx");
 const card = read("../client/src/components/LocalVpnCard.tsx");
+const dnsSettings = read("../client/src/pages/DnsSettings.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
 const dnscryptBridge = read("../android/local-vpn-bridge/dnscrypt.go");
@@ -31,6 +32,11 @@ test("Dashboard offers phone-only ad filtering and Android Private DNS mode", ()
   assert.match(card, /Select an active DNS server to turn on protection/);
   assert.match(card, /active DNS server/);
   assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+});
+
+test("DNS resolver management no longer depends on the optional Private DNS wrapper", () => {
+  assert.doesNotMatch(dnsSettings, /SafeNet Private DNS|Open Private DNS|switch-safe-net-private-dns/);
+  assert.match(card, /System \/ Private DNS/);
 });
 
 test("local packet forwarding captures direct DNS and protects upstream sockets", () => {

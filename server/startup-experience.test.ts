@@ -115,6 +115,10 @@ const dnsSettingsSource = readFileSync(
   path.join(clientRoot, "src/pages/DnsSettings.tsx"),
   "utf8",
 );
+const localVpnCardSource = readFileSync(
+  path.join(clientRoot, "src/components/LocalVpnCard.tsx"),
+  "utf8",
+);
 const dnsResolversSource = readFileSync(
   path.resolve(process.cwd(), "shared/dns-resolvers.ts"),
   "utf8",
@@ -460,9 +464,11 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
-test("the Dashboard leaves Private DNS management to DNS Servers", () => {
+test("Private DNS remains a separate Local VPN mode, not a DNS resolver wrapper", () => {
   assert.doesNotMatch(dashboardSource, /SafeNet Private DNS/);
   assert.doesNotMatch(dashboardSource, /switch-safe-net-private-dns/);
+  assert.doesNotMatch(dnsSettingsSource, /SafeNet Private DNS|switch-safe-net-private-dns|Open Private DNS/);
+  assert.match(localVpnCardSource, /System \/ Private DNS/);
   assert.match(dashboardSource, /VpnProxyBrowserBlocker/);
   assert.match(vpnProxyBrowserBlockerSource, /VPN &amp; Proxy Browser Blocker/);
   assert.match(vpnProxyBrowserBlockerSource, /switch-vpn-proxy-browser-blocker/);
@@ -484,16 +490,8 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv4/);
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
-  assert.match(dnsSettingsSource, /SafeNet Private DNS/);
-  assert.match(dnsSettingsSource, /data-testid="switch-safe-net-private-dns"/);
-  assert.match(dnsSettingsSource, /privateDnsConnected\s*\?\s*"Connected"/);
-  assert.match(dnsSettingsSource, /"Disconnected"/);
-  assert.match(dnsSettingsSource, /privateDnsStatusLabel/);
-  assert.match(dnsSettingsSource, /privateDnsStatusIsUnavailable/);
-  assert.match(dnsSettingsSource, /Boolean\(privateDns\.status\?\.error\)/);
-  assert.doesNotMatch(dnsSettingsSource, /!privateDnsEulaAccepted && !privateDns\.status\?\.running/);
-  assert.match(dnsSettingsSource, /Available in the Android app/);
-  assert.match(dnsSettingsSource, /openPrivateDnsSettings/);
+  assert.doesNotMatch(dnsSettingsSource, /SafeNet Private DNS|switch-safe-net-private-dns|Open Private DNS/);
+  assert.match(localVpnCardSource, /System \/ Private DNS/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Active Cloudflare zone required/);
