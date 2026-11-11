@@ -270,8 +270,11 @@ test("the Dashboard uses the phone-only local VPN with DNS ad filtering", () => 
   assert.match(localVpnCardSource, /Protects this phone only/);
   assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
   assert.match(localVpnCardSource, /System \/ Private DNS/);
-  assert.match(localVpnCardSource, /family\.adguard-dns\.com/);
+  assert.match(localVpnCardSource, /useDnsServers/);
+  assert.match(localVpnCardSource, /vpn\.start\(activeDns\)/);
+  assert.match(localVpnCardSource, /Selected DNS server:/);
   assert.match(localVpnServiceSource, /class SafeNetLocalVpnService : VpnService\(\)/);
+  assert.match(localVpnServiceSource, /querySelectedResolver/);
   assert.doesNotMatch(dashboardSource, /WindscribeVpnCard/);
 });
 
@@ -385,9 +388,9 @@ test("updated web assets refresh without clearing app storage", () => {
 
 test("the local VPN filters direct DNS and documents encrypted DNS limits", () => {
   assert.match(firewallSource, /UDP\/TCP port 53 requests are checked against SafeNet&apos;s active rules/);
-  assert.match(firewallSource, /forwarded to AdGuard Family over DNS-over-TLS/);
+  assert.match(firewallSource, /forwarded to the selected DNS server using its configured protocol/);
   assert.match(firewallSource, /App-owned DoH\/DoT and HTTPS are not inspected/);
-  assert.match(firewallSource, /AdGuard Family DoT/);
+  assert.match(firewallSource, /Selected DNS server/);
   assert.match(firewallSource, /Configure Android Private DNS/);
   assert.match(firewallSource, /href="\/dns"/);
 });

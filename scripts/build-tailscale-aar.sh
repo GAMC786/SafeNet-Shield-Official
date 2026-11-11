@@ -83,13 +83,15 @@ done
 [[ ! -e "$bridge_dir" ]] || fail "Unexpected existing SafeNet bridge source directory: $bridge_dir"
 mkdir -p "$bridge_dir"
 cp "$project_root/third_party/netvalve/netstack/bridge.go" \
-    "$project_root/third_party/netvalve/netstack/conn.go" "$bridge_dir/"
+    "$project_root/third_party/netvalve/netstack/conn.go" \
+    "$project_root/third_party/netvalve/netstack/dnscrypt.go" "$bridge_dir/"
 bridge_dir_created=1
 (
     cd "$source_dir"
     gvisor_version="$(cd "$project_root/third_party/netvalve/netstack" &&
         go list -mod=readonly -m -f '{{.Version}}' github.com/sagernet/gvisor)"
     ./tool/go mod edit -require="github.com/sagernet/gvisor@$gvisor_version"
+    ./tool/go mod edit -require="github.com/ameshkov/dnscrypt/v2@v2.4.0"
     ./tool/go mod tidy
     python3 - <<'PY'
 from pathlib import Path

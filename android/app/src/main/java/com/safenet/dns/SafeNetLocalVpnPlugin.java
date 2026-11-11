@@ -28,9 +28,15 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
 
     @PluginMethod
     public void start(PluginCall call) {
+        String resolverType = call.getString("type");
+        String primaryAddress = call.getString("primaryAddress");
+        if (resolverType == null || primaryAddress == null || primaryAddress.trim().isEmpty()) {
+            call.reject("Select an active DNS server before starting SafeNet Local VPN.");
+            return;
+        }
         Intent permission = VpnService.prepare(getContext());
         if (permission == null) {
-            startService();
+            startService(call);
             resolveStatus(call);
             return;
         }
@@ -43,7 +49,7 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
             call.reject("Android VPN permission was not granted.", "VPN_PERMISSION_DENIED");
             return;
         }
-        startService();
+        startService(call);
         resolveStatus(call);
     }
 
@@ -58,9 +64,12 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
         call.resolve(result);
     }
 
-    private void startService() {
+    private void startService(PluginCall call) {
         Intent intent = new Intent(getContext(), SafeNetLocalVpnService.class);
         intent.setAction(SafeNetLocalVpnService.ACTION_START);
+        intent.putExtra("resolverType", call.getString("type"));
+        intent.putExtra("primaryAddress", call.getString("primaryAddress"));
+        intent.putExtra("secondaryAddress", call.getString("secondaryAddress"));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ContextCompat.startForegroundService(getContext(), intent);
         } else {

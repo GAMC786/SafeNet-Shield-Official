@@ -1,26 +1,17 @@
 import { useState } from "react";
 import { Globe2, ShieldCheck } from "lucide-react";
-import type { DnsServer } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CyberCard } from "@/components/CyberCard";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { usePrivateDns } from "@/hooks/use-private-dns";
-
-const familyDns = {
-  id: -1,
-  name: "AdGuard DNS Family",
-  type: "dot",
-  ipVersion: "ipv4",
-  primaryAddress: "family.adguard-dns.com",
-  secondaryAddress: null,
-  isActive: true,
-  isCustom: true,
-} as DnsServer;
+import { useDnsServers } from "@/hooks/use-dns";
 
 export function LocalVpnCard() {
   const vpn = useLocalVpn();
-  const privateDns = usePrivateDns(familyDns);
+  const { data: dnsServers } = useDnsServers();
+  const activeDns = dnsServers?.find((server) => server.isActive);
+  const privateDns = usePrivateDns(activeDns);
   const [mode, setMode] = useState<"local" | "system">("local");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -32,12 +23,16 @@ export function LocalVpnCard() {
   const configureSystemDns = async () => {
     setMessage(null);
     try {
+      if (!privateDns.expectedHostname) {
+        setMessage("This resolver cannot be configured through Android Private DNS. Use Local VPN instead.");
+        return;
+      }
       const result = privateDns.status?.oneTapAvailable
         ? await privateDns.applyOneTap()
         : await privateDns.openSettings();
-      setMessage(result?.message ?? "Choose Private DNS provider hostname: family.adguard-dns.com");
+      setMessage(result?.message ?? `Choose Private DNS provider hostname: ${privateDns.expectedHostname}`);
     } catch {
-      setMessage("Open Android Private DNS settings and enter family.adguard-dns.com.");
+      setMessage(`Open Android Private DNS settings and enter ${privateDns.expectedHostname}.`);
     }
   };
 
@@ -51,7 +46,7 @@ export function LocalVpnCard() {
               SafeNet Local VPN
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Protects this phone only. Filters DNS-based in-app ads and trackers through AdGuard Family; no VPN server is required.
+              Protects this phone only. Filters DNS-based in-app ads and trackers through your selected DNS server; no VPN server is required.
             </p>
           </div>
           <Badge variant="outline">
@@ -67,7 +62,10 @@ export function LocalVpnCard() {
           </Button>
         </div>
         {mode === "local" ? (
-          <Button disabled={!vpn.supported || vpn.busy} onClick={() => void (vpn.connected ? vpn.stop() : vpn.start())}>
+          <Button
+            disabled={!vpn.supported || vpn.busy || (!vpn.connected && !activeDns)}
+            onClick={() => void (vpn.connected ? vpn.stop() : activeDns && vpn.start(activeDns))}
+          >
             {vpn.busy ? "Working…" : vpn.connected ? "Stop protection" : "Protect this phone"}
           </Button>
         ) : (
@@ -79,8 +77,19 @@ export function LocalVpnCard() {
         {(vpn.error || message) && <p role="status" className="text-xs text-destructive">{vpn.error ?? message}</p>}
         {mode === "system" && (
           <p className="text-xs text-muted-foreground">
-            Android Private DNS hostname: family.adguard-dns.com
+            Active DNS server: {activeDns?.name ?? "None selected"}
+            {privateDns.expectedHostname
+              ? ` · Android Private DNS hostname: ${privateDns.expectedHostname}`
+              : activeDns?.type === "sdns"
+                ? " · SDNS stamps are not supported by Android Private DNS."
+                : ""}
           </p>
+        )}
+        {mode === "local" && (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>Selected DNS server: {activeDns?.name ?? "No active DNS server selected"}</p>
+            {vpn.connected && <p>Stop and restart protection after changing the active DNS server.</p>}
+          </div>
         )}
         {mode === "local" && (
           <p className="text-xs text-muted-foreground">

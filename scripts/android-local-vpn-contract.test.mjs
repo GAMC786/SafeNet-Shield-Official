@@ -23,7 +23,7 @@ test("Dashboard offers phone-only ad filtering and Android Private DNS mode", ()
   assert.match(card, /Protects this phone only/);
   assert.match(card, /DNS-based in-app ads and trackers/);
   assert.match(card, /System \/ Private DNS/);
-  assert.match(card, /family\.adguard-dns\.com/);
+  assert.match(card, /active DNS server/);
   assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
 });
 
@@ -31,9 +31,13 @@ test("local packet forwarding captures direct DNS and protects upstream sockets"
   assert.match(service, /addRoute\("0\.0\.0\.0", 0\)/);
   assert.match(service, /addRoute\("::", 0\)/);
   assert.match(service, /dstPort\.toInt\(\) == 53/);
-  assert.match(service, /DOT_HOST = "family\.adguard-dns\.com"/);
+  assert.match(service, /"plain" -> plainQuery/);
+  assert.match(service, /"dot" -> dotQuery/);
+  assert.match(service, /"doh" -> dohQuery/);
+  assert.match(service, /"sdns" -> tunnel\?\.dnscryptQuery/);
   assert.match(service, /protect\(raw\)/);
   assert.match(service, /protect\(socket\)/);
   assert.match(plugin, /VpnService\.prepare/);
+  assert.match(plugin, /primaryAddress/);
   assert.match(plugin, /startForegroundService/);
 });

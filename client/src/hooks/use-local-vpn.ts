@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 type LocalVpnStatus = { connected: boolean; mode: "local"; error?: string };
+export type LocalVpnResolver = {
+  type: "plain" | "doh" | "dot" | "sdns";
+  primaryAddress: string;
+  secondaryAddress?: string | null;
+};
 type LocalVpnPlugin = {
   getStatus(): Promise<LocalVpnStatus>;
-  start(): Promise<LocalVpnStatus>;
+  start(resolver: LocalVpnResolver): Promise<LocalVpnStatus>;
   stop(): Promise<LocalVpnStatus>;
 };
 
@@ -36,11 +41,17 @@ export function useLocalVpn() {
     return () => window.clearInterval(timer);
   }, [refresh, supported]);
 
-  const run = useCallback(async (action: "start" | "stop") => {
+  const run = useCallback(async (action: "start" | "stop", resolver?: LocalVpnResolver) => {
     setBusy(true);
     setError(null);
     try {
-      const next = await LocalVpn[action]();
+      let next: LocalVpnStatus;
+      if (action === "start") {
+        if (!resolver) throw new Error("Select an active DNS server first.");
+        next = await LocalVpn.start(resolver);
+      } else {
+        next = await LocalVpn.stop();
+      }
       setStatus(next);
       window.setTimeout(() => void refresh(), 500);
       return next;
@@ -58,7 +69,7 @@ export function useLocalVpn() {
     busy,
     error,
     refresh,
-    start: () => run("start"),
+    start: (resolver: LocalVpnResolver) => run("start", resolver),
     stop: () => run("stop"),
   };
 }

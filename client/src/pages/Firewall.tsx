@@ -355,10 +355,10 @@ export default function Firewall() {
           <div className="flex-1">
             <h2 className="text-xl font-display font-bold text-white">SafeNet Local VPN Firewall Rules</h2>
             <p className="text-muted-foreground">
-              Cleartext UDP/TCP port 53 requests are checked against SafeNet&apos;s active rules, then forwarded to AdGuard Family over DNS-over-TLS. App-owned DoH/DoT and HTTPS are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Cleartext UDP/TCP port 53 requests are checked against SafeNet&apos;s active rules, then forwarded to the selected DNS server using its configured protocol. App-owned DoH/DoT and HTTPS are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-sky-400/30 text-sky-200">AdGuard Family DoT</Badge>
+              <Badge variant="outline" className="border-sky-400/30 text-sky-200">Selected DNS server</Badge>
               <Link
                 href="/dns"
                 className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
@@ -452,7 +452,7 @@ export default function Firewall() {
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "Applies to the supported SafeNet DNS path while DNS Firewall is On. Local VPN DNS is checked before it reaches AdGuard Family."
+                      ? "Applies to the supported SafeNet DNS path while DNS Firewall is On. Local VPN DNS is checked before it reaches the selected resolver."
                       : "Turn on DNS Firewall above to apply this rule to the supported DNS packet paths."}
                   </p>
                 </div>

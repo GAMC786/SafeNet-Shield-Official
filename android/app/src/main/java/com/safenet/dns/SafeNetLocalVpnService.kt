@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
@@ -18,8 +21,10 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
@@ -34,10 +39,11 @@ class SafeNetLocalVpnService : VpnService() {
         @JvmStatic fun isRunningNow(): Boolean = running
         @JvmStatic fun getLastErrorMessage(): String? = lastError
         private const val CHANNEL = "safenet-local-vpn"
-        private const val DOT_HOST = "family.adguard-dns.com"
-        private const val DOT_IP = "94.140.14.15"
     }
 
+    @Volatile private var resolverType = "dot"
+    @Volatile private var resolverPrimary = "family.adguard-dns.com"
+    @Volatile private var resolverSecondary: String? = null
     @Volatile private var pool = Executors.newCachedThreadPool()
     private var tun: ParcelFileDescriptor? = null
     private var tunnel: bridge.Tunnel? = null
@@ -47,9 +53,19 @@ class SafeNetLocalVpnService : VpnService() {
         if (intent?.action == ACTION_STOP) {
             stopTunnel()
             stopSelf()
-        } else if (!running) {
-            startForeground(7301, notification())
-            startTunnel()
+        } else if (intent?.action == ACTION_START || !running) {
+            val nextType = intent?.getStringExtra("resolverType") ?: resolverType
+            val nextPrimary = intent?.getStringExtra("primaryAddress") ?: resolverPrimary
+            val nextSecondary = intent?.getStringExtra("secondaryAddress")
+            val changed = nextType != resolverType || nextPrimary != resolverPrimary || nextSecondary != resolverSecondary
+            resolverType = nextType
+            resolverPrimary = nextPrimary
+            resolverSecondary = nextSecondary
+            if (running && changed) stopTunnel()
+            if (!running) {
+                startForeground(7301, notification())
+                startTunnel()
+            }
         }
         return START_STICKY
     }
@@ -58,6 +74,8 @@ class SafeNetLocalVpnService : VpnService() {
         if (pool.isShutdown) pool = Executors.newCachedThreadPool()
         stopped.set(false)
         lastError = null
+        val network = upstreamNetwork()
+        setUnderlyingNetworks(network?.let { arrayOf(it) })
         val pfd = try {
             Builder()
                 .setSession("SafeNet Local VPN")
@@ -138,22 +156,27 @@ class SafeNetLocalVpnService : VpnService() {
         override fun log(level: Long, msg: String) {}
     }
 
-    private fun dotSocket(): SSLSocket {
-        val raw = Socket()
+    private fun dotSocket(address: String): SSLSocket {
+        val (host, port) = parseHostPort(address, 853)
+        val network = upstreamNetwork()
+            ?: throw IllegalStateException("No validated internet network is available for DNS-over-TLS.")
+        val resolved = network.getAllByName(host).firstOrNull()
+            ?: throw IllegalStateException("The selected DNS-over-TLS host did not resolve.")
+        val raw = network.socketFactory.createSocket()
         if (!protect(raw)) throw IllegalStateException("Could not protect DNS socket")
-        raw.connect(InetSocketAddress(DOT_IP, 853), 10000)
+        raw.connect(InetSocketAddress(resolved, port), 10000)
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        val tls = factory.createSocket(raw, DOT_HOST, 853, true) as SSLSocket
+        val tls = factory.createSocket(raw, host, port, true) as SSLSocket
         tls.sslParameters = tls.sslParameters.apply {
             endpointIdentificationAlgorithm = "HTTPS"
-            serverNames = listOf(SNIHostName(DOT_HOST))
+            runCatching { SNIHostName(host) }.getOrNull()?.let { serverNames = listOf(it) }
         }
         tls.startHandshake()
         return tls
     }
 
-    private fun dotQuery(query: ByteArray): ByteArray {
-        val socket = dotSocket()
+    private fun dotQuery(query: ByteArray, address: String): ByteArray {
+        val socket = dotSocket(address)
         socket.use {
             val out = it.outputStream
             out.write((query.size shr 8) and 0xff)
@@ -177,7 +200,89 @@ class SafeNetLocalVpnService : VpnService() {
     private fun resolveDns(query: ByteArray, source: String, destination: String): ByteArray {
         val decision = FirewallConfigStore.load(this).evaluate(query, source, destination)
         if (decision == DnsFirewall.Decision.BLOCK) return nxdomain(query)
-        return dotQuery(query)
+        return try {
+            querySelectedResolver(query, resolverPrimary)
+        } catch (primaryFailure: Exception) {
+            val secondary = resolverSecondary?.takeIf { it.isNotBlank() } ?: throw primaryFailure
+            querySelectedResolver(query, secondary)
+        }
+    }
+
+    private fun querySelectedResolver(query: ByteArray, address: String): ByteArray =
+        when (resolverType) {
+            "plain" -> plainQuery(query, address)
+            "dot" -> dotQuery(query, address)
+            "doh" -> dohQuery(query, address)
+            "sdns" -> tunnel?.dnscryptQuery(address, query)
+                ?: throw IllegalStateException("The local DNSCrypt tunnel is not ready.")
+            else -> throw IllegalStateException("The active DNS server uses an unsupported protocol.")
+        }
+
+    private fun plainQuery(query: ByteArray, address: String): ByteArray {
+        val target = InetAddress.getByName(address.trim())
+        val network = upstreamNetwork()
+        val socket = DatagramSocket()
+        try {
+            network?.bindSocket(socket)
+            if (!protect(socket)) throw IllegalStateException("Could not protect DNS socket")
+            socket.soTimeout = 8000
+            socket.connect(target, 53)
+            socket.send(DatagramPacket(query, query.size))
+            val response = ByteArray(65535)
+            val packet = DatagramPacket(response, response.size)
+            socket.receive(packet)
+            return packet.data.copyOf(packet.length)
+        } finally {
+            socket.close()
+        }
+    }
+
+    private fun dohQuery(query: ByteArray, endpoint: String): ByteArray {
+        val url = URL(endpoint)
+        require(url.protocol == "https") { "DNS-over-HTTPS requires an https:// resolver URL." }
+        val network = upstreamNetwork()
+            ?: throw IllegalStateException("No validated internet network is available for DNS-over-HTTPS.")
+        val connection = network.openConnection(url) as HttpsURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/dns-message")
+            connection.setRequestProperty("Accept", "application/dns-message")
+            connection.outputStream.use { it.write(query) }
+            require(connection.responseCode in 200..299) { "DNS-over-HTTPS returned HTTP ${connection.responseCode}." }
+            return connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun parseHostPort(address: String, defaultPort: Int): Pair<String, Int> {
+        val value = address.trim()
+        if (value.startsWith("[")) {
+            val end = value.indexOf(']')
+            require(end > 0) { "Invalid DNS-over-TLS address." }
+            val port = value.substring(end + 1).removePrefix(":").toIntOrNull() ?: defaultPort
+            return value.substring(1, end) to port
+        }
+        val colon = value.lastIndexOf(':')
+        if (colon > 0 && value.indexOf(':') == colon) {
+            val port = value.substring(colon + 1).toIntOrNull()
+            if (port != null) return value.substring(0, colon) to port
+        }
+        return value to defaultPort
+    }
+
+    private fun upstreamNetwork(): Network? {
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        val network = connectivity.allNetworks.firstOrNull { candidate ->
+            val caps = connectivity.getNetworkCapabilities(candidate) ?: return@firstOrNull false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+        return network
     }
 
     private fun nxdomain(query: ByteArray): ByteArray {
