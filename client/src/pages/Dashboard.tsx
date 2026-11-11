@@ -5,7 +5,7 @@ import { useAntivirusSettings } from "@/hooks/use-antivirus";
 import { useClamAvStatus } from "@/hooks/use-clamav";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
-import { WindscribeVpnCard } from "@/components/WindscribeVpnCard";
+import { LocalVpnCard } from "@/components/LocalVpnCard";
 import { Button } from "@/components/ui/button";
 import { Activity, Shield, AlertTriangle, Server, CheckCircle2, Gauge, Radio, Music, LockKeyhole, Settings2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -109,7 +109,7 @@ export default function Dashboard() {
           </div>
         </CyberCard>
 
-        <WindscribeVpnCard activeDns={activeDns} />
+        <LocalVpnCard />
       </div>
 
       {/* Connection Status Bar */}

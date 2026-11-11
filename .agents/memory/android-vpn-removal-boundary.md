@@ -1,10 +1,10 @@
 ---
 name: Android VPN scope
-description: Durable boundary between SafeNet DNS filtering and removed full-traffic VPN features.
+description: SafeNet's phone-only local VPN and DNS-filtering boundary.
 ---
 
-SafeNet's Android DNS filtering uses Android Private DNS, not a SafeNet-owned VpnService. The app can open Android's Private DNS settings and report active only when the selected compatible DNS-over-TLS hostname matches. Do not claim HTTPS payload inspection, private-proxy inspection, or arbitrary application traffic routing.
+The user asked SafeNet to replace Windscribe IKEv2 with a phone-only local Android VPN, without an external VPN server or AdGuard VPN Tunnel. DNS filtering should capture direct UDP/TCP port 53 and forward it through AdGuard Family DNS-over-TLS; offer Android Private DNS as System mode. App-owned DoH/DoT can bypass this DNS filtering, and HTTPS payloads are not inspected.
 
-**Why:** Android does not allow a normal app to silently change the system Private DNS provider, while a DNS VPN creates a separate consent and lifecycle path that SafeNet no longer exposes. The user must confirm the hostname in Android settings.
+**Why:** the user has no Linux VPN server and explicitly chose protecting only the phone. Android requires VPN consent, and ordinary apps cannot silently change the system Private DNS provider.
 
-**How to apply:** Keep the Private DNS bridge, EULA, compatible resolver-hostname mapping, UI controls, and package smoke checks together. Treat the retired SafeNet DNS-filtering VPN and its packet-inspection claims as removed. This does not prohibit the separately integrated Tailscale VPN engine or its user-requested Quick Settings tile; keep those controls tied to Tailscale's actual tunnel state and consent flow.
+**How to apply:** Keep local TCP/UDP forwarding, DNS capture, encrypted Family upstream, Private DNS System mode, clear bypass warnings, and Android verification together. Do not restore Windscribe or AdGuard VPN Tunnel.

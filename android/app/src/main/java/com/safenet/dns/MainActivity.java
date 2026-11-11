@@ -31,16 +31,12 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "SafeNetWebView";
     private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
-    private final Runnable windscribeTileToggleDispatch =
-            this::dispatchPendingWindscribeTileToggle;
     private NativeStartupFallbackView startupFallback;
     private NativeAppLockView appLockView;
     private WebView appLockWebView;
     private boolean appLockHasResumed;
     private boolean appLockNeedsUnlockOnResume;
     private boolean appLockActivityActive;
-    private boolean pendingWindscribeTileToggle;
-    private int windscribeTileToggleDispatchAttempts;
     private boolean pendingSmsCompose;
     private int smsComposeDispatchAttempts;
     private String pendingSmsRecipient = "";
@@ -51,8 +47,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SafeNetVpnPlugin.class);
-        registerPlugin(SafeNetWindscribePlugin.class);
-        registerPlugin(SafeNetWindscribeIkePlugin.class);
+        registerPlugin(SafeNetLocalVpnPlugin.class);
         registerPlugin(SafeNetSmsPlugin.class);
         super.onCreate(savedInstanceState);
 
@@ -70,7 +65,6 @@ public class MainActivity extends BridgeActivity {
         installNativeFallback(webView);
         installAppLock(webView);
         handleAppLockRecoveryIntent(getIntent());
-        captureWindscribeTileToggle(getIntent());
         captureSmsComposeIntent(getIntent());
         webView.postDelayed(
                 () -> Log.i(
@@ -92,8 +86,6 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleAppLockRecoveryIntent(intent);
-        captureWindscribeTileToggle(intent);
-        dispatchPendingWindscribeTileToggle();
         captureSmsComposeIntent(intent);
         dispatchPendingSmsCompose();
     }
@@ -139,48 +131,6 @@ public class MainActivity extends BridgeActivity {
                         startupHandler.postDelayed(this::dispatchPendingSmsCompose, 250L);
                     }
                 });
-    }
-
-    private void captureWindscribeTileToggle(Intent intent) {
-        if (intent == null
-                || !SafeNetWindscribeTileService.ACTION_TOGGLE.equals(intent.getAction())) {
-            return;
-        }
-        pendingWindscribeTileToggle = true;
-        windscribeTileToggleDispatchAttempts = 0;
-        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
-    }
-
-    private void dispatchPendingWindscribeTileToggle() {
-        if (!pendingWindscribeTileToggle
-                || (AppLockManager.isEnabled(this)
-                        && !AppLockManager.isSessionAuthenticated())) {
-            return;
-        }
-        if (windscribeTileToggleDispatchAttempts >= 40) {
-            pendingWindscribeTileToggle = false;
-            Log.w(TAG, "Windscribe Quick Settings action timed out before the app was ready");
-            return;
-        }
-        WebView webView = getBridge() == null ? null : getBridge().getWebView();
-        if (webView == null) {
-            windscribeTileToggleDispatchAttempts++;
-            startupHandler.postDelayed(windscribeTileToggleDispatch, 250L);
-            return;
-        }
-        windscribeTileToggleDispatchAttempts++;
-        webView.evaluateJavascript(
-                "(function(){const action=window.__safenetHandleWindscribeTileToggle;" +
-                        "if(typeof action==='function'){action();return true;}return false;})()",
-                value -> {
-                    if ("true".equals(value)) {
-                        pendingWindscribeTileToggle = false;
-                        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
-                    } else if (pendingWindscribeTileToggle) {
-                        startupHandler.postDelayed(windscribeTileToggleDispatch, 250L);
-                    }
-                }
-        );
     }
 
     private void handleAppLockRecoveryIntent(Intent intent) {
@@ -432,7 +382,6 @@ public class MainActivity extends BridgeActivity {
             appLockView.setVisibility(View.VISIBLE);
             appLockView.setMessage("Enter your SafeNet passcode to continue.");
         }
-        dispatchPendingWindscribeTileToggle();
     }
 
     private void beginStartupCheck(WebView webView) {
@@ -492,7 +441,6 @@ public class MainActivity extends BridgeActivity {
         if (startupCheck != null) {
             startupHandler.removeCallbacks(startupCheck);
         }
-        startupHandler.removeCallbacks(windscribeTileToggleDispatch);
         startupFallback = null;
         appLockView = null;
         appLockWebView = null;
@@ -536,7 +484,6 @@ public class MainActivity extends BridgeActivity {
             appLockNeedsUnlockOnResume = false;
             appLockView.post(this::requestAppUnlock);
         }
-        dispatchPendingWindscribeTileToggle();
     }
 
     @Override

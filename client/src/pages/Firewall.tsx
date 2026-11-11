@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { useWindscribeVpn } from "@/hooks/use-windscribe";
+import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { Link } from "wouter";
 
 export default function Firewall() {
@@ -39,17 +39,14 @@ export default function Firewall() {
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
   const tailscaleNonDnsFirewallEnabled = settings?.tailscaleNonDnsFirewallEnabled ?? false;
   const isAndroid = Capacitor.getPlatform() === "android";
-  const windscribe = useWindscribeVpn();
-  const windscribeStatus = windscribe.status;
-  const windscribeStatusLabel = !windscribe.isAndroid
+  const localVpn = useLocalVpn();
+  const localVpnStatusLabel = !localVpn.supported
     ? "Android only"
-    : windscribe.isLoading
-      ? "Checking"
-      : windscribeStatus?.connected
-        ? "Connected"
-        : windscribeStatus?.credentialsConfigured || windscribeStatus?.profileImported
-          ? "Disconnected"
-          : "IKEv2 credentials required";
+    : localVpn.busy
+      ? "Starting"
+      : localVpn.connected
+        ? "Protected"
+        : "Disconnected";
   const isProtected = firewallEnabled && preventDnsOverrides;
   const isAnyFirewallActive = isProtected || (isAndroid && tailscaleNonDnsFirewallEnabled);
   const firewallHeaderStatus = isAnyFirewallActive ? "active" : "unprotected";
@@ -356,11 +353,9 @@ export default function Firewall() {
             <Ban className="w-8 h-8 text-destructive" />
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-display font-bold text-white">Control D + Windscribe Firewall Rules</h2>
+            <h2 className="text-xl font-display font-bold text-white">SafeNet Local VPN Firewall Rules</h2>
             <p className="text-muted-foreground">
-              SafeNet DNS rules are sent to Windscribe for cleartext UDP/TCP port 53, but device-level Windscribe enforcement has not been verified on a real Android tunnel.
-              DoH, DoT, and HTTPS stay encrypted and are not inspected by SafeNet.
-              Filtering for encrypted DNS happens at the resolver provider, if supported; SafeNet&apos;s custom rules do not apply to those queries. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Cleartext UDP/TCP port 53 requests are checked against SafeNet&apos;s active rules, then forwarded to AdGuard Family over DNS-over-TLS. App-owned DoH/DoT and HTTPS are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">Provider-side filtering</Badge>
@@ -389,17 +384,17 @@ export default function Firewall() {
         <div
           className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
           role="status"
-          aria-label={`Windscribe VPN status: ${windscribeStatusLabel}. Device-level DNS rule enforcement has not been verified on a real Android tunnel.`}
-          data-testid="windscribe-firewall-scope"
+          aria-label={`SafeNet Local VPN status: ${localVpnStatusLabel}`}
+          data-testid="local-vpn-firewall-scope"
         >
           <div>
-            <h2 className="font-display font-bold text-white">Windscribe VPN</h2>
+            <h2 className="font-display font-bold text-white">SafeNet Local VPN</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Connection status: <span className="font-medium text-foreground">{windscribeStatusLabel}</span>
+              Connection status: <span className="font-medium text-foreground">{localVpnStatusLabel}</span>
             </p>
           </div>
           <p className="text-xs text-orange-200/90">
-            DNS policy scope: cleartext UDP/TCP port 53 only. Device-level Windscribe enforcement is unverified until a real Android tunnel test passes; HTTPS, DoH, and DoT are not inspected.
+            DNS is sent to the filtered DoT resolver. Other TCP/UDP traffic is forwarded unchanged; SafeNet does not inspect HTTPS.
           </p>
         </div>
       </CyberCard>
@@ -412,9 +407,7 @@ export default function Firewall() {
               <div>
                 <h2 className="font-display font-bold text-white">Non-DNS Traffic</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Separately block non-DNS IP packets on the supported SafeNet VPN filtering path.
-                  Windscribe is not covered by this non-DNS setting. Cleartext UDP/TCP port 53 uses the separate DNS policy above;
-                  Windscribe device enforcement remains unverified.
+                  This switch controls the existing Tailscale non-DNS firewall path. It does not change forwarding in the SafeNet Local VPN.
                 </p>
                 <p className="mt-2 text-xs text-orange-200/80">
                   SafeNet does not inspect encrypted DoH/DoT by domain. This switch can only block those
@@ -459,7 +452,7 @@ export default function Firewall() {
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "Applies to the supported SafeNet and Windscribe DNS paths while DNS Firewall is On. Windscribe device enforcement is not verified on a real Android tunnel."
+                      ? "Applies to the supported SafeNet DNS path while DNS Firewall is On. Local VPN DNS is checked before it reaches AdGuard Family."
                       : "Turn on DNS Firewall above to apply this rule to the supported DNS packet paths."}
                   </p>
                 </div>
