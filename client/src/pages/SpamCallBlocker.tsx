@@ -269,6 +269,38 @@ export default function SpamCallBlocker() {
     clearSmsAllowedSenderDraft();
   }, [clearSmsAllowedSenderDraft, setSmsAllowedSenders, smsAllowedSenderDraft, smsAllowedSenders, toast]);
 
+  const importSmsContacts = useCallback(async () => {
+    try {
+      const status = await sms.importContacts();
+      const count = status.importedContactCount;
+      toast({
+        title: count > 0 ? "Phone contacts imported" : "No phone numbers found",
+        description: count > 0
+          ? `${count} contact phone numbers are now always allowed on this device.`
+          : "No valid phone numbers were found in Android Contacts.",
+      });
+    } catch (error) {
+      toast({
+        title: "Contacts could not be imported",
+        description: error instanceof Error ? error.message : "Allow Contacts access and try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.importContacts, toast]);
+
+  const clearImportedSmsContacts = useCallback(async () => {
+    try {
+      await sms.clearImportedContacts();
+      toast({ title: "Imported contacts cleared", description: "They will be filtered by your Junkboy rules again." });
+    } catch (error) {
+      toast({
+        title: "Imported contacts could not be cleared",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [sms.clearImportedContacts, toast]);
+
   const enableSmsFiltering = useCallback(async () => {
     try {
       let status = sms.status ?? await sms.refresh();
@@ -927,6 +959,44 @@ export default function SpamCallBlocker() {
                   </Badge>
                 ))}
                 {smsAllowedSenders.length === 0 && <p className="text-xs text-muted-foreground">No allowed senders.</p>}
+              </div>
+              <div className="mt-4 rounded-md border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-xs font-semibold text-white">Import Google Contacts</h4>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Imports phone numbers saved in Android Contacts, including Google-synced entries. Numbers stay on this device and bypass Junkboy rules.
+                    </p>
+                    <p className="mt-1 text-xs text-cyan-100">
+                      {sms.status?.importedContactCount ?? 0} imported phone numbers
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!isAndroid || sms.isBusy}
+                      onClick={() => void importSmsContacts()}
+                    >
+                      {sms.status?.importedContactCount ? "Refresh import" : "Import contacts"}
+                    </Button>
+                    {(sms.status?.importedContactCount ?? 0) > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={sms.isBusy}
+                        onClick={() => void clearImportedSmsContacts()}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {!isAndroid && (
+                  <p className="mt-2 text-xs text-muted-foreground">Contact import is available in the Android app.</p>
+                )}
               </div>
             </div>
           </div>

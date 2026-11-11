@@ -8,9 +8,11 @@ export type SmsFilterStatus = {
   filterPermissionGranted: boolean;
   inboxPermissionGranted: boolean;
   sendPermissionGranted: boolean;
+  contactsPermissionGranted: boolean;
   permissionsGranted: boolean;
   enabled: boolean;
   quarantineCount: number;
+  importedContactCount: number;
   mmsSupported: boolean;
   message: string;
 };
@@ -34,6 +36,8 @@ type SmsFilterPlugin = {
     regexes: string[];
     allowedSenders: string[];
   }): Promise<SmsFilterStatus>;
+  importContacts(): Promise<SmsFilterStatus>;
+  clearImportedContacts(): Promise<SmsFilterStatus>;
   getQuarantinedMessages(): Promise<{ messages: LocalSmsMessage[] }>;
   getRecentMessages(): Promise<{ messages: LocalSmsMessage[] }>;
   restoreQuarantinedMessage(options: { id: string }): Promise<SmsFilterStatus>;
@@ -66,9 +70,11 @@ export function useSmsFilter() {
         filterPermissionGranted: false,
         inboxPermissionGranted: false,
         sendPermissionGranted: false,
+        contactsPermissionGranted: false,
         permissionsGranted: false,
         enabled: false,
         quarantineCount: 0,
+        importedContactCount: 0,
         mmsSupported: false,
         message: "Android SMS filter status is unavailable.",
       };
@@ -156,6 +162,28 @@ export function useSmsFilter() {
     allowedSenders: string[];
   }) => SmsFilterNative.syncRules(options), []);
 
+  const importContacts = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SmsFilterNative.importContacts();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  const clearImportedContacts = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SmsFilterNative.clearImportedContacts();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
   const restoreMessage = useCallback(async (id: string) => {
     setIsBusy(true);
     try {
@@ -205,6 +233,8 @@ export function useSmsFilter() {
     requestSmsPermissions,
     setEnabled,
     syncRules,
+    importContacts,
+    clearImportedContacts,
     restoreMessage,
     deleteMessage,
     sendMessage,

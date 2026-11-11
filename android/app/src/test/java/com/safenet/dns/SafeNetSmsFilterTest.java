@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import org.junit.Test;
 
 public class SafeNetSmsFilterTest {
@@ -62,6 +63,24 @@ public class SafeNetSmsFilterTest {
             Arrays.asList("+15551234567")
         );
 
+        assertFalse(result.blocked);
+    }
+
+    @Test
+    public void importedContactNumbersAreNormalizedAndBypassJunkRules() {
+        assertTrue(SafeNetSmsFilter.normalizeContactPhoneNumber("+1 (555) 123-4567")
+            .equals("15551234567"));
+        assertTrue(SafeNetSmsFilter.normalizeContactPhoneNumber("123").isEmpty());
+
+        SafeNetSmsFilter.Result result = SafeNetSmsFilter.classifyText(
+            "+1 (555) 123-4567",
+            "Click to win a cash prize",
+            true,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            new HashSet<>(Arrays.asList("15551234567", "15551234567"))
+        );
         assertFalse(result.blocked);
     }
 

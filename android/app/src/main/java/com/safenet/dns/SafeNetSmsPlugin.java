@@ -40,6 +40,12 @@ import org.json.JSONObject;
             strings = {
                 Manifest.permission.RECEIVE_SMS
             }
+        ),
+        @Permission(
+            alias = "contacts",
+            strings = {
+                Manifest.permission.READ_CONTACTS
+            }
         )
     }
 )
@@ -164,6 +170,44 @@ public final class SafeNetSmsPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void importContacts(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS) ==
+            PackageManager.PERMISSION_GRANTED) {
+            completeContactImport(call);
+            return;
+        }
+        requestPermissionForAlias("contacts", call, "contactsPermissionResult");
+    }
+
+    @PermissionCallback
+    private void contactsPermissionResult(PluginCall call) {
+        if (call == null) return;
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS) !=
+            PackageManager.PERMISSION_GRANTED) {
+            call.reject("Allow Contacts access to import phone numbers.", "CONTACTS_PERMISSION_DENIED");
+            return;
+        }
+        completeContactImport(call);
+    }
+
+    private void completeContactImport(PluginCall call) {
+        try {
+            SafeNetSmsFilter.importContactSenders(getContext());
+            call.resolve(status());
+        } catch (SecurityException error) {
+            call.reject("Allow Contacts access to import phone numbers.", "CONTACTS_PERMISSION_DENIED", error);
+        } catch (RuntimeException error) {
+            call.reject("Phone contacts could not be imported.", "CONTACTS_IMPORT_FAILED", error);
+        }
+    }
+
+    @PluginMethod
+    public void clearImportedContacts(PluginCall call) {
+        SafeNetSmsFilter.clearImportedContactSenders(getContext());
+        call.resolve(status());
+    }
+
+    @PluginMethod
     public void getQuarantinedMessages(PluginCall call) {
         JSObject result = new JSObject();
         result.put("messages", SafeNetSmsFilter.readQuarantine(getContext()));
@@ -279,6 +323,9 @@ public final class SafeNetSmsPlugin extends Plugin {
         boolean sendPermissionGranted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) ==
                 PackageManager.PERMISSION_GRANTED;
+        boolean contactsPermissionGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED;
         boolean permissionsGranted = inboxPermissionGranted && sendPermissionGranted;
         boolean configuredEnabled = context.getSharedPreferences(SafeNetSmsFilter.PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(SafeNetSmsFilter.PREF_ENABLED, false);
@@ -293,9 +340,11 @@ public final class SafeNetSmsPlugin extends Plugin {
         result.put("filterPermissionGranted", filterPermissionGranted);
         result.put("inboxPermissionGranted", inboxPermissionGranted);
         result.put("sendPermissionGranted", sendPermissionGranted);
+        result.put("contactsPermissionGranted", contactsPermissionGranted);
         result.put("permissionsGranted", permissionsGranted);
         result.put("enabled", enabled);
         result.put("quarantineCount", SafeNetSmsFilter.quarantineCount(context));
+        result.put("importedContactCount", SafeNetSmsFilter.importedContactCount(context));
         result.put("mmsSupported", false);
         result.put("message", !supported
             ? "This Android version cannot provide the SMS role."

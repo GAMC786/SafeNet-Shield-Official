@@ -3,6 +3,7 @@
 
     <!-- Only grantable through explicit ADB/Shizuku setup; never granted by install. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <application
         android:allowBackup="true"

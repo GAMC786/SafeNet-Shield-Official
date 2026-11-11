@@ -4,11 +4,15 @@ import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.ContactsContract;
 import android.provider.Telephony;
 import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -26,8 +30,10 @@ final class SafeNetSmsFilter {
     static final String PREF_KEYWORDS = "keywords";
     static final String PREF_REGEXES = "regexes";
     static final String PREF_ALLOWED_SENDERS = "allowed_senders";
+    static final String PREF_IMPORTED_CONTACT_SENDERS = "imported_contact_senders";
     static final String PREF_QUARANTINE = "quarantined_messages";
     static final int MAX_QUARANTINED_MESSAGES = 100;
+    private static final int MAX_IMPORTED_CONTACT_SENDERS = 10000;
 
     private static final String[] BUILT_IN_JUNK_PHRASES = {
         "click to win",
@@ -84,8 +90,71 @@ final class SafeNetSmsFilter {
             ),
             readStringList(preferences, PREF_KEYWORDS),
             readStringList(preferences, PREF_REGEXES),
-            readStringList(preferences, PREF_ALLOWED_SENDERS)
+            readStringList(preferences, PREF_ALLOWED_SENDERS),
+            readImportedContactSenders(preferences)
         );
+    }
+
+    private static Set<String> readImportedContactSenders(SharedPreferences preferences) {
+        Set<String> saved = preferences.getStringSet(PREF_IMPORTED_CONTACT_SENDERS, java.util.Collections.emptySet());
+        return saved == null ? java.util.Collections.emptySet() : saved;
+    }
+
+    static String normalizeContactPhoneNumber(String number) {
+        if (number == null) return "";
+        String digits = number.replaceAll("[^0-9]", "");
+        return digits.length() >= 7 && digits.length() <= 15 ? digits : "";
+    }
+
+    static int importContactSenders(Context context) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) !=
+            PackageManager.PERMISSION_GRANTED) {
+            throw new SecurityException("Allow Contacts access before importing phone numbers.");
+        }
+
+        LinkedHashSet<String> numbers = new LinkedHashSet<>();
+        String[] projection = { ContactsContract.CommonDataKinds.Phone.NUMBER };
+        try (Cursor cursor = context.getContentResolver().query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            projection,
+            null,
+            null,
+            null
+        )) {
+            if (cursor == null) {
+                throw new IllegalStateException("Android could not read phone contacts.");
+            }
+            int numberColumn = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+            if (numberColumn < 0) {
+                throw new IllegalStateException("Android did not return contact phone numbers.");
+            }
+            while (cursor.moveToNext()) {
+                String normalized = normalizeContactPhoneNumber(cursor.getString(numberColumn));
+                if (!normalized.isEmpty()) numbers.add(normalized);
+                if (numbers.size() > MAX_IMPORTED_CONTACT_SENDERS) {
+                    throw new IllegalStateException("There are too many phone contacts to import at once.");
+                }
+            }
+        }
+
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(PREF_IMPORTED_CONTACT_SENDERS, numbers)
+            .apply();
+        return numbers.size();
+    }
+
+    static void clearImportedContactSenders(Context context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(PREF_IMPORTED_CONTACT_SENDERS, java.util.Collections.emptySet())
+            .apply();
+    }
+
+    static int importedContactCount(Context context) {
+        return readImportedContactSenders(
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ).size();
     }
 
     static Result classifyText(
@@ -96,6 +165,26 @@ final class SafeNetSmsFilter {
         List<String> regexes,
         List<String> allowedSenders
     ) {
+        return classifyText(
+            sender,
+            body,
+            enabled,
+            keywords,
+            regexes,
+            allowedSenders,
+            java.util.Collections.emptySet()
+        );
+    }
+
+    static Result classifyText(
+        String sender,
+        String body,
+        boolean enabled,
+        List<String> keywords,
+        List<String> regexes,
+        List<String> allowedSenders,
+        Set<String> importedContactSenders
+    ) {
         if (!enabled || body == null || body.isEmpty()) return new Result(false, "");
 
         String normalizedSender = normalizeSender(sender);
@@ -104,6 +193,11 @@ final class SafeNetSmsFilter {
                 normalizedSender.equals(normalizeSender(allowedSender))) {
                 return new Result(false, "");
             }
+        }
+        if (!normalizedSender.isEmpty() &&
+            importedContactSenders != null &&
+            importedContactSenders.contains(normalizedSender)) {
+            return new Result(false, "");
         }
 
         String normalizedBody = body.length() > 5000 ? body.substring(0, 5000) : body;
