@@ -3,8 +3,6 @@
 
     <!-- Only grantable through explicit ADB/Shizuku setup; never granted by install. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
     <application
         android:name=".SafeNetTailscaleApp"
@@ -51,16 +49,6 @@
 
         <service
             android:name="com.wireguard.android.backend.GoBackend$VpnService"
-            android:exported="false"
-            android:foregroundServiceType="systemExempted"
-            android:permission="android.permission.BIND_VPN_SERVICE">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name="com.adguard.trusttunnel.VpnService"
             android:exported="false"
             android:foregroundServiceType="systemExempted"
             android:permission="android.permission.BIND_VPN_SERVICE">
