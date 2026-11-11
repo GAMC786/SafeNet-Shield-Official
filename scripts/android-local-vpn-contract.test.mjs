@@ -7,6 +7,7 @@ const manifest = read("../android/app/src/main/AndroidManifest.xml");
 const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
 const dashboard = read("../client/src/pages/Dashboard.tsx");
 const card = read("../client/src/components/LocalVpnCard.tsx");
+const localVpnEula = read("../client/src/components/LocalVpnEulaDialog.tsx");
 const dnsSettings = read("../client/src/pages/DnsSettings.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
@@ -32,6 +33,15 @@ test("Dashboard offers phone-only ad filtering and Android Private DNS mode", ()
   assert.match(card, /Select an active DNS server to turn on protection/);
   assert.match(card, /active DNS server/);
   assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+});
+
+test("Local VPN requires EULA acceptance before first connection", () => {
+  assert.match(card, /acceptedEulaVersion !== LOCAL_VPN_EULA_VERSION/);
+  assert.match(card, /setEulaOpen\(true\)/);
+  assert.match(card, /setAcceptedEulaVersion\(LOCAL_VPN_EULA_VERSION\)/);
+  assert.match(card, /onAccept=\{acceptLocalVpnEula\}/);
+  assert.match(localVpnEula, /data-testid="button-local-vpn-eula-accept"/);
+  assert.match(localVpnEula, /authorize SafeNet to start its local Android VPN/);
 });
 
 test("DNS resolver management no longer depends on the optional Private DNS wrapper", () => {

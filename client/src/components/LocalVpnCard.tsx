@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { CyberCard } from "@/components/CyberCard";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { LocalVpnEulaDialog } from "@/components/LocalVpnEulaDialog";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { usePrivateDns } from "@/hooks/use-private-dns";
 import { useDnsServers } from "@/hooks/use-dns";
+import { usePersistentState } from "@/hooks/use-persistent-state";
+
+const LOCAL_VPN_EULA_VERSION = "1.0";
 
 export function LocalVpnCard() {
   const vpn = useLocalVpn();
@@ -16,6 +20,11 @@ export function LocalVpnCard() {
   const privateDns = usePrivateDns(activeDns);
   const [mode, setMode] = useState<"local" | "system">("local");
   const [message, setMessage] = useState<string | null>(null);
+  const [eulaOpen, setEulaOpen] = useState(false);
+  const [acceptedEulaVersion, setAcceptedEulaVersion] = usePersistentState<string | null>(
+    "safenet-local-vpn-eula-version",
+    null,
+  );
 
   const chooseSystemMode = async () => {
     setMode("system");
@@ -40,10 +49,21 @@ export function LocalVpnCard() {
 
   const toggleLocalProtection = (enabled: boolean) => {
     if (enabled) {
-      if (activeDns) void vpn.start(activeDns);
+      if (!activeDns) return;
+      if (acceptedEulaVersion !== LOCAL_VPN_EULA_VERSION) {
+        setEulaOpen(true);
+        return;
+      }
+      void vpn.start(activeDns);
     } else {
       void vpn.stop();
     }
+  };
+
+  const acceptLocalVpnEula = () => {
+    setAcceptedEulaVersion(LOCAL_VPN_EULA_VERSION);
+    setEulaOpen(false);
+    if (activeDns) void vpn.start(activeDns);
   };
 
   const protectionStatus = vpn.busy
@@ -56,6 +76,12 @@ export function LocalVpnCard() {
 
   return (
     <CyberCard className="w-full">
+      <LocalVpnEulaDialog
+        open={eulaOpen}
+        onOpenChange={setEulaOpen}
+        onAccept={acceptLocalVpnEula}
+        onCancel={() => setEulaOpen(false)}
+      />
       <div className="space-y-4 rounded-lg border border-white/10 bg-background/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
