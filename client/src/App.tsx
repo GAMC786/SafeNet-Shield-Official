@@ -430,17 +430,9 @@ function ClerkProviderWithRoutes() {
 
   useEffect(() => {
     const tileWindow = window as Window & {
-      __safenetHandleWindscribeTileToggle?: () => void;
-      __safenetWindscribeTileTogglePending?: boolean;
       __safenetHandleSmsCompose?: (recipient: string, body: string) => void;
       __safenetPendingSmsCompose?: { recipient: string; body: string };
     };
-    const handleWindscribeTileToggle = () => {
-      tileWindow.__safenetWindscribeTileTogglePending = true;
-      setLocation("/");
-      window.dispatchEvent(new Event("safenet:windscribe-tile-toggle"));
-    };
-    tileWindow.__safenetHandleWindscribeTileToggle = handleWindscribeTileToggle;
     const handleSmsCompose = (recipient: string, body: string) => {
       tileWindow.__safenetPendingSmsCompose = { recipient, body };
       setLocation("/spam-call-blocker");
@@ -450,9 +442,6 @@ function ClerkProviderWithRoutes() {
     };
     tileWindow.__safenetHandleSmsCompose = handleSmsCompose;
     return () => {
-      if (tileWindow.__safenetHandleWindscribeTileToggle === handleWindscribeTileToggle) {
-        delete tileWindow.__safenetHandleWindscribeTileToggle;
-      }
       if (tileWindow.__safenetHandleSmsCompose === handleSmsCompose) {
         delete tileWindow.__safenetHandleSmsCompose;
       }

@@ -84,7 +84,6 @@ compile_sdk_version="$(sed -nE 's/^[[:space:]]*compileSdkVersion[[:space:]]*=[[:
 target_sdk_version="$(sed -nE 's/^[[:space:]]*targetSdkVersion[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p' "$variables_file")"
 build_tools_version="$(sed -nE "s/^[[:space:]]*androidBuildToolsVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
 android_ndk_version="$(sed -nE "s/^[[:space:]]*androidNdkVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
-strongswan_ndk_version="$(sed -nE "s/^[[:space:]]*strongswanNdkVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
 android_cmake_version="$(sed -nE "s/^[[:space:]]*androidCmakeVersion[[:space:]]*=[[:space:]]*'([^']+)'.*$/\1/p" "$variables_file")"
 
 [[ "$compile_sdk_version" =~ ^[0-9]+$ ]] ||
@@ -95,8 +94,6 @@ android_cmake_version="$(sed -nE "s/^[[:space:]]*androidCmakeVersion[[:space:]]*
     fail "Could not read a single androidBuildToolsVersion from $variables_file."
 [[ "$android_ndk_version" =~ ^[0-9]+([.][0-9]+){2,3}$ ]] ||
     fail "Could not read a single androidNdkVersion from $variables_file."
-[[ "$strongswan_ndk_version" =~ ^[0-9]+([.][0-9]+){2,3}$ ]] ||
-    fail "Could not read a single strongswanNdkVersion from $variables_file."
 [[ "$android_cmake_version" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] ||
     fail "Could not read a single androidCmakeVersion from $variables_file."
 
@@ -134,7 +131,6 @@ packages=(
     "platforms;android-$compile_sdk_version"
     "build-tools;$build_tools_version"
     "ndk;$android_ndk_version"
-    "ndk;$strongswan_ndk_version"
     "cmake;$android_cmake_version"
 )
 if [[ "$target_sdk_version" != "$compile_sdk_version" ]]; then
@@ -208,7 +204,6 @@ for package_path in \
     "platforms/android-$compile_sdk_version" \
     "build-tools/$build_tools_version" \
     "ndk/$android_ndk_version" \
-    "ndk/$strongswan_ndk_version" \
     "cmake/$android_cmake_version"; do
     [[ -d "$sdk_root/$package_path" ]] || missing_packages+=("$package_path")
 done
@@ -226,4 +221,4 @@ if (( ${#missing_packages[@]} > 0 )); then
         "$last_install_status"
 fi
 
-echo "Android SDK is ready for compile SDK $compile_sdk_version, target SDK $target_sdk_version, build-tools $build_tools_version, NDKs $android_ndk_version and $strongswan_ndk_version, and CMake $android_cmake_version."
+echo "Android SDK is ready for compile SDK $compile_sdk_version, target SDK $target_sdk_version, build-tools $build_tools_version, NDK $android_ndk_version, and CMake $android_cmake_version."

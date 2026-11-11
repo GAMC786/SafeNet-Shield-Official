@@ -50,26 +50,30 @@ public class SafeNetDnsDdnsInstrumentationTest {
     }
 
     @Test
-    public void signedPackageUsesPrivateDnsWithoutVpnSurface() throws Exception {
+    public void signedPackageIncludesLocalVpnAndPrivateDnsSurface() throws Exception {
         PackageManager packageManager = context.getPackageManager();
         PackageInfo packageInfo = packageManager.getPackageInfo(
             context.getPackageName(),
             PackageManager.GET_SERVICES | PackageManager.GET_PERMISSIONS
         );
 
-        boolean dnsVpnServicePresent = false;
+        boolean localVpnServicePresent = false;
+        boolean legacyVpnServicePresent = false;
         boolean vpnPermissionPresent = false;
         if (packageInfo.services != null) {
             for (android.content.pm.ServiceInfo service : packageInfo.services) {
-                dnsVpnServicePresent |= service.name.contains("SafeNetDnsVpnService");
+                localVpnServicePresent |= service.name.endsWith("SafeNetLocalVpnService");
+                legacyVpnServicePresent |= service.name.contains("GoBackend$VpnService") ||
+                    service.name.contains("SafeNetDnsVpnService");
                 vpnPermissionPresent |= "android.permission.BIND_VPN_SERVICE".equals(service.permission);
             }
         }
-        assertTrue("Installed package still contains SafeNetDnsVpnService", !dnsVpnServicePresent);
-        assertTrue("Installed package still declares a VPN service permission", !vpnPermissionPresent);
+        assertTrue("Installed package is missing SafeNetLocalVpnService", localVpnServicePresent);
+        assertTrue("Installed package is missing the Android VPN service permission", vpnPermissionPresent);
+        assertTrue("Installed package still contains a legacy VPN service", !legacyVpnServicePresent);
         android.util.Log.i(
             "SafeNetAndroidReleaseSmoke",
-            "PRIVATE_DNS_PACKAGE_SURFACE result=PASS vpn_service=ABSENT permission=ABSENT"
+            "PRIVATE_DNS_PACKAGE_SURFACE result=PASS vpn_service=LOCAL permission=PRESENT legacy=ABSENT"
         );
     }
 

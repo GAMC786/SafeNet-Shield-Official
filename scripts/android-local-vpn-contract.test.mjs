@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const manifest = read("../android/app/src/main/AndroidManifest.xml");
+const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
+const dashboard = read("../client/src/pages/Dashboard.tsx");
+const card = read("../client/src/components/LocalVpnCard.tsx");
+const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
+const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
+
+test("SafeNet declares a local Android VPN service without the old VPN service", () => {
+  assert.match(manifest, /android:name="\.SafeNetLocalVpnService"/);
+  assert.match(manifest, /android:permission="android\.permission\.BIND_VPN_SERVICE"/);
+  assert.match(manifest, /android\.net\.VpnService/);
+  assert.doesNotMatch(manifest, /GoBackend\$VpnService|SafeNetWindscribe|SafeNetDnsVpnService/);
+  assert.doesNotMatch(mainActivity, /SafeNetWindscribe/);
+});
+
+test("Dashboard offers phone-only ad filtering and Android Private DNS mode", () => {
+  assert.match(dashboard, /<LocalVpnCard\s*\/>/);
+  assert.match(card, /Protects this phone only/);
+  assert.match(card, /DNS-based in-app ads and trackers/);
+  assert.match(card, /System \/ Private DNS/);
+  assert.match(card, /family\.adguard-dns\.com/);
+  assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+});
+
+test("local packet forwarding captures direct DNS and protects upstream sockets", () => {
+  assert.match(service, /addRoute\("0\.0\.0\.0", 0\)/);
+  assert.match(service, /addRoute\("::", 0\)/);
+  assert.match(service, /dstPort\.toInt\(\) == 53/);
+  assert.match(service, /DOT_HOST = "family\.adguard-dns\.com"/);
+  assert.match(service, /protect\(raw\)/);
+  assert.match(service, /protect\(socket\)/);
+  assert.match(plugin, /VpnService\.prepare/);
+  assert.match(plugin, /startForegroundService/);
+});

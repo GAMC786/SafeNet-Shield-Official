@@ -257,52 +257,22 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard configures Windscribe IKEv2 and retains the legacy WireGuard fallback", () => {
-  const windscribeCardSource = readFileSync(
-    path.join(clientRoot, "src/components/WindscribeVpnCard.tsx"),
+test("the Dashboard uses the phone-only local VPN with DNS ad filtering", () => {
+  const localVpnCardSource = readFileSync(
+    path.join(clientRoot, "src/components/LocalVpnCard.tsx"),
     "utf8",
   );
-  const windscribeHookSource = readFileSync(
-    path.join(clientRoot, "src/hooks/use-windscribe.ts"),
+  const localVpnServiceSource = readFileSync(
+    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt"),
     "utf8",
   );
-  const windscribePluginSource = readFileSync(
-    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetWindscribePlugin.java"),
-    "utf8",
-  );
-  const windscribeIkePluginSource = readFileSync(
-    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetWindscribeIkePlugin.java"),
-    "utf8",
-  );
-  const windscribeStoreSource = readFileSync(
-    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/WindscribeProfileStore.java"),
-    "utf8",
-  );
-  const windscribeIkeStoreSource = readFileSync(
-    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/WindscribeIkeCredentialStore.java"),
-    "utf8",
-  );
-  assert.match(dashboardSource, /WindscribeVpnCard/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-host"/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-username"/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-password"/);
-  assert.match(windscribeCardSource, /data-testid="button-save-windscribe-credentials"/);
-  assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
-  assert.match(windscribeCardSource, /data-testid="legacy-windscribe-wireguard-fallback"/);
-  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-wireguard-fallback"/);
-  assert.match(windscribeCardSource, /windscribe\.com\/getconfig\/wireguard/);
-  assert.match(windscribeHookSource, /SafeNetWindscribe/);
-  assert.doesNotMatch(windscribeHookSource, /\/api\/windscribe/);
-  assert.match(windscribePluginSource, /Intent\.ACTION_OPEN_DOCUMENT/);
-  assert.match(windscribePluginSource, /VpnService\.prepare/);
-  assert.doesNotMatch(windscribePluginSource, /fetch\(|\/api\//);
-  assert.match(windscribeStoreSource, /EncryptedSharedPreferences/);
-  assert.match(windscribeStoreSource, /MAX_PROFILE_BYTES/);
-  assert.match(windscribeIkePluginSource, /WindscribeIkeCredentialStore/);
-  assert.match(windscribeIkePluginSource, /startSafeNetProfile/);
-  assert.doesNotMatch(windscribeIkePluginSource, /putExtra\([^)]*(password|username)/i);
-  assert.match(windscribeIkeStoreSource, /EncryptedSharedPreferences/);
-  assert.doesNotMatch(dashboardSource, /useTailscaleStatus|useTailscaleNative/);
+  assert.match(dashboardSource, /<LocalVpnCard\s*\/>/);
+  assert.match(localVpnCardSource, /Protects this phone only/);
+  assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
+  assert.match(localVpnCardSource, /System \/ Private DNS/);
+  assert.match(localVpnCardSource, /family\.adguard-dns\.com/);
+  assert.match(localVpnServiceSource, /class SafeNetLocalVpnService : VpnService\(\)/);
+  assert.doesNotMatch(dashboardSource, /WindscribeVpnCard/);
 });
 
 test("Android proves the Dashboard soundtrack toggle survives pause and resume", () => {
@@ -413,12 +383,12 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("encrypted DNS filtering stays provider-side and keeps the Cloudflare Family DoT profile", () => {
-  assert.doesNotMatch(dnsResolversSource, /security\.cloudflare-dns\.com|Cloudflare \(Block Malware\)/);
-  assert.match(dnsResolversSource, /primaryAddress: "family\.cloudflare-dns\.com"/);
-  assert.match(dnsResolversSource, /type: "dot"/);
-  assert.match(firewallSource, /Filtering for encrypted DNS happens at the resolver provider/);
-  assert.match(firewallSource, /SafeNet&apos;s custom rules do not apply to those queries/);
+test("the local VPN filters direct DNS and documents encrypted DNS limits", () => {
+  assert.match(firewallSource, /UDP\/TCP port 53 requests are checked against SafeNet&apos;s active rules/);
+  assert.match(firewallSource, /forwarded to AdGuard Family over DNS-over-TLS/);
+  assert.match(firewallSource, /App-owned DoH\/DoT and HTTPS are not inspected/);
+  assert.match(firewallSource, /AdGuard Family DoT/);
+  assert.match(firewallSource, /Configure Android Private DNS/);
   assert.match(firewallSource, /href="\/dns"/);
 });
 
@@ -433,18 +403,17 @@ test("Settings use the current package version and expose only current controls"
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \? "Protected"/);
   assert.doesNotMatch(headerSource, /Rules configured/);
-  assert.match(firewallSource, /useWindscribeVpn/);
-  assert.match(firewallSource, /data-testid="windscribe-firewall-scope"/);
+  assert.match(firewallSource, /useLocalVpn/);
+  assert.match(firewallSource, /data-testid="local-vpn-firewall-scope"/);
   assert.match(firewallSource, /Connection status:/);
-  assert.match(firewallSource, /device-level Windscribe enforcement has not been verified/);
   assert.match(firewallSource, /"Android only"/);
-  assert.match(firewallSource, /"Checking"/);
+  assert.match(firewallSource, /"Starting"/);
   assert.match(firewallSource, /"Disconnected"/);
-  assert.match(firewallSource, /"IKEv2 credentials required"/);
+  assert.match(firewallSource, /"Protected"/);
   assert.match(firewallSource, /isAndroid && \(/);
   assert.match(firewallSource, /switch-tailscale-nondns-firewall/);
-  assert.match(firewallSource, /DoH, DoT, and HTTPS stay encrypted and are not inspected by SafeNet/);
-  assert.match(firewallSource, /Windscribe is not covered by this non-DNS setting/);
+  assert.match(firewallSource, /SafeNet does not inspect encrypted DoH\/DoT by domain/);
+  assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
   assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);
   assert.match(firewallSource, /Block non-DNS traffic on the supported SafeNet VPN filtering path/);
   assert.doesNotMatch(firewallSource, /DNS routed through Tailscale|Tailscale-routed DNS|Tailscale Non-DNS Traffic|routed through Tailscale/);

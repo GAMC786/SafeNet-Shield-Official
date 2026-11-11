@@ -2,10 +2,8 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="safenet_sms_filter.xml" />
-        <exclude domain="sharedpref" path="windscribe_ikev2_credentials.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="safenet_sms_filter.xml" />
-        <exclude domain="sharedpref" path="windscribe_ikev2_credentials.xml" />
     </device-transfer>
 </data-extraction-rules>

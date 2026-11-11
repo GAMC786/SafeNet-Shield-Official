@@ -29,24 +29,15 @@ tasks.register("buildTailscaleAar", Exec) {
         new File(tailscaleSourceDir, "build-tags.sh"),
         new File(tailscaleSourceDir, "version-ldflags.sh"),
     )
+    inputs.dir(rootProject.file("../third_party/netvalve/netstack"))
     inputs.file(rootProject.file("../scripts/build-tailscale-aar.sh"))
     inputs.dir(rootProject.file("../scripts/patches"))
     inputs.dir(new File(tailscaleSourceDir, "libtailscale"))
     outputs.file(tailscaleAar)
 }
 
-def localVpnAar = file("libs/safenet-localvpn.aar")
-tasks.register("buildLocalVpnAar", Exec) {
-    workingDir rootProject.projectDir
-    commandLine "bash", rootProject.file("../scripts/build-local-vpn-aar.sh").absolutePath
-    inputs.dir(rootProject.file("../third_party/netvalve/netstack"))
-    inputs.file(rootProject.file("../scripts/build-local-vpn-aar.sh"))
-    outputs.file(localVpnAar)
-}
-
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(tasks.named("buildTailscaleAar"))
-    dependsOn(tasks.named("buildLocalVpnAar"))
 }
 
 android {
@@ -106,7 +97,6 @@ tasks.register("verifyAndroidToolchain") {
             "platforms;android-${rootProject.ext.targetSdkVersion}",
             "build-tools;${rootProject.ext.androidBuildToolsVersion}",
             "ndk;${rootProject.ext.androidNdkVersion}",
-            "ndk;${rootProject.ext.strongswanNdkVersion}",
             "cmake;${rootProject.ext.androidCmakeVersion}"
         ].unique()
         def sdkDirectory = android.sdkDirectory
@@ -127,7 +117,7 @@ tasks.register("verifyAndroidToolchain") {
                 "compileSdkVersion=${rootProject.ext.compileSdkVersion}, " +
                 "targetSdkVersion=${rootProject.ext.targetSdkVersion}, and " +
                 "buildToolsVersion=${rootProject.ext.androidBuildToolsVersion}, " +
-                "NDKs=${rootProject.ext.androidNdkVersion},${rootProject.ext.strongswanNdkVersion}, and " +
+                "NDK=${rootProject.ext.androidNdkVersion} and " +
                 "CMake=${rootProject.ext.androidCmakeVersion}. " +
                 "Missing SDK package(s): ${missingPackages.join(', ')}. " +
                 "Install the pinned Android SDK packages before building."
@@ -233,7 +223,6 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.activity:activity-compose:1.11.0"
-    implementation files("libs/safenet-localvpn.aar")
     implementation "androidx.core:core-ktx:$androidxCoreVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation platform("androidx.compose:compose-bom:2024.09.00")
@@ -244,6 +233,7 @@ dependencies {
     implementation "androidx.compose.material:material-icons-extended"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     androidTestImplementation "androidx.test.uiautomator:uiautomator:2.3.0"

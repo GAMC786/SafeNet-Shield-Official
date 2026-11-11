@@ -293,7 +293,7 @@ export default function DnsSettings() {
     if (!privateDns.expectedHostname) {
       toast({
         title: "Private DNS hostname required",
-        description: "Choose a DNS-over-TLS or DNS-over-HTTPS resolver first; SDNS stamps use the Windscribe tunnel.",
+        description: "Choose a DNS-over-TLS or DNS-over-HTTPS resolver first. SDNS stamps cannot be configured through Android Private DNS.",
         variant: "destructive",
       });
       return;
@@ -629,7 +629,7 @@ export default function DnsSettings() {
                   <SelectItem value="plain">Plain DNS</SelectItem>
                   <SelectItem value="doh">DNS over HTTPS</SelectItem>
                    <SelectItem value="dot">DNS over TLS</SelectItem>
-                   <SelectItem value="sdns">SDNS Stamp (Windscribe + Control D)</SelectItem>
+                    <SelectItem value="sdns">SDNS Stamp</SelectItem>
                 </SelectContent>
               </Select>
             </div>

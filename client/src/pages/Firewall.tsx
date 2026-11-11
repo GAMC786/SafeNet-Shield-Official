@@ -358,13 +358,13 @@ export default function Firewall() {
               Cleartext UDP/TCP port 53 requests are checked against SafeNet&apos;s active rules, then forwarded to AdGuard Family over DNS-over-TLS. App-owned DoH/DoT and HTTPS are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-sky-400/30 text-sky-200">Provider-side filtering</Badge>
+              <Badge variant="outline" className="border-sky-400/30 text-sky-200">AdGuard Family DoT</Badge>
               <Link
                 href="/dns"
                 className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
                 data-testid="link-filtered-dns-provider"
               >
-                Choose an encrypted filtering resolver
+                Configure Android Private DNS
               </Link>
             </div>
           </div>

@@ -51,7 +51,7 @@ export function LocalVpnCard() {
               SafeNet Local VPN
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Protects this phone only. Port 53 DNS uses AdGuard Family over encrypted DNS; no VPN server is required.
+              Protects this phone only. Filters DNS-based in-app ads and trackers through AdGuard Family; no VPN server is required.
             </p>
           </div>
           <Badge variant="outline">

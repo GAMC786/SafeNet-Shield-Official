@@ -46,10 +46,6 @@ $ndkVersion = Read-GradleValue `
     $variablesContent `
     "androidNdkVersion" `
     "(?m)^\s*androidNdkVersion\s*=\s*'([^']+)'.*$"
-$strongswanNdkVersion = Read-GradleValue `
-    $variablesContent `
-    "strongswanNdkVersion" `
-    "(?m)^\s*strongswanNdkVersion\s*=\s*'([^']+)'.*$"
 $cmakeVersion = Read-GradleValue `
     $variablesContent `
     "androidCmakeVersion" `
@@ -66,9 +62,6 @@ if ($buildToolsVersion -notmatch '^[0-9]+([.][0-9]+){2}$') {
 }
 if ($ndkVersion -notmatch '^[0-9]+([.][0-9]+){2,3}$') {
     Fail "The androidNdkVersion in $variablesFile is not a valid version."
-}
-if ($strongswanNdkVersion -notmatch '^[0-9]+([.][0-9]+){2,3}$') {
-    Fail "The strongswanNdkVersion in $variablesFile is not a valid version."
 }
 if ($cmakeVersion -notmatch '^[0-9]+([.][0-9]+){1,2}$') {
     Fail "The androidCmakeVersion in $variablesFile is not a valid version."
@@ -145,7 +138,6 @@ $packages = @(
     "platforms;android-$compileSdkVersion",
     "build-tools;$buildToolsVersion",
     "ndk;$ndkVersion",
-    "ndk;$strongswanNdkVersion",
     "cmake;$cmakeVersion"
 )
 if ($targetSdkVersion -ne $compileSdkVersion) {
@@ -176,7 +168,6 @@ $packageDirectories = @(
     "platforms\android-$compileSdkVersion",
     "build-tools\$buildToolsVersion",
     "ndk\$ndkVersion",
-    "ndk\$strongswanNdkVersion",
     "cmake\$cmakeVersion"
 )
 if ($targetSdkVersion -ne $compileSdkVersion) {
@@ -194,4 +185,4 @@ if ($missingPackages.Count -gt 0) {
     Fail "Required Android SDK package(s) are unavailable after installation: $($missingPackages -join ', '). In Android Studio, open Tools > SDK Manager, enable the appropriate SDK repository/channel, install the exact packages, and rerun this command. Change android\variables.gradle only for an intentional toolchain update."
 }
 
-Write-Host "Android SDK is ready for compile SDK $compileSdkVersion, target SDK $targetSdkVersion, build-tools $buildToolsVersion, NDKs $ndkVersion and $strongswanNdkVersion, and CMake $cmakeVersion."
+Write-Host "Android SDK is ready for compile SDK $compileSdkVersion, target SDK $targetSdkVersion, build-tools $buildToolsVersion, NDK $ndkVersion, and CMake $cmakeVersion."

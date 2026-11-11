@@ -9,10 +9,10 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import dev.netvalve.bridge.Bridge
-import dev.netvalve.bridge.Handler
-import dev.netvalve.bridge.TCPConn
-import dev.netvalve.bridge.UDPConn
+import bridge.Bridge
+import bridge.Handler
+import bridge.TCPConn
+import bridge.UDPConn
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -38,9 +38,9 @@ class SafeNetLocalVpnService : VpnService() {
         private const val DOT_IP = "94.140.14.15"
     }
 
-    private val pool = Executors.newCachedThreadPool()
+    @Volatile private var pool = Executors.newCachedThreadPool()
     private var tun: ParcelFileDescriptor? = null
-    private var tunnel: dev.netvalve.bridge.Tunnel? = null
+    private var tunnel: bridge.Tunnel? = null
     private val stopped = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -55,6 +55,7 @@ class SafeNetLocalVpnService : VpnService() {
     }
 
     private fun startTunnel() {
+        if (pool.isShutdown) pool = Executors.newCachedThreadPool()
         stopped.set(false)
         lastError = null
         val pfd = try {
@@ -234,7 +235,7 @@ class SafeNetLocalVpnService : VpnService() {
             while (!stopped.get()) {
                 val n = app.read(buffer)
                 if (n <= 0) break
-                upstream.getOutputStream().write(buffer, 0, n)
+                upstream.getOutputStream().write(buffer, 0, n.toInt())
                 upstream.getOutputStream().flush()
             }
         } finally {

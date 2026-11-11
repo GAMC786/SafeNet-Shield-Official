@@ -13,12 +13,18 @@ fail() {
     exit 1
 }
 
-[[ -d "$source_dir/.git" || -f "$source_dir/.git" ]] ||
+[[ -d "$source_dir" ]] ||
     fail "Tailscale Android source is missing. Initialize the pinned third_party/tailscale-android submodule."
 
-actual_revision="$(git -C "$source_dir" rev-parse HEAD)"
-[[ "$actual_revision" == "$expected_revision" ]] ||
-    fail "Tailscale Android source revision mismatch: expected $expected_revision, found $actual_revision."
+if [[ -d "$source_dir/.git" || -f "$source_dir/.git" ]]; then
+    actual_revision="$(git -C "$source_dir" rev-parse HEAD)"
+    [[ "$actual_revision" == "$expected_revision" ]] ||
+        fail "Tailscale Android source revision mismatch: expected $expected_revision, found $actual_revision."
+else
+    indexed_revision="$(git -C "$project_root" ls-tree HEAD third_party/tailscale-android | awk '{print $3}')"
+    [[ "$indexed_revision" == "$expected_revision" ]] ||
+        fail "Workspace does not pin the expected Tailscale Android source revision."
+fi
 
 sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 [[ -n "$sdk_root" && -d "$sdk_root" ]] ||
@@ -32,7 +38,19 @@ command -v make >/dev/null 2>&1 || fail "GNU make is required to build the Tails
 command -v go >/dev/null 2>&1 || fail "Go is required to build the Tailscale Android engine."
 
 temporary_dir="$(mktemp -d)"
-trap 'rm -rf "$temporary_dir"' EXIT
+bridge_dir="$source_dir/libtailscale/safenetvpn"
+bridge_dir_created=0
+restore_build_inputs() {
+    for file in go.mod go.sum Makefile tailscale.version; do
+        [[ -f "$temporary_dir/original-$file" ]] &&
+            cp -p "$temporary_dir/original-$file" "$source_dir/$file"
+    done
+    if [[ "$bridge_dir_created" == "1" ]]; then
+        rm -rf "$bridge_dir"
+    fi
+    rm -rf "$temporary_dir"
+}
+trap restore_build_inputs EXIT
 patch_template="$temporary_dir/tailscale-android.patch.template"
 patch_file="$temporary_dir/tailscale-android.patch"
 : > "$patch_template"
@@ -58,6 +76,33 @@ else
     git -C "$source_dir" apply --unidiff-zero "$patch_file" ||
         fail "Could not apply the Tailscale firewall patch."
 fi
+
+for file in go.mod go.sum Makefile tailscale.version; do
+    cp -p "$source_dir/$file" "$temporary_dir/original-$file"
+done
+[[ ! -e "$bridge_dir" ]] || fail "Unexpected existing SafeNet bridge source directory: $bridge_dir"
+mkdir -p "$bridge_dir"
+cp "$project_root/third_party/netvalve/netstack/bridge.go" \
+    "$project_root/third_party/netvalve/netstack/conn.go" "$bridge_dir/"
+bridge_dir_created=1
+(
+    cd "$source_dir"
+    gvisor_version="$(cd "$project_root/third_party/netvalve/netstack" &&
+        go list -mod=readonly -m -f '{{.Version}}' github.com/sagernet/gvisor)"
+    ./tool/go mod edit -require="github.com/sagernet/gvisor@$gvisor_version"
+    ./tool/go mod tidy
+    python3 - <<'PY'
+from pathlib import Path
+path = Path("Makefile")
+text = path.read_text()
+old = "-o $(ABS_UNSTRIPPED_AAR) ./libtailscale ||"
+new = "-o $(ABS_UNSTRIPPED_AAR) ./libtailscale ./libtailscale/safenetvpn ||"
+if old not in text:
+    raise SystemExit("Tailscale gomobile bind command changed unexpectedly")
+path.write_text(text.replace(old, new, 1))
+PY
+    touch tailscale.version
+)
 
 export ANDROID_SDK_ROOT="$sdk_root"
 export ANDROID_HOME="$sdk_root"

@@ -302,10 +302,10 @@ test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
   assert.match(composeUi, /safeNetFieldColors/);
 });
 
-test("the Windscribe resolver option keeps the SDNS protocol and product label", () => {
+test("the SDNS resolver option uses a provider-neutral label", () => {
   assert.match(
     dnsSettings,
-    /<SelectItem value="sdns">SDNS Stamp \(Windscribe \+ Control D\)<\/SelectItem>/,
+    /<SelectItem value="sdns">SDNS Stamp<\/SelectItem>/,
   );
 });
 

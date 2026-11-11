@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
@@ -16,21 +15,6 @@ const tailscaleBuildScript = await readFile(
   new URL("./build-tailscale-aar.sh", import.meta.url),
   "utf8",
 );
-const wireguardPrepareScript = await readFile(
-  new URL("./prepare-wireguard-sdns.sh", import.meta.url),
-  "utf8",
-);
-const wireguardWrapperBuildScript = await readFile(
-  new URL("../android/windscribe-tunnel/build.gradle", import.meta.url),
-  "utf8",
-);
-const wireguardTunAliasPatch = await readFile(
-  new URL("./patches/wireguard-tun-package-alias.patch", import.meta.url),
-  "utf8",
-);
-const wireguardTunAliasPatchSha256 = createHash("sha256")
-  .update(wireguardTunAliasPatch)
-  .digest("hex");
 const mainWorkflow = await readFile(
   new URL("../.github/workflows/build.yml", import.meta.url),
   "utf8",
@@ -74,8 +58,16 @@ const dashboardSource = await readFile(
   new URL("../client/src/pages/Dashboard.tsx", import.meta.url),
   "utf8",
 );
-const windscribeCardSource = await readFile(
-  new URL("../client/src/components/WindscribeVpnCard.tsx", import.meta.url),
+const localVpnCardSource = await readFile(
+  new URL("../client/src/components/LocalVpnCard.tsx", import.meta.url),
+  "utf8",
+);
+const localVpnServiceSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt", import.meta.url),
+  "utf8",
+);
+const localVpnPluginSource = await readFile(
+  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java", import.meta.url),
   "utf8",
 );
 const releaseSmokeSource = await readFile(
@@ -157,116 +149,17 @@ test("release-capable workflows compile native sources before packaging", () => 
   assert.ok(releaseCompileIndex < releasePackageIndex);
 });
 
-test("Android release workflows keep WireGuard and Tailscale on their pinned Go versions", () => {
+test("Android release workflows build the shared Tailscale and local VPN runtime", () => {
   for (const [name, workflow] of [
     ["main Android workflow", mainWorkflow],
     ["APK-only workflow", apkOnlyWorkflow],
   ]) {
-    const wireguardVersionIndex = workflow.indexOf(
-      "Resolve pinned WireGuard Go version",
-    );
-    const wireguardSetupIndex = workflow.indexOf(
-      "Set up Go for the pinned WireGuard runtime",
-    );
-    const wireguardRootIndex = workflow.indexOf(
-      "Capture pinned WireGuard Go root",
-    );
-    const tailscaleSetupIndex = workflow.indexOf(
-      "Set up Go for the pinned Tailscale engine",
-    );
-    assert.notEqual(wireguardVersionIndex, -1, `${name} is missing WireGuard Go version resolution`);
-    assert.notEqual(wireguardSetupIndex, -1, `${name} is missing Go 1.26.5 setup`);
-    assert.notEqual(wireguardRootIndex, -1, `${name} is missing WireGuard GOROOT capture`);
-    assert.notEqual(tailscaleSetupIndex, -1, `${name} is missing Tailscale Go setup`);
-    assert.ok(
-      wireguardVersionIndex < wireguardSetupIndex &&
-        wireguardSetupIndex < wireguardRootIndex &&
-        wireguardRootIndex < tailscaleSetupIndex,
-      `${name} must capture Go 1.26.5 before restoring Tailscale's toolchain`,
-    );
-    assert.match(
-      workflow.slice(wireguardVersionIndex, wireguardSetupIndex),
-      /prepare-wireguard-sdns\.sh --print-go-version/,
-    );
-    assert.match(
-      workflow.slice(wireguardSetupIndex, wireguardRootIndex),
-      /go-version:\s*\$\{\{\s*steps\.wireguard_go_version\.outputs\.version\s*\}\}/,
-    );
-    assert.match(
-      workflow.slice(wireguardRootIndex, tailscaleSetupIndex),
-      /WIREGUARD_GO_ROOT=%s.*go env GOROOT/s,
-    );
-    assert.match(
-      workflow.slice(tailscaleSetupIndex, tailscaleSetupIndex + 400),
-      /go-version-file:\s*third_party\/tailscale-android\/go\.mod/,
-    );
+    assert.match(workflow, /go-version-file:\s*third_party\/tailscale-android\/go\.mod/);
+    assert.doesNotMatch(workflow, /prepare-wireguard-sdns|WIREGUARD_GO_ROOT/);
+    assert.ok(name);
   }
-  assert.match(wireguardPrepareScript, /WIREGUARD_GO_ROOT/);
-  assert.match(wireguardPrepareScript, /--print-go-version/);
-  assert.match(wireguardPrepareScript, /GOROOT=\$wireguard_source_root/);
-  assert.match(
-    wireguardPrepareScript,
-    /find "\$go_root" -mindepth 1 -maxdepth 1 -print -quit/,
-  );
-  assert.match(wireguardPrepareScript, /rmdir "\$go_root"/);
-});
-
-test("WireGuard preparation stays executable for release workflow invocations", async () => {
-  const scriptStats = await stat(
-    new URL("./prepare-wireguard-sdns.sh", import.meta.url),
-  );
-  assert.ok((scriptStats.mode & 0o111) !== 0);
-  for (const [name, workflow] of [
-    ["main Android workflow", mainWorkflow],
-    ["APK-only workflow", apkOnlyWorkflow],
-  ]) {
-    assert.match(
-      workflow,
-      /\.\/scripts\/prepare-wireguard-sdns\.sh --print-go-version/,
-      `${name} invokes the WireGuard preparation script directly`,
-    );
-  }
-});
-
-test("WireGuard wrapper compiles the upstream Java sources with Java 17", () => {
-  assert.match(
-    wireguardWrapperBuildScript,
-    /sourceCompatibility JavaVersion\.VERSION_17/,
-  );
-  assert.match(
-    wireguardWrapperBuildScript,
-    /targetCompatibility JavaVersion\.VERSION_17/,
-  );
-});
-
-test("WireGuard SDNS patch aliases the package and forwards the TUN file", () => {
-  assert.match(
-    wireguardTunAliasPatch,
-    /wgTun "golang\.zx2c4\.com\/wireguard\/tun"/,
-  );
-  assert.match(wireguardTunAliasPatch, /wgTun\.CreateUnmonitoredTUNFromFD/);
-  assert.match(wireguardTunAliasPatch, /var wrapped wgTun\.Device = tun/);
-  assert.match(
-    wireguardTunAliasPatch,
-    /func \(d \*interceptedTunnelDevice\) File\(\) \*os\.File[\s\S]*?return d\.tun\.File\(\)/,
-  );
-  assert.match(
-    wireguardTunAliasPatch,
-    /wrapped = &interceptedTunnelDevice\{Interceptor: interceptor, tun: tun\}/,
-  );
-  assert.match(
-    wireguardPrepareScript,
-    new RegExp(`alias_patch_sha256="${wireguardTunAliasPatchSha256}"`),
-  );
-  assert.match(
-    wireguardPrepareScript,
-    /git -C "\$wireguard_dir" -c core\.abbrev=7 diff --binary/,
-  );
-  assert.match(wireguardPrepareScript, /apply --unidiff-zero/);
-  assert.match(
-    wireguardWrapperBuildScript,
-    /wireguard-tun-package-alias\.patch/,
-  );
+  assert.match(tailscaleBuildScript, /libtailscale\/safenetvpn/);
+  assert.match(tailscaleBuildScript, /gvisor_version/);
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
@@ -317,16 +210,16 @@ test("the native plugin keeps Private DNS and shared features", () => {
   );
 });
 
-test("the Android manifest declares the WireGuard backend VPN service", () => {
+test("the Android manifest declares only the SafeNet local VPN surface", () => {
   assert.match(
     manifestSource,
-    /android:name="com\.wireguard\.android\.backend\.GoBackend\$VpnService"/,
+    /android:name="\.SafeNetLocalVpnService"/,
   );
   assert.match(manifestSource, /android\.permission\.BIND_VPN_SERVICE/);
   assert.match(manifestSource, /android\.permission\.FOREGROUND_SERVICE_SYSTEM_EXEMPTED/);
-  assert.doesNotMatch(manifestSource, /overrideLibrary/);
+  assert.doesNotMatch(manifestSource, /com\.wireguard\.android\.backend\.GoBackend\$VpnService/);
+  assert.doesNotMatch(manifestSource, /SafeNetDnsVpnService/);
   assert.match(androidVariablesSource, /minSdkVersion\s*=\s*26/);
-  assert.doesNotMatch(manifestSource, /SafeNetTailscaleVpnService|SafeNetDnsVpnService/);
   assert.doesNotMatch(manifestSource, /SafeNetVpnTileService/);
 });
 
@@ -342,23 +235,21 @@ test("App Lock treats removed packages as no longer suspended", () => {
   );
 });
 
-test("Windscribe IKEv2 UI stores generated credentials and retains the WireGuard fallback", () => {
-  assert.match(dashboardSource, /WindscribeVpnCard/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-host"/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-username"/);
-  assert.match(windscribeCardSource, /data-testid="input-windscribe-ike-password"/);
-  assert.match(windscribeCardSource, /data-testid="button-save-windscribe-credentials"/);
-  assert.match(
-    windscribeCardSource,
-    /<form[\s\S]*?data-testid="input-windscribe-ike-password"[\s\S]*?type="submit"[\s\S]*?<\/form>/,
-  );
-  assert.match(windscribeCardSource, /data-testid="switch-windscribe-vpn"/);
-  assert.match(windscribeCardSource, /encrypted on this device/);
-  assert.match(windscribeCardSource, /does not upload them to SafeNet servers/);
-  assert.match(windscribeCardSource, /type="password"/);
-  assert.match(windscribeCardSource, /data-testid="legacy-windscribe-wireguard-fallback"/);
-  assert.match(windscribeCardSource, /data-testid="button-import-windscribe-wireguard-fallback"/);
-  assert.match(windscribeCardSource, /Only one Android VPN can carry traffic at a time/);
+test("the local VPN filters DNS-based ads and offers Android System Private DNS", () => {
+  assert.match(dashboardSource, /<LocalVpnCard\s*\/>/);
+  assert.match(localVpnCardSource, /Protects this phone only/);
+  assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
+  assert.match(localVpnCardSource, /System \/ Private DNS/);
+  assert.match(localVpnCardSource, /family\.adguard-dns\.com/);
+  assert.match(localVpnCardSource, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+  assert.match(localVpnServiceSource, /class SafeNetLocalVpnService : VpnService\(\)/);
+  assert.match(localVpnServiceSource, /addRoute\("0\.0\.0\.0", 0\)/);
+  assert.match(localVpnServiceSource, /addRoute\("::", 0\)/);
+  assert.match(localVpnServiceSource, /dstPort\.toInt\(\) == 53/);
+  assert.match(localVpnServiceSource, /DOT_HOST = "family\.adguard-dns\.com"/);
+  assert.match(localVpnServiceSource, /protect\(raw\)/);
+  assert.match(localVpnPluginSource, /@CapacitorPlugin\(name = "SafeNetLocalVpn"\)/);
+  assert.doesNotMatch(dashboardSource, /WindscribeVpnCard/);
 });
 
 test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS package state", () => {
@@ -369,7 +260,7 @@ test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS pa
   );
   assert.match(resolverDdnsInstrumentationSource, /dnsResolverCreateEditAndActivateFlow/);
   assert.match(resolverDdnsInstrumentationSource, /ddnsManagementFlow/);
-    assert.match(resolverDdnsInstrumentationSource, /signedPackageUsesPrivateDnsWithoutVpnSurface/);
+  assert.match(resolverDdnsInstrumentationSource, /signedPackageIncludesLocalVpnAndPrivateDnsSurface/);
   assert.match(
     resolverDdnsInstrumentationSource,
     /physicalDnsFilteringBlocksSelectedDomainAndAllowsAnother/,
@@ -377,7 +268,7 @@ test("the signed smoke lane proves DNS, DDNS, Internet Share, and Private DNS pa
   assert.match(resolverDdnsInstrumentationSource, /PRIVATE_DNS_DEVICE result=PASS/);
   assert.match(releaseSmokeSource, /DNS_RESOLVER_UI result=PASS create=PASS edit=PASS activate=PASS/);
   assert.match(releaseSmokeSource, /DDNS_UI result=PASS create=PASS edit=PASS toggle=PASS delete=PASS/);
-  assert.match(releaseSmokeSource, /PRIVATE_DNS_PACKAGE_SURFACE result=PASS vpn_service=ABSENT permission=ABSENT/);
+  assert.match(releaseSmokeSource, /PRIVATE_DNS_PACKAGE_SURFACE result=PASS vpn_service=LOCAL permission=PRESENT legacy=ABSENT/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_START result=PASS/);
   assert.match(releaseSmokeSource, /INTERNET_SHARE_STOP result=PASS/);
   assert.match(releaseSmokeSource, /--dns-filtering-validation/);
