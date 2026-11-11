@@ -11,8 +11,8 @@ const sdkSetupScript = await readFile(
   new URL("./setup-android-sdk.sh", import.meta.url),
   "utf8",
 );
-const tailscaleBuildScript = await readFile(
-  new URL("./build-tailscale-aar.sh", import.meta.url),
+const localVpnBuildScript = await readFile(
+  new URL("./build-local-vpn-aar.sh", import.meta.url),
   "utf8",
 );
 const mainWorkflow = await readFile(
@@ -40,18 +40,6 @@ const appLockManagerSource = await readFile(
 );
 const androidVariablesSource = await readFile(
   new URL("../android/variables.gradle", import.meta.url),
-  "utf8",
-);
-const tailscalePluginSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscalePlugin.java", import.meta.url),
-  "utf8",
-);
-const tailscaleServiceSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscaleVpnService.java", import.meta.url),
-  "utf8",
-);
-const tailscaleAppSource = await readFile(
-  new URL("../android/app/src/main/java/com/safenet/dns/SafeNetTailscaleApp.java", import.meta.url),
   "utf8",
 );
 const dashboardSource = await readFile(
@@ -100,35 +88,14 @@ test("Android native check is executable and supports bounded debug and release 
   assert.match(nativeBuildScript, /max_diagnostics_bytes=16000/);
 });
 
-test("Tailscale AAR build enters the submodule before invoking Make", () => {
-  assert.match(
-    tailscaleBuildScript,
-    /\(\s*cd "\$source_dir"[\s\S]*?make libtailscale[\s\S]*?\)/,
-  );
-  assert.match(tailscaleBuildScript, /if new not in text and old not in text:/);
-  assert.match(tailscaleBuildScript, /if old in text:/);
-  assert.match(tailscaleBuildScript, /no_apple_tools_dir="\$temporary_dir\/no-apple-tools"/);
-  assert.match(
-    tailscaleBuildScript,
-    /PATH="\$no_apple_tools_dir:\$PATH" make libtailscale/,
-  );
-  assert.match(
-    tailscaleBuildScript,
-    /TMPDIR="\$android_work_temp" GOTMPDIR="\$android_work_temp"/,
-  );
-  assert.doesNotMatch(tailscaleBuildScript, /make -C "\$source_dir"/);
-});
-
-test("Tailscale AAR build regenerates missing version metadata", () => {
-  assert.match(
-    tailscaleBuildScript,
-    /if \[\[ -f "\$source_dir\/tailscale\.version" \]\]; then[\s\S]*?original-tailscale\.version/,
-  );
-  assert.match(
-    tailscaleBuildScript,
-    /if \[\[ ! -s tailscale\.version \]\]; then\s+rm -f tailscale\.version/,
-  );
-  assert.doesNotMatch(tailscaleBuildScript, /touch tailscale\.version/);
+test("Local VPN binds its own gVisor and DNSCrypt AAR", () => {
+  assert.match(localVpnBuildScript, /third_party\/netvalve\/netstack/);
+  assert.match(localVpnBuildScript, /android\/local-vpn-bridge\/dnscrypt\.go/);
+  assert.match(localVpnBuildScript, /go get -tool .*gomobile/);
+  assert.match(localVpnBuildScript, /gomobile bind/);
+  assert.match(localVpnBuildScript, /no_apple_tools_dir/);
+  assert.match(localVpnBuildScript, /safenet-localvpn\.aar/);
+  assert.doesNotMatch(localVpnBuildScript, /tailscale|libtailscale/i);
 });
 
 test("release-capable workflows compile native sources before packaging", () => {
@@ -163,17 +130,15 @@ test("release-capable workflows compile native sources before packaging", () => 
   assert.ok(releaseCompileIndex < releasePackageIndex);
 });
 
-test("Android release workflows build the shared Tailscale and local VPN runtime", () => {
+test("Android release workflows set up the standalone Local VPN Go runtime", () => {
   for (const [name, workflow] of [
     ["main Android workflow", mainWorkflow],
     ["APK-only workflow", apkOnlyWorkflow],
   ]) {
-    assert.match(workflow, /go-version-file:\s*third_party\/tailscale-android\/go\.mod/);
+    assert.match(workflow, /go-version-file:\s*third_party\/netvalve\/netstack\/go\.mod/);
     assert.doesNotMatch(workflow, /prepare-wireguard-sdns|WIREGUARD_GO_ROOT/);
     assert.ok(name);
   }
-  assert.match(tailscaleBuildScript, /libtailscale\/safenetvpn/);
-  assert.match(tailscaleBuildScript, /gvisor_version/);
 });
 
 test("hosted Android SDK setup publishes bounded infrastructure evidence", () => {
@@ -199,29 +164,6 @@ test("the native plugin keeps Private DNS and shared features", () => {
   }
   assert.doesNotMatch(pluginSource, /SafeNetDnsVpnService/);
   assert.doesNotMatch(pluginSource, /SafeNetWireGuard|startWireGuard|stopWireGuard/);
-  for (const method of ["getStatus", "connect", "disconnect", "setOptions", "openLoginUrl"]) {
-    assert.match(tailscalePluginSource, new RegExp(`void ${method}\\(`));
-  }
-  assert.match(tailscalePluginSource, /\/localapi\/v0\/status/);
-  assert.match(tailscalePluginSource, /\/localapi\/v0\/start/);
-  assert.match(tailscalePluginSource, /\/localapi\/v0\/prefs/);
-  assert.match(tailscalePluginSource, /ExitNodeID/);
-  assert.match(tailscalePluginSource, /RouteAllSet/);
-  assert.match(tailscalePluginSource, /CorpDNSSet/);
-  assert.match(tailscalePluginSource, /ExitNodeAllowLANAccessSet/);
-  assert.match(tailscalePluginSource, /ExitNodeIDSet/);
-  assert.match(tailscaleAppSource, /WantRunningSet/);
-  assert.match(tailscalePluginSource, /TAILSCALE_UNSUPPORTED/);
-  assert.match(tailscalePluginSource, /SDK_INT < 26/);
-  assert.match(tailscalePluginSource, /import androidx\.activity\.result\.ActivityResult/);
-  assert.match(tailscalePluginSource, /Iterator<String> peerKeys = peers\.keys\(\)/);
-  assert.match(tailscalePluginSource, /JSObject exit = new JSObject\(\)/);
-  assert.doesNotMatch(tailscalePluginSource, /peers\.keySet\(\)/);
-  assert.match(tailscaleServiceSource, /new IpPrefix\(InetAddress\.getByName\(s\), p\)/);
-  assert.match(
-    tailscaleAppSource,
-    /network\.bindSocket\(descriptor\.getFileDescriptor\(\)\);\s*return true;/,
-  );
 });
 
 test("the Android manifest declares only the SafeNet local VPN surface", () => {

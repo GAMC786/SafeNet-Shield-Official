@@ -12,7 +12,6 @@ import {
   activityLogSchema,
   firewallConfigSchema,
 } from './schema';
-import { tailscaleStatusSchema } from './tailscale';
 
 export const errorSchemas = {
   validation: z.object({
@@ -167,15 +166,6 @@ export const api = {
       path: '/api/ddns',
       responses: {
         200: z.array(publicDdnsUpdaterSchema),
-      },
-    },
-  },
-  tailscale: {
-    status: {
-      method: 'GET' as const,
-      path: '/api/tailscale/status',
-      responses: {
-        200: tailscaleStatusSchema,
       },
     },
   },

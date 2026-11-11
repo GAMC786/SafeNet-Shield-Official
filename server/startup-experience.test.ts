@@ -405,7 +405,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
   assert.match(firewallSource, /const isProtected = firewallEnabled && preventDnsOverrides/);
-  assert.match(firewallSource, /const firewallHeaderStatus = isAnyFirewallActive \? "active" : "unprotected"/);
+  assert.match(firewallSource, /const firewallHeaderStatus = isProtected \? "active" : "unprotected"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \? "Protected"/);
@@ -417,13 +417,9 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /"Starting"/);
   assert.match(firewallSource, /"Disconnected"/);
   assert.match(firewallSource, /"Protected"/);
-  assert.match(firewallSource, /isAndroid && \(/);
-  assert.match(firewallSource, /switch-tailscale-nondns-firewall/);
-  assert.match(firewallSource, /SafeNet does not inspect encrypted DoH\/DoT by domain/);
+  assert.match(firewallSource, /SafeNet does not inspect HTTPS/);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
   assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);
-  assert.match(firewallSource, /Block non-DNS traffic on the supported SafeNet VPN filtering path/);
-  assert.doesNotMatch(firewallSource, /DNS routed through Tailscale|Tailscale-routed DNS|Tailscale Non-DNS Traffic|routed through Tailscale/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);

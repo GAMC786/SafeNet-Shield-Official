@@ -39,7 +39,6 @@ import {
   requestAppLockEmailRecovery,
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
-import { getTailscaleDeviceStatus, getTailscaleStatus } from "./tailscale-service";
 import { registerControlDRoutes } from "./control-d-routes";
 
 function publicSettings(settings: AppSettings) {
@@ -57,9 +56,6 @@ function publicSettings(settings: AppSettings) {
     // keep resolver override protection on until the user explicitly turns it
     // off.
     preventDnsOverrides: settings.preventDnsOverrides ?? true,
-    // This policy is independent of the DNS firewall and defaults off for
-    // installations that predate Tailscale packet filtering.
-    tailscaleNonDnsFirewallEnabled: settings.tailscaleNonDnsFirewallEnabled ?? false,
   };
 }
 
@@ -428,34 +424,6 @@ export async function registerRoutes(
   app.get(api.settings.get.path, async (req, res) => {
     const settings = await storage.getSettings();
     res.json(publicSettings(settings));
-  });
-
-  app.get(api.tailscale.status.path, async (_req, res) => {
-    res.set("Cache-Control", "no-store");
-    res.json(await getTailscaleStatus());
-  });
-
-  app.get("/api/tailscale/device-status", async (req, res) => {
-    res.set("Cache-Control", "no-store");
-    const configuredToken = process.env.TAILSCALE_STATUS_TOKEN?.trim();
-    const authorization = req.get("authorization");
-    if (!configuredToken) {
-      return res.status(503).json({ message: "Tailscale device-status adapter is not configured." });
-    }
-    if (authorization !== `Bearer ${configuredToken}`) {
-      return res.status(401).json({ message: "A valid device-status bearer token is required." });
-    }
-
-    const deviceName = typeof req.query.name === "string" ? req.query.name.trim() : "";
-    if (!deviceName || deviceName.length > 128) {
-      return res.status(400).json({ message: "A single device name query value is required." });
-    }
-
-    const status = await getTailscaleDeviceStatus(deviceName);
-    if (!status) {
-      return res.status(404).json({ message: "The requested Tailscale device was not found." });
-    }
-    return res.json(status);
   });
 
   app.put(api.settings.update.path, async (req, res) => {

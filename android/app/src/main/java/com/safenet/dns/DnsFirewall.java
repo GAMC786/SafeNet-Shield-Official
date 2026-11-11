@@ -45,7 +45,6 @@ public final class DnsFirewall {
 
     private final boolean enabled;
     private final boolean preventDnsOverrides;
-    private final boolean tailscaleNonDnsFirewallEnabled;
     private final List<AccessRule> accessRules;
     private final List<Filter> filters;
     private final boolean failClosed;
@@ -53,25 +52,23 @@ public final class DnsFirewall {
     private DnsFirewall(
         boolean enabled,
         boolean preventDnsOverrides,
-        boolean tailscaleNonDnsFirewallEnabled,
         List<AccessRule> accessRules,
         List<Filter> filters,
         boolean failClosed
     ) {
         this.enabled = enabled;
         this.preventDnsOverrides = preventDnsOverrides;
-        this.tailscaleNonDnsFirewallEnabled = tailscaleNonDnsFirewallEnabled;
         this.accessRules = Collections.unmodifiableList(new ArrayList<>(accessRules));
         this.filters = Collections.unmodifiableList(new ArrayList<>(filters));
         this.failClosed = failClosed;
     }
 
     public static DnsFirewall allowAll() {
-        return new DnsFirewall(false, true, false, Collections.emptyList(), Collections.emptyList(), false);
+        return new DnsFirewall(false, true, Collections.emptyList(), Collections.emptyList(), false);
     }
 
     public static DnsFirewall failClosed() {
-        return new DnsFirewall(true, true, true, Collections.emptyList(), Collections.emptyList(), true);
+        return new DnsFirewall(true, true, Collections.emptyList(), Collections.emptyList(), true);
     }
 
     boolean isEnabled() {
@@ -94,11 +91,6 @@ public final class DnsFirewall {
         if (!(settings.opt("preventDnsOverrides") instanceof Boolean)) {
             throw new JSONException("The DNS override protection setting is invalid.");
         }
-        if (settings.has("tailscaleNonDnsFirewallEnabled") &&
-            !(settings.opt("tailscaleNonDnsFirewallEnabled") instanceof Boolean)) {
-            throw new JSONException("The Tailscale non-DNS firewall setting is invalid.");
-        }
-
         List<AccessRule> rules = new ArrayList<>();
         for (int index = 0; index < rulesJson.length(); index++) {
             JSONObject rule = rulesJson.optJSONObject(index);
@@ -154,15 +146,10 @@ public final class DnsFirewall {
         return new DnsFirewall(
             settings.optBoolean("firewallEnabled", false),
             settings.optBoolean("preventDnsOverrides", true),
-            settings.optBoolean("tailscaleNonDnsFirewallEnabled", false),
             rules,
             filters,
             false
         );
-    }
-
-    boolean shouldBlockTailscaleNonDnsPacket() {
-        return tailscaleNonDnsFirewallEnabled;
     }
 
     public Decision evaluate(byte[] query, String sourceAddress, String destinationAddress) {
@@ -174,45 +161,13 @@ public final class DnsFirewall {
         String sourceAddress,
         String destinationAddress
     ) {
-        return evaluateWithReason(query, sourceAddress, destinationAddress, false);
-    }
-
-    Evaluation evaluateTailscaleWithReason(
-        byte[] query,
-        String sourceAddress,
-        String destinationAddress,
-        boolean trustedTailscaleResolver
-    ) {
-        return evaluateWithReason(query, sourceAddress, destinationAddress, trustedTailscaleResolver);
-    }
-
-    boolean shouldBlockTailscalePacket(
-        byte[] query,
-        String sourceAddress,
-        String destinationAddress,
-        boolean isTcp,
-        boolean trustedTailscaleResolver,
-        boolean fragmented
-    ) {
-        if (!enabled) {
-            return false;
-        }
-        if (failClosed || isTcp || fragmented) {
-            return true;
-        }
-        return evaluateTailscaleWithReason(
-            query,
-            sourceAddress,
-            destinationAddress,
-            trustedTailscaleResolver
-        ).decision == Decision.BLOCK;
+        return evaluateWithReason(query, sourceAddress, destinationAddress);
     }
 
     private Evaluation evaluateWithReason(
         byte[] query,
         String sourceAddress,
-        String destinationAddress,
-        boolean trustedTailscaleResolver
+        String destinationAddress
     ) {
         if (!enabled) {
             return new Evaluation(Decision.ALLOW, "firewall_disabled");
@@ -228,9 +183,7 @@ public final class DnsFirewall {
             return new Evaluation(Decision.BLOCK, "invalid_dns_query");
         }
 
-        if (preventDnsOverrides &&
-            !isVirtualDnsDestination(destinationAddress) &&
-            !trustedTailscaleResolver) {
+        if (preventDnsOverrides && !isVirtualDnsDestination(destinationAddress)) {
             return new Evaluation(Decision.BLOCK, "dns_override_prevented");
         }
 

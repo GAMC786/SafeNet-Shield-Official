@@ -73,7 +73,6 @@ function createTestStorage(): IStorage {
     deviceAdminEnabled: false,
     firewallEnabled: false,
     preventDnsOverrides: true,
-    tailscaleNonDnsFirewallEnabled: false,
     theme: "red-gray-blue",
   };
 
@@ -190,33 +189,8 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
         blocklists: Array<{ content: string }>;
       };
       assert.equal(firewallConfig.settings.firewallEnabled, false);
-      assert.equal(firewallConfig.settings.tailscaleNonDnsFirewallEnabled, false);
       assert.equal(firewallConfig.rules[0].action, "deny");
       assert.equal(firewallConfig.blocklists[0].content, "blocked.example");
-      if (origin === "https://localhost") {
-        const saveNonDnsPolicyResponse = await request("/api/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tailscaleNonDnsFirewallEnabled: true }),
-        });
-        assert.equal(saveNonDnsPolicyResponse.status, 200);
-        const savedSettings = await saveNonDnsPolicyResponse.json() as Record<string, unknown>;
-        assert.equal(savedSettings.tailscaleNonDnsFirewallEnabled, true);
-        assert.equal(savedSettings.firewallEnabled, false);
-
-        const savedFirewallResponse = await request("/api/firewall/config");
-        const savedFirewallConfig = await savedFirewallResponse.json() as {
-          settings: Record<string, unknown>;
-        };
-        assert.equal(savedFirewallConfig.settings.tailscaleNonDnsFirewallEnabled, true);
-        assert.equal(savedFirewallConfig.settings.firewallEnabled, false);
-
-        await request("/api/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tailscaleNonDnsFirewallEnabled: false }),
-        });
-      }
       const createResponse = await request("/api/dns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

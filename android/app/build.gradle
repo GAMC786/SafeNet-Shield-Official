@@ -15,30 +15,25 @@ def releaseSigningConfigured = [
     releaseKeyPassword
 ].every { value -> value != null && !value.trim().isEmpty() }
 
-def tailscaleSourceDir = rootProject.file("../third_party/tailscale-android")
-def tailscaleAar = new File(tailscaleSourceDir, "android/libs/libtailscale.aar")
+def netstackSourceDir = rootProject.file("../third_party/netvalve/netstack")
+def localVpnAar = new File(buildDir, "outputs/aar/safenet-localvpn.aar")
 
-tasks.register("buildTailscaleAar", Exec) {
+tasks.register("buildLocalVpnAar", Exec) {
     workingDir rootProject.projectDir
-    commandLine "bash", rootProject.file("../scripts/build-tailscale-aar.sh").absolutePath
+    commandLine "bash", rootProject.file("../scripts/build-local-vpn-aar.sh").absolutePath
     inputs.files(
-        new File(tailscaleSourceDir, "go.mod"),
-        new File(tailscaleSourceDir, "go.sum"),
-        new File(tailscaleSourceDir, "go.toolchain.rev"),
-        new File(tailscaleSourceDir, "Makefile"),
-        new File(tailscaleSourceDir, "build-tags.sh"),
-        new File(tailscaleSourceDir, "version-ldflags.sh"),
+        new File(netstackSourceDir, "go.mod"),
+        new File(netstackSourceDir, "go.sum"),
+        new File(netstackSourceDir, "bridge.go"),
+        new File(netstackSourceDir, "conn.go"),
+        rootProject.file("../android/local-vpn-bridge/dnscrypt.go"),
+        rootProject.file("../scripts/build-local-vpn-aar.sh"),
     )
-    inputs.dir(rootProject.file("../third_party/netvalve/netstack"))
-    inputs.file(rootProject.file("../scripts/build-tailscale-aar.sh"))
-    inputs.dir(rootProject.file("../scripts/patches"))
-    inputs.dir(rootProject.file("../android/local-vpn-bridge"))
-    inputs.dir(new File(tailscaleSourceDir, "libtailscale"))
-    outputs.file(tailscaleAar)
+    outputs.file(localVpnAar)
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(tasks.named("buildTailscaleAar"))
+    dependsOn(tasks.named("buildLocalVpnAar"))
 }
 
 android {
@@ -240,7 +235,7 @@ dependencies {
     androidTestImplementation "androidx.test.uiautomator:uiautomator:2.3.0"
     implementation "org.tensorflow:tensorflow-lite:2.17.0"
     implementation project(':capacitor-cordova-android-plugins')
-    implementation files("../../third_party/tailscale-android/android/libs/libtailscale.aar")
+    implementation files(localVpnAar)
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.3"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
 }

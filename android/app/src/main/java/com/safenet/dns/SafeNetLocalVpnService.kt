@@ -12,10 +12,12 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import bridge.Bridge
-import bridge.Handler
-import bridge.TCPConn
-import bridge.UDPConn
+import dev.netvalve.bridge.Bridge
+import dev.netvalve.bridge.DnscryptResolver
+import dev.netvalve.bridge.Handler
+import dev.netvalve.bridge.TCPConn
+import dev.netvalve.bridge.Tunnel
+import dev.netvalve.bridge.UDPConn
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -46,8 +48,8 @@ class SafeNetLocalVpnService : VpnService() {
     @Volatile private var resolverSecondary: String? = null
     @Volatile private var pool = Executors.newCachedThreadPool()
     private var tun: ParcelFileDescriptor? = null
-    private var tunnel: bridge.Tunnel? = null
-    private var dnscryptResolver: bridge.DnscryptResolver? = null
+    private var tunnel: Tunnel? = null
+    private var dnscryptResolver: DnscryptResolver? = null
     private val stopped = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

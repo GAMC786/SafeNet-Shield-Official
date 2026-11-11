@@ -681,11 +681,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Go for the pinned Tailscale engine
+      - name: Set up Go for the SafeNet Local VPN engine
         uses: actions/setup-go@v5
         with:
-          go-version-file: third_party/tailscale-android/go.mod
-          cache-dependency-path: third_party/tailscale-android/go.sum
+          go-version-file: third_party/netvalve/netstack/go.mod
+          cache-dependency-path: third_party/netvalve/netstack/go.sum
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -3425,42 +3425,6 @@ jobs:
             echo "run_url=$evidence_run_url"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Prepare Tailscale Android peer verification report
-        if: always()
-        shell: bash
-        env:
-          TAILSCALE_MESH_EVIDENCE_URL: ${{ format('{0}/{1}/releases/tag/{2}', github.server_url, github.repository, github.ref_name) }}
-        run: |
-          set -euo pipefail
-
-          release_dir="artifacts/release"
-          report="$release_dir/SafeNet-DNS-Android-tailscale-mesh-verification.md"
-          report_checksum="$release_dir/SafeNet-DNS-Android-tailscale-mesh-verification.sha256"
-          mkdir -p "$release_dir"
-
-          evidence_file=""
-          while IFS= read -r candidate; do
-            if [[ -s "$candidate" ]]; then
-              evidence_file="$candidate"
-              break
-            fi
-          done < <(find artifacts/tailscale-android-mesh -type f \( -name result.txt -o -name tailscale-android-mesh-result.txt \) -print 2>/dev/null | sort)
-
-          evidence_args=()
-          if [[ -n "$evidence_file" ]]; then
-            evidence_args=(--evidence "$evidence_file")
-          fi
-          node scripts/render-tailscale-android-mesh-summary.mjs \
-            --output "$report" \
-            --evidence-url "$TAILSCALE_MESH_EVIDENCE_URL" \
-            "${evidence_args[@]}"
-          (
-            cd "$release_dir"
-            sha256sum "$(basename "$report")" > "$(basename "$report_checksum")"
-          )
-          echo "Prepared bounded Tailscale peer verification report:"
-          cat "$report"
-
       - name: Publish Android release summary
         if: always()
         shell: bash
@@ -3502,7 +3466,6 @@ jobs:
           internet_share_blocker="${INTERNET_SHARE_VERIFICATION_BLOCKER:-INTERNET_SHARE_RUN_MISSING}"
           internet_share_run_url="${INTERNET_SHARE_EVIDENCE_RUN_URL:-unavailable}"
           internet_share_report="artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt"
-          tailscale_mesh_report="artifacts/release/SafeNet-DNS-Android-tailscale-mesh-verification.md"
           {
             echo "## Android release verification"
             echo
@@ -3539,10 +3502,6 @@ jobs:
               done
               echo "- **Internet Share signed APK SHA-256:** \`$signed_apk_sha256\`"
               echo "- **Internet Share signed instrumentation APK SHA-256:** \`$signed_instrumentation_apk_sha256\`"
-            fi
-            if [[ -s "$tailscale_mesh_report" ]]; then
-              echo
-              cat "$tailscale_mesh_report"
             fi
             echo "- **Release claim boundary:** a signed APK is not physically verified unless the matching run reports a real device and observed gateway handshake."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -3607,8 +3566,6 @@ jobs:
             artifacts/release/SafeNet-DNS-Android-smoke-evidence.sha256
             artifacts/release/SafeNet-DNS-Android-internet-share-verification.txt
             artifacts/release/SafeNet-DNS-Android-internet-share-verification.sha256
-            artifacts/release/SafeNet-DNS-Android-tailscale-mesh-verification.md
-            artifacts/release/SafeNet-DNS-Android-tailscale-mesh-verification.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -3678,8 +3635,6 @@ jobs:
             SafeNet-DNS-Android-smoke-evidence.sha256
             SafeNet-DNS-Android-internet-share-verification.txt
             SafeNet-DNS-Android-internet-share-verification.sha256
-            SafeNet-DNS-Android-tailscale-mesh-verification.md
-            SafeNet-DNS-Android-tailscale-mesh-verification.sha256
           )
           for asset in "${assets[@]}"; do
             if ! gh release download "$GITHUB_REF_NAME" \

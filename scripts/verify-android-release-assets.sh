@@ -115,8 +115,6 @@ smoke_result="$assets_dir/SafeNet-DNS-Android-smoke-result.txt"
 smoke_checksum="$assets_dir/SafeNet-DNS-Android-smoke-evidence.sha256"
 internet_share_verification="$assets_dir/SafeNet-DNS-Android-internet-share-verification.txt"
 internet_share_verification_checksum="$assets_dir/SafeNet-DNS-Android-internet-share-verification.sha256"
-tailscale_mesh_verification="$assets_dir/SafeNet-DNS-Android-tailscale-mesh-verification.md"
-tailscale_mesh_verification_checksum="$assets_dir/SafeNet-DNS-Android-tailscale-mesh-verification.sha256"
 
 require_file "$apk" "Signed application APK"
 require_file "$test_apk" "Signed instrumentation APK"
@@ -127,8 +125,6 @@ require_file "$smoke_result" "Smoke result asset"
 require_file "$smoke_checksum" "Smoke evidence checksum"
 require_file "$internet_share_verification" "Physical Internet Share verification report"
 require_file "$internet_share_verification_checksum" "Physical Internet Share verification checksum"
-require_file "$tailscale_mesh_verification" "Tailscale peer verification report"
-require_file "$tailscale_mesh_verification_checksum" "Tailscale peer verification checksum"
 
 verify_checksum_file() {
     local checksum_file="$1"
@@ -178,9 +174,6 @@ verify_checksum_file \
 verify_checksum_file \
     "$internet_share_verification_checksum" \
     "SafeNet-DNS-Android-internet-share-verification.txt"
-verify_checksum_file \
-    "$tailscale_mesh_verification_checksum" \
-    "SafeNet-DNS-Android-tailscale-mesh-verification.md"
 
 [[ -d "$sdk_root/build-tools" ]] ||
     fail "Android SDK build-tools directory is unavailable: ${sdk_root:-unset}"
@@ -266,16 +259,4 @@ grep -Eq '^profile_count=3$' "$internet_share_verification" ||
     fail "Published Internet Share verification report must include all three device profiles."
 grep -Eq '^signed_apk_sha256=[[:xdigit:]]{64}$|^signed_apk_sha256=NOT_RECORDED$' "$internet_share_verification" ||
     fail "Published Internet Share verification report has an invalid signed APK digest."
-grep -Eq '^### Tailscale Android peer verification$' "$tailscale_mesh_verification" ||
-    fail "Published Tailscale peer verification report is missing its bounded summary heading."
-grep -Eq '^- \*\*Result:\*\* `(PASS|BLOCKED)`$' "$tailscale_mesh_verification" ||
-    fail "Published Tailscale peer verification report has an invalid result."
-if grep -Eq '^- \*\*Result:\*\* `BLOCKED`$' "$tailscale_mesh_verification"; then
-    grep -Eq '^- \*\*Blocker:\*\* `[A-Z0-9_]+`$' "$tailscale_mesh_verification" ||
-        fail "Published blocked Tailscale peer verification report is missing its failure category."
-fi
-if grep -Eiq 'token|authorization|raw response|bearer' "$tailscale_mesh_verification"; then
-    fail "Published Tailscale peer verification report contains a credential or raw-response marker."
-fi
-
-echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, Internet Share state, and Tailscale peer verification."
+echo "Verified published Android release assets: checksums, signatures, package metadata, smoke evidence, and Internet Share state."
