@@ -488,15 +488,21 @@ export default function Firewall() {
                 Manage DNS provider
               </Link>
             </div>
-            <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
-              {!authLoaded || !isSignedIn ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">Sign in to connect and update your NextDNS profile.</p>
-                  <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
-                    Sign in
-                  </Button>
-                </div>
-              ) : nextDnsConnected ? (
+            {!authLoaded ? (
+              <div className="mt-4 rounded-md border border-white/10 bg-background/30 p-3 text-xs text-muted-foreground">
+                Checking sign-in status…
+              </div>
+            ) : !isSignedIn ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-background/30 p-3">
+                <p className="text-xs text-muted-foreground">Sign in once to connect or sync any supported DNS provider.</p>
+                <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
+                  Sign in
+                </Button>
+              </div>
+            ) : null}
+            {authLoaded && isSignedIn && (
+              <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
+              {nextDnsConnected ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">NextDNS profile {nextDnsProfileId} connected. Syncing only changes SafeNet-managed entries.</p>
                   <Button size="sm" variant="outline" disabled={nextDnsBusy} onClick={() => void syncNextDns()}>
@@ -514,6 +520,7 @@ export default function Firewall() {
               )}
               {nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>}
             </div>
+            )}
             <div className="mt-3 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
               <p className="text-xs font-semibold text-white">Other family DNS providers</p>
               <p className="text-xs text-muted-foreground">
@@ -529,7 +536,9 @@ export default function Firewall() {
                 <option value="cleanbrowsing">CleanBrowsing</option>
               </select>
               {!authLoaded || !isSignedIn ? (
-                <p className="text-xs text-muted-foreground">Sign in to connect another DNS provider.</p>
+                <p className="text-xs text-muted-foreground">
+                  {!authLoaded ? "Checking sign-in status…" : "Sign in using the button above to connect this provider."}
+                </p>
               ) : familyConnections[familyProvider]?.connected ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">

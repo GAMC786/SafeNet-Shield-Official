@@ -408,7 +408,8 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(headerSource, /Rules configured/);
   assert.doesNotMatch(firewallSource, /useLocalVpn|local-vpn-firewall-scope|Connection status:/);
   assert.match(firewallSource, /Connect NextDNS/);
-  assert.match(firewallSource, /sign in to connect and update your NextDNS profile/i);
+  assert.match(firewallSource, /Sign in once to connect or sync any supported DNS provider/);
+  assert.doesNotMatch(firewallSource, /Sign in to connect another DNS provider/);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
   assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
