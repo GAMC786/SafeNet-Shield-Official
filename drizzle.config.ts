@@ -24,6 +24,7 @@ export default defineConfig({
     "ddns_updaters",
     "dns_servers",
     "firewall_rules",
+    "family_dns_credentials",
     "messages",
     "nextdns_credentials",
     "session",

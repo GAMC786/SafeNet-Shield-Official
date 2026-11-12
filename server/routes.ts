@@ -41,6 +41,7 @@ import {
 } from "./app-lock-recovery";
 import { registerControlDRoutes } from "./control-d-routes";
 import { registerNextDnsRoutes } from "./nextdns-routes";
+import { registerFamilyDnsRoutes } from "./family-dns-routes";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -136,6 +137,7 @@ export async function registerRoutes(
   const storage = routeStorage ?? defaultStorage;
   registerControlDRoutes(app, storage);
   registerNextDnsRoutes(app, storage);
+  registerFamilyDnsRoutes(app, storage);
 
   app.post("/api/speedtest/upload", (req, res) => {
     const maxUploadBytes = 10 * 1024 * 1024;

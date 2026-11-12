@@ -1,9 +1,9 @@
 import { db } from "./db";
 import {
-  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules, nextDnsCredentials,
+  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules, nextDnsCredentials, familyDnsCredentials,
   controlDCredentials,
   antivirusSettings, clamavVerifications, threatFeeds, antivirusEvents,
-  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule, type ControlDCredential, type NextDnsCredential, type NextDnsSyncedRule,
+  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule, type ControlDCredential, type NextDnsCredential, type NextDnsSyncedRule, type FamilyDnsCredential,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
 import type { ClamAvVerificationRecord } from "./clamav-service";
@@ -21,6 +21,9 @@ export interface IStorage {
   getNextDnsCredential(userId: string): Promise<NextDnsCredential | null>;
   saveNextDnsCredential(userId: string, credential: Pick<NextDnsCredential, "profileId" | "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">): Promise<NextDnsCredential>;
   updateNextDnsSyncedRules(userId: string, syncedRules: NextDnsSyncedRule[]): Promise<void>;
+  getFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"]): Promise<FamilyDnsCredential | null>;
+  saveFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"], profileId: string, credential: Pick<FamilyDnsCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">): Promise<FamilyDnsCredential>;
+  updateFamilyDnsSyncedRules(userId: string, provider: FamilyDnsCredential["provider"], syncedRules: string[]): Promise<void>;
   deleteNextDnsCredential(userId: string): Promise<void>;
 
   // DNS Servers
@@ -127,6 +130,45 @@ export class DatabaseStorage implements IStorage {
     await db.update(nextDnsCredentials)
       .set({ syncedRules, lastSyncedAt: new Date(), updatedAt: new Date() })
       .where(eq(nextDnsCredentials.userId, userId));
+  }
+
+  async getFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"]): Promise<FamilyDnsCredential | null> {
+    const [credential] = await db.select().from(familyDnsCredentials)
+      .where(and(eq(familyDnsCredentials.userId, userId), eq(familyDnsCredentials.provider, provider)));
+    return credential ?? null;
+  }
+
+  async saveFamilyDnsCredential(
+    userId: string,
+    provider: FamilyDnsCredential["provider"],
+    profileId: string,
+    credential: Pick<FamilyDnsCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">,
+  ): Promise<FamilyDnsCredential> {
+    const existing = await this.getFamilyDnsCredential(userId, provider);
+    const [saved] = await db.insert(familyDnsCredentials)
+      .values({ userId, provider, profileId, ...credential })
+      .onConflictDoUpdate({
+        target: [familyDnsCredentials.userId, familyDnsCredentials.provider],
+        set: {
+          profileId,
+          ...credential,
+          syncedRules: existing?.profileId === profileId ? existing.syncedRules : [],
+          lastSyncedAt: existing?.profileId === profileId ? existing.lastSyncedAt : null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return saved;
+  }
+
+  async updateFamilyDnsSyncedRules(
+    userId: string,
+    provider: FamilyDnsCredential["provider"],
+    syncedRules: string[],
+  ): Promise<void> {
+    await db.update(familyDnsCredentials)
+      .set({ syncedRules, lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(familyDnsCredentials.userId, userId), eq(familyDnsCredentials.provider, provider)));
   }
 
   async deleteNextDnsCredential(userId: string): Promise<void> {

@@ -76,6 +76,34 @@ export default function Firewall() {
   const [nextDnsToken, setNextDnsToken] = useState("");
   const [nextDnsBusy, setNextDnsBusy] = useState(false);
   const [nextDnsMessage, setNextDnsMessage] = useState("");
+  const [familyProvider, setFamilyProvider] = useState<"adguard" | "cleanbrowsing">("adguard");
+  const [familyProfileId, setFamilyProfileId] = useState("");
+  const [familyToken, setFamilyToken] = useState("");
+  const [familyConnections, setFamilyConnections] = useState<Record<string, { connected: boolean; profileId: string | null; lastSyncedAt: string | null }>>({});
+  const [familyBusy, setFamilyBusy] = useState(false);
+  const [familyMessage, setFamilyMessage] = useState("");
+
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn) {
+      setFamilyConnections({});
+      return;
+    }
+    void fetch("/api/family-dns/connections")
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (result) {
+          setFamilyConnections(result);
+          const connection = result[familyProvider];
+          if (connection?.connected) setFamilyProfileId(connection.profileId);
+        }
+      })
+      .catch(() => setFamilyMessage("Family DNS provider status is unavailable."));
+  }, [authLoaded, isSignedIn]);
+
+  useEffect(() => {
+    const connection = familyConnections[familyProvider];
+    setFamilyProfileId(connection?.connected ? connection.profileId ?? "" : familyProvider === "cleanbrowsing" ? "default" : "");
+  }, [familyConnections, familyProvider]);
 
   useEffect(() => {
     if (!authLoaded || !isSignedIn) {
@@ -129,6 +157,49 @@ export default function Firewall() {
       setNextDnsMessage(error instanceof Error ? error.message : "DNS Firewall rules could not sync.");
     } finally {
       setNextDnsBusy(false);
+    }
+  };
+
+  const connectFamilyProvider = async () => {
+    setFamilyBusy(true);
+    setFamilyMessage("");
+    try {
+      const response = await fetch("/api/family-dns/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: familyProvider, profileId: familyProfileId, token: familyToken }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "DNS provider could not be connected.");
+      setFamilyConnections((current) => ({
+        ...current,
+        [familyProvider]: { connected: true, profileId: result.profileId, lastSyncedAt: null },
+      }));
+      setFamilyToken("");
+      setFamilyMessage("Provider connected. Sync rules to apply SafeNet domains.");
+    } catch (error) {
+      setFamilyMessage(error instanceof Error ? error.message : "DNS provider could not be connected.");
+    } finally {
+      setFamilyBusy(false);
+    }
+  };
+
+  const syncFamilyProvider = async () => {
+    setFamilyBusy(true);
+    setFamilyMessage("");
+    try {
+      const response = await fetch(`/api/family-dns/${familyProvider}/sync`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
+      setFamilyConnections((current) => ({
+        ...current,
+        [familyProvider]: { ...current[familyProvider], connected: true, profileId: familyProfileId, lastSyncedAt: new Date().toISOString() },
+      }));
+      setFamilyMessage(result.message);
+    } catch (error) {
+      setFamilyMessage(error instanceof Error ? error.message : "DNS Firewall rules could not sync.");
+    } finally {
+      setFamilyBusy(false);
     }
   };
 
@@ -442,6 +513,54 @@ export default function Firewall() {
                 </div>
               )}
               {nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>}
+            </div>
+            <div className="mt-3 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
+              <p className="text-xs font-semibold text-white">Other family DNS providers</p>
+              <p className="text-xs text-muted-foreground">
+                Custom rule syncing is available for AdGuard DNS and CleanBrowsing accounts with API access. Cloudflare Family, OpenDNS FamilyShield, Control D Family, and SafeSurfer still provide their built-in filtering, but do not accept SafeNet custom rules through a documented consumer API.
+              </p>
+              <select
+                aria-label="DNS provider for custom rule sync"
+                value={familyProvider}
+                onChange={(event) => setFamilyProvider(event.target.value as "adguard" | "cleanbrowsing")}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm sm:w-auto"
+              >
+                <option value="adguard">AdGuard DNS</option>
+                <option value="cleanbrowsing">CleanBrowsing</option>
+              </select>
+              {!authLoaded || !isSignedIn ? (
+                <p className="text-xs text-muted-foreground">Sign in to connect another DNS provider.</p>
+              ) : familyConnections[familyProvider]?.connected ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {familyProvider === "adguard" ? "AdGuard DNS server" : "CleanBrowsing profile"} {familyProfileId} connected.
+                  </p>
+                  <Button size="sm" variant="outline" disabled={familyBusy} onClick={() => void syncFamilyProvider()}>
+                    {familyBusy ? "Syncing…" : "Sync DNS rules"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+                  <Input
+                    aria-label={familyProvider === "adguard" ? "AdGuard DNS server ID" : "CleanBrowsing profile name"}
+                    value={familyProfileId}
+                    onChange={(event) => setFamilyProfileId(event.target.value)}
+                    placeholder={familyProvider === "adguard" ? "DNS server ID" : "Profile name"}
+                  />
+                  <Input
+                    aria-label={`${familyProvider === "adguard" ? "AdGuard DNS" : "CleanBrowsing"} API key`}
+                    type="password"
+                    autoComplete="off"
+                    value={familyToken}
+                    onChange={(event) => setFamilyToken(event.target.value)}
+                    placeholder="Provider API key"
+                  />
+                  <Button size="sm" disabled={familyBusy || !familyProfileId.trim() || !familyToken.trim()} onClick={() => void connectFamilyProvider()}>
+                    {familyBusy ? "Connecting…" : "Connect"}
+                  </Button>
+                </div>
+              )}
+              {familyMessage && <p role="status" className="text-xs text-muted-foreground">{familyMessage}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-center">

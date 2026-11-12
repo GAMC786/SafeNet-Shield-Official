@@ -386,6 +386,10 @@ test("DNS Firewall syncs supported rules with the connected NextDNS profile", ()
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
   assert.match(firewallSource, /Sync DNS domains to your connected NextDNS profile/);
   assert.match(firewallSource, /Sync DNS rules/);
+  assert.match(firewallSource, /Other family DNS providers/);
+  assert.match(firewallSource, /CleanBrowsing accounts with API access/);
+  assert.match(firewallSource, /\/api\/family-dns\/connections/);
+  assert.match(firewallSource, /Cloudflare Family, OpenDNS FamilyShield, Control D Family, and SafeSurfer/);
   assert.match(firewallSource, /NextDNS API key/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);

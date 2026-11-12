@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, pgTable, text, serial, boolean, timestamp, integer, varchar, json } from "drizzle-orm/pg-core";
+import { check, pgTable, text, serial, boolean, timestamp, integer, varchar, json, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -120,6 +120,27 @@ export const nextDnsCredentials = pgTable("nextdns_credentials", {
   connectedAt: timestamp("connected_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const familyDnsCredentials = pgTable("family_dns_credentials", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  provider: text("provider", { enum: ["adguard", "cleanbrowsing"] }).notNull(),
+  profileId: text("profile_id").notNull(),
+  tokenCiphertext: text("token_ciphertext").notNull(),
+  tokenIv: text("token_iv").notNull(),
+  tokenAuthTag: text("token_auth_tag").notNull(),
+  encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+  syncedRules: json("synced_rules").$type<string[]>().notNull().default([]),
+  lastSyncedAt: timestamp("last_synced_at"),
+  connectedAt: timestamp("connected_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  unique("family_dns_credentials_user_provider_unique").on(table.userId, table.provider),
+  check(
+    "family_dns_credentials_provider_check",
+    sql`${table.provider} = ANY (ARRAY['adguard'::text, 'cleanbrowsing'::text])`,
+  ),
+]);
 
 export const ddnsUpdaters = pgTable("ddns_updaters", {
   id: serial("id").primaryKey(),
@@ -295,6 +316,7 @@ export type AppLockRecoveryChallenge = typeof appLockRecoveryChallenges.$inferSe
 
 export type ControlDCredential = typeof controlDCredentials.$inferSelect;
 export type NextDnsCredential = typeof nextDnsCredentials.$inferSelect;
+export type FamilyDnsCredential = typeof familyDnsCredentials.$inferSelect;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;
