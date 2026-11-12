@@ -18,10 +18,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { Link } from "wouter";
+import { useUser } from "@clerk/react";
 
 export default function Firewall() {
+  const { isLoaded: authLoaded, isSignedIn } = useUser();
   const { toast } = useToast();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
@@ -36,17 +37,6 @@ export default function Firewall() {
   const updateSettings = useUpdateSettings();
   const firewallEnabled = settings?.firewallEnabled ?? false;
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
-  const localVpn = useLocalVpn();
-  const localVpnStatusLabel = !localVpn.supported
-    ? "Android only"
-    : localVpn.busy
-      ? "Starting"
-      : localVpn.connected
-        ? "Protected"
-        : "Disconnected";
-  const isProtected = firewallEnabled && preventDnsOverrides;
-  const firewallHeaderStatus = isProtected ? "active" : "unprotected";
-
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
   const [newDomainAction, setNewDomainAction] = usePersistentState<"allow" | "block">(
     "safenet-firewall-new-domain-action",
@@ -80,6 +70,70 @@ export default function Firewall() {
     service: "dns",
     action: "deny" as const,
   });
+  const [nextDnsConnected, setNextDnsConnected] = useState(false);
+  const [nextDnsSynced, setNextDnsSynced] = useState(false);
+  const [nextDnsProfileId, setNextDnsProfileId] = useState("f2367d");
+  const [nextDnsToken, setNextDnsToken] = useState("");
+  const [nextDnsBusy, setNextDnsBusy] = useState(false);
+  const [nextDnsMessage, setNextDnsMessage] = useState("");
+
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn) {
+      setNextDnsConnected(false);
+      return;
+    }
+    void fetch("/api/nextdns/connection")
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (result?.connected) {
+          setNextDnsConnected(true);
+          setNextDnsSynced(Boolean(result.lastSyncedAt));
+          setNextDnsProfileId(result.profileId);
+        }
+      })
+      .catch(() => setNextDnsMessage("NextDNS connection status is unavailable."));
+  }, [authLoaded, isSignedIn]);
+
+  const connectNextDns = async () => {
+    setNextDnsBusy(true);
+    setNextDnsMessage("");
+    try {
+      const response = await fetch("/api/nextdns/connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: nextDnsProfileId, token: nextDnsToken }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "NextDNS could not be connected.");
+      setNextDnsConnected(true);
+      setNextDnsSynced(false);
+      setNextDnsToken("");
+      setNextDnsMessage("NextDNS profile connected. Sync rules to apply them.");
+    } catch (error) {
+      setNextDnsMessage(error instanceof Error ? error.message : "NextDNS could not be connected.");
+    } finally {
+      setNextDnsBusy(false);
+    }
+  };
+
+  const syncNextDns = async () => {
+    setNextDnsBusy(true);
+    setNextDnsMessage("");
+    try {
+      const response = await fetch("/api/nextdns/sync", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
+      setNextDnsSynced(true);
+      setNextDnsMessage(result.message);
+    } catch (error) {
+      setNextDnsMessage(error instanceof Error ? error.message : "DNS Firewall rules could not sync.");
+    } finally {
+      setNextDnsBusy(false);
+    }
+  };
+
+  const isProtected = firewallEnabled && nextDnsConnected && nextDnsSynced;
+  const firewallHeaderStatus = isProtected ? "active" : "unprotected";
 
   useEffect(() => {
     if (!editingRuleId || !rules) return;
@@ -344,14 +398,14 @@ export default function Firewall() {
       />
 
       <CyberCard className="firewall-overview-card bg-gradient-to-r from-destructive/10 to-transparent border-destructive/20">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="p-4 bg-destructive/20 rounded-full shadow-[0_0_20px_var(--destructive)]">
             <Ban className="w-8 h-8 text-destructive" />
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-display font-bold text-white">SafeNet Local VPN Firewall Rules</h2>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              Cleartext UDP/TCP port 53 requests are checked against SafeNet&apos;s active rules, then forwarded to the selected DNS server using its configured protocol. App-owned DoH/DoT and HTTPS are not inspected. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Manage domain allow and block rules for SafeNet&apos;s DNS filtering. Sync DNS domains to your connected NextDNS profile for Android Private DNS. Keywords and URL paths are not supported by DNS; IP-based Access Rules remain local. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">Selected DNS server</Badge>
@@ -360,11 +414,37 @@ export default function Firewall() {
                 className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
                 data-testid="link-filtered-dns-provider"
               >
-                Configure Android Private DNS
+                Manage DNS provider
               </Link>
             </div>
+            <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
+              {!authLoaded || !isSignedIn ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">Sign in to connect and update your NextDNS profile.</p>
+                  <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
+                    Sign in
+                  </Button>
+                </div>
+              ) : nextDnsConnected ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">NextDNS profile {nextDnsProfileId} connected. Syncing only changes SafeNet-managed entries.</p>
+                  <Button size="sm" variant="outline" disabled={nextDnsBusy} onClick={() => void syncNextDns()}>
+                    {nextDnsBusy ? "Syncing…" : "Sync DNS rules"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+                  <Input aria-label="NextDNS profile ID" value={nextDnsProfileId} onChange={(event) => setNextDnsProfileId(event.target.value)} placeholder="Profile ID" />
+                  <Input aria-label="NextDNS API key" type="password" autoComplete="off" value={nextDnsToken} onChange={(event) => setNextDnsToken(event.target.value)} placeholder="NextDNS API key" />
+                  <Button size="sm" disabled={nextDnsBusy || !nextDnsToken.trim()} onClick={() => void connectNextDns()}>
+                    {nextDnsBusy ? "Connecting…" : "Connect NextDNS"}
+                  </Button>
+                </div>
+              )}
+              {nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-center">
             <Switch
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
@@ -373,25 +453,6 @@ export default function Firewall() {
               data-testid="switch-firewall-master"
             />
           </div>
-        </div>
-      </CyberCard>
-
-      <CyberCard className="border-white/10 bg-white/[0.03]">
-        <div
-          className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-          role="status"
-          aria-label={`SafeNet Local VPN status: ${localVpnStatusLabel}`}
-          data-testid="local-vpn-firewall-scope"
-        >
-          <div>
-            <h2 className="font-display font-bold text-white">SafeNet Local VPN</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Connection status: <span className="font-medium text-foreground">{localVpnStatusLabel}</span>
-            </p>
-          </div>
-          <p className="text-xs text-orange-200/90">
-            DNS is sent to the filtered DoT resolver. Other TCP/UDP traffic is forwarded unchanged; SafeNet does not inspect HTTPS.
-          </p>
         </div>
       </CyberCard>
 

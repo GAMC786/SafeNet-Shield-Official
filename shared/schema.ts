@@ -69,6 +69,8 @@ export const appSettings = pgTable("app_settings", {
   deviceAdminEnabled: boolean("device_admin_enabled").default(false),
   firewallEnabled: boolean("firewall_enabled").default(false),
   preventDnsOverrides: boolean("prevent_dns_overrides").default(true),
+  // Retained only to preserve old database data; no Tailscale feature uses it.
+  tailscaleNonDnsFirewallEnabled: boolean("tailscale_non_dns_firewall_enabled").default(false),
   theme: text("theme").default("red-gray-blue"),
 });
 
@@ -96,6 +98,25 @@ export const controlDCredentials = pgTable("control_d_credentials", {
   tokenIv: text("token_iv").notNull(),
   tokenAuthTag: text("token_auth_tag").notNull(),
   encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+  connectedAt: timestamp("connected_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type NextDnsSyncedRule = {
+  domain: string;
+  action: "allow" | "block";
+  ownedBySafeNet: boolean;
+};
+
+export const nextDnsCredentials = pgTable("nextdns_credentials", {
+  userId: text("user_id").primaryKey(),
+  profileId: text("profile_id").notNull(),
+  tokenCiphertext: text("token_ciphertext").notNull(),
+  tokenIv: text("token_iv").notNull(),
+  tokenAuthTag: text("token_auth_tag").notNull(),
+  encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+  syncedRules: json("synced_rules").$type<NextDnsSyncedRule[]>().notNull().default([]),
+  lastSyncedAt: timestamp("last_synced_at"),
   connectedAt: timestamp("connected_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -273,6 +294,7 @@ export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
 export type AppLockRecoveryChallenge = typeof appLockRecoveryChallenges.$inferSelect;
 
 export type ControlDCredential = typeof controlDCredentials.$inferSelect;
+export type NextDnsCredential = typeof nextDnsCredentials.$inferSelect;
 
 export type DdnsUpdater = typeof ddnsUpdaters.$inferSelect;
 export type PublicDdnsUpdater = z.infer<typeof publicDdnsUpdaterSchema>;

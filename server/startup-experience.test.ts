@@ -267,7 +267,7 @@ test("the Dashboard uses Android's built-in SafeNet Private DNS control", () => 
   assert.match(privateDnsCardSource, /Android&apos;s built-in encrypted DNS setting/);
   assert.match(privateDnsCardSource, /No local VPN or VPN server is used/);
   assert.match(privateDnsCardSource, /useDnsServers/);
-  assert.match(privateDnsCardSource, /usePrivateDns\(activeDns\)/);
+  assert.match(privateDnsCardSource, /usePrivateDns\(selectedResolver\)/);
   assert.match(privateDnsCardSource, /checked=\{privateDns\.status\?\.running === true\}/);
   assert.match(privateDnsCardSource, /onCheckedChange=\{handleToggle\}/);
   assert.match(privateDnsCardSource, /Selected DNS server:/);
@@ -382,13 +382,13 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("the local VPN filters direct DNS and documents encrypted DNS limits", () => {
-  assert.match(firewallSource, /UDP\/TCP port 53 requests are checked against SafeNet&apos;s active rules/);
-  assert.match(firewallSource, /forwarded to the selected DNS server using its configured protocol/);
-  assert.match(firewallSource, /App-owned DoH\/DoT and HTTPS are not inspected/);
-  assert.match(firewallSource, /Selected DNS server/);
-  assert.match(firewallSource, /Configure Android Private DNS/);
+test("DNS Firewall syncs supported rules with the connected NextDNS profile", () => {
+  assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
+  assert.match(firewallSource, /Sync DNS domains to your connected NextDNS profile/);
+  assert.match(firewallSource, /Sync DNS rules/);
+  assert.match(firewallSource, /NextDNS API key/);
   assert.match(firewallSource, /href="\/dns"/);
+  assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
 });
 
 test("Settings use the current package version and expose only current controls", () => {
@@ -396,20 +396,15 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
-  assert.match(firewallSource, /const isProtected = firewallEnabled && preventDnsOverrides/);
+  assert.match(firewallSource, /const isProtected = firewallEnabled && nextDnsConnected && nextDnsSynced/);
   assert.match(firewallSource, /const firewallHeaderStatus = isProtected \? "active" : "unprotected"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \? "Protected"/);
   assert.doesNotMatch(headerSource, /Rules configured/);
-  assert.match(firewallSource, /useLocalVpn/);
-  assert.match(firewallSource, /data-testid="local-vpn-firewall-scope"/);
-  assert.match(firewallSource, /Connection status:/);
-  assert.match(firewallSource, /"Android only"/);
-  assert.match(firewallSource, /"Starting"/);
-  assert.match(firewallSource, /"Disconnected"/);
-  assert.match(firewallSource, /"Protected"/);
-  assert.match(firewallSource, /SafeNet does not inspect HTTPS/);
+  assert.doesNotMatch(firewallSource, /useLocalVpn|local-vpn-firewall-scope|Connection status:/);
+  assert.match(firewallSource, /Connect NextDNS/);
+  assert.match(firewallSource, /sign in to connect and update your NextDNS profile/i);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
   assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);

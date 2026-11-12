@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useUser } from "@clerk/react";
 import { Globe2, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,32 @@ import { PrivateDnsEulaDialog } from "@/components/PrivateDnsEulaDialog";
 import { usePrivateDns, SAFE_NET_PRIVATE_DNS_EULA_VERSION } from "@/hooks/use-private-dns";
 import { useDnsServers } from "@/hooks/use-dns";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import type { DnsServer } from "@shared/schema";
 
 export function PrivateDnsCard() {
+  const { isLoaded: authLoaded, isSignedIn } = useUser();
   const { data: dnsServers } = useDnsServers();
   const activeDns = dnsServers?.find((server) => server.isActive);
-  const privateDns = usePrivateDns(activeDns);
+  const [nextDnsProfileId, setNextDnsProfileId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn) {
+      setNextDnsProfileId(null);
+      return;
+    }
+    void fetch("/api/nextdns/connection")
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((result) => setNextDnsProfileId(result?.connected ? result.profileId : null))
+      .catch(() => setNextDnsProfileId(null));
+  }, [authLoaded, isSignedIn]);
+  const selectedResolver = nextDnsProfileId
+    ? ({
+        id: -1,
+        name: `NextDNS profile ${nextDnsProfileId}`,
+        type: "dot",
+        primaryAddress: `${nextDnsProfileId}.dns.nextdns.io`,
+      } as DnsServer)
+    : activeDns;
+  const privateDns = usePrivateDns(selectedResolver);
   const [message, setMessage] = useState<string | null>(null);
   const [eulaOpen, setEulaOpen] = useState(false);
   const [acceptedEulaVersion, setAcceptedEulaVersion] = usePersistentState<string | null>(
@@ -147,7 +169,7 @@ export function PrivateDnsCard() {
         )}
 
         <div className="space-y-1 text-xs text-muted-foreground">
-          <p>Selected DNS server: {activeDns?.name ?? "No active DNS server selected"}</p>
+          <p>Selected DNS server: {selectedResolver?.name ?? "No active DNS server selected"}</p>
           {privateDns.expectedHostname && (
             <p>Android Private DNS hostname: {privateDns.expectedHostname}</p>
           )}

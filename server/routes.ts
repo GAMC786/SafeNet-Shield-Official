@@ -40,6 +40,7 @@ import {
   verifyAppLockEmailRecovery,
 } from "./app-lock-recovery";
 import { registerControlDRoutes } from "./control-d-routes";
+import { registerNextDnsRoutes } from "./nextdns-routes";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -48,6 +49,7 @@ function publicSettings(settings: AppSettings) {
     pinRecoveryCodeHash: _pinRecoveryCodeHash,
     pinRecoveryCodeExpiresAt: _pinRecoveryCodeExpiresAt,
     isPinEnabled: _isPinEnabled,
+    tailscaleNonDnsFirewallEnabled: _legacyTailscaleNonDnsFirewallEnabled,
     ...safeSettings
   } = settings;
   return {
@@ -133,6 +135,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
   registerControlDRoutes(app, storage);
+  registerNextDnsRoutes(app, storage);
 
   app.post("/api/speedtest/upload", (req, res) => {
     const maxUploadBytes = 10 * 1024 * 1024;

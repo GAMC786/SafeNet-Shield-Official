@@ -1,9 +1,9 @@
 import { db } from "./db";
 import {
-  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules,
+  dnsServers, blocklists, accessLogs, appSettings, ddnsUpdaters, firewallRules, nextDnsCredentials,
   controlDCredentials,
   antivirusSettings, clamavVerifications, threatFeeds, antivirusEvents,
-  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule, type ControlDCredential,
+  type InsertDnsServer, type InsertBlocklist, type InsertAccessLog, type InsertAppSettings, type DnsServer, type Blocklist, type AccessLog, type AppSettings, type InsertDdnsUpdater, type DdnsUpdater, type FirewallRule, type InsertFirewallRule, type ControlDCredential, type NextDnsCredential, type NextDnsSyncedRule,
   type AntivirusSettings, type InsertAntivirusSettings, type ThreatFeed, type InsertThreatFeed, type AntivirusEvent, type InsertAntivirusEvent,
 } from "@shared/schema";
 import type { ClamAvVerificationRecord } from "./clamav-service";
@@ -18,6 +18,10 @@ export interface IStorage {
     credential: Pick<ControlDCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">,
   ): Promise<ControlDCredential>;
   deleteControlDCredential(userId: string): Promise<void>;
+  getNextDnsCredential(userId: string): Promise<NextDnsCredential | null>;
+  saveNextDnsCredential(userId: string, credential: Pick<NextDnsCredential, "profileId" | "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">): Promise<NextDnsCredential>;
+  updateNextDnsSyncedRules(userId: string, syncedRules: NextDnsSyncedRule[]): Promise<void>;
+  deleteNextDnsCredential(userId: string): Promise<void>;
 
   // DNS Servers
   getDnsServers(): Promise<DnsServer[]>;
@@ -97,6 +101,36 @@ export class DatabaseStorage implements IStorage {
   async deleteControlDCredential(userId: string): Promise<void> {
     await db.delete(controlDCredentials)
       .where(eq(controlDCredentials.userId, userId));
+  }
+
+  async getNextDnsCredential(userId: string): Promise<NextDnsCredential | null> {
+    const [credential] = await db.select().from(nextDnsCredentials)
+      .where(eq(nextDnsCredentials.userId, userId));
+    return credential ?? null;
+  }
+
+  async saveNextDnsCredential(
+    userId: string,
+    credential: Pick<NextDnsCredential, "profileId" | "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">,
+  ): Promise<NextDnsCredential> {
+    const [saved] = await db.insert(nextDnsCredentials)
+      .values({ userId, ...credential })
+      .onConflictDoUpdate({
+        target: nextDnsCredentials.userId,
+        set: { ...credential, syncedRules: [], lastSyncedAt: null, updatedAt: new Date() },
+      })
+      .returning();
+    return saved;
+  }
+
+  async updateNextDnsSyncedRules(userId: string, syncedRules: NextDnsSyncedRule[]): Promise<void> {
+    await db.update(nextDnsCredentials)
+      .set({ syncedRules, lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(eq(nextDnsCredentials.userId, userId));
+  }
+
+  async deleteNextDnsCredential(userId: string): Promise<void> {
+    await db.delete(nextDnsCredentials).where(eq(nextDnsCredentials.userId, userId));
   }
 
   async getDnsServers(): Promise<DnsServer[]> {
