@@ -6,12 +6,42 @@ export function NetworkStatusBanner() {
 
   useEffect(() => {
     let offlineTimer: number | undefined;
+    let retryTimer: number | undefined;
+    let probeTimeout: number | undefined;
+    let controller: AbortController | undefined;
+    let probeGeneration = 0;
+    let disposed = false;
+    const verifyReachability = async () => {
+      if (disposed) return;
+      const generation = probeGeneration;
+      controller = new AbortController();
+      probeTimeout = window.setTimeout(() => controller?.abort(), 5000);
+      try {
+        await fetch("/", {
+          method: "HEAD",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!disposed && generation === probeGeneration) setOnline(true);
+      } catch {
+        if (!disposed && generation === probeGeneration) {
+          setOnline(false);
+          retryTimer = window.setTimeout(() => void verifyReachability(), 10000);
+        }
+      } finally {
+        window.clearTimeout(probeTimeout);
+      }
+    };
     const showOfflineAfterTransition = () => {
       window.clearTimeout(offlineTimer);
-      offlineTimer = window.setTimeout(() => setOnline(false), 3500);
+      window.clearTimeout(retryTimer);
+      offlineTimer = window.setTimeout(() => void verifyReachability(), 3500);
     };
     const handleOnline = () => {
+      probeGeneration += 1;
       window.clearTimeout(offlineTimer);
+      window.clearTimeout(retryTimer);
+      controller?.abort();
       setOnline(true);
     };
     const handleOffline = () => showOfflineAfterTransition();
@@ -21,7 +51,11 @@ export function NetworkStatusBanner() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => {
+      disposed = true;
       window.clearTimeout(offlineTimer);
+      window.clearTimeout(retryTimer);
+      window.clearTimeout(probeTimeout);
+      controller?.abort();
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
