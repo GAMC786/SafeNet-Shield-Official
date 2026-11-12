@@ -76,7 +76,7 @@ export default function Firewall() {
   const [nextDnsToken, setNextDnsToken] = useState("");
   const [nextDnsBusy, setNextDnsBusy] = useState(false);
   const [nextDnsMessage, setNextDnsMessage] = useState("");
-  const [familyProvider, setFamilyProvider] = useState<"adguard" | "cleanbrowsing">("adguard");
+  const [familyProvider, setFamilyProvider] = useState<"nextdns" | "adguard" | "cleanbrowsing">("nextdns");
   const [familyProfileId, setFamilyProfileId] = useState("");
   const [familyToken, setFamilyToken] = useState("");
   const [familyConnections, setFamilyConnections] = useState<Record<string, { connected: boolean; profileId: string | null; lastSyncedAt: string | null }>>({});
@@ -203,7 +203,10 @@ export default function Firewall() {
     }
   };
 
-  const isProtected = firewallEnabled && nextDnsConnected && nextDnsSynced;
+  const selectedFamilyConnection = familyConnections[familyProvider];
+  const providerConnected = familyProvider === "nextdns" ? nextDnsConnected : Boolean(selectedFamilyConnection?.connected);
+  const providerSynced = familyProvider === "nextdns" ? nextDnsSynced : Boolean(selectedFamilyConnection?.lastSyncedAt);
+  const isProtected = firewallEnabled && providerConnected && providerSynced;
   const firewallHeaderStatus = isProtected ? "active" : "unprotected";
 
   useEffect(() => {
@@ -476,7 +479,7 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              Manage domain allow and block rules for SafeNet&apos;s DNS filtering. Sync DNS domains to your connected NextDNS profile for Android Private DNS. Keywords and URL paths are not supported by DNS; IP-based Access Rules remain local. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Manage domain allow and block rules for SafeNet&apos;s DNS filtering. Sync supported DNS domains to a connected provider profile. Keywords and URL paths are not supported by DNS; IP-based Access Rules remain local. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">Selected DNS server</Badge>
@@ -488,57 +491,50 @@ export default function Firewall() {
                 Manage DNS provider
               </Link>
             </div>
-            {!authLoaded ? (
-              <div className="mt-4 rounded-md border border-white/10 bg-background/30 p-3 text-xs text-muted-foreground">
-                Checking sign-in status…
-              </div>
-            ) : !isSignedIn ? (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-background/30 p-3">
-                <p className="text-xs text-muted-foreground">Sign in once to connect or sync any supported DNS provider.</p>
-                <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
-                  Sign in
-                </Button>
-              </div>
-            ) : null}
-            {authLoaded && isSignedIn && (
-              <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
-              {nextDnsConnected ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">NextDNS profile {nextDnsProfileId} connected. Syncing only changes SafeNet-managed entries.</p>
-                  <Button size="sm" variant="outline" disabled={nextDnsBusy} onClick={() => void syncNextDns()}>
-                    {nextDnsBusy ? "Syncing…" : "Sync DNS rules"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-                  <Input aria-label="NextDNS profile ID" value={nextDnsProfileId} onChange={(event) => setNextDnsProfileId(event.target.value)} placeholder="Profile ID" />
-                  <Input aria-label="NextDNS API key" type="password" autoComplete="off" value={nextDnsToken} onChange={(event) => setNextDnsToken(event.target.value)} placeholder="NextDNS API key" />
-                  <Button size="sm" disabled={nextDnsBusy || !nextDnsToken.trim()} onClick={() => void connectNextDns()}>
-                    {nextDnsBusy ? "Connecting…" : "Connect NextDNS"}
-                  </Button>
-                </div>
-              )}
-              {nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>}
-            </div>
-            )}
-            <div className="mt-3 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
-              <p className="text-xs font-semibold text-white">Other family DNS providers</p>
+            <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
+              <p className="text-xs font-semibold text-white">DNS provider rule sync</p>
               <p className="text-xs text-muted-foreground">
-                Custom rule syncing is available for AdGuard DNS and CleanBrowsing accounts with API access. Cloudflare Family, OpenDNS FamilyShield, Control D Family, and SafeSurfer still provide their built-in filtering, but do not accept SafeNet custom rules through a documented consumer API.
+                Choose which provider account receives SafeNet&apos;s domain rules. NextDNS, AdGuard DNS, and CleanBrowsing are supported; CleanBrowsing requires API access on your plan.
               </p>
-              <select
-                aria-label="DNS provider for custom rule sync"
+              <Select
                 value={familyProvider}
-                onChange={(event) => setFamilyProvider(event.target.value as "adguard" | "cleanbrowsing")}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm sm:w-auto"
+                onValueChange={(value) => setFamilyProvider(value as "nextdns" | "adguard" | "cleanbrowsing")}
               >
-                <option value="adguard">AdGuard DNS</option>
-                <option value="cleanbrowsing">CleanBrowsing</option>
-              </select>
-              {!authLoaded || !isSignedIn ? (
-                <p className="text-xs text-muted-foreground">
-                  {!authLoaded ? "Checking sign-in status…" : "Sign in using the button above to connect this provider."}
-                </p>
+                <SelectTrigger aria-label="DNS provider for custom rule sync" data-testid="select-dns-rule-provider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nextdns">NextDNS.io</SelectItem>
+                  <SelectItem value="adguard">AdGuard-DNS.io</SelectItem>
+                  <SelectItem value="cleanbrowsing">CleanBrowsing.org</SelectItem>
+                </SelectContent>
+              </Select>
+              {!authLoaded ? (
+                <p className="text-xs text-muted-foreground">Checking sign-in status…</p>
+              ) : !isSignedIn ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">Sign in once to connect or sync this provider.</p>
+                  <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
+                    Sign in
+                  </Button>
+                </div>
+              ) : familyProvider === "nextdns" ? (
+                nextDnsConnected ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">NextDNS profile {nextDnsProfileId} connected. Syncing only changes SafeNet-managed entries.</p>
+                    <Button size="sm" variant="outline" disabled={nextDnsBusy} onClick={() => void syncNextDns()}>
+                      {nextDnsBusy ? "Syncing…" : "Sync DNS rules"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+                    <Input aria-label="NextDNS profile ID" value={nextDnsProfileId} onChange={(event) => setNextDnsProfileId(event.target.value)} placeholder="Profile ID" />
+                    <Input aria-label="NextDNS API key" type="password" autoComplete="off" value={nextDnsToken} onChange={(event) => setNextDnsToken(event.target.value)} placeholder="NextDNS API key" />
+                    <Button size="sm" disabled={nextDnsBusy || !nextDnsToken.trim()} onClick={() => void connectNextDns()}>
+                      {nextDnsBusy ? "Connecting…" : "Connect NextDNS"}
+                    </Button>
+                  </div>
+                )
               ) : familyConnections[familyProvider]?.connected ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">
@@ -569,7 +565,9 @@ export default function Firewall() {
                   </Button>
                 </div>
               )}
-              {familyMessage && <p role="status" className="text-xs text-muted-foreground">{familyMessage}</p>}
+              {authLoaded && isSignedIn && (familyProvider === "nextdns"
+                ? nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>
+                : familyMessage && <p role="status" className="text-xs text-muted-foreground">{familyMessage}</p>)}
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-center">
