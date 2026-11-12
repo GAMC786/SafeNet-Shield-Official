@@ -115,8 +115,8 @@ const dnsSettingsSource = readFileSync(
   path.join(clientRoot, "src/pages/DnsSettings.tsx"),
   "utf8",
 );
-const localVpnCardSource = readFileSync(
-  path.join(clientRoot, "src/components/LocalVpnCard.tsx"),
+const privateDnsCardSource = readFileSync(
+  path.join(clientRoot, "src/components/PrivateDnsCard.tsx"),
   "utf8",
 );
 const dnsResolversSource = readFileSync(
@@ -261,24 +261,16 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(androidMainActivity, /if\(a&&!a\.muted\)/);
 });
 
-test("the Dashboard uses the phone-only local VPN with DNS ad filtering", () => {
-  const localVpnCardSource = readFileSync(
-    path.join(clientRoot, "src/components/LocalVpnCard.tsx"),
-    "utf8",
-  );
-  const localVpnServiceSource = readFileSync(
-    path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt"),
-    "utf8",
-  );
-  assert.match(dashboardSource, /<LocalVpnCard\s*\/>/);
-  assert.match(localVpnCardSource, /Protects this phone only/);
-  assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
-  assert.match(localVpnCardSource, /System \/ Private DNS/);
-  assert.match(localVpnCardSource, /useDnsServers/);
-  assert.match(localVpnCardSource, /vpn\.start\(activeDns\)/);
-  assert.match(localVpnCardSource, /Selected DNS server:/);
-  assert.match(localVpnServiceSource, /class SafeNetLocalVpnService : VpnService\(\)/);
-  assert.match(localVpnServiceSource, /querySelectedResolver/);
+test("the Dashboard uses Android's built-in SafeNet Private DNS control", () => {
+  assert.match(dashboardSource, /<PrivateDnsCard\s*\/>/);
+  assert.match(privateDnsCardSource, /SafeNet Private DNS/);
+  assert.match(privateDnsCardSource, /Android&apos;s built-in encrypted DNS setting/);
+  assert.match(privateDnsCardSource, /No local VPN or VPN server is used/);
+  assert.match(privateDnsCardSource, /useDnsServers/);
+  assert.match(privateDnsCardSource, /usePrivateDns\(activeDns\)/);
+  assert.match(privateDnsCardSource, /checked=\{privateDns\.status\?\.running === true\}/);
+  assert.match(privateDnsCardSource, /onCheckedChange=\{handleToggle\}/);
+  assert.match(privateDnsCardSource, /Selected DNS server:/);
   assert.doesNotMatch(dashboardSource, /WindscribeVpnCard/);
 });
 
@@ -460,11 +452,13 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
-test("Private DNS remains a separate Local VPN mode, not a DNS resolver wrapper", () => {
-  assert.doesNotMatch(dashboardSource, /SafeNet Private DNS/);
-  assert.doesNotMatch(dashboardSource, /switch-safe-net-private-dns/);
+test("Private DNS is a built-in dashboard feature, not a DNS resolver wrapper", () => {
+  assert.match(dashboardSource, /PrivateDnsCard/);
   assert.doesNotMatch(dnsSettingsSource, /SafeNet Private DNS|switch-safe-net-private-dns|Open Private DNS/);
-  assert.match(localVpnCardSource, /System \/ Private DNS/);
+  assert.match(privateDnsCardSource, /SafeNet Private DNS/);
+  assert.match(privateDnsCardSource, /<Switch/);
+  assert.match(privateDnsCardSource, /switch-private-dns-protection/);
+  assert.match(privateDnsCardSource, /Android protects this system setting/);
   assert.match(dashboardSource, /VpnProxyBrowserBlocker/);
   assert.match(vpnProxyBrowserBlockerSource, /VPN &amp; Proxy Browser Blocker/);
   assert.match(vpnProxyBrowserBlockerSource, /switch-vpn-proxy-browser-blocker/);
@@ -487,7 +481,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /IPv6/);
   assert.match(dnsSettingsSource, /resolverTypeLabel\(preset\.type\)/);
   assert.doesNotMatch(dnsSettingsSource, /SafeNet Private DNS|switch-safe-net-private-dns|Open Private DNS/);
-  assert.match(localVpnCardSource, /System \/ Private DNS/);
+  assert.match(privateDnsCardSource, /Open Android Private DNS settings/);
   assert.match(ddnsSource, /Update Interval \(minutes\)/);
   assert.doesNotMatch(ddnsSource, /DNSExit/);
   assert.match(ddnsSource, /Active Cloudflare zone required/);

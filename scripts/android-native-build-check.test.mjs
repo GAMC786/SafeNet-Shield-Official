@@ -46,8 +46,8 @@ const dashboardSource = await readFile(
   new URL("../client/src/pages/Dashboard.tsx", import.meta.url),
   "utf8",
 );
-const localVpnCardSource = await readFile(
-  new URL("../client/src/components/LocalVpnCard.tsx", import.meta.url),
+const privateDnsCardSource = await readFile(
+  new URL("../client/src/components/PrivateDnsCard.tsx", import.meta.url),
   "utf8",
 );
 const localVpnServiceSource = await readFile(
@@ -191,17 +191,16 @@ test("App Lock treats removed packages as no longer suspended", () => {
   );
 });
 
-test("the local VPN filters DNS-based ads and offers Android System Private DNS", () => {
-  assert.match(dashboardSource, /<LocalVpnCard\s*\/>/);
-  assert.match(localVpnCardSource, /Protects this phone only/);
-  assert.match(localVpnCardSource, /DNS-based in-app ads and trackers/);
-  assert.match(localVpnCardSource, /System \/ Private DNS/);
-  assert.match(localVpnCardSource, /<Switch/);
-  assert.match(localVpnCardSource, /checked=\{vpn\.connected\}/);
-  assert.match(localVpnCardSource, /onCheckedChange=\{toggleLocalProtection\}/);
-  assert.match(localVpnCardSource, /useDnsServers/);
-  assert.match(localVpnCardSource, /Selected DNS server:/);
-  assert.match(localVpnCardSource, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+test("the dashboard exposes SafeNet Private DNS while retaining native VPN build coverage", () => {
+  assert.match(dashboardSource, /<PrivateDnsCard\s*\/>/);
+  assert.match(privateDnsCardSource, /SafeNet Private DNS/);
+  assert.match(privateDnsCardSource, /Android&apos;s built-in encrypted DNS setting/);
+  assert.match(privateDnsCardSource, /<Switch/);
+  assert.match(privateDnsCardSource, /checked=\{privateDns\.status\?\.running === true\}/);
+  assert.match(privateDnsCardSource, /onCheckedChange=\{handleToggle\}/);
+  assert.match(privateDnsCardSource, /useDnsServers/);
+  assert.match(privateDnsCardSource, /Selected DNS server:/);
+  assert.match(privateDnsCardSource, /Android protects this system setting/);
   assert.match(localVpnServiceSource, /class SafeNetLocalVpnService : VpnService\(\)/);
   assert.match(localVpnServiceSource, /addRoute\("0\.0\.0\.0", 0\)/);
   assert.match(localVpnServiceSource, /addRoute\("::", 0\)/);

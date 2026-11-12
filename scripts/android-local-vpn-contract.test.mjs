@@ -6,8 +6,8 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const manifest = read("../android/app/src/main/AndroidManifest.xml");
 const mainActivity = read("../android/app/src/main/java/com/safenet/dns/MainActivity.java");
 const dashboard = read("../client/src/pages/Dashboard.tsx");
-const card = read("../client/src/components/LocalVpnCard.tsx");
-const localVpnEula = read("../client/src/components/LocalVpnEulaDialog.tsx");
+const card = read("../client/src/components/PrivateDnsCard.tsx");
+const privateDnsEula = read("../client/src/components/PrivateDnsEulaDialog.tsx");
 const dnsSettings = read("../client/src/pages/DnsSettings.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
@@ -22,31 +22,31 @@ test("SafeNet declares a local Android VPN service without the old VPN service",
   assert.doesNotMatch(mainActivity, /SafeNetWindscribe/);
 });
 
-test("Dashboard offers phone-only ad filtering and Android Private DNS mode", () => {
-  assert.match(dashboard, /<LocalVpnCard\s*\/>/);
-  assert.match(card, /Protects this phone only/);
-  assert.match(card, /DNS-based in-app ads and trackers/);
-  assert.match(card, /System \/ Private DNS/);
+test("Dashboard uses built-in SafeNet Private DNS with a Radix switch", () => {
+  assert.match(dashboard, /<PrivateDnsCard\s*\/>/);
+  assert.match(card, /SafeNet Private DNS/);
+  assert.match(card, /Android&apos;s built-in encrypted DNS setting/);
+  assert.match(card, /No local VPN or VPN server is used/);
   assert.match(card, /<Switch/);
-  assert.match(card, /checked=\{vpn\.connected\}/);
-  assert.match(card, /onCheckedChange=\{toggleLocalProtection\}/);
-  assert.match(card, /Select an active DNS server to turn on protection/);
-  assert.match(card, /active DNS server/);
-  assert.match(card, /DNS-over-HTTPS or DNS-over-TLS may bypass ad filtering/);
+  assert.match(card, /checked=\{privateDns\.status\?\.running === true\}/);
+  assert.match(card, /onCheckedChange=\{handleToggle\}/);
+  assert.match(card, /Selected DNS server:/);
+  assert.match(card, /switch-private-dns-protection/);
 });
 
-test("Local VPN requires EULA acceptance before first connection", () => {
-  assert.match(card, /acceptedEulaVersion !== LOCAL_VPN_EULA_VERSION/);
+test("SafeNet Private DNS requires EULA acceptance before configuration", () => {
+  assert.match(card, /acceptedEulaVersion !== SAFE_NET_PRIVATE_DNS_EULA_VERSION/);
   assert.match(card, /setEulaOpen\(true\)/);
-  assert.match(card, /setAcceptedEulaVersion\(LOCAL_VPN_EULA_VERSION\)/);
-  assert.match(card, /onAccept=\{acceptLocalVpnEula\}/);
-  assert.match(localVpnEula, /data-testid="button-local-vpn-eula-accept"/);
-  assert.match(localVpnEula, /authorize SafeNet to start its local Android VPN/);
+  assert.match(card, /setAcceptedEulaVersion\(SAFE_NET_PRIVATE_DNS_EULA_VERSION\)/);
+  assert.match(card, /onAccept=\{acceptEula\}/);
+  assert.match(privateDnsEula, /data-testid="button-private-dns-eula-accept"/);
+  assert.match(privateDnsEula, /SafeNet Private DNS EULA/);
+  assert.match(privateDnsEula, /authorize SafeNet to use the Android Private DNS settings/);
 });
 
 test("DNS resolver management no longer depends on the optional Private DNS wrapper", () => {
   assert.doesNotMatch(dnsSettings, /SafeNet Private DNS|Open Private DNS|switch-safe-net-private-dns/);
-  assert.match(card, /System \/ Private DNS/);
+  assert.match(card, /Open Android Private DNS settings/);
 });
 
 test("local packet forwarding captures direct DNS and protects upstream sockets", () => {
