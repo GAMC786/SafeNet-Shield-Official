@@ -2,16 +2,26 @@ import { useEffect, useState } from "react";
 import { WifiOff } from "lucide-react";
 
 export function NetworkStatusBanner() {
-  const [online, setOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    let offlineTimer: number | undefined;
+    const showOfflineAfterTransition = () => {
+      window.clearTimeout(offlineTimer);
+      offlineTimer = window.setTimeout(() => setOnline(false), 3500);
+    };
+    const handleOnline = () => {
+      window.clearTimeout(offlineTimer);
+      setOnline(true);
+    };
+    const handleOffline = () => showOfflineAfterTransition();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showOfflineAfterTransition();
+    }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => {
+      window.clearTimeout(offlineTimer);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };

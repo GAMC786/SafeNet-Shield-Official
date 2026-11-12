@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
 type LocalVpnStatus = { connected: boolean; mode: "local"; error?: string };
 export type LocalVpnResolver = {
@@ -24,7 +25,7 @@ export function useLocalVpn() {
   const refresh = useCallback(async () => {
     if (!supported) return null;
     try {
-      const next = await LocalVpn.getStatus();
+      const next = await enqueueNativeCommand(() => LocalVpn.getStatus());
       setStatus(next);
       setError(next.error ?? null);
       return next;
@@ -48,9 +49,9 @@ export function useLocalVpn() {
       let next: LocalVpnStatus;
       if (action === "start") {
         if (!resolver) throw new Error("Select an active DNS server first.");
-        next = await LocalVpn.start(resolver);
+        next = await enqueueNativeCommand(() => LocalVpn.start(resolver));
       } else {
-        next = await LocalVpn.stop();
+        next = await enqueueNativeCommand(() => LocalVpn.stop());
       }
       setStatus(next);
       window.setTimeout(() => void refresh(), 500);

@@ -19,6 +19,7 @@ export function LocalVpnCard() {
   const activeDns = dnsServers?.find((server) => server.isActive);
   const privateDns = usePrivateDns(activeDns);
   const [mode, setMode] = useState<"local" | "system">("local");
+  const [modeBusy, setModeBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [eulaOpen, setEulaOpen] = useState(false);
   const [acceptedEulaVersion, setAcceptedEulaVersion] = usePersistentState<string | null>(
@@ -27,8 +28,27 @@ export function LocalVpnCard() {
   );
 
   const chooseSystemMode = async () => {
-    setMode("system");
-    if (vpn.connected) await vpn.stop();
+    setMessage(null);
+    setModeBusy(true);
+    try {
+      if (vpn.supported) {
+        const current = await vpn.refresh();
+        if (!current) {
+          setMessage("SafeNet could not confirm the local VPN state. Please try switching again.");
+          return;
+        }
+        if (current.connected) {
+          const stopped = await vpn.stop();
+          if (!stopped || stopped.connected) {
+            setMessage("SafeNet Local VPN is still active. Private DNS was not opened.");
+            return;
+          }
+        }
+      }
+      setMode("system");
+    } finally {
+      setModeBusy(false);
+    }
   };
 
   const configureSystemDns = async () => {
@@ -101,8 +121,8 @@ export function LocalVpnCard() {
           <Button size="sm" variant={mode === "local" ? "default" : "outline"} onClick={() => setMode("local")}>
             Local VPN
           </Button>
-          <Button size="sm" variant={mode === "system" ? "default" : "outline"} onClick={() => void chooseSystemMode()}>
-            System / Private DNS
+          <Button size="sm" variant={mode === "system" ? "default" : "outline"} disabled={modeBusy || vpn.busy} onClick={() => void chooseSystemMode()}>
+            {modeBusy ? "Stopping Local VPN…" : "System / Private DNS"}
           </Button>
         </div>
         {mode === "local" ? (
@@ -119,12 +139,12 @@ export function LocalVpnCard() {
               id="local-vpn-protection"
               aria-describedby="local-vpn-protection-status"
               checked={vpn.connected}
-              disabled={!vpn.supported || vpn.busy || (!vpn.connected && !activeDns)}
+              disabled={!vpn.supported || vpn.busy || modeBusy || (!vpn.connected && !activeDns)}
               onCheckedChange={toggleLocalProtection}
             />
           </div>
         ) : (
-          <Button disabled={!privateDns.supported || privateDns.isBusy} variant="outline" onClick={() => void configureSystemDns()}>
+          <Button disabled={!privateDns.supported || privateDns.isBusy || modeBusy} variant="outline" onClick={() => void configureSystemDns()}>
             <Globe2 className="mr-2 h-4 w-4" />
             Configure Android Private DNS
           </Button>
