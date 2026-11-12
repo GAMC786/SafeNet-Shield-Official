@@ -25,6 +25,8 @@ test("SMS filtering stays local and uses a user-granted default SMS role", async
   assert.match(manifest, /android\.intent\.action\.RESPOND_VIA_MESSAGE/);
   assert.match(manifest, /android\.permission\.WRITE_SMS/);
   assert.match(plugin, /requestDefaultSmsApp/);
+  assert.match(plugin, /openDefaultSmsAppSettings/);
+  assert.match(plugin, /Settings\.ACTION_MANAGE_DEFAULT_APPS_SETTINGS/);
   assert.match(plugin, /requestPermissionForAlias\("sms"/);
   assert.match(plugin, /alias = "receiveSms"/);
   assert.match(plugin, /requestPermissionForAlias\("receiveSms", call, "smsPermissionResult"\)/);
@@ -40,6 +42,8 @@ test("SMS filtering stays local and uses a user-granted default SMS role", async
   assert.match(filter, /return roleHeld && receiveSmsPermissionGranted/);
   assert.match(filter, /MAX_QUARANTINED_MESSAGES = 100/);
   assert.match(page, /Junkboy SMS Filter/);
+  assert.match(page, /Open Android default app settings/);
+  assert.match(page, /sms\.openDefaultSmsAppSettings\(\)/);
   assert.match(page, /sms\.requestFilterPermission\(\)/);
   assert.match(page, /if \(!status\.filterPermissionGranted\)/);
   assert.match(page, /sms\.status\.sendPermissionGranted/);

@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Telephony;
+import android.provider.Settings;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
@@ -88,6 +89,27 @@ public final class SafeNetSmsPlugin extends Plugin {
 
     @ActivityCallback
     private void smsRoleResult(PluginCall call, ActivityResult result) {
+        if (call != null) call.resolve(status());
+    }
+
+    @PluginMethod
+    public void openDefaultSmsAppSettings(PluginCall call) {
+        Intent settingsIntent;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            settingsIntent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+        } else {
+            settingsIntent = new Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
+                .putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, getContext().getPackageName());
+        }
+        try {
+            startActivityForResult(call, settingsIntent, "smsDefaultAppsSettingsResult");
+        } catch (RuntimeException error) {
+            call.reject("Android could not open default app settings.", "SMS_SETTINGS_UNAVAILABLE", error);
+        }
+    }
+
+    @ActivityCallback
+    private void smsDefaultAppsSettingsResult(PluginCall call, ActivityResult result) {
         if (call != null) call.resolve(status());
     }
 

@@ -28,6 +28,7 @@ export type LocalSmsMessage = {
 type SmsFilterPlugin = {
   getStatus(): Promise<SmsFilterStatus>;
   requestDefaultSmsApp(): Promise<SmsFilterStatus>;
+  openDefaultSmsAppSettings(): Promise<SmsFilterStatus>;
   requestFilterPermission(): Promise<SmsFilterStatus>;
   requestSmsPermissions(): Promise<SmsFilterStatus>;
   setEnabled(options: { enabled: boolean }): Promise<SmsFilterStatus>;
@@ -116,6 +117,17 @@ export function useSmsFilter() {
     setIsBusy(true);
     try {
       const nextStatus = await SmsFilterNative.requestDefaultSmsApp();
+      setStatus(nextStatus);
+      return nextStatus;
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
+
+  const openDefaultSmsAppSettings = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      const nextStatus = await SmsFilterNative.openDefaultSmsAppSettings();
       setStatus(nextStatus);
       return nextStatus;
     } finally {
@@ -229,6 +241,7 @@ export function useSmsFilter() {
     refresh,
     refreshRecentMessages,
     requestDefaultSmsApp,
+    openDefaultSmsAppSettings,
     requestFilterPermission,
     requestSmsPermissions,
     setEnabled,

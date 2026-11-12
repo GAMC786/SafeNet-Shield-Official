@@ -101,6 +101,7 @@ export default function SpamCallBlocker() {
   );
   const [smsRecipient, setSmsRecipient] = useState("");
   const [smsBody, setSmsBody] = useState("");
+  const [smsRoleSetupFallback, setSmsRoleSetupFallback] = useState(false);
 
   const syncConfig = native.syncConfig;
   useEffect(() => {
@@ -306,15 +307,17 @@ export default function SpamCallBlocker() {
       let status = sms.status ?? await sms.refresh();
       if (!status?.roleHeld) {
         status = await sms.requestDefaultSmsApp();
+        setSmsRoleSetupFallback(!status?.roleHeld);
         if (!status?.roleHeld) {
           toast({
             title: "SafeNet is not the default SMS app",
-            description: "Choose SafeNet in Android's system dialog, then return here.",
+            description: "Android did not select SafeNet. Use the default-app settings button below, then try again.",
             variant: "destructive",
           });
           return;
         }
       }
+      setSmsRoleSetupFallback(false);
       if (!status.filterPermissionGranted) {
         status = await sms.requestFilterPermission();
       }
@@ -805,12 +808,22 @@ export default function SpamCallBlocker() {
               className="w-fit border-cyan-300/40 text-cyan-100 hover:bg-cyan-300/10"
               disabled={sms.isBusy || !sms.status.roleAvailable}
               onClick={() => {
-                void sms.requestDefaultSmsApp()
+                const openSettings = smsRoleSetupFallback
+                  ? sms.openDefaultSmsAppSettings()
+                  : sms.requestDefaultSmsApp();
+                void openSettings
                   .then((status) => {
+                    setSmsRoleSetupFallback(!status.roleHeld);
                     if (status.roleHeld) {
                       toast({
                         title: "SafeNet selected as the default SMS app",
                         description: "Turn on local filtering above. Inbox and sending access are optional.",
+                      });
+                    } else if (smsRoleSetupFallback) {
+                      toast({
+                        title: "SafeNet is still not the default SMS app",
+                        description: "In Android settings, choose SafeNet under SMS app, then return here.",
+                        variant: "destructive",
                       });
                     }
                   })
@@ -822,7 +835,11 @@ export default function SpamCallBlocker() {
               }}
             >
               <MessageSquareText className="mr-2 h-4 w-4" />
-              {sms.isBusy ? "Opening Android settings..." : "Set SafeNet as default SMS app"}
+              {sms.isBusy
+                ? "Opening Android settings..."
+                : smsRoleSetupFallback
+                  ? "Open Android default app settings"
+                  : "Set SafeNet as default SMS app"}
             </Button>
           )}
           {isAndroid && sms.status?.roleHeld &&
