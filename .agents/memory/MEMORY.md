@@ -99,3 +99,4 @@
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
 - [SafeNet Local VPN Go runtime](gomobile-runtime-aggregation.md) — keep the packet engine and DNSCrypt in one AAR, with gomobile declared as module tools.
 - [Windscribe firewall boundary](windscribe-firewall-boundary.md) — the SDNS wrapper redirects virtual-resolver queries but does not enforce synced SafeNet DNS policy.
+- [DNS Firewall provider strategy](dns-firewall-provider-strategy.md) — keep custom-rule enforcement on supported provider APIs for NextDNS, AdGuard DNS, and CleanBrowsing.
