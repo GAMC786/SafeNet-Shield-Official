@@ -112,3 +112,17 @@ mtime_ms = 1790215932694
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/9e957334-e0e4-42da-9009-52bdbbdb1efe/6b72884a-df25-470f-a881-3a0bce147297"
 storage_version_token = "1790215963219032"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "JGf_CZmuW46_cjOgO3kcV"
+uri = "file://android/app/build/outputs/apk/release/app-release.apk"
+type = "unspecified"
+title = "SafeNet Android 1.0.104 APK"
+description = "Officially signed APK; checksum, package version, and release signature verified."
+logical_id = "23443135-d752-440d-ab31-0264432fe16d"
+content_hash = "sha256:c4cc478a1e4eac44c7fa9bfc1b69264b8165d265dde3597d086d5ea81404ce56"
+size = 90711705
+mtime_ms = 1794521503375
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/23443135-d752-440d-ab31-0264432fe16d/7d57a63b-c7e9-4ebb-8b65-3eba09c13d42"
+storage_version_token = "1794521567502588"
+content_type = "application/octet-stream"
