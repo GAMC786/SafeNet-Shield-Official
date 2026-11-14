@@ -69,7 +69,7 @@ export default function Settings() {
             <img
               src={wordmarkImage}
               alt="SafeNet Inc."
-              className="h-12 w-[220px] object-contain"
+              className="safenet-settings-brand-wordmark h-12 w-[220px] object-contain"
             />
           </div>
         </div>

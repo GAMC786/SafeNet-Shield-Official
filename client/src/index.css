@@ -577,7 +577,7 @@
   border-color: hsl(var(--border));
 }
 
-.safenet-settings-brand-footer {
+.light .safenet-settings-brand-footer {
   border-color: #d8e2f0 !important;
   background-color: #fff !important;
   background-image: none !important;
@@ -585,31 +585,72 @@
   color: #212d40;
 }
 
-.safenet-settings-brand-footer h2 {
+.light .safenet-settings-brand-footer h2 {
   background-image: none !important;
   color: #000 !important;
   -webkit-text-fill-color: #000;
 }
 
-.safenet-settings-brand-footer .text-muted-foreground {
+.light .safenet-settings-brand-footer .text-muted-foreground {
   color: #000 !important;
 }
 
-.safenet-settings-brand-footer .text-yellow-500 {
+.light .safenet-settings-brand-footer .text-yellow-500 {
   color: #674700 !important;
 }
 
-.safenet-settings-brand-footer .border-b,
-.safenet-settings-brand-footer .border-t {
+.light .safenet-settings-brand-footer .border-b,
+.light .safenet-settings-brand-footer .border-t {
   border-color: #d8e2f0 !important;
 }
 
-.safenet-settings-brand-footer .safenet-settings-brand-footer-link {
+.light .safenet-settings-brand-footer .safenet-settings-brand-footer-link {
   color: #006354 !important;
 }
 
-.safenet-settings-brand-footer .safenet-settings-brand-footer-link:hover {
+.light .safenet-settings-brand-footer .safenet-settings-brand-footer-link:hover {
   color: #004f45 !important;
+}
+
+.dark .safenet-settings-brand-footer {
+  border-color: #39557f !important;
+  background-color: #111b2e !important;
+  background-image: linear-gradient(135deg, #111b2e, #172440) !important;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 35%), 0 0 16px rgb(59 130 246 / 14%);
+  color: #f1f5f9 !important;
+}
+
+.dark .safenet-settings-brand-footer h2 {
+  background-image: none !important;
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc;
+}
+
+.dark .safenet-settings-brand-footer .text-muted-foreground {
+  color: #d5deed !important;
+}
+
+.dark .safenet-settings-brand-footer .text-yellow-500 {
+  color: #ffe082 !important;
+}
+
+.dark .safenet-settings-brand-footer .border-b,
+.dark .safenet-settings-brand-footer .border-t {
+  border-color: #405675 !important;
+}
+
+.dark .safenet-settings-brand-footer .safenet-settings-brand-footer-link {
+  color: #76d8ff !important;
+}
+
+.dark .safenet-settings-brand-footer .safenet-settings-brand-footer-link:hover {
+  color: #b3edff !important;
+}
+
+.dark .safenet-settings-brand-footer .safenet-settings-brand-wordmark {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: #fff;
 }
 
 @layer base {
