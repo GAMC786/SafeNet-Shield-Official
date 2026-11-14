@@ -140,3 +140,31 @@ mtime_ms = 1794650272585
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/a2b93c7d-83ac-4b89-a03c-fe9153f54962/4a475a07-f98e-495a-9a9f-d99650a9f5ba"
 storage_version_token = "1794650297513065"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "QlNPjGISmev2ajZje619f"
+uri = "file://generated-artifacts/android-release/SafeNet-Android-APK-v1.0.106.apk"
+type = "unspecified"
+title = "SafeNet Android APK v1.0.106"
+description = "Signed release APK. SHA-256 checksum, APK signature, package name, and version 1.0.106 (versionCode 98) verified."
+logical_id = "11bb856e-b83c-4d7a-8ab9-4ae3578ffc07"
+content_hash = "sha256:23fa9b606a0b2ad02c90fa4a91a082eb309f1aff2d808a00265b12897cad2e7a"
+size = 96341819
+mtime_ms = 1794678725069
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/11bb856e-b83c-4d7a-8ab9-4ae3578ffc07/58499f65-e09a-407c-9c85-7019b4fe4679"
+storage_version_token = "1794678761892765"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "HSzLvcjyNZ2VSJlrJNgEe"
+uri = "file://generated-artifacts/android-release/SafeNet-Android-APK-v1.0.106.apk.sha256"
+type = "unspecified"
+title = "SafeNet Android APK v1.0.106 checksum"
+description = "SHA-256 checksum file for the signed Android release APK."
+logical_id = "8de88b33-c080-4888-bb83-45b92c607433"
+content_hash = "sha256:57edc0000038b295a67fdc0b3cd97d07a36f6b6dec65db85c8bed4dc3214ae6a"
+size = 99
+mtime_ms = 1794678725461
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/8de88b33-c080-4888-bb83-45b92c607433/ce047ef7-4b99-478e-b81c-ad2fcabd9033"
+storage_version_token = "1794678762694590"
+content_type = "application/octet-stream"
