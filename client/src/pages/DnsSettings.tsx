@@ -50,7 +50,7 @@ function resolverTypeLabel(type: DnsServer["type"]) {
 }
 
 function resolverAddressPlaceholder(type: DnsServer["type"], ipVersion: ResolverForm["ipVersion"]) {
-  if (type === "doh") return "https://dns.google/dns-query";
+  if (type === "doh") return "https://provider.example/dns-query";
   if (type === "dot") return "dns.google";
   if (type === "sdns") return "sdns://...";
   return ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1";
@@ -408,6 +408,11 @@ export default function DnsSettings() {
                 placeholder={resolverAddressPlaceholder(formData.type, formData.ipVersion)}
                 required
               />
+              {formData.type === "doh" && (
+                <p className="text-xs text-muted-foreground">
+                  Enter any provider&apos;s HTTPS DNS query endpoint. SafeNet applies DNS Firewall rules locally before forwarding requests.
+                </p>
+              )}
             </div>
             {formData.type !== "sdns" && <div className="space-y-2">
               <Label htmlFor="resolver-secondary">Secondary address (optional)</Label>

@@ -382,17 +382,14 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("DNS Firewall selects supported providers for rule syncing", () => {
+test("DNS Firewall applies local rules with any configured DNS provider", () => {
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
-  assert.match(firewallSource, /Sync supported DNS domains to a connected provider profile/);
-  assert.match(firewallSource, /Sync DNS rules/);
-  assert.match(firewallSource, /data-testid="select-dns-rule-provider"/);
-  assert.match(firewallSource, /NextDNS\.io/);
-  assert.match(firewallSource, /AdGuard-DNS\.io/);
-  assert.match(firewallSource, /CleanBrowsing\.org/);
-  assert.match(firewallSource, /CleanBrowsing requires API access on your plan/);
-  assert.match(firewallSource, /\/api\/family-dns\/connections/);
-  assert.match(firewallSource, /NextDNS API key/);
+  assert.match(firewallSource, /works with any configured DNS provider/);
+  assert.match(firewallSource, /Provider-independent DNS filtering/);
+  assert.match(firewallSource, /Start SafeNet Local VPN to apply these rules/);
+  assert.match(firewallSource, /useDnsServers/);
+  assert.match(firewallSource, /useLocalVpn/);
+  assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
 });
@@ -402,15 +399,14 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
-  assert.match(firewallSource, /const isProtected = firewallEnabled && providerConnected && providerSynced/);
+  assert.match(firewallSource, /const isProtected = firewallEnabled && Boolean\(activeDns\) && localVpn\.connected/);
   assert.match(firewallSource, /const firewallHeaderStatus = isProtected \? "active" : "unprotected"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \? "Protected"/);
   assert.doesNotMatch(headerSource, /Rules configured/);
-  assert.doesNotMatch(firewallSource, /useLocalVpn|local-vpn-firewall-scope|Connection status:/);
-  assert.match(firewallSource, /Connect NextDNS/);
-  assert.match(firewallSource, /Sign in once to connect or sync this provider/);
+  assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|Connection status:/);
+  assert.doesNotMatch(firewallSource, /Connect NextDNS|Sign in once to connect or sync this provider/);
   assert.doesNotMatch(firewallSource, /Sign in to connect another DNS provider/);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
   assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);

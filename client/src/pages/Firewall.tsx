@@ -18,14 +18,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { Link, useLocation } from "wouter";
-import { useUser } from "@clerk/react";
-import { apiFetch } from "@/lib/api";
+import { Link } from "wouter";
+import { useDnsServers } from "@/hooks/use-dns";
+import { useLocalVpn } from "@/hooks/use-local-vpn";
 
 export default function Firewall() {
-  const { isLoaded: authLoaded, isSignedIn } = useUser();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { data: dnsServers } = useDnsServers();
+  const localVpn = useLocalVpn();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
   const updateBlock = useUpdateBlocklist();
@@ -72,143 +72,8 @@ export default function Firewall() {
     service: "dns",
     action: "deny" as const,
   });
-  const [nextDnsConnected, setNextDnsConnected] = useState(false);
-  const [nextDnsSynced, setNextDnsSynced] = useState(false);
-  const [nextDnsProfileId, setNextDnsProfileId] = useState("f2367d");
-  const [nextDnsToken, setNextDnsToken] = useState("");
-  const [nextDnsBusy, setNextDnsBusy] = useState(false);
-  const [nextDnsMessage, setNextDnsMessage] = useState("");
-  const [familyProvider, setFamilyProvider] = useState<"nextdns" | "adguard" | "cleanbrowsing">("nextdns");
-  const [familyProfileId, setFamilyProfileId] = useState("");
-  const [familyToken, setFamilyToken] = useState("");
-  const [familyConnections, setFamilyConnections] = useState<Record<string, { connected: boolean; profileId: string | null; lastSyncedAt: string | null }>>({});
-  const [familyBusy, setFamilyBusy] = useState(false);
-  const [familyMessage, setFamilyMessage] = useState("");
-
-  useEffect(() => {
-    if (!authLoaded || !isSignedIn) {
-      setFamilyConnections({});
-      return;
-    }
-    void apiFetch("/api/family-dns/connections")
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (result) {
-          setFamilyConnections(result);
-          const connection = result[familyProvider];
-          if (connection?.connected) setFamilyProfileId(connection.profileId);
-        }
-      })
-      .catch(() => setFamilyMessage("Family DNS provider status is unavailable."));
-  }, [authLoaded, isSignedIn]);
-
-  useEffect(() => {
-    const connection = familyConnections[familyProvider];
-    setFamilyProfileId(connection?.connected ? connection.profileId ?? "" : familyProvider === "cleanbrowsing" ? "default" : "");
-  }, [familyConnections, familyProvider]);
-
-  useEffect(() => {
-    if (!authLoaded || !isSignedIn) {
-      setNextDnsConnected(false);
-      return;
-    }
-    void apiFetch("/api/nextdns/connection")
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (result?.connected) {
-          setNextDnsConnected(true);
-          setNextDnsSynced(Boolean(result.lastSyncedAt));
-          setNextDnsProfileId(result.profileId);
-        }
-      })
-      .catch(() => setNextDnsMessage("NextDNS connection status is unavailable."));
-  }, [authLoaded, isSignedIn]);
-
-  const connectNextDns = async () => {
-    setNextDnsBusy(true);
-    setNextDnsMessage("");
-    try {
-      const response = await apiFetch("/api/nextdns/connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileId: nextDnsProfileId, token: nextDnsToken }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message ?? "NextDNS could not be connected.");
-      setNextDnsConnected(true);
-      setNextDnsSynced(false);
-      setNextDnsToken("");
-      setNextDnsMessage("NextDNS profile connected. Sync rules to apply them.");
-    } catch (error) {
-      setNextDnsMessage(error instanceof Error ? error.message : "NextDNS could not be connected.");
-    } finally {
-      setNextDnsBusy(false);
-    }
-  };
-
-  const syncNextDns = async () => {
-    setNextDnsBusy(true);
-    setNextDnsMessage("");
-    try {
-      const response = await apiFetch("/api/nextdns/sync", { method: "POST" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
-      setNextDnsSynced(true);
-      setNextDnsMessage(result.message);
-    } catch (error) {
-      setNextDnsMessage(error instanceof Error ? error.message : "DNS Firewall rules could not sync.");
-    } finally {
-      setNextDnsBusy(false);
-    }
-  };
-
-  const connectFamilyProvider = async () => {
-    setFamilyBusy(true);
-    setFamilyMessage("");
-    try {
-      const response = await apiFetch("/api/family-dns/connections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: familyProvider, profileId: familyProfileId, token: familyToken }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message ?? "DNS provider could not be connected.");
-      setFamilyConnections((current) => ({
-        ...current,
-        [familyProvider]: { connected: true, profileId: result.profileId, lastSyncedAt: null },
-      }));
-      setFamilyToken("");
-      setFamilyMessage("Provider connected. Sync rules to apply SafeNet domains.");
-    } catch (error) {
-      setFamilyMessage(error instanceof Error ? error.message : "DNS provider could not be connected.");
-    } finally {
-      setFamilyBusy(false);
-    }
-  };
-
-  const syncFamilyProvider = async () => {
-    setFamilyBusy(true);
-    setFamilyMessage("");
-    try {
-      const response = await apiFetch(`/api/family-dns/${familyProvider}/sync`, { method: "POST" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
-      setFamilyConnections((current) => ({
-        ...current,
-        [familyProvider]: { ...current[familyProvider], connected: true, profileId: familyProfileId, lastSyncedAt: new Date().toISOString() },
-      }));
-      setFamilyMessage(result.message);
-    } catch (error) {
-      setFamilyMessage(error instanceof Error ? error.message : "DNS Firewall rules could not sync.");
-    } finally {
-      setFamilyBusy(false);
-    }
-  };
-
-  const selectedFamilyConnection = familyConnections[familyProvider];
-  const providerConnected = familyProvider === "nextdns" ? nextDnsConnected : Boolean(selectedFamilyConnection?.connected);
-  const providerSynced = familyProvider === "nextdns" ? nextDnsSynced : Boolean(selectedFamilyConnection?.lastSyncedAt);
-  const isProtected = firewallEnabled && providerConnected && providerSynced;
+  const activeDns = dnsServers?.find((server) => server.isActive);
+  const isProtected = firewallEnabled && Boolean(activeDns) && localVpn.connected;
   const firewallHeaderStatus = isProtected ? "active" : "unprotected";
 
   useEffect(() => {
@@ -481,10 +346,12 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              Manage domain allow and block rules for SafeNet&apos;s DNS filtering. Sync supported DNS domains to a connected provider profile. Keywords and URL paths are not supported by DNS; IP-based Access Rules remain local. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              SafeNet applies domain allow and block rules before DNS queries reach your selected resolver. This works with any configured DNS provider; no provider account sign-in or provider-specific API is required. Keywords and URL paths are not DNS rules. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-sky-400/30 text-sky-200">Selected DNS server</Badge>
+              <Badge variant="outline" className="border-sky-400/30 text-sky-200">
+                {activeDns ? `Resolver: ${activeDns.name} (${activeDns.type.toUpperCase()})` : "No DNS resolver selected"}
+              </Badge>
               <Link
                 href="/dns"
                 className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
@@ -493,87 +360,20 @@ export default function Firewall() {
                 Manage DNS provider
               </Link>
             </div>
-            <div className="mt-4 space-y-3 rounded-md border border-white/10 bg-background/30 p-3">
-              <p className="text-xs font-semibold text-white">DNS provider rule sync</p>
+            <div className="mt-4 space-y-2 rounded-md border border-white/10 bg-background/30 p-3">
+              <p className="text-xs font-semibold text-white">Provider-independent DNS filtering</p>
               <p className="text-xs text-muted-foreground">
-                Choose which provider account receives SafeNet&apos;s domain rules. NextDNS, AdGuard DNS, and CleanBrowsing are supported; CleanBrowsing requires API access on your plan.
+                {localVpn.supported
+                  ? localVpn.connected
+                    ? `SafeNet Local VPN is filtering DNS requests before forwarding them to ${activeDns?.name ?? "your selected resolver"}.`
+                    : "Start SafeNet Local VPN to apply these rules before queries are forwarded to your selected resolver."
+                  : "SafeNet applies these rules in its Android Local VPN before forwarding DNS queries to the selected resolver."}
               </p>
-              <Select
-                value={familyProvider}
-                onValueChange={(value) => setFamilyProvider(value as "nextdns" | "adguard" | "cleanbrowsing")}
-              >
-                <SelectTrigger aria-label="DNS provider for custom rule sync" data-testid="select-dns-rule-provider">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nextdns">NextDNS.io</SelectItem>
-                  <SelectItem value="adguard">AdGuard-DNS.io</SelectItem>
-                  <SelectItem value="cleanbrowsing">CleanBrowsing.org</SelectItem>
-                </SelectContent>
-              </Select>
-              {!authLoaded ? (
-                <p className="text-xs text-muted-foreground">Checking sign-in status…</p>
-              ) : !isSignedIn ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">Sign in once to connect or sync this provider.</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setLocation(`/sign-in?redirect_url=${encodeURIComponent(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/firewall`)}`)}
-                  >
-                    Sign in
-                  </Button>
-                </div>
-              ) : familyProvider === "nextdns" ? (
-                nextDnsConnected ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">NextDNS profile {nextDnsProfileId} connected. Syncing only changes SafeNet-managed entries.</p>
-                    <Button size="sm" variant="outline" disabled={nextDnsBusy} onClick={() => void syncNextDns()}>
-                      {nextDnsBusy ? "Syncing…" : "Sync DNS rules"}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-                    <Input aria-label="NextDNS profile ID" value={nextDnsProfileId} onChange={(event) => setNextDnsProfileId(event.target.value)} placeholder="Profile ID" />
-                    <Input aria-label="NextDNS API key" type="password" autoComplete="off" value={nextDnsToken} onChange={(event) => setNextDnsToken(event.target.value)} placeholder="NextDNS API key" />
-                    <Button size="sm" disabled={nextDnsBusy || !nextDnsToken.trim()} onClick={() => void connectNextDns()}>
-                      {nextDnsBusy ? "Connecting…" : "Connect NextDNS"}
-                    </Button>
-                  </div>
-                )
-              ) : familyConnections[familyProvider]?.connected ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    {familyProvider === "adguard" ? "AdGuard DNS server" : "CleanBrowsing profile"} {familyProfileId} connected.
-                  </p>
-                  <Button size="sm" variant="outline" disabled={familyBusy} onClick={() => void syncFamilyProvider()}>
-                    {familyBusy ? "Syncing…" : "Sync DNS rules"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-                  <Input
-                    aria-label={familyProvider === "adguard" ? "AdGuard DNS server ID" : "CleanBrowsing profile name"}
-                    value={familyProfileId}
-                    onChange={(event) => setFamilyProfileId(event.target.value)}
-                    placeholder={familyProvider === "adguard" ? "DNS server ID" : "Profile name"}
-                  />
-                  <Input
-                    aria-label={`${familyProvider === "adguard" ? "AdGuard DNS" : "CleanBrowsing"} API key`}
-                    type="password"
-                    autoComplete="off"
-                    value={familyToken}
-                    onChange={(event) => setFamilyToken(event.target.value)}
-                    placeholder="Provider API key"
-                  />
-                  <Button size="sm" disabled={familyBusy || !familyProfileId.trim() || !familyToken.trim()} onClick={() => void connectFamilyProvider()}>
-                    {familyBusy ? "Connecting…" : "Connect"}
-                  </Button>
-                </div>
+              {!activeDns && (
+                <p role="status" className="text-xs text-amber-200">
+                  Select or add a resolver in DNS Provider settings to use DNS Firewall.
+                </p>
               )}
-              {authLoaded && isSignedIn && (familyProvider === "nextdns"
-                ? nextDnsMessage && <p role="status" className="text-xs text-muted-foreground">{nextDnsMessage}</p>
-                : familyMessage && <p role="status" className="text-xs text-muted-foreground">{familyMessage}</p>)}
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-center">
