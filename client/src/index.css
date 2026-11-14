@@ -517,6 +517,37 @@
   background-color: hsl(0 72% 39%) !important;
 }
 
+.light .secure-dialer-page .text-muted-foreground {
+  color: hsl(220 20% 29%) !important;
+}
+
+.light .secure-dialer-page .text-primary {
+  color: hsl(214 82% 34%) !important;
+}
+
+.light .secure-dialer-page p {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.light .secure-dialer-page a.inline-flex {
+  border-color: hsl(220 15% 62%) !important;
+  background-color: #fff !important;
+  color: hsl(var(--foreground)) !important;
+  font-weight: 600;
+}
+
+.light .secure-dialer-page a.inline-flex.bg-primary {
+  border-color: hsl(214 82% 42%) !important;
+  background-color: hsl(214 82% 42%) !important;
+  color: #fff !important;
+}
+
+.light .secure-dialer-page a.inline-flex.bg-primary:hover {
+  border-color: hsl(214 82% 36%) !important;
+  background-color: hsl(214 82% 36%) !important;
+}
+
 .light [data-testid="ai-shield-controls"] [class~="border-white/10"] {
   border-color: hsl(var(--border));
 }

@@ -41,7 +41,7 @@ function ExternalLink({
 
 export default function SecureDialer() {
   return (
-    <div className="space-y-6">
+    <div className="secure-dialer-page space-y-6">
       <Header
         title="Dialer/Spam Blocker"
         subtitle="Open-Source Dialer, SMS/MMS, and Call Protection"
