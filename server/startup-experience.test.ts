@@ -487,6 +487,10 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
+test("Premium page shows the requested subscription subtitle", () => {
+  assert.match(billingSource, /subtitle="Subscribe and Conquer!"/);
+});
+
 test("Private DNS is a built-in dashboard feature, not a DNS resolver wrapper", () => {
   assert.match(dashboardSource, /PrivateDnsCard/);
   assert.doesNotMatch(dnsSettingsSource, /SafeNet Private DNS|switch-safe-net-private-dns|Open Private DNS/);
