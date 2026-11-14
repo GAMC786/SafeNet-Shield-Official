@@ -18,6 +18,8 @@ const openCallShieldLinks = {
   playStore: "https://play.google.com/store/apps/details?id=com.jhonsu01.opencallshield",
 };
 
+const fossifyMessagesUrl = "https://www.fossify.org/apps/messages/";
+
 function ExternalLink({
   href,
   children,
@@ -42,7 +44,7 @@ export default function SecureDialer() {
     <div className="space-y-6">
       <Header
         title="Dialer/Spam Blocker"
-        subtitle="Dialer projects and caller protection"
+        subtitle="Open-Source Dialer, SMS/MMS, and Call Protection"
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -115,6 +117,28 @@ export default function SecureDialer() {
               <ExternalLink href={openCallShieldLinks.repository} variant="outline">
                 <Github className="h-4 w-4" />
                 OpenCallShield source
+              </ExternalLink>
+            </div>
+          </div>
+        </CyberCard>
+
+        <CyberCard className="overflow-hidden">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-primary">
+              <ShieldCheck className="h-5 w-5" />
+              <span className="text-xs font-semibold uppercase tracking-wider">
+                Open-source messaging
+              </span>
+            </div>
+            <h2 className="text-xl font-bold text-white sm:text-2xl">Fossify Messages</h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              An independent SMS/MMS app from Fossify. It is a separate Android
+              app, not embedded in SafeNet.
+            </p>
+            <div className="flex flex-wrap gap-3 pt-1">
+              <ExternalLink href={fossifyMessagesUrl}>
+                <Globe className="h-4 w-4" />
+                Fossify Messages
               </ExternalLink>
             </div>
           </div>
