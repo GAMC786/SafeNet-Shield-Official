@@ -33,6 +33,10 @@
         if (!(audio instanceof HTMLAudioElement)) return;
 
         const mutedKey = "safenet-soundtrack-muted";
+        const soundtrackByTheme = {
+          dark: "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav",
+          light: "/audio/wonderland-light-mode.wav",
+        };
         const retryBaseMs = 1000;
         const retryMaxMs = 30000;
         const stallTimeoutMs = 30000;
@@ -53,6 +57,7 @@
           window.localStorage.getItem(mutedKey) !== "true";
         const canPlay = () =>
           preferenceEnabled() && !document.hidden && !suspended;
+        let activeTrack = audio.getAttribute("src") || "";
 
         const clearRetry = () => {
           if (retryTimer !== null) {
@@ -125,6 +130,27 @@
           }
         };
 
+        const syncThemeTrack = () => {
+          const nextTrack = document.documentElement.classList.contains("light")
+            ? soundtrackByTheme.light
+            : soundtrackByTheme.dark;
+          if (nextTrack === activeTrack) return;
+
+          activeTrack = nextTrack;
+          clearRetry();
+          ignorePauseRecoveryUntil = Date.now() + retryBaseMs;
+          audio.pause();
+          try {
+            audio.currentTime = 0;
+          } catch {
+            // Some remote-media states temporarily reject seeks.
+          }
+          audio.src = nextTrack;
+          audio.load();
+          retryDelayMs = retryBaseMs;
+          if (canPlay()) startAudio();
+        };
+
         const stopAudio = () => {
           suspended = true;
           stopPlayback();
@@ -159,6 +185,12 @@
         } else {
           startAudio();
         }
+        syncThemeTrack();
+        const themeObserver = new MutationObserver(syncThemeTrack);
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
         window.addEventListener("pointerdown", startAudio, { once: true, passive: true });
         window.addEventListener("keydown", startAudio, { once: true });
         window.addEventListener("safenet-soundtrack-change", syncAudioPreference);

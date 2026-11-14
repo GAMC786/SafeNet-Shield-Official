@@ -479,6 +479,45 @@ function mockApi(
   ]);
 }
 
+test("appearance switches select their matching soundtrack", async () => {
+  const page = await browser.newPage({ viewport: viewports[0] });
+  await mockApi(page);
+  await page.goto(`${baseUrl}/settings`);
+  await page.getByRole("heading", { name: "System Settings" }).waitFor();
+
+  const soundtrackAudio = page.locator("#safenet-soundtrack-audio");
+  const darkModeSwitch = page.getByRole("switch", { name: "Cyberpunk Dark Mode" });
+  const lightModeSwitch = page.getByRole("switch", { name: "Wonderland Light Mode" });
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  assert.match(
+    await soundtrackAudio.getAttribute("src"),
+    /^https:\/\/v3\.2advanced\.com\/V3ExpansionsReboot\/assets\/mainsoundtrack-/,
+    "Cyberpunk Dark Mode should use the existing SafeNet soundtrack",
+  );
+
+  await lightModeSwitch.click();
+  await page.waitForFunction(() =>
+    document.querySelector("#safenet-soundtrack-audio")?.getAttribute("src") ===
+      "/audio/wonderland-light-mode.wav" &&
+    document.documentElement.classList.contains("light"),
+  );
+  await page.waitForFunction(() => {
+    const audio = document.querySelector("#safenet-soundtrack-audio");
+    return audio instanceof HTMLAudioElement && audio.readyState >= 2;
+  });
+  assert.equal(await darkModeSwitch.getAttribute("data-state"), "unchecked");
+  assert.equal(await lightModeSwitch.getAttribute("data-state"), "checked");
+
+  await darkModeSwitch.click();
+  await page.waitForFunction(() =>
+    document.querySelector("#safenet-soundtrack-audio")?.getAttribute("src")?.startsWith(
+      "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-",
+    ) &&
+    document.documentElement.classList.contains("dark"),
+  );
+  await page.close();
+});
+
 test("Settings show the current version without firewall controls", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page, { settingsDelayMs: 12_000 });

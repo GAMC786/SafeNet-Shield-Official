@@ -29,7 +29,7 @@ export function ThemeModeControls() {
               id="appearance-dark-description"
               className="mt-1 block text-xs text-muted-foreground"
             >
-              SafeNet&apos;s original Cyberpunk appearance.
+              SafeNet&apos;s original Cyberpunk look and soundtrack.
             </span>
           </span>
           <Switch
@@ -54,7 +54,7 @@ export function ThemeModeControls() {
               id="appearance-light-description"
               className="mt-1 block text-xs text-muted-foreground"
             >
-              Use the Wonderland color palette.
+              Wonderland&apos;s light palette and original whimsical soundtrack.
             </span>
           </span>
           <Switch
