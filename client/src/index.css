@@ -587,16 +587,21 @@
 
 .light .safenet-settings-brand-footer h2 {
   background-image: none !important;
-  color: #000 !important;
-  -webkit-text-fill-color: #000;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827;
+  font-weight: 700;
 }
 
 .light .safenet-settings-brand-footer .text-muted-foreground {
-  color: #000 !important;
+  color: #26354a !important;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.55;
 }
 
 .light .safenet-settings-brand-footer .text-yellow-500 {
-  color: #674700 !important;
+  color: #533600 !important;
+  font-weight: 700;
 }
 
 .light .safenet-settings-brand-footer .border-b,
@@ -605,11 +610,15 @@
 }
 
 .light .safenet-settings-brand-footer .safenet-settings-brand-footer-link {
-  color: #006354 !important;
+  color: #004e75 !important;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .light .safenet-settings-brand-footer .safenet-settings-brand-footer-link:hover {
-  color: #004f45 !important;
+  color: #003b5c !important;
 }
 
 .dark .safenet-settings-brand-footer {
