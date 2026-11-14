@@ -488,7 +488,7 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
 });
 
 test("Premium page shows the requested subscription subtitle", () => {
-  assert.match(billingSource, /subtitle="Subscribe and Conquer!"/);
+  assert.match(billingSource, /subtitle="CAD \$3\.00 Monthly - Subscribe and Conquer!"/);
 });
 
 test("Private DNS is a built-in dashboard feature, not a DNS resolver wrapper", () => {

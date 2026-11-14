@@ -294,7 +294,7 @@ export default function Billing() {
 
   return (
     <div className="space-y-6">
-      <Header title="SafeNet Premium" subtitle="Subscribe and Conquer!" />
+      <Header title="SafeNet Premium" subtitle="CAD $3.00 Monthly - Subscribe and Conquer!" />
 
       <CyberCard>
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
