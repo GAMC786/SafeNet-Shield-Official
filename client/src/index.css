@@ -481,19 +481,6 @@
   color: #fff !important;
 }
 
-.light .safenet-premium-nav-item {
-  color: hsl(var(--safenet-gold-text)) !important;
-}
-
-.light .safenet-premium-nav-item.bg-primary\/10 {
-  background-color: hsl(var(--safenet-brand-accent) / 0.14) !important;
-}
-
-.light .safenet-system-navigation .safenet-premium-nav-item:hover {
-  color: hsl(var(--safenet-gold-text)) !important;
-  background-color: hsl(var(--safenet-brand-accent) / 0.14) !important;
-}
-
 .light .safenet-premium-feature {
   border: 1px solid hsl(var(--safenet-brand-accent) / 0.5);
   background-color: hsl(var(--safenet-brand-accent) / 0.16) !important;
