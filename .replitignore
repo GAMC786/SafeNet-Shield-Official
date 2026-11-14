@@ -11,4 +11,5 @@ android/**/build/
 
 # Desktop packaging and the separate mockup preview's installed dependencies.
 dist-electron/
+/generated-artifacts/
 artifacts/mockup-sandbox/node_modules/
