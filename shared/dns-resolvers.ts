@@ -83,14 +83,6 @@ export type DnsResolverPreset = {
  */
 export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
   {
-    name: "Cloudflare (TLS)",
-    type: "dot",
-    ipVersion: "ipv4",
-    primaryAddress: "one.one.one.one",
-    secondaryAddress: null,
-    description: "Cloudflare's standard DNS-over-TLS resolver without family filtering.",
-  },
-  {
     name: "Cloudflare (Family)",
     type: "dot",
     ipVersion: "ipv4",

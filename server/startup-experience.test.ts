@@ -550,7 +550,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
    assert.match(dnsResolversSource, /OpenDNS \(FamilyShield\)/);
    assert.match(dnsResolversSource, /208\.67\.222\.123/);
    assert.match(dnsResolversSource, /OpenDNS Home does not provide a public DNS-over-TLS endpoint/);
-   assert.match(dnsResolversSource, /name: "Cloudflare \(TLS\)"[\s\S]*?primaryAddress: "one\.one\.one\.one"/);
+    assert.doesNotMatch(dnsResolversSource, /name: "Cloudflare \(TLS\)"/);
    assert.match(dnsResolversSource, /name: "Cloudflare \(Family\)"[\s\S]*?type: "dot"[\s\S]*?primaryAddress: "family\.cloudflare-dns\.com"/);
    assert.doesNotMatch(privateDnsHookSource, /familyshield\.opendns\.com/);
 });
