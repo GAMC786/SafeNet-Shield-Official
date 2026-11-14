@@ -382,13 +382,12 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("DNS Firewall applies local rules with any configured DNS provider", () => {
+test("DNS Firewall clearly states rules are not enforced for arbitrary resolvers", () => {
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
-  assert.match(firewallSource, /works with any configured DNS provider/);
-  assert.match(firewallSource, /Provider-independent DNS filtering/);
-  assert.match(firewallSource, /Start SafeNet Local VPN to apply these rules/);
+  assert.match(firewallSource, /custom DoH endpoint only forwards DNS queries/);
+  assert.match(firewallSource, /Rules are stored but are not currently synced to a provider from this page/);
   assert.match(firewallSource, /useDnsServers/);
-  assert.match(firewallSource, /useLocalVpn/);
+  assert.doesNotMatch(firewallSource, /useLocalVpn|SafeNet Local VPN/);
   assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
@@ -399,8 +398,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(firewallSource, /Prevent DNS Overrides/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
-  assert.match(firewallSource, /const isProtected = firewallEnabled && Boolean\(activeDns\) && localVpn\.connected/);
-  assert.match(firewallSource, /const firewallHeaderStatus = isProtected \? "active" : "unprotected"/);
+  assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled \? "unprotected" : "inactive"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \? "Protected"/);

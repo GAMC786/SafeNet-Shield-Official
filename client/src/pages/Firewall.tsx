@@ -374,7 +374,7 @@ export default function Firewall() {
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
               onCheckedChange={(checked) => updateSettings.mutate({ firewallEnabled: checked })}
-              aria-label="DNS Firewall On/Off"
+              aria-label="Enable saved DNS Firewall policy"
               data-testid="switch-firewall-master"
             />
           </div>
