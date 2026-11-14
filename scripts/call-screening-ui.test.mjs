@@ -9,9 +9,9 @@ test("Secure Dialer page links to its official project and release channels", ()
   assert.match(pageSource, /https:\/\/github\.com\/Secure-Phone-apps\/Secure-Dialer\/releases/);
   assert.match(pageSource, /https:\/\/secure-phone-apps\.github\.io\/Secure-Dialer\//);
   assert.match(pageSource, /https:\/\/apps\.obtainium\.imranr\.dev/);
-  assert.match(pageSource, /https:\/\/github\.com\/SysAdminDoc\/CallShield/);
-  assert.match(pageSource, /CallShield source/);
-  assert.match(pageSource, /SafeNet’s caller-screening engine already uses verified CallShield/);
+  assert.match(pageSource, /https:\/\/github\.com\/jhonsu01\/OpenCallShield/);
+  assert.match(pageSource, /OpenCallShield source/);
+  assert.match(pageSource, /SafeNet’s live caller checks now use OpenCallShield’s public spam/);
   assert.match(pageSource, /target="_blank" rel="noopener noreferrer"/);
   assert.match(pageSource, /GitHub blocks its repository pages from being displayed inside/);
   assert.doesNotMatch(pageSource, /Junkboy SMS Filter/);

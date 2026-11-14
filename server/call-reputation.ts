@@ -31,7 +31,7 @@ export type CallReputationAvailability = {
   status: "configured" | "unavailable";
   failOpen: true;
   source: string;
-  provider: "approved-source" | "callshield";
+  provider: "approved-source" | "callshield" | "opencallshield";
   reportingAvailable: boolean;
   reason: string;
 };
@@ -48,6 +48,8 @@ const CALLSHIELD_MANIFEST_SIGNATURE_URL =
   `${CALLSHIELD_MANIFEST_URL}.sig`;
 const CALLSHIELD_REPORT_URL =
   "https://callshield-reports.snafumatthew.workers.dev/";
+const OPENCALLSHIELD_FEED_URL =
+  "https://raw.githubusercontent.com/jhonsu01/OpenCallShield/main/spam_numbers.json";
 const CALLSHIELD_FEED_TIMEOUT_MS = 2500;
 const CALLSHIELD_FEED_TTL_MS = 15 * 60 * 1000;
 const CALLSHIELD_FAILURE_RETRY_MS = 30 * 1000;
@@ -77,7 +79,18 @@ const callShieldFeedSchema = z.object({
   prefixes: z.array(callShieldPrefixSchema).default([]),
 }).passthrough();
 
+const openCallShieldFeedSchema = z.object({
+  version: z.string().min(1),
+  updated_at: z.string().min(1),
+  numbers: z.array(z.object({
+    number: z.string().min(1),
+    reports: z.number().int().nonnegative(),
+    tag: z.string().min(1),
+  })).min(1),
+}).passthrough();
+
 type CallShieldFeed = z.infer<typeof callShieldFeedSchema>;
+type OpenCallShieldFeed = z.infer<typeof openCallShieldFeedSchema>;
 
 const callShieldManifestSchema = z.object({
   format_version: z.literal(1),
@@ -129,6 +142,12 @@ const callShieldShardCache = new Map<string, {
   expiresAt: number;
 }>();
 let callShieldFailureUntil = 0;
+let openCallShieldFeedCache: {
+  feed: OpenCallShieldFeed;
+  expiresAt: number;
+} | null = null;
+let openCallShieldFeedPromise: Promise<OpenCallShieldFeed | null> | null = null;
+let openCallShieldFailureUntil = 0;
 
 function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
@@ -260,10 +279,16 @@ function callShieldReportUrl() {
 }
 
 function callShieldEnabled() {
-  // CallShield is the default. Treat the former Call Control values as
-  // migrated configuration so old secrets cannot keep the retired provider
-  // active after an application restart.
-  return !isApprovedSourceEnabled();
+  return process.env.SAFE_NET_CALL_REPUTATION_PROVIDER?.trim().toLowerCase() ===
+    "callshield";
+}
+
+function openCallShieldEnabled() {
+  const provider = process.env.SAFE_NET_CALL_REPUTATION_PROVIDER?.trim().toLowerCase();
+  return provider === undefined ||
+    provider === "" ||
+    provider === "opencallshield" ||
+    provider === "call-control";
 }
 
 function callShieldFeedFailure(reason: string) {
@@ -491,9 +516,91 @@ export function resetCallShieldCache() {
   callShieldManifestPromise = null;
   callShieldShardCache.clear();
   callShieldFailureUntil = 0;
+  openCallShieldFeedCache = null;
+  openCallShieldFeedPromise = null;
+  openCallShieldFailureUntil = 0;
+}
+
+async function loadOpenCallShieldFeed(): Promise<OpenCallShieldFeed | null> {
+  const now = Date.now();
+  if (openCallShieldFeedCache && openCallShieldFeedCache.expiresAt > now) {
+    return openCallShieldFeedCache.feed;
+  }
+  if (openCallShieldFeedPromise) return openCallShieldFeedPromise;
+  if (openCallShieldFailureUntil > now) return openCallShieldFeedCache?.feed ?? null;
+
+  openCallShieldFeedPromise = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CALLSHIELD_FEED_TIMEOUT_MS);
+    try {
+      const response = await fetch(OPENCALLSHIELD_FEED_URL, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) return openCallShieldFeedCache?.feed ?? null;
+      const parsed = openCallShieldFeedSchema.safeParse(await readJson(response));
+      if (!parsed.success) return openCallShieldFeedCache?.feed ?? null;
+
+      if (
+        openCallShieldFeedCache &&
+        parsed.data.updated_at < openCallShieldFeedCache.feed.updated_at
+      ) {
+        return openCallShieldFeedCache.feed;
+      }
+
+      openCallShieldFeedCache = {
+        feed: parsed.data,
+        expiresAt: Date.now() + CALLSHIELD_FEED_TTL_MS,
+      };
+      openCallShieldFailureUntil = 0;
+      return parsed.data;
+    } catch {
+      openCallShieldFailureUntil = Date.now() + CALLSHIELD_FAILURE_RETRY_MS;
+      return openCallShieldFeedCache?.feed ?? null;
+    } finally {
+      clearTimeout(timeout);
+      openCallShieldFeedPromise = null;
+    }
+  })();
+  return openCallShieldFeedPromise;
+}
+
+function openCallShieldDecision(
+  feed: OpenCallShieldFeed,
+  normalized: string,
+): Extract<CallReputationResult, { available: true }> {
+  const digits = phoneDigits(normalized);
+  const match = feed.numbers.find(
+    (entry) => entry.tag === "spam" && phoneDigits(entry.number) === digits,
+  );
+  if (match) {
+    return {
+      available: true,
+      action: "block",
+      source: "OpenCallShield",
+      reason: `OpenCallShield spam list match (${match.reports} reports); call blocked.`,
+    };
+  }
+  return {
+    available: true,
+    action: "allow",
+    source: "OpenCallShield",
+    reason: "OpenCallShield found no matching spam number.",
+  };
 }
 
 export async function getCallReputationAvailability(): Promise<CallReputationAvailability> {
+  if (openCallShieldEnabled()) {
+    return availability(
+      "configured",
+      "OpenCallShield live lookups use its public GitHub JSON list. The verified CallShield snapshot remains the offline fallback; OpenCallShield data is not cryptographically signed.",
+      {
+        source: "OpenCallShield",
+        provider: "opencallshield",
+        reportingAvailable: false,
+      },
+    );
+  }
   if (callShieldEnabled()) {
     if (!configuredEndpoint("SAFE_NET_CALLSHIELD_FEED_URL") &&
         process.env.SAFE_NET_CALLSHIELD_FEED_URL?.trim()) {
@@ -556,6 +663,19 @@ export async function lookupCallReputation(number: string): Promise<CallReputati
   const normalized = normalizePhoneNumber(number);
   if (!normalized) return unavailable("The caller number is invalid.");
 
+  if (openCallShieldEnabled()) {
+    const feed = await loadOpenCallShieldFeed();
+    if (feed) return openCallShieldDecision(feed, normalized);
+
+    if (verifiedOfflineCallShieldFeed) {
+      return callShieldDecision(verifiedOfflineCallShieldFeed, normalized);
+    }
+    return unavailable(
+      "OpenCallShield is unavailable and no verified offline fallback is installed.",
+      "OpenCallShield",
+    );
+  }
+
   if (callShieldEnabled()) {
     const shard = await loadCallShieldShard(normalized);
     // A verified, content-addressed shard is the authoritative live feed for
@@ -610,6 +730,13 @@ export async function reportCall(number: string, reason: string | undefined) {
   const normalized = normalizePhoneNumber(number);
   if (!normalized) {
     return { accepted: false, reason: "The caller number is invalid." };
+  }
+
+  if (openCallShieldEnabled()) {
+    return {
+      accepted: false,
+      reason: "OpenCallShield has no report API. Reports can be contributed through its Android app.",
+    };
   }
 
   if (callShieldEnabled()) {

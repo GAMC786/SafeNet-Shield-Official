@@ -48,7 +48,7 @@ const feed = {
 };
 
 beforeEach(() => {
-  delete process.env.SAFE_NET_CALL_REPUTATION_PROVIDER;
+  process.env.SAFE_NET_CALL_REPUTATION_PROVIDER = "callshield";
   delete process.env.SAFE_NET_CALL_REPUTATION_URL;
   delete process.env.SAFE_NET_CALL_REPUTATION_REPORT_URL;
   delete process.env.SAFE_NET_CALL_REPUTATION_TOKEN;
@@ -239,18 +239,72 @@ test("CallShield falls back to the offline snapshot when signed and legacy feeds
   }
 });
 
-test("CallShield is the default configured reputation source without API credentials", async () => {
+test("OpenCallShield is the default configured reputation source without API credentials", async () => {
+  delete process.env.SAFE_NET_CALL_REPUTATION_PROVIDER;
   globalThis.fetch = async () => {
     throw new Error("availability must not download the feed");
   };
   assert.deepEqual(await getCallReputationAvailability(), {
     status: "configured",
     failOpen: true,
-    source: "CallShield",
-    provider: "callshield",
-    reportingAvailable: true,
+    source: "OpenCallShield",
+    provider: "opencallshield",
+    reportingAvailable: false,
     reason:
-      "CallShield is configured; live lookups use the signed manifest and verified content-addressed shard feed, with a verified offline snapshot and legacy feed fallback.",
+      "OpenCallShield live lookups use its public GitHub JSON list. The verified CallShield snapshot remains the offline fallback; OpenCallShield data is not cryptographically signed.",
+  });
+});
+
+test("OpenCallShield public JSON blocks spam matches but ignores example rows", async () => {
+  delete process.env.SAFE_NET_CALL_REPUTATION_PROVIDER;
+  const previousFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({
+      version: "1.0",
+      updated_at: "2026-11-13",
+      numbers: [
+        { number: "+15551234567", reports: 6, tag: "spam" },
+        { number: "+15557654321", reports: 1, tag: "example" },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    assert.deepEqual(await lookupCallReputation("+1 (555) 123-4567"), {
+      available: true,
+      action: "block",
+      source: "OpenCallShield",
+      reason: "OpenCallShield spam list match (6 reports); call blocked.",
+    });
+    assert.equal(
+      request?.url,
+      "https://raw.githubusercontent.com/jhonsu01/OpenCallShield/main/spam_numbers.json",
+    );
+    resetCallShieldCache();
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      version: "1.0",
+      updated_at: "2026-11-13",
+      numbers: [
+        { number: "+15557654321", reports: 1, tag: "example" },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+    assert.deepEqual(await lookupCallReputation("+1 (555) 765-4321"), {
+      available: true,
+      action: "allow",
+      source: "OpenCallShield",
+      reason: "OpenCallShield found no matching spam number.",
+    });
+  } finally {
+    restoreFetch(previousFetch);
+  }
+});
+
+test("OpenCallShield has no server-side report API", async () => {
+  delete process.env.SAFE_NET_CALL_REPUTATION_PROVIDER;
+  assert.deepEqual(await reportCall("+1 (555) 123-4567", "user_report"), {
+    accepted: false,
+    reason: "OpenCallShield has no report API. Reports can be contributed through its Android app.",
   });
 });
 
@@ -578,16 +632,20 @@ test("CallShield reports are explicit POST submissions", async () => {
   }
 });
 
-test("old Call Control configuration cannot reactivate the retired provider", async () => {
+test("old Call Control configuration does not reactivate its retired provider", async () => {
   const previousFetch = globalThis.fetch;
   process.env.SAFE_NET_CALL_REPUTATION_PROVIDER = "call-control";
   process.env.SAFE_NET_CALL_CONTROL_API_KEY = "retired-key";
-  globalThis.fetch = async () => feedResponse();
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    version: "1.0",
+    updated_at: "2026-11-13",
+    numbers: [{ number: "+15551234567", reports: 4, tag: "spam" }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
   try {
     const result = await lookupCallReputation("+1 (555) 123-4567");
     assert.equal(result.available, true);
     if (result.available) {
-      assert.equal(result.source, "CallShield");
+      assert.equal(result.source, "OpenCallShield");
       assert.equal(result.action, "block");
     }
   } finally {
