@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
@@ -22,6 +22,7 @@ type BillingStatus = {
 const BILLING_REQUEST_TIMEOUT_MS = 12_000;
 const CLERK_LOAD_TIMEOUT_MS = 12_000;
 const CLERK_STALL_QUERY_PARAM = "billing_clerk_stall";
+const CLERK_RETURN_REFRESH_QUERY_PARAM = "clerk_return_refresh";
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -68,6 +69,7 @@ export default function Billing() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const { toast } = useToast();
+  const clerkReturnRefreshStarted = useRef(false);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const isAndroid = Capacitor.getPlatform() === "android";
   const clerkStartupStallRequested =
@@ -87,6 +89,24 @@ export default function Billing() {
     );
     return () => window.clearTimeout(timeoutId);
   }, [clerkIsLoaded]);
+
+  useEffect(() => {
+    const returnUrl = new URL(window.location.href);
+    if (returnUrl.searchParams.get(CLERK_RETURN_REFRESH_QUERY_PARAM) !== "1") return;
+    if (!clerkIsLoaded || clerkReturnRefreshStarted.current) return;
+
+    clerkReturnRefreshStarted.current = true;
+    returnUrl.searchParams.delete(CLERK_RETURN_REFRESH_QUERY_PARAM);
+    const cleanUrl = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
+
+    if (isSignedIn) {
+      window.history.replaceState(window.history.state, "", cleanUrl);
+    } else {
+      // Reinitialize Clerk once after the OAuth callback so the session cookie
+      // is picked up before Premium decides whether the user is signed in.
+      window.location.replace(cleanUrl);
+    }
+  }, [clerkIsLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!clerkIsLoaded || !isSignedIn || !isAndroid || !user?.id) {
@@ -267,7 +287,8 @@ export default function Billing() {
   };
 
   const openSignIn = () => {
-    setLocation(`/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
+    const billingReturnUrl = `${basePath}/billing?${CLERK_RETURN_REFRESH_QUERY_PARAM}=1`;
+    setLocation(`/sign-in?redirect_url=${encodeURIComponent(billingReturnUrl)}`);
   };
 
   const retryClerkLoading = () => {

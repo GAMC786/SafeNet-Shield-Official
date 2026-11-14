@@ -67,6 +67,31 @@ function stripBase(path: string) {
     : path;
 }
 
+function getSafeAuthRedirect(search: string) {
+  const requestedRedirect = new URLSearchParams(search).get("redirect_url");
+  if (!requestedRedirect) return undefined;
+
+  try {
+    const target = new URL(requestedRedirect, window.location.origin);
+    if (
+      target.origin !== window.location.origin ||
+      (basePath && target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`)) ||
+      target.pathname.startsWith("//")
+    ) {
+      return undefined;
+    }
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function authPathWithRedirect(path: string, redirectUrl?: string) {
+  return redirectUrl
+    ? `${path}?redirect_url=${encodeURIComponent(redirectUrl)}`
+    : path;
+}
+
 function MainLayout() {
   const queryClient = useQueryClient();
   const refreshActivePage = useCallback(
@@ -139,22 +164,7 @@ function AuthBackButton({
 function SignInPage() {
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
-  const requestedRedirect = searchParams.get("redirect_url");
-  const redirectUrl = (() => {
-    if (!requestedRedirect) return undefined;
-    try {
-      const target = new URL(requestedRedirect, window.location.origin);
-      const baseUrl = new URL(window.location.origin);
-      if (
-        target.origin !== baseUrl.origin ||
-        (basePath && target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`)) ||
-        target.pathname.startsWith("//")
-      ) return undefined;
-      return `${target.pathname}${target.search}${target.hash}`;
-    } catch {
-      return undefined;
-    }
-  })();
+  const redirectUrl = getSafeAuthRedirect(window.location.search);
   const provider = searchParams.get("provider");
   const recoveryNonce = searchParams.get("recovery_nonce") || "";
   const recoveryReturnUri = searchParams.get("return_uri") || "";
@@ -183,7 +193,7 @@ function SignInPage() {
         <SignIn
           routing="path"
           path={`${basePath}/sign-in`}
-          signUpUrl={`${basePath}/sign-up`}
+          signUpUrl={authPathWithRedirect(`${basePath}/sign-up`, redirectUrl)}
           {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
         />
       </div>
@@ -387,6 +397,7 @@ function SignInSsoCallbackPage() {
 
 function SignUpPage() {
   const [, setLocation] = useLocation();
+  const redirectUrl = getSafeAuthRedirect(window.location.search);
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
@@ -398,7 +409,8 @@ function SignUpPage() {
         <SignUp
           routing="path"
           path={`${basePath}/sign-up`}
-          signInUrl={`${basePath}/sign-in`}
+          signInUrl={authPathWithRedirect(`${basePath}/sign-in`, redirectUrl)}
+          {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
         />
       </div>
     </div>
