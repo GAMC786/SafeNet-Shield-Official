@@ -47,7 +47,15 @@ const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const configuredClerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL as
+  | string
+  | undefined;
+const nativeApiOrigin = import.meta.env.VITE_API_URL as string | undefined;
+const clerkProxyUrl =
+  configuredClerkProxyUrl?.trim() ||
+  (window.location.hostname === "localhost" && nativeApiOrigin?.trim()
+    ? `${nativeApiOrigin.trim().replace(/\/+$/, "")}/api/__clerk`
+    : undefined);
 
 if (!clerkPubKey) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY.");

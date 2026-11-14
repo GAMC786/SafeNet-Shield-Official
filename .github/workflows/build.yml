@@ -674,6 +674,7 @@ jobs:
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
+      MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
       ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
@@ -740,7 +741,13 @@ jobs:
           }
 
       - name: Build web app
-        run: npm run build
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
+          export VITE_API_URL="$api_origin"
+          export VITE_CLERK_PROXY_URL="${api_origin}/api/__clerk"
+          npm run build
 
       - name: Setup Java
         uses: actions/setup-java@v4

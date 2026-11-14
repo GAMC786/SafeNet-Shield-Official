@@ -87,6 +87,7 @@ jobs:
           }
           api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
           export VITE_API_URL="$api_origin"
+          export VITE_CLERK_PROXY_URL="${api_origin}/api/__clerk"
           npm run build
           printf '{\n  "apiOrigin": "%s"\n}\n' "$api_origin" > dist/public/mobile-build.json
           npx cap sync android

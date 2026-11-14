@@ -15,6 +15,21 @@ export function getClerkProxyHost(req: { headers: IncomingHttpHeaders }): string
   return raw?.split(",")[0]?.trim() || req.headers.host?.trim() || undefined;
 }
 
+export function getNativeWebViewOrigin(
+  headers: IncomingHttpHeaders,
+): string | undefined {
+  const origin = headers.origin?.trim();
+  return origin === "https://localhost" || origin === "http://localhost"
+    ? origin
+    : undefined;
+}
+
+function getForwardedProtocol(headers: IncomingHttpHeaders): string {
+  const forwarded = headers["x-forwarded-proto"];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  return raw?.split(",")[0]?.trim() === "http" ? "http" : "https";
+}
+
 export function clerkProxyMiddleware(): RequestHandler {
   const secretKey = process.env.CLERK_SECRET_KEY;
   if (process.env.NODE_ENV !== "production" || !secretKey) {
@@ -28,13 +43,27 @@ export function clerkProxyMiddleware(): RequestHandler {
     pathRewrite: (path: string) => path.replace(new RegExp(`^${CLERK_PROXY_PATH}`), ""),
     on: {
       proxyReq: (proxyReq, req) => {
-        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const protocol = getForwardedProtocol(req.headers);
         const host = getClerkProxyHost(req) || "";
         proxyReq.setHeader("Clerk-Proxy-Url", `${protocol}://${host}${CLERK_PROXY_PATH}`);
         proxyReq.setHeader("Clerk-Secret-Key", secretKey);
+        if (getNativeWebViewOrigin(req.headers) && host) {
+          proxyReq.setHeader("Origin", `${protocol}://${host}`);
+        }
       },
       proxyRes: (proxyRes, req, res) => {
         const headers = { ...proxyRes.headers };
+        const nativeOrigin = getNativeWebViewOrigin(req.headers);
+        if (nativeOrigin) {
+          headers["access-control-allow-origin"] = nativeOrigin;
+          const varyHeader = headers.vary;
+          const varyValues = Array.isArray(varyHeader)
+            ? varyHeader.flatMap((value) => value.split(","))
+            : (varyHeader || "").split(",");
+          if (!varyValues.some((value) => value.trim().toLowerCase() === "origin")) {
+            headers.vary = [...varyValues.map((value) => value.trim()).filter(Boolean), "Origin"].join(", ");
+          }
+        }
         delete headers["transfer-encoding"];
         delete headers["connection"];
         delete headers["keep-alive"];

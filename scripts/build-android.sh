@@ -20,6 +20,7 @@ fi
 export VITE_API_URL
 
 echo "Mobile backend: $VITE_API_URL"
+export VITE_CLERK_PROXY_URL="${VITE_API_URL}/api/__clerk"
 
 # Step 1: Build web application
 echo ""

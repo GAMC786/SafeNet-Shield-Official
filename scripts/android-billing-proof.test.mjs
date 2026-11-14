@@ -14,8 +14,24 @@ const billing = await readFile(
   new URL("../client/src/pages/Billing.tsx", import.meta.url),
   "utf8",
 );
+const app = await readFile(
+  new URL("../client/src/App.tsx", import.meta.url),
+  "utf8",
+);
 const instrumentation = await readFile(
   new URL("../android/app/src/androidTest/java/com/safenet/dns/RevenueCatBillingInstrumentationTest.java", import.meta.url),
+  "utf8",
+);
+const clerkProxy = await readFile(
+  new URL("../server/middlewares/clerkProxyMiddleware.ts", import.meta.url),
+  "utf8",
+);
+const apkOnlyWorkflow = await readFile(
+  new URL("../.github/workflows/build-apk-only.yml", import.meta.url),
+  "utf8",
+);
+const androidBuildScript = await readFile(
+  new URL("./build-android.sh", import.meta.url),
   "utf8",
 );
 
@@ -54,6 +70,16 @@ test("packaged Billing proves signed-out Clerk recovery and preserves redirects"
   assert.match(billing, /billing_clerk_stall/);
   assert.match(billing, /data-testid="billing-sign-in"/);
   assert.match(billing, /retryUrl\.searchParams\.delete/);
+});
+
+test("packaged Clerk sign-in uses the SafeNet proxy for Android WebViews", () => {
+  assert.match(clerkProxy, /getNativeWebViewOrigin/);
+  assert.match(clerkProxy, /proxyReq\.setHeader\("Origin", `\$\{protocol\}:\/\/\$\{host\}`\)/);
+  assert.match(clerkProxy, /headers\["access-control-allow-origin"\] = nativeOrigin/);
+  assert.match(app, /VITE_CLERK_PROXY_URL/);
+  assert.match(apkOnlyWorkflow, /VITE_CLERK_PROXY_URL="\$\{api_origin\}\/api\/__clerk"/);
+  assert.match(androidBuildScript, /VITE_CLERK_PROXY_URL="\$\{VITE_API_URL\}\/api\/__clerk"/);
+  assert.match(workflow, /VITE_CLERK_PROXY_URL="\$\{api_origin\}\/api\/__clerk"/);
 });
 
 test("release builds inject a public RevenueCat Android key and gate billing validation", () => {

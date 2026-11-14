@@ -210,11 +210,22 @@ public class RevenueCatBillingInstrumentationTest {
         );
         assertEquals("Sign-in must preserve the Billing redirect context", "/billing",
             signInLocation.optString("redirect"));
+        waitForWebView(
+            "document.body.innerText.toLowerCase().includes('welcome back') || " +
+                "Boolean(document.querySelector('input[type=\"email\"]'))"
+        );
+        assertTrue(
+            "Billing sign-in route must render its form instead of a blank WebView",
+            callWebView(
+                "document.body.innerText.toLowerCase().includes('welcome back') || " +
+                    "Boolean(document.querySelector('input[type=\"email\"]'))"
+            ).optBoolean("value", false)
+        );
 
         Log.i(
             PROOF_TAG,
             "REVENUECAT_BILLING_RECOVERY_PROOF result=PASS signed_out=PASS " +
-                "stall_recovery=PASS redirect_context=PASS"
+                "stall_recovery=PASS redirect_context=PASS sign_in_form=PASS"
         );
         System.out.println(
             "REVENUECAT_BILLING_RECOVERY_PROOF result=PASS signed_out=PASS " +
