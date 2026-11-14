@@ -17,6 +17,14 @@ Internet Share can run its explicit proxy on a usable private IPv4 address from 
 
 **How to apply:** Keep local-network sharing as an explicit mode, select the advertised host from non-VPN interfaces, and retain Wi-Fi Direct as a separate mode for devices that need a private network. Physical tests must cover hotspot and same-Wi-Fi Wireless Debugging paths.
 
+## TLS proxy transport
+
+Both Internet Share proxy endpoints require TLS 1.2 or newer. The phone keeps a per-host self-signed CA/server identity in encrypted app preferences; clients must trust the exported certificate and verify its SHA-256 fingerprint. TLS-wrapped SOCKS requires a client-side TLS wrapper. TLS protects only the client-to-proxy leg; plain HTTP destinations remain unencrypted after the proxy.
+
+**Why:** The user explicitly chose TLS for the device-to-proxy connection and both HTTP and SOCKS endpoints, accepting that clients need certificate trust and TLS-capable proxy settings.
+
+**How to apply:** Never add a plaintext fallback listener. Keep the certificate export and fingerprint visible while sharing is active, and preserve the distinction between proxy TLS and destination-site HTTPS.
+
 ## Credential handoff
 
 Treat `dumpsys wifi p2p` as a diagnostic view, not the source of truth for client credentials. On Android 10 and newer, an app-defined group credential can provide a supported handoff when OEM diagnostics hide the passphrase; if neither the native API nor the app-defined group provides credentials, report manual Android-settings pairing explicitly.

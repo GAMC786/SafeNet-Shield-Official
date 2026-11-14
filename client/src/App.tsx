@@ -17,6 +17,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Navigation } from "@/components/Navigation";
 import { SystemNavigation } from "@/components/Navigation";
+import { NativeStatusBarThemeSync } from "@/components/NativeStatusBarThemeSync";
 import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import * as Sentry from "@sentry/react";
 import { captureGlitchTipException } from "./lib/glitchtip";
@@ -542,6 +543,7 @@ function App() {
         enableSystem={false}
         storageKey="safenet-theme"
       >
+        <NativeStatusBarThemeSync />
         <WouterRouter base={basePath}>
           <ClerkProviderWithRoutes />
         </WouterRouter>

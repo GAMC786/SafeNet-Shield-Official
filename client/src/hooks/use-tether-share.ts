@@ -20,6 +20,8 @@ export interface TetherShareStatus {
   proxyPort?: number | null;
   httpProxyPort?: number | null;
   socksProxyPort?: number | null;
+  tlsCertificatePem?: string | null;
+  tlsFingerprint?: string | null;
   httpProxySupported?: boolean;
   socksProxySupported?: boolean;
   connectedDevices: TetherShareDevice[];

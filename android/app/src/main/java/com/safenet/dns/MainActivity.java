@@ -28,6 +28,8 @@ import androidx.core.view.ViewCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private static final int DARK_SYSTEM_SURFACE = Color.BLACK;
+    private static final int LIGHT_SYSTEM_SURFACE = Color.rgb(248, 250, 252);
     private static final String TAG = "SafeNetWebView";
     private static final int APP_LOCK_ACTIVITY_REQUEST = 6201;
     private final Handler startupHandler = new Handler(Looper.getMainLooper());
@@ -37,6 +39,7 @@ public class MainActivity extends BridgeActivity {
     private boolean appLockHasResumed;
     private boolean appLockNeedsUnlockOnResume;
     private boolean appLockActivityActive;
+    private boolean lightStatusBarAppearance;
     private boolean pendingSmsCompose;
     private int smsComposeDispatchAttempts;
     private String pendingSmsRecipient = "";
@@ -174,7 +177,7 @@ public class MainActivity extends BridgeActivity {
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-        window.setStatusBarColor(Color.BLACK);
+        window.setStatusBarColor(DARK_SYSTEM_SURFACE);
         window.setNavigationBarColor(Color.BLACK);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setStatusBarContrastEnforced(false);
@@ -185,12 +188,12 @@ public class MainActivity extends BridgeActivity {
                 WindowCompat.getInsetsController(window, window.getDecorView());
         insetsController.show(WindowInsetsCompat.Type.statusBars());
         insetsController.show(WindowInsetsCompat.Type.navigationBars());
-        insetsController.setAppearanceLightStatusBars(false);
+        insetsController.setAppearanceLightStatusBars(lightStatusBarAppearance);
         insetsController.setAppearanceLightNavigationBars(false);
 
         if (webView.getParent() instanceof ViewGroup) {
             ViewGroup container = (ViewGroup) webView.getParent();
-            container.setBackgroundColor(Color.BLACK);
+            container.setBackgroundColor(DARK_SYSTEM_SURFACE);
         }
         applySystemBarInsets(webView);
         applySystemBarInsets(startupFallback);
@@ -241,8 +244,29 @@ public class MainActivity extends BridgeActivity {
                 WindowCompat.getInsetsController(window, window.getDecorView());
         insetsController.show(WindowInsetsCompat.Type.statusBars());
         insetsController.show(WindowInsetsCompat.Type.navigationBars());
-        insetsController.setAppearanceLightStatusBars(false);
+        insetsController.setAppearanceLightStatusBars(lightStatusBarAppearance);
         insetsController.setAppearanceLightNavigationBars(false);
+        window.setStatusBarColor(
+                lightStatusBarAppearance ? LIGHT_SYSTEM_SURFACE : DARK_SYSTEM_SURFACE
+        );
+        WebView webView = getBridge() == null ? null : getBridge().getWebView();
+        if (webView != null) {
+            webView.setBackgroundColor(
+                    lightStatusBarAppearance ? LIGHT_SYSTEM_SURFACE : Color.rgb(9, 11, 20)
+            );
+            if (webView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) webView.getParent()).setBackgroundColor(
+                        lightStatusBarAppearance ? LIGHT_SYSTEM_SURFACE : DARK_SYSTEM_SURFACE
+                );
+            }
+        }
+    }
+
+    public void setSystemBarAppearance(boolean light) {
+        runOnUiThread(() -> {
+            lightStatusBarAppearance = light;
+            restoreSystemBars();
+        });
     }
 
     private void installNativeFallback(WebView webView) {

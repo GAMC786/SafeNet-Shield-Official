@@ -20,6 +20,10 @@ const nativeFallbackSource = readFileSync(
 );
 const indexHtml = readFileSync(path.join(clientRoot, "index.html"), "utf8");
 const appSource = readFileSync(path.join(clientRoot, "src/App.tsx"), "utf8");
+const nativeStatusBarThemeSource = readFileSync(
+  path.join(clientRoot, "src/components/NativeStatusBarThemeSync.tsx"),
+  "utf8",
+);
 const mainSource = readFileSync(path.join(clientRoot, "src/main.tsx"), "utf8");
 const serverIndexSource = readFileSync(
   path.resolve(process.cwd(), "server/index.ts"),
@@ -218,12 +222,16 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /checked=\{running\}/);
   assert.match(tetherShareSource, /onCheckedChange=\{\(checked\) => void handleToggle\(checked\)\}/);
   assert.match(tetherShareSource, /nextRunning \? start\(shareMode\) : stop\(\)/);
-  assert.match(tetherShareSource, /Proxy host/);
+  assert.match(tetherShareSource, /TLS proxy host/);
+  assert.match(tetherShareSource, /Select an HTTPS\/TLS proxy mode/);
+  assert.match(tetherShareSource, /SOCKS clients need TLS-wrapper support/);
+  assert.match(tetherShareSource, /TLS certificate SHA-256 fingerprint/);
   assert.match(tetherShareSource, /Open Android Wi-Fi &amp; hotspot settings/);
-  assert.match(tetherShareSource, /HTTPS uses the standard CONNECT tunnel/);
   assert.match(tetherShareSource, /separate from SafeNet&apos;s Private DNS setting/);
   assert.match(tetherShareProxySource, /PROXY_HOST = "192\.168\.49\.1"/);
   assert.match(tetherShareProxySource, /HTTP_PORT = 8228/);
+  assert.match(tetherShareProxySource, /loadOrCreate\(context, proxyHost\)/);
+  assert.match(tetherShareProxySource, /startHandshake\(\)/);
   assert.match(tetherShareProxySource, /"CONNECT"\.equalsIgnoreCase\(method\)/);
   assert.match(tetherShareManagerSource, /getClientList\(\)/);
 });
@@ -370,6 +378,15 @@ test("Android keeps a visible black status bar with white icons", () => {
   assert.match(androidMainActivity, /show\(WindowInsetsCompat\.Type\.statusBars\(\)\)/);
   assert.match(androidMainActivity, /FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS/);
   assert.match(indexHtml, /name="theme-color" content="#000000"/);
+});
+
+test("Wonderland Light Mode shows the Android status bar with dark icons", () => {
+  assert.match(nativeStatusBarThemeSource, /resolvedTheme === "light" \? "light" : "dark"/);
+  assert.match(nativeStatusBarThemeSource, /Capacitor\.getPlatform\(\) !== "android"/);
+  assert.match(appSource, /<NativeStatusBarThemeSync \/>/);
+  assert.match(androidMainActivity, /setStatusBarColor\(\s*lightStatusBarAppearance \? LIGHT_SYSTEM_SURFACE/);
+  assert.match(androidMainActivity, /setAppearanceLightStatusBars\(lightStatusBarAppearance\)/);
+  assert.match(androidMainActivity, /show\(WindowInsetsCompat\.Type\.statusBars\(\)\)/);
 });
 
 test("Android publishes live system-bar insets to the WebView layout", () => {

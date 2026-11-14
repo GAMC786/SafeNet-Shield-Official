@@ -54,6 +54,8 @@ final class TetherShareManager {
         final int proxyPort;
         final int httpProxyPort;
         final int socksProxyPort;
+        final String tlsCertificatePem;
+        final String tlsFingerprint;
         final boolean groupOwner;
         final String mode;
         final String lastError;
@@ -69,6 +71,8 @@ final class TetherShareManager {
             int proxyPort,
             int httpProxyPort,
             int socksProxyPort,
+            String tlsCertificatePem,
+            String tlsFingerprint,
             boolean groupOwner,
             String mode,
             String lastError,
@@ -83,6 +87,8 @@ final class TetherShareManager {
             this.proxyPort = proxyPort;
             this.httpProxyPort = httpProxyPort;
             this.socksProxyPort = socksProxyPort;
+            this.tlsCertificatePem = tlsCertificatePem;
+            this.tlsFingerprint = tlsFingerprint;
             this.groupOwner = groupOwner;
             this.mode = mode;
             this.lastError = lastError;
@@ -194,6 +200,8 @@ final class TetherShareManager {
             PROXY_PORT,
             TetherShareProxy.HTTP_PORT,
             TetherShareProxy.SOCKS_PORT,
+            proxy.tlsCertificatePem(),
+            proxy.tlsFingerprint(),
             groupOwner,
             mode,
             lastError,
@@ -213,7 +221,7 @@ final class TetherShareManager {
         }
         try {
             shareHost = localHost;
-            proxy.start();
+            proxy.start(localHost);
             if (!isCurrent(generation)) {
                 proxy.stop();
                 return;
@@ -222,7 +230,7 @@ final class TetherShareManager {
             running = true;
             lastError = null;
         } catch (IOException error) {
-            fail("SafeNet could not open the HTTP/SOCKS proxy ports " +
+            fail("SafeNet could not open the TLS HTTP/SOCKS proxy ports " +
                 TetherShareProxy.HTTP_PORT + " and " + TetherShareProxy.SOCKS_PORT + ".");
         }
     }
@@ -349,7 +357,7 @@ final class TetherShareManager {
 
                 updateGroupSnapshot(group);
                 try {
-                    proxy.start();
+                    proxy.start(PROXY_HOST);
                     synchronized (this) {
                         if (!isCurrent(generation)) {
                             proxy.stop();
@@ -360,7 +368,7 @@ final class TetherShareManager {
                         lastError = null;
                     }
                 } catch (IOException error) {
-                    fail("SafeNet could not open the HTTP/SOCKS proxy ports " +
+                    fail("SafeNet could not open the TLS HTTP/SOCKS proxy ports " +
                         TetherShareProxy.HTTP_PORT + " and " + TetherShareProxy.SOCKS_PORT + ".");
                     return;
                 }

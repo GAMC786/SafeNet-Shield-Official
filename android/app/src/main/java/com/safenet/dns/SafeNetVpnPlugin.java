@@ -59,6 +59,19 @@ public class SafeNetVpnPlugin extends Plugin {
     private boolean projectionResultDelivered;
 
     @PluginMethod
+    public void setSystemBarAppearance(PluginCall call) {
+        String theme = call.getString("theme", "dark");
+        if (!"light".equals(theme) && !"dark".equals(theme)) {
+            call.reject("Theme must be light or dark.", "INVALID_SYSTEM_BAR_THEME");
+            return;
+        }
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).setSystemBarAppearance("light".equals(theme));
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void getCallScreeningStatus(PluginCall call) {
         call.resolve(callScreeningStatus());
     }
@@ -460,6 +473,8 @@ public class SafeNetVpnPlugin extends Plugin {
         result.put("proxyPort", snapshot.proxyPort);
         result.put("httpProxyPort", snapshot.httpProxyPort);
         result.put("socksProxyPort", snapshot.socksProxyPort);
+        result.put("tlsCertificatePem", snapshot.tlsCertificatePem);
+        result.put("tlsFingerprint", snapshot.tlsFingerprint);
         result.put("httpProxySupported", snapshot.httpProxyPort > 0);
         result.put("socksProxySupported", snapshot.socksProxyPort > 0);
         result.put("groupOwner", snapshot.groupOwner);

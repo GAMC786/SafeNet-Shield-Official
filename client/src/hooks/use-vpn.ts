@@ -114,6 +114,7 @@ export interface CallScreeningStatus {
 }
 
 interface SafeNetVpnPlugin {
+  setSystemBarAppearance(options: { theme: "light" | "dark" }): Promise<void>;
   getPrivateDnsStatus(options: { expectedHostname: string }): Promise<{
     supported: boolean;
     running: boolean;

@@ -367,7 +367,7 @@ export default function TetherShare() {
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 {shareMode === "wifi_direct"
-                  ? "Create a private Wi-Fi Direct network for nearby devices without root. SafeNet runs a local HTTP proxy so connected devices can use this phone&apos;s Wi-Fi or mobile connection."
+                  ? "Create a private Wi-Fi Direct network for nearby devices without root. SafeNet runs a TLS-protected proxy so connected devices can use this phone&apos;s Wi-Fi or mobile connection."
                   : "Use an already enabled Wi-Fi hotspot or the same Wi-Fi network as the client. Wireless Debugging can use this mode because it uses the phone&apos;s existing local network; ADB is not required by SafeNet."}
               </p>
             </div>
@@ -677,20 +677,34 @@ export default function TetherShare() {
               On each connected device, choose manual proxy settings for this network.
             </p>
             <div className="space-y-2">
-              <CopyValue value={status.proxyHost || "192.168.49.1"} label="Proxy host" />
+              <CopyValue value={status.proxyHost || "192.168.49.1"} label="TLS proxy host" />
               <CopyValue
                 value={String(status.httpProxyPort || status.proxyPort || 8228)}
-                label="HTTP proxy port"
+                label="TLS HTTP proxy port"
               />
               <CopyValue
                 value={String(status.socksProxyPort || 8229)}
-                label="SOCKS4/5 proxy port"
+                label="TLS SOCKS4/5 port"
               />
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Use the HTTP port for normal manual proxy settings. Use the SOCKS port for apps
-              that support SOCKS4/5. HTTPS uses the standard CONNECT tunnel; SafeNet does not
-              inspect encrypted page contents.
+              Select an HTTPS/TLS proxy mode. Save the PEM as a certificate file, import it as
+              a trusted CA on each client, and verify its fingerprint. Some apps ignore
+              user-installed CAs. SOCKS clients need TLS-wrapper support.
+            </p>
+            {status.tlsFingerprint && status.tlsCertificatePem && (
+              <div className="space-y-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
+                <p className="text-xs leading-5 text-emerald-100">
+                  Verify this SHA-256 fingerprint when trusting the certificate. The certificate
+                  is local to this phone and its private key is never shared.
+                </p>
+                <CopyValue value={status.tlsFingerprint} label="TLS certificate SHA-256 fingerprint" />
+                <CopyValue value={status.tlsCertificatePem} label="Copy TLS certificate PEM" />
+              </div>
+            )}
+            <p className="text-xs leading-5 text-amber-200/80">
+              TLS protects the client-to-proxy connection. HTTPS websites still use the standard
+              CONNECT tunnel; plain HTTP websites are not encrypted beyond the proxy.
             </p>
             <p className="text-xs leading-5 text-amber-200/80">
               Internet Share is an explicit proxy, not a full-device VPN. Connected devices
