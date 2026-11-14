@@ -190,7 +190,9 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /start\(shareMode\)/);
   assert.doesNotMatch(tetherShareSource, /Recommended family DNS setup/);
   assert.match(tetherShareSource, /DNS resolver controls/);
-  assert.match(tetherShareSource, /No resolver is selected automatically/);
+  assert.match(tetherShareSource, /find\(\(server\) => server\.isActive\)/);
+  assert.match(tetherShareSource, /is active for SafeNet protection/);
+  assert.match(tetherShareSource, /No resolver is active for SafeNet protection/);
   assert.match(tetherShareSource, /useCreateDnsServer/);
   assert.match(tetherShareSource, /useUpdateDnsServer/);
   assert.match(tetherShareSource, /useDeleteDnsServer/);

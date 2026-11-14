@@ -122,9 +122,14 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 
 export default function TetherShare() {
   const { supported, status, isBusy, start, stop, openWifiSettings, openAppSettings } = useTetherShare();
-  const { data: dnsServers } = useDnsServers();
+  const {
+    data: dnsServers,
+    isError: isDnsServersError,
+    isLoading: isDnsServersLoading,
+  } = useDnsServers();
   const { toast } = useToast();
   const running = status?.running === true;
+  const activeResolver = dnsServers?.find((server) => server.isActive);
   const starting = status?.starting === true || isBusy;
   const createResolver = useCreateDnsServer();
   const updateResolver = useUpdateDnsServer();
@@ -538,7 +543,13 @@ export default function TetherShare() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-sky-200">
-                No resolver is selected automatically. Activate one only when you want SafeNet protection to use it.
+                {isDnsServersLoading
+                  ? "Checking the active resolver…"
+                  : isDnsServersError
+                    ? "The active resolver could not be loaded. Open DNS Servers to check its status."
+                    : activeResolver
+                      ? `${activeResolver.name} is active for SafeNet protection. Newly added resolvers do not replace it until you activate another.`
+                      : "No resolver is active for SafeNet protection. Activate one when you want to use it; adding one alone will not activate it."}
               </p>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
                 <Link href="/dns">
