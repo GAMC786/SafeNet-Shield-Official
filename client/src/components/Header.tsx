@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 interface HeaderProps {
   title: string;
   subtitle?: string;
-  status?: "active" | "inactive" | "warning" | "unprotected" | "sharing" | "not-sharing";
+  status?: "active" | "inactive" | "warning" | "unprotected" | "sharing" | "not-sharing" | "rules-enabled";
   action?: ReactNode;
 }
 
@@ -34,18 +34,19 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
               "flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider",
                status === "active" || status === "sharing" ? "bg-green-500/10 border-green-500/30 text-green-400" :
                status === "not-sharing" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
-               status === "unprotected" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
+                status === "unprotected" || status === "rules-enabled" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
                status === "warning" ? "bg-red-500/10 border-red-500/30 text-red-400" :
               "bg-gray-500/10 border-gray-500/30 text-gray-400"
             )}>
                 {status === "active" || status === "sharing" ? <ShieldCheck className="w-3.5 h-3.5" /> :
                  status === "not-sharing" ? <Zap className="w-3.5 h-3.5" /> :
-                status === "unprotected" ? <Zap className="w-3.5 h-3.5" /> :
+                 status === "unprotected" || status === "rules-enabled" ? <Zap className="w-3.5 h-3.5" /> :
                status === "warning" ? <Zap className="w-3.5 h-3.5" /> : null}
                 {status === "active" ? "Protected" :
                  status === "sharing" ? "Sharing" :
                  status === "not-sharing" ? "Not Sharing" :
-                status === "unprotected" ? "Unprotected" :
+                 status === "unprotected" ? "Unprotected" :
+                  status === "rules-enabled" ? "Rules Enabled" :
                status === "warning" ? "Threat Detected" : "Inactive"}
             </div>
           )}

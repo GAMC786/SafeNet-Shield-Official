@@ -71,7 +71,7 @@ export default function Firewall() {
     action: "deny" as const,
   });
   const activeDns = dnsServers?.find((server) => server.isActive);
-  const firewallHeaderStatus = firewallEnabled ? "unprotected" : "inactive";
+  const firewallHeaderStatus = firewallEnabled ? "rules-enabled" : "inactive";
 
   useEffect(() => {
     if (!editingRuleId || !rules) return;
