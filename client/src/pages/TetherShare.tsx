@@ -166,6 +166,10 @@ export default function TetherShare() {
     if (currentResolver) setEditingResolver(currentResolver);
   }, [dnsServers, editingResolverId]);
 
+  useEffect(() => {
+    if (activeResolver) setSelectedResolverProtocol(activeResolver.type);
+  }, [activeResolver?.id, activeResolver?.type]);
+
   const resetResolverForm = () => {
     clearResolverForm();
     clearResolverDialogOpen();
