@@ -99,28 +99,12 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     description: "Blocks malware, phishing, and adult content. Cloudflare applies filtering while DNS stays encrypted.",
   },
   {
-    name: "AdGuard DNS (Family)",
-    type: "doh",
-    ipVersion: "ipv4",
-    primaryAddress: "https://family.adguard-dns.com/dns-query",
-    secondaryAddress: null,
-    description: "Blocks ads, trackers, malware, and adult content; enables Safe Search where supported.",
-  },
-  {
     name: "AdGuard DNS (Family · TLS)",
     type: "dot",
     ipVersion: "ipv4",
     primaryAddress: "family.adguard-dns.com",
     secondaryAddress: null,
     description: "The same family filters over DNS-over-TLS for Android Private DNS.",
-  },
-  {
-    name: "Control D (Family Friendly)",
-    type: "doh",
-    ipVersion: "ipv4",
-    primaryAddress: "https://freedns.controld.com/family",
-    secondaryAddress: null,
-    description: "Control D's free Family Friendly resolver over DNS-over-HTTPS.",
   },
   {
     name: "Control D (Family · TLS)",
@@ -147,19 +131,6 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     description: "FamilyShield protection over plain DNS; OpenDNS Home has no public DNS-over-TLS endpoint.",
   },
 ] as const;
-
-/**
- * NextDNS has no shared family policy. This standard preset is useful for
- * ordinary resolution; family filtering requires a profile-specific URL.
- */
-export const DNS_NEXTDNS_RESOLVER_PRESET: DnsResolverPreset = {
-  name: "NextDNS",
-  type: "plain",
-  ipVersion: "ipv4",
-  primaryAddress: "45.90.28.0",
-  secondaryAddress: "45.90.30.0",
-  description: "Standard NextDNS anycast resolvers; use a profile URL for custom filtering policies.",
-};
 
 /**
  * NextDNS's generic encrypted hostname. Profile-specific filtering uses

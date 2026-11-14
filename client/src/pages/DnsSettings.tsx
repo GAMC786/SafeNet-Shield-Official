@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
   DNS_FAMILY_RESOLVER_PRESETS,
-  DNS_NEXTDNS_RESOLVER_PRESET,
   DNS_NEXTDNS_DOT_RESOLVER_PRESET,
 } from "@shared/dns-resolvers";
 
@@ -35,7 +34,6 @@ type ResolverForm = {
 
 const resolverPresets = [
   ...DNS_FAMILY_RESOLVER_PRESETS,
-  DNS_NEXTDNS_RESOLVER_PRESET,
   DNS_NEXTDNS_DOT_RESOLVER_PRESET,
 ] as const;
 
