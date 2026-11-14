@@ -18,7 +18,7 @@ export default function Settings() {
         subtitle="Configuration & Security"
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="settings-content-grid grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="md:col-span-2">
           <ThemeModeControls />
         </div>
@@ -31,6 +31,30 @@ export default function Settings() {
           className="safenet-settings-brand-footer md:col-span-2 space-y-4 rounded border p-4 text-sm"
           data-testid="settings-brand-footer"
         >
+          <div className="flex items-center justify-center gap-2 text-yellow-500">
+            <AlertTriangle className="w-4 h-4" />
+            <span className="font-mono uppercase" data-testid="settings-version">
+              SafeNet Shield DNS Server+ (Official) v{appVersion}
+            </span>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-3 border-t pt-4 text-center sm:flex-row sm:gap-5">
+            <a
+              href="mailto:Post@SafeNetInc.Ca"
+              className="safenet-settings-brand-footer-link underline-offset-4 hover:underline"
+            >
+              Contact Us: Post@SafeNetInc.Ca
+            </a>
+          </div>
+          <div className="flex items-center justify-center border-t pt-4">
+            <img
+              src={wordmarkImage}
+              alt="SafeNet Inc."
+              className="safenet-settings-brand-wordmark h-12 w-[220px] object-contain"
+            />
+          </div>
+        </div>
+
+        <CyberCard className="settings-tribute md:col-span-2 space-y-4 text-sm">
           <div className="border-b pb-4 text-center">
             <a
               href={terryFoxSourceUrl}
@@ -51,28 +75,7 @@ export default function Settings() {
               In Loving Memory of Mr. Terry Stanley Fox (1958 – 1981)
             </p>
           </div>
-          <div className="flex items-center justify-center gap-2 text-yellow-500">
-            <AlertTriangle className="w-4 h-4" />
-              <span className="font-mono uppercase" data-testid="settings-version">
-                SafeNet Shield DNS Server+ (Official) v{appVersion}
-            </span>
-          </div>
-          <div className="flex flex-col items-center justify-center gap-3 border-t pt-4 text-center sm:flex-row sm:gap-5">
-            <a
-              href="mailto:Post@SafeNetInc.Ca"
-              className="safenet-settings-brand-footer-link underline-offset-4 hover:underline"
-            >
-              Contact Us: Post@SafeNetInc.Ca
-            </a>
-          </div>
-          <div className="flex items-center justify-center border-t pt-4">
-            <img
-              src={wordmarkImage}
-              alt="SafeNet Inc."
-              className="safenet-settings-brand-wordmark h-12 w-[220px] object-contain"
-            />
-          </div>
-        </div>
+        </CyberCard>
       </div>
     </div>
   );
