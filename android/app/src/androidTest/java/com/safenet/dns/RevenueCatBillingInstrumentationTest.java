@@ -168,6 +168,9 @@ public class RevenueCatBillingInstrumentationTest {
         String stalledUrl = billingUrl +
             "?billing_clerk_stall=1&redirect_url=%2Fbilling";
         callWebView("window.location.assign(" + JSONObject.quote(stalledUrl) + "); true");
+        waitForWebView(
+            "Boolean(document.querySelector('[data-testid=\"billing-sign-in-loading\"]'))"
+        );
         waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-clerk-recovery\"]'))");
         assertTrue(
             "Clerk recovery message must explain that the account could not be loaded",

@@ -325,7 +325,17 @@ export default function Billing() {
             </p>
           </div>
           {!clerkIsLoaded && !clerkLoadTimedOut ? (
-            <p className="text-sm text-muted-foreground">Loading your account…</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">Loading your account…</p>
+              <Button
+                data-testid="billing-sign-in-loading"
+                type="button"
+                className="w-full shrink-0 sm:w-auto"
+                onClick={openSignIn}
+              >
+                Sign in to continue
+              </Button>
+            </div>
           ) : !clerkIsLoaded ? (
             <div
               data-testid="billing-clerk-recovery"
@@ -334,15 +344,25 @@ export default function Billing() {
               <p className="text-sm text-red-200">
                 Your account could not be loaded. Check your connection and try again.
               </p>
-              <Button
-                data-testid="billing-clerk-retry"
-                type="button"
-                variant="outline"
-                className="w-full shrink-0 sm:w-auto"
-                onClick={retryClerkLoading}
-              >
-                Retry
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  data-testid="billing-clerk-retry"
+                  type="button"
+                  variant="outline"
+                  className="w-full shrink-0 sm:w-auto"
+                  onClick={retryClerkLoading}
+                >
+                  Retry
+                </Button>
+                <Button
+                  data-testid="billing-sign-in-recovery"
+                  type="button"
+                  className="w-full shrink-0 sm:w-auto"
+                  onClick={openSignIn}
+                >
+                  Sign in to continue
+                </Button>
+              </div>
             </div>
           ) : !isSignedIn ? (
             <div
