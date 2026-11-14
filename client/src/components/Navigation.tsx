@@ -13,7 +13,7 @@ const navItems = [
 
 const systemServiceItems = [
   { path: "/speedtest", label: "Speed Test", icon: Gauge },
-  { path: "/spam-call-blocker", label: "Spam Call Blocker", icon: PhoneCall },
+  { path: "/secure-dialer", label: "Secure Dialer", icon: PhoneCall },
   { path: "/tether", label: "Internet Share", icon: Share2 },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/billing", label: "Premium", icon: CreditCard },

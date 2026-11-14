@@ -52,8 +52,8 @@ const tetherShareSource = readFileSync(
   path.join(clientRoot, "src/pages/TetherShare.tsx"),
   "utf8",
 );
-const spamCallBlockerSource = readFileSync(
-  path.join(clientRoot, "src/pages/SpamCallBlocker.tsx"),
+const secureDialerSource = readFileSync(
+  path.join(clientRoot, "src/pages/SecureDialer.tsx"),
   "utf8",
 );
 const tetherShareManagerSource = readFileSync(
@@ -197,8 +197,9 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Activate/);
   assert.match(tetherShareSource, /safenet-tether-resolver-draft/);
   assert.match(tetherShareSource, /safenet-tether-editing-resolver-id/);
-  assert.match(spamCallBlockerSource, /safenet-spam-call-number-draft/);
-  assert.match(spamCallBlockerSource, /safenet-spam-call-report-number-draft/);
+  assert.match(secureDialerSource, /https:\/\/github\.com\/Secure-Phone-apps\/Secure-Dialer/);
+  assert.match(secureDialerSource, /Secure Dialer is a separate Android app/);
+  assert.doesNotMatch(secureDialerSource, /Junkboy SMS Filter/);
   assert.doesNotMatch(tetherShareSource, /Recommended providers|dotResolverPresets/);
   assert.match(tetherShareSource, /Add resolver/);
   assert.match(tetherShareSource, /Edit/);
@@ -412,7 +413,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /Save DNS Override Policy/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
   assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled \? "rules-enabled" : "inactive"/);
-  assert.match(firewallSource, /subtitle="DNS and Network Packet-Filtering Rules"/);
+  assert.match(firewallSource, /subtitle="DNS & Network Packet-Filtering Rules"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \|\| status === "sharing" \|\| status === "rules-enabled"/);
