@@ -412,9 +412,9 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /Save DNS Override Policy/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
   assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled \? "rules-enabled" : "inactive"/);
-  assert.match(headerSource, /status === "rules-enabled" \? "Rules Enabled"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
+  assert.match(headerSource, /status === "rules-enabled" \? "Rules Enabled"/);
   assert.match(headerSource, /status === "active" \? "Protected"/);
   assert.doesNotMatch(headerSource, /Rules configured/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|Connection status:/);
