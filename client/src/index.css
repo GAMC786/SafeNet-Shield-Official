@@ -662,14 +662,6 @@
   background-color: #fff;
 }
 
-.dark .settings-content-grid .settings-tribute {
-  order: 1;
-}
-
-.dark .settings-content-grid .safenet-settings-brand-footer {
-  order: 2;
-}
-
 @layer base {
   * {
     @apply border-border;

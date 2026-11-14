@@ -18,7 +18,7 @@ export default function Settings() {
         subtitle="Configuration & Security"
       />
 
-      <div className="settings-content-grid grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="md:col-span-2">
           <ThemeModeControls />
         </div>
@@ -31,6 +31,26 @@ export default function Settings() {
           className="safenet-settings-brand-footer md:col-span-2 space-y-4 rounded border p-4 text-sm"
           data-testid="settings-brand-footer"
         >
+          <div className="border-b pb-4 text-center">
+            <a
+              href={terryFoxSourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open Terry Fox Marathon of Hope source"
+            >
+              <div className="mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded bg-white">
+                <img
+                  src={terryFoxImage}
+                  alt="Terry Fox Marathon of Hope"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            </a>
+            <h2 className="mt-3 font-display text-lg tracking-wider">Marathon of Hope</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              In Loving Memory of Mr. Terry Stanley Fox (1958 – 1981)
+            </p>
+          </div>
           <div className="flex items-center justify-center gap-2 text-yellow-500">
             <AlertTriangle className="w-4 h-4" />
             <span className="font-mono uppercase" data-testid="settings-version">
@@ -53,29 +73,6 @@ export default function Settings() {
             />
           </div>
         </div>
-
-        <CyberCard className="settings-tribute md:col-span-2 space-y-4 text-sm">
-          <div className="border-b pb-4 text-center">
-            <a
-              href={terryFoxSourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open Terry Fox Marathon of Hope source"
-            >
-              <div className="mx-auto aspect-[1200/630] w-full max-w-2xl overflow-hidden rounded bg-white">
-                <img
-                  src={terryFoxImage}
-                  alt="Terry Fox Marathon of Hope"
-                  className="h-full w-full object-contain"
-                />
-              </div>
-            </a>
-            <h2 className="mt-3 font-display text-lg tracking-wider">Marathon of Hope</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              In Loving Memory of Mr. Terry Stanley Fox (1958 – 1981)
-            </p>
-          </div>
-        </CyberCard>
       </div>
     </div>
   );
