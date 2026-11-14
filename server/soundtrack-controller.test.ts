@@ -19,12 +19,17 @@ class MockAudioElement {
   paused = true;
   loop = false;
   ended = false;
+  src = "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav";
   currentTime = 0;
   volume = 1;
   error: { code: number } | null = null;
   playCalls = 0;
   loadCalls = 0;
   private listeners = new Map<string, EventHandler[]>();
+
+  getAttribute(name: string) {
+    return name === "src" ? this.src : null;
+  }
 
   addEventListener(type: string, handler: EventHandler) {
     const handlers = this.listeners.get(type) ?? [];
@@ -121,6 +126,9 @@ function createHarness(initiallyMuted = false) {
   };
   const document = {
     hidden: false,
+    documentElement: {
+      classList: { contains: () => false },
+    },
     getElementById: (id: string) =>
       id === "safenet-soundtrack-audio" ? audio : null,
     addEventListener: (type: string, handler: EventHandler) =>
@@ -131,6 +139,10 @@ function createHarness(initiallyMuted = false) {
     window,
     document,
     HTMLAudioElement: MockAudioElement,
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
     Date: TestDate,
   });
 

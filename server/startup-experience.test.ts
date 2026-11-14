@@ -567,7 +567,7 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(aiShieldSource, /\{cameraEnabled \? "On" : "Off"\}/);
   assert.match(aiShieldSource, /\{screenEnabled \? "On" : "Off"\}/);
   assert.match(settingsSource, /Marathon of Hope/);
-  assert.match(settingsSource, /In Loving Memory of Mr\. Terry Stanley Fox\. \(1958 – 1981\)/);
+  assert.match(settingsSource, /In Loving Memory of Mr\. Terry Stanley Fox \(1958 – 1981\)/);
   assert.match(settingsSource, /terryFoxSourceUrl/);
   assert.match(settingsSource, /terryFoxImage/);
   assert.match(settingsSource, /aspect-\[1200\/630\]/);
