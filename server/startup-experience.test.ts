@@ -386,10 +386,13 @@ test("updated web assets refresh without clearing app storage", () => {
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 
-test("DNS Firewall clearly states rules are not enforced for arbitrary resolvers", () => {
+test("DNS Firewall clearly explains domain rules and their enforcement limits", () => {
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
-  assert.match(firewallSource, /custom DoH endpoint only forwards DNS queries/);
-  assert.match(firewallSource, /Rules are stored but are not currently synced to a provider from this page/);
+  assert.match(firewallSource, /SafeNet stores these rules but does not filter DNS traffic/);
+  assert.match(firewallSource, /this page does not sync them to a DNS provider/);
+  assert.match(firewallSource, /DNS rules match domain names, not keywords or URL paths/);
+  assert.match(firewallSource, /aria-label="Enable saved DNS rules"/);
+  assert.doesNotMatch(firewallSource, /Allow\/Block URLs|Domain or URL|Enter URL|URL rule/);
   assert.match(firewallSource, /useDnsServers/);
   assert.doesNotMatch(firewallSource, /useLocalVpn|SafeNet Local VPN/);
   assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
@@ -400,7 +403,7 @@ test("DNS Firewall clearly states rules are not enforced for arbitrary resolvers
 test("Settings use the current package version and expose only current controls", () => {
   assert.match(settingsSource, /import\.meta\.env\.VITE_APP_VERSION/);
   assert.match(settingsSource, /data-testid="settings-version"/);
-  assert.match(firewallSource, /Prevent DNS Overrides/);
+  assert.match(firewallSource, /Save DNS Override Policy/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
   assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled \? "unprotected" : "inactive"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
@@ -411,7 +414,7 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(firewallSource, /Connect NextDNS|Sign in once to connect or sync this provider/);
   assert.doesNotMatch(firewallSource, /Sign in to connect another DNS provider/);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
-  assert.match(firewallSource, /Restrict cleartext UDP\/TCP port 53/);
+  assert.match(firewallSource, /restrict unencrypted DNS on port 53/);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);

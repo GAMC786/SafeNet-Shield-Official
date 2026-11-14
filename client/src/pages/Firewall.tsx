@@ -109,12 +109,12 @@ export default function Firewall() {
       onSuccess: () => {
         setNewDomain("");
         toast({
-          title: "URL rule added",
-          description: `${content} will be ${newDomainAction === "block" ? "blocked" : "allowed"}.`,
+          title: "Domain rule saved",
+          description: `${content} was saved as a ${newDomainAction} rule. SafeNet does not apply it to DNS traffic from this page.`,
         });
       },
       onError: (error) => toast({
-        title: "URL rule could not be added",
+        title: "Domain rule could not be saved",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       }),
@@ -158,8 +158,8 @@ export default function Firewall() {
       toast({
         title: editingRule ? "Firewall rule updated" : "Firewall rule created",
         description: editingRule
-          ? "The access rule changes are now active."
-          : `${newRule.name} is now active.`,
+          ? "The access rule changes were saved."
+          : `${newRule.name} was saved.`,
       });
     };
     if (editingRule) {
@@ -184,7 +184,7 @@ export default function Firewall() {
     if (addressesToAdd.length === 0) {
       toast({
         title: `${provider.name} is already allowed`,
-        description: "All of this provider's resolver addresses are already in Access Rules.",
+        description: "This provider's resolver addresses are already saved as access rules.",
       });
       return;
     }
@@ -207,7 +207,7 @@ export default function Firewall() {
       );
       toast({
         title: `${provider.name} added to Access Rules`,
-        description: `${addressesToAdd.length} DNS resolver ${addressesToAdd.length === 1 ? "address is" : "addresses are"} now allowed.`,
+        description: `${addressesToAdd.length} DNS resolver ${addressesToAdd.length === 1 ? "address was" : "addresses were"} saved as allow rules.`,
       });
     } catch (error) {
       toast({
@@ -245,11 +245,11 @@ export default function Firewall() {
       },
       {
         onSuccess: () => {
-          const filterType = editingBlocklist.type === "keyword" ? "keyword filter" : "URL rule";
+          const filterType = editingBlocklist.type === "keyword" ? "keyword filter" : "domain rule";
           closeEditBlocklistDialog();
           toast({
             title: `${filterType[0].toUpperCase()}${filterType.slice(1)} updated`,
-            description: `${content} is now configured to ${editingBlocklist.type === "domain" ? editedBlocklistAction : "block"} matching requests.`,
+            description: `${content} was saved as a ${editingBlocklist.type === "domain" ? editedBlocklistAction : "block"} rule.`,
           });
         },
         onError: (error) => toast({
@@ -266,8 +266,8 @@ export default function Firewall() {
       { id: item.id, data: { isActive: !item.isActive } },
       {
         onSuccess: () => toast({
-          title: `${item.type === "keyword" ? "Keyword filter" : "URL rule"} ${item.isActive ? "disabled" : "enabled"}`,
-          description: `${item.content} is now ${item.isActive ? "ignored" : "active"} by SafeNet filtering.`,
+          title: `${item.type === "keyword" ? "Keyword filter" : "Domain rule"} ${item.isActive ? "disabled" : "enabled"}`,
+          description: `${item.content} is now ${item.isActive ? "disabled" : "enabled"} in SafeNet's saved rules.`,
         }),
         onError: (error) => toast({
           title: "Filter status could not be changed",
@@ -310,11 +310,11 @@ export default function Firewall() {
   };
 
   const handleDeleteBlocklist = async (item: Blocklist) => {
-    if (!window.confirm(`Delete the ${item.type === "keyword" ? "keyword filter" : "URL rule"} "${item.content}"?`)) return;
+    if (!window.confirm(`Delete the ${item.type === "keyword" ? "keyword filter" : "domain rule"} "${item.content}"?`)) return;
     try {
       await deleteBlock.mutateAsync(item.id);
       toast({
-        title: item.type === "keyword" ? "Keyword filter deleted" : "URL rule deleted",
+        title: item.type === "keyword" ? "Keyword filter deleted" : "Domain rule deleted",
         description: `${item.content} was removed.`,
       });
     } catch (error) {
@@ -331,7 +331,7 @@ export default function Firewall() {
     <div className="space-y-6">
       <Header 
         title="Firewall Rules" 
-        subtitle="Access Control Lists" 
+        subtitle="DNS & Network Rules" 
         status={firewallHeaderStatus}
       />
 
@@ -343,7 +343,7 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              Manage domain rules saved in SafeNet. A selected resolver or custom DoH endpoint only forwards DNS queries; it does not apply these rules. Rules require a provider integration that supports rule management. Keywords and URL paths are not DNS rules. {blocklists?.filter((item) => item.isActive).length || 0} active saved rules.
+              SafeNet stores these rules but does not filter DNS traffic. The switch controls the saved rule set; it does not turn on filtering. To enforce domain rules, sync them with a DNS provider that supports rule management. DNS rules match domain names, not keywords or URL paths. {blocklists?.filter((item) => item.isActive).length || 0} enabled rules saved.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">
@@ -358,14 +358,14 @@ export default function Firewall() {
               </Link>
             </div>
             <div className="mt-4 space-y-2 rounded-md border border-white/10 bg-background/30 p-3">
-              <p className="text-xs font-semibold text-white">DNS provider behavior</p>
+              <p className="text-xs font-semibold text-white">Selected DNS provider</p>
               <p className="text-xs text-muted-foreground">
                 {activeDns
-                  ? `${activeDns.name} is the selected upstream resolver. SafeNet does not intercept or filter its DNS traffic on this path.`
-                  : "Choose an upstream resolver in DNS Provider settings. Selecting one does not enable SafeNet rule enforcement."}
+                  ? `${activeDns.name} is selected as the upstream resolver. SafeNet does not filter DNS queries sent to it.`
+                  : "No DNS resolver is selected. Choose one on the DNS Servers page; this will not enable SafeNet rule enforcement."}
               </p>
               <p role="status" className="text-xs text-amber-200">
-                Rules are stored but are not currently synced to a provider from this page.
+                These rules are saved in SafeNet; this page does not sync them to a DNS provider.
               </p>
             </div>
           </div>
@@ -374,7 +374,7 @@ export default function Firewall() {
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
               onCheckedChange={(checked) => updateSettings.mutate({ firewallEnabled: checked })}
-              aria-label="Enable saved DNS Firewall policy"
+              aria-label="Enable saved DNS rules"
               data-testid="switch-firewall-master"
             />
           </div>
@@ -388,7 +388,7 @@ export default function Firewall() {
               Access Rules
             </TabsTrigger>
             <TabsTrigger value="domains" className="w-full justify-start font-display tracking-wider data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              Allow/Block URLs
+              Allow/Block Domains
             </TabsTrigger>
           </TabsList>
           <div className="flex-1">
@@ -399,14 +399,14 @@ export default function Firewall() {
               <div className="flex items-start gap-3">
                 <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
-                  <h3 className="font-display font-bold text-white">Prevent DNS Overrides</h3>
+                  <h3 className="font-display font-bold text-white">Save DNS Override Policy</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Restrict cleartext UDP/TCP port 53 to the configured SafeNet resolver addresses so apps cannot silently switch to another cleartext resolver.
+                    Save a policy to restrict unencrypted DNS on port 53 to your selected resolver addresses.
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "This policy is saved, but Android Private DNS and custom DoH traffic are not intercepted or filtered by this setting."
-                      : "Turn this on to save the DNS override policy; an enforcing provider or packet-filter integration is still required."}
+                      ? "This saves the policy only. It does not block traffic; Android Private DNS and custom DNS-over-HTTPS are not affected."
+                      : "Turn this on to save the policy. A provider or packet filter must enforce it before traffic is blocked."}
                   </p>
                 </div>
               </div>
@@ -414,7 +414,7 @@ export default function Firewall() {
                 checked={preventDnsOverrides}
                 disabled={!settings || updateSettings.isPending}
                 onCheckedChange={(checked) => updateSettings.mutate({ preventDnsOverrides: checked })}
-                aria-label="Prevent DNS Overrides"
+                aria-label="Save DNS Override Policy"
                 data-testid="switch-prevent-dns-overrides"
               />
             </div>
@@ -426,8 +426,8 @@ export default function Firewall() {
               <div className="min-w-0 flex-1">
                 <h3 className="font-display font-bold text-white">Family DNS Provider Presets</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add family-safe resolver addresses as LAN-to-WAN DNS allow rules. Each address is saved
-                  separately so IPv4 and IPv6 clients are matched correctly.
+                  Add allow rules for family-safe DNS resolver addresses. Each address is saved separately
+                  for IPv4 and IPv6 clients.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {DNS_PROVIDER_ACCESS_RULES.map((provider) => (
@@ -667,7 +667,7 @@ export default function Firewall() {
             <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle className="font-display tracking-wider">
-                  Edit {editingBlocklist?.type === "keyword" ? "Keyword" : "URL Rule"}
+                  Edit {editingBlocklist?.type === "keyword" ? "Keyword Filter" : "Domain Rule"}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-4">
@@ -686,7 +686,7 @@ export default function Firewall() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label>{editingBlocklist?.type === "keyword" ? "Keyword" : "Domain or URL"}</Label>
+                  <Label>{editingBlocklist?.type === "keyword" ? "Keyword" : "Domain"}</Label>
                   <Input
                     value={editedBlocklistContent}
                     onChange={(event) => setEditedBlocklistContent(event.target.value)}
@@ -715,7 +715,7 @@ export default function Firewall() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Enter URL or domain (e.g. example.com)" 
+                placeholder="Enter a domain (e.g. example.com)" 
                 className="pl-10 bg-card border-border font-mono"
                 value={newDomain}
                 onChange={e => setNewDomain(e.target.value)}
@@ -794,7 +794,7 @@ export default function Firewall() {
               </div>
             ))}
             {domains.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground font-mono text-sm">No URL rules configured yet.</p>
+              <p className="text-center py-8 text-muted-foreground font-mono text-sm">No domain rules saved yet.</p>
             )}
           </div>
         </TabsContent>
