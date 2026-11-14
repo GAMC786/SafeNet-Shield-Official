@@ -3,7 +3,7 @@ import { ThemeModeControls } from "@/components/ThemeModeControls";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { AlertTriangle } from "lucide-react";
-import wordmarkImage from "@/assets/safenet-inc-logo.svg";
+import safenetLogoMark from "../../../attached_assets/generated_images/safenet-inc-mark.png";
 import terryFoxImage from "@/assets/terry-fox-marathon-of-hope.jpg";
 
 const terryFoxSourceUrl = "https://chatgpt.com/s/m_6a70d18637288191a25bc77259ddba66";
@@ -66,11 +66,16 @@ export default function Settings() {
             </a>
           </div>
           <div className="flex items-center justify-center border-t pt-4">
-            <img
-              src={wordmarkImage}
-              alt="SafeNet Inc."
-              className="safenet-settings-brand-wordmark h-12 w-[220px] object-contain"
-            />
+            <div
+              className="safenet-settings-brand-wordmark flex items-center gap-3 rounded-md px-3 py-2"
+              role="img"
+              aria-label="SafeNet Inc."
+            >
+              <img src={safenetLogoMark} alt="" className="h-10 w-10 object-contain" />
+              <span className="font-display text-xl font-semibold tracking-wide">
+                SafeNet Inc.
+              </span>
+            </div>
           </div>
         </div>
       </div>
