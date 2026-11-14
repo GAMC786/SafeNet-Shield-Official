@@ -40,9 +40,6 @@ export function privateDnsHostnameForServer(server: DnsServer | null | undefined
   if (/^45\.90\.(28|30)\.\d{1,3}$/.test(normalizedAddress)) {
     return "dns.nextdns.io";
   }
-  if (normalizedAddress === "208.67.222.123" || normalizedAddress === "208.67.220.123") {
-    return "familyshield.opendns.com";
-  }
   return null;
 }
 

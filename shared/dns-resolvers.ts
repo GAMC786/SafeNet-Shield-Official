@@ -48,7 +48,7 @@ export const DNS_PROVIDER_ACCESS_RULES: readonly DnsProviderAccessRule[] = [
   {
     id: "opendns",
     name: "OpenDNS FamilyShield",
-    description: "OpenDNS FamilyShield resolvers for adult-content protection.",
+    description: "FamilyShield uses plain DNS; OpenDNS Home does not provide a public DNS-over-TLS endpoint.",
     addresses: [
       "208.67.222.123",
       "208.67.220.123",
@@ -83,6 +83,14 @@ export type DnsResolverPreset = {
  */
 export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
   {
+    name: "Cloudflare (TLS)",
+    type: "dot",
+    ipVersion: "ipv4",
+    primaryAddress: "one.one.one.one",
+    secondaryAddress: null,
+    description: "Cloudflare's standard DNS-over-TLS resolver without family filtering.",
+  },
+  {
     name: "Cloudflare (Family)",
     type: "dot",
     ipVersion: "ipv4",
@@ -99,12 +107,36 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     description: "Blocks ads, trackers, malware, and adult content; enables Safe Search where supported.",
   },
   {
+    name: "AdGuard DNS (Family · TLS)",
+    type: "dot",
+    ipVersion: "ipv4",
+    primaryAddress: "family.adguard-dns.com",
+    secondaryAddress: null,
+    description: "The same family filters over DNS-over-TLS for Android Private DNS.",
+  },
+  {
     name: "Control D (Family Friendly)",
     type: "doh",
     ipVersion: "ipv4",
     primaryAddress: "https://freedns.controld.com/family",
     secondaryAddress: null,
-    description: "Control D's free Family Friendly resolver preset.",
+    description: "Control D's free Family Friendly resolver over DNS-over-HTTPS.",
+  },
+  {
+    name: "Control D (Family · TLS)",
+    type: "dot",
+    ipVersion: "ipv4",
+    primaryAddress: "family.freedns.controld.com",
+    secondaryAddress: null,
+    description: "The free Family Friendly resolver over DNS-over-TLS for Android Private DNS.",
+  },
+  {
+    name: "CleanBrowsing (Family Filter)",
+    type: "dot",
+    ipVersion: "ipv4",
+    primaryAddress: "family-filter-dns.cleanbrowsing.org",
+    secondaryAddress: null,
+    description: "CleanBrowsing's family filter over DNS-over-TLS.",
   },
   {
     name: "OpenDNS (FamilyShield)",
@@ -112,7 +144,7 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     ipVersion: "ipv4",
     primaryAddress: "208.67.222.123",
     secondaryAddress: "208.67.220.123",
-    description: "OpenDNS FamilyShield adult-content and phishing protection.",
+    description: "FamilyShield protection over plain DNS; OpenDNS Home has no public DNS-over-TLS endpoint.",
   },
 ] as const;
 
@@ -127,4 +159,18 @@ export const DNS_NEXTDNS_RESOLVER_PRESET: DnsResolverPreset = {
   primaryAddress: "45.90.28.0",
   secondaryAddress: "45.90.30.0",
   description: "Standard NextDNS anycast resolvers; use a profile URL for custom filtering policies.",
+};
+
+/**
+ * NextDNS's generic encrypted hostname. Profile-specific filtering uses
+ * <profile-id>.dns.nextdns.io; the Android Private DNS card selects that
+ * hostname when a NextDNS profile is connected.
+ */
+export const DNS_NEXTDNS_DOT_RESOLVER_PRESET: DnsResolverPreset = {
+  name: "NextDNS (TLS)",
+  type: "dot",
+  ipVersion: "ipv4",
+  primaryAddress: "dns.nextdns.io",
+  secondaryAddress: null,
+  description: "Encrypted DNS-over-TLS. Connect a NextDNS profile to use its profile-specific settings.",
 };

@@ -22,6 +22,7 @@ import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
   DNS_FAMILY_RESOLVER_PRESETS,
   DNS_NEXTDNS_RESOLVER_PRESET,
+  DNS_NEXTDNS_DOT_RESOLVER_PRESET,
 } from "@shared/dns-resolvers";
 
 type ResolverForm = {
@@ -35,6 +36,7 @@ type ResolverForm = {
 const resolverPresets = [
   ...DNS_FAMILY_RESOLVER_PRESETS,
   DNS_NEXTDNS_RESOLVER_PRESET,
+  DNS_NEXTDNS_DOT_RESOLVER_PRESET,
 ] as const;
 
 const emptyResolver: ResolverForm = {
@@ -139,7 +141,11 @@ export default function DnsSettings() {
       await activateServer.mutateAsync(server.id);
       toast({
         title: "DNS resolver activated",
-        description: `${server.name} is now active. Restart SafeNet Local VPN if it is already running.`,
+        description: server.type === "dot"
+          ? `${server.name} is active. Use its hostname in Android Private DNS to encrypt this phone's DNS queries.`
+          : server.type === "doh"
+            ? `${server.name} is active. DoH works in compatible clients; Android Private DNS requires a DoT hostname.`
+            : `${server.name} is active. Plain DNS is not encrypted and cannot be used as an Android Private DNS hostname.`,
       });
     } catch (error) {
       toast({
@@ -410,7 +416,7 @@ export default function DnsSettings() {
               />
               {formData.type === "doh" && (
                 <p className="text-xs text-muted-foreground">
-                  Enter any provider&apos;s HTTPS DNS query endpoint. SafeNet applies DNS Firewall rules locally before forwarding requests.
+                  Enter the provider&apos;s HTTPS DNS endpoint. DNS-over-HTTPS works only in clients that support DoH; Android Private DNS uses DNS-over-TLS instead.
                 </p>
               )}
             </div>

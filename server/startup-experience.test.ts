@@ -119,6 +119,10 @@ const privateDnsCardSource = readFileSync(
   path.join(clientRoot, "src/components/PrivateDnsCard.tsx"),
   "utf8",
 );
+const privateDnsHookSource = readFileSync(
+  path.join(clientRoot, "src/hooks/use-private-dns.ts"),
+  "utf8",
+);
 const dnsResolversSource = readFileSync(
   path.resolve(process.cwd(), "shared/dns-resolvers.ts"),
   "utf8",
@@ -202,7 +206,7 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(dnsResolversSource, /OpenDNS FamilyShield/);
   assert.match(dnsResolversSource, /AdGuard DNS Family/);
   assert.match(dnsResolversSource, /name: "NextDNS"/);
-  assert.match(dnsResolversSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
+   assert.match(dnsResolversSource, /primaryAddress: "family\.adguard-dns\.com"/);
   assert.match(tetherShareSource, /running \? "sharing" : "not-sharing"/);
   assert.match(headerSource, /status === "sharing" \? "Sharing"/);
   assert.match(headerSource, /status === "not-sharing" \? "Not Sharing"/);
@@ -533,10 +537,20 @@ test("resolver, DDNS, and threat views expose the requested controls", () => {
   assert.match(dnsSettingsSource, /formData\.type === "plain"/);
    assert.match(dnsResolversSource, /AdGuard DNS \(Family\)/);
    assert.match(dnsResolversSource, /https:\/\/family\.adguard-dns\.com\/dns-query/);
+   assert.match(dnsResolversSource, /name: "AdGuard DNS \(Family · TLS\)"[\s\S]*?primaryAddress: "family\.adguard-dns\.com"/);
    assert.match(dnsResolversSource, /NextDNS/);
    assert.match(dnsResolversSource, /45\.90\.28\.0/);
+   assert.match(dnsResolversSource, /name: "NextDNS \(TLS\)"/);
+   assert.match(dnsResolversSource, /primaryAddress: "dns\.nextdns\.io"/);
    assert.match(dnsResolversSource, /Control D \(Family Friendly\)/);
+   assert.match(dnsResolversSource, /name: "Control D \(Family · TLS\)"[\s\S]*?primaryAddress: "family\.freedns\.controld\.com"/);
    assert.match(dnsResolversSource, /https:\/\/freedns\.controld\.com\/family/);
+   assert.match(dnsResolversSource, /name: "CleanBrowsing \(Family Filter\)"/);
+   assert.match(dnsResolversSource, /primaryAddress: "family-filter-dns\.cleanbrowsing\.org"/);
    assert.match(dnsResolversSource, /OpenDNS \(FamilyShield\)/);
    assert.match(dnsResolversSource, /208\.67\.222\.123/);
+   assert.match(dnsResolversSource, /OpenDNS Home does not provide a public DNS-over-TLS endpoint/);
+   assert.match(dnsResolversSource, /name: "Cloudflare \(TLS\)"[\s\S]*?primaryAddress: "one\.one\.one\.one"/);
+   assert.match(dnsResolversSource, /name: "Cloudflare \(Family\)"[\s\S]*?type: "dot"[\s\S]*?primaryAddress: "family\.cloudflare-dns\.com"/);
+   assert.doesNotMatch(privateDnsHookSource, /familyshield\.opendns\.com/);
 });

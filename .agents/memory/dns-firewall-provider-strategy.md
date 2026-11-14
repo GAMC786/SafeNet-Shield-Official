@@ -3,8 +3,8 @@ name: DNS Firewall provider strategy
 description: The chosen architecture for applying SafeNet DNS rules through family DNS provider APIs.
 ---
 
-The user explicitly chose an opt-in SafeNet-hosted filtering resolver for Android Private DNS. Provider-specific APIs remain an alternative when supported, but do not assume arbitrary DNS providers can apply SafeNet rules.
+Prefer provider-hosted encrypted DNS options over requiring a separate SafeNet resolver host. The user said they cannot pay for DigitalOcean and do not know how to set up a server; OpenDNS Home/FamilyShield remains plain DNS because it has no public DoT endpoint.
 
-**Why:** The user changed the product direction and asked to try a hosted resolver without restoring Local VPN.
+**Why:** The user asked for TLS support across existing DNS providers, then explained that separate paid hosting and server setup are not feasible.
 
-**How to apply:** For hosted Android Private DNS, require a host reachable on fixed public TCP 853 with a valid TLS certificate. Provider API sync avoids SafeNet proxying but only works for integrated providers and supported domain rules.
+**How to apply:** Use verified provider DoT hostnames for Android Private DNS where available, preserve other supported transports, and do not suggest a paid resolver host unless the user asks to revisit hosting.
