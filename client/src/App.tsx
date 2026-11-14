@@ -109,6 +109,22 @@ function AppContent() {
 function SignInPage() {
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
+  const requestedRedirect = searchParams.get("redirect_url");
+  const redirectUrl = (() => {
+    if (!requestedRedirect) return undefined;
+    try {
+      const target = new URL(requestedRedirect, window.location.origin);
+      const baseUrl = new URL(window.location.origin);
+      if (
+        target.origin !== baseUrl.origin ||
+        (basePath && target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`)) ||
+        target.pathname.startsWith("//")
+      ) return undefined;
+      return `${target.pathname}${target.search}${target.hash}`;
+    } catch {
+      return undefined;
+    }
+  })();
   const provider = searchParams.get("provider");
   const recoveryNonce = searchParams.get("recovery_nonce") || "";
   const recoveryReturnUri = searchParams.get("return_uri") || "";
@@ -142,6 +158,7 @@ function SignInPage() {
         routing="path"
         path={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
+        {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
       />
     </div>
   );

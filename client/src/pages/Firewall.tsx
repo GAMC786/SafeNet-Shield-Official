@@ -18,11 +18,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useUser } from "@clerk/react";
+import { apiFetch } from "@/lib/api";
 
 export default function Firewall() {
   const { isLoaded: authLoaded, isSignedIn } = useUser();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
@@ -88,7 +90,7 @@ export default function Firewall() {
       setFamilyConnections({});
       return;
     }
-    void fetch("/api/family-dns/connections")
+    void apiFetch("/api/family-dns/connections")
       .then(async (response) => response.ok ? response.json() : null)
       .then((result) => {
         if (result) {
@@ -110,7 +112,7 @@ export default function Firewall() {
       setNextDnsConnected(false);
       return;
     }
-    void fetch("/api/nextdns/connection")
+    void apiFetch("/api/nextdns/connection")
       .then(async (response) => response.ok ? response.json() : null)
       .then((result) => {
         if (result?.connected) {
@@ -126,7 +128,7 @@ export default function Firewall() {
     setNextDnsBusy(true);
     setNextDnsMessage("");
     try {
-      const response = await fetch("/api/nextdns/connection", {
+      const response = await apiFetch("/api/nextdns/connection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId: nextDnsProfileId, token: nextDnsToken }),
@@ -148,7 +150,7 @@ export default function Firewall() {
     setNextDnsBusy(true);
     setNextDnsMessage("");
     try {
-      const response = await fetch("/api/nextdns/sync", { method: "POST" });
+      const response = await apiFetch("/api/nextdns/sync", { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
       setNextDnsSynced(true);
@@ -164,7 +166,7 @@ export default function Firewall() {
     setFamilyBusy(true);
     setFamilyMessage("");
     try {
-      const response = await fetch("/api/family-dns/connections", {
+      const response = await apiFetch("/api/family-dns/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: familyProvider, profileId: familyProfileId, token: familyToken }),
@@ -188,7 +190,7 @@ export default function Firewall() {
     setFamilyBusy(true);
     setFamilyMessage("");
     try {
-      const response = await fetch(`/api/family-dns/${familyProvider}/sync`, { method: "POST" });
+      const response = await apiFetch(`/api/family-dns/${familyProvider}/sync`, { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "DNS Firewall rules could not sync.");
       setFamilyConnections((current) => ({
@@ -514,7 +516,11 @@ export default function Firewall() {
               ) : !isSignedIn ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">Sign in once to connect or sync this provider.</p>
-                  <Button size="sm" variant="outline" onClick={() => window.location.assign("/sign-in?redirect_url=%2Ffirewall")}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setLocation(`/sign-in?redirect_url=${encodeURIComponent(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/firewall`)}`)}
+                  >
                     Sign in
                   </Button>
                 </div>
