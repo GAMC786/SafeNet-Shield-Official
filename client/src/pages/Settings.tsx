@@ -48,7 +48,7 @@ export default function Settings() {
             </a>
             <h2 className="mt-3 font-display text-lg tracking-wider">Marathon of Hope</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)
+              In Loving Memory of Mr. Terry Stanley Fox (1958 – 1981)
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 text-yellow-500">
