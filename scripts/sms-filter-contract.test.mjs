@@ -41,7 +41,7 @@ test("SMS filtering stays local and uses a user-granted default SMS role", async
   assert.match(filter, /PREF_ENABLED, false/);
   assert.match(filter, /return roleHeld && receiveSmsPermissionGranted/);
   assert.match(filter, /MAX_QUARANTINED_MESSAGES = 100/);
-  assert.match(page, /Secure Dialer is a separate Android app/);
+  assert.match(page, /A separate Android dialer maintained by Secure-Phone-apps/);
   assert.doesNotMatch(page, /Junkboy SMS Filter|sms\.requestFilterPermission/);
   assert.match(backup, /safenet_sms_filter\.xml/);
   assert.doesNotMatch(plugin, /apiFetch|fetch\(/);

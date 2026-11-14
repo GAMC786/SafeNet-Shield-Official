@@ -198,7 +198,8 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /safenet-tether-resolver-draft/);
   assert.match(tetherShareSource, /safenet-tether-editing-resolver-id/);
   assert.match(secureDialerSource, /https:\/\/github\.com\/Secure-Phone-apps\/Secure-Dialer/);
-  assert.match(secureDialerSource, /Secure Dialer is a separate Android app/);
+  assert.match(secureDialerSource, /separate Android dialer maintained by Secure-Phone-apps/);
+  assert.match(secureDialerSource, /CallShield/);
   assert.doesNotMatch(secureDialerSource, /Junkboy SMS Filter/);
   assert.doesNotMatch(tetherShareSource, /Recommended providers|dotResolverPresets/);
   assert.match(tetherShareSource, /Add resolver/);
