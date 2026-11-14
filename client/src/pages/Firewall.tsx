@@ -20,12 +20,10 @@ import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { Link } from "wouter";
 import { useDnsServers } from "@/hooks/use-dns";
-import { useLocalVpn } from "@/hooks/use-local-vpn";
 
 export default function Firewall() {
   const { toast } = useToast();
   const { data: dnsServers } = useDnsServers();
-  const localVpn = useLocalVpn();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
   const updateBlock = useUpdateBlocklist();
@@ -73,8 +71,7 @@ export default function Firewall() {
     action: "deny" as const,
   });
   const activeDns = dnsServers?.find((server) => server.isActive);
-  const isProtected = firewallEnabled && Boolean(activeDns) && localVpn.connected;
-  const firewallHeaderStatus = isProtected ? "active" : "unprotected";
+  const firewallHeaderStatus = firewallEnabled ? "unprotected" : "inactive";
 
   useEffect(() => {
     if (!editingRuleId || !rules) return;
@@ -346,7 +343,7 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              SafeNet applies domain allow and block rules before DNS queries reach your selected resolver. This works with any configured DNS provider; no provider account sign-in or provider-specific API is required. Keywords and URL paths are not DNS rules. {blocklists?.filter((item) => item.isActive).length || 0} active custom rules.
+              Manage domain rules saved in SafeNet. A selected resolver or custom DoH endpoint only forwards DNS queries; it does not apply these rules. Rules require a provider integration that supports rule management. Keywords and URL paths are not DNS rules. {blocklists?.filter((item) => item.isActive).length || 0} active saved rules.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">
@@ -361,19 +358,15 @@ export default function Firewall() {
               </Link>
             </div>
             <div className="mt-4 space-y-2 rounded-md border border-white/10 bg-background/30 p-3">
-              <p className="text-xs font-semibold text-white">Provider-independent DNS filtering</p>
+              <p className="text-xs font-semibold text-white">DNS provider behavior</p>
               <p className="text-xs text-muted-foreground">
-                {localVpn.supported
-                  ? localVpn.connected
-                    ? `SafeNet Local VPN is filtering DNS requests before forwarding them to ${activeDns?.name ?? "your selected resolver"}.`
-                    : "Start SafeNet Local VPN to apply these rules before queries are forwarded to your selected resolver."
-                  : "SafeNet applies these rules in its Android Local VPN before forwarding DNS queries to the selected resolver."}
+                {activeDns
+                  ? `${activeDns.name} is the selected upstream resolver. SafeNet does not intercept or filter its DNS traffic on this path.`
+                  : "Choose an upstream resolver in DNS Provider settings. Selecting one does not enable SafeNet rule enforcement."}
               </p>
-              {!activeDns && (
-                <p role="status" className="text-xs text-amber-200">
-                  Select or add a resolver in DNS Provider settings to use DNS Firewall.
-                </p>
-              )}
+              <p role="status" className="text-xs text-amber-200">
+                Rules are stored but are not currently synced to a provider from this page.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-center">
@@ -412,8 +405,8 @@ export default function Firewall() {
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "Applies to the supported SafeNet DNS path while DNS Firewall is On. Local VPN DNS is checked before it reaches the selected resolver."
-                      : "Turn on DNS Firewall above to apply this rule to the supported DNS packet paths."}
+                      ? "This policy is saved, but Android Private DNS and custom DoH traffic are not intercepted or filtered by this setting."
+                      : "Turn this on to save the DNS override policy; an enforcing provider or packet-filter integration is still required."}
                   </p>
                 </div>
               </div>
