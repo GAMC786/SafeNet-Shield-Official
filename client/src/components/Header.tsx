@@ -32,9 +32,9 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
           {status && (
             <div className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider",
-               status === "active" || status === "sharing" ? "bg-green-500/10 border-green-500/30 text-green-400" :
+                status === "active" || status === "sharing" || status === "rules-enabled" ? "bg-green-500/10 border-green-500/30 text-green-400" :
                status === "not-sharing" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
-                status === "unprotected" || status === "rules-enabled" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
+                status === "unprotected" ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" :
                status === "warning" ? "bg-red-500/10 border-red-500/30 text-red-400" :
               "bg-gray-500/10 border-gray-500/30 text-gray-400"
             )}>

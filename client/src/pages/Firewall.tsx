@@ -331,7 +331,7 @@ export default function Firewall() {
     <div className="space-y-6">
       <Header 
         title="Firewall Rules" 
-        subtitle="DNS & Network Rules" 
+        subtitle="DNS and Network Packet-Filtering Rules" 
         status={firewallHeaderStatus}
       />
 
