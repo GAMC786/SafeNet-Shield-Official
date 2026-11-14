@@ -188,7 +188,8 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /Existing Wi-Fi \/ hotspot/);
   assert.match(tetherShareSource, /Wireless Debugging/);
   assert.match(tetherShareSource, /start\(shareMode\)/);
-  assert.match(tetherShareSource, /Recommended family DNS setup/);
+  assert.doesNotMatch(tetherShareSource, /Recommended family DNS setup/);
+  assert.match(tetherShareSource, /DNS resolver controls/);
   assert.match(tetherShareSource, /No resolver is selected automatically/);
   assert.match(tetherShareSource, /useCreateDnsServer/);
   assert.match(tetherShareSource, /useUpdateDnsServer/);
@@ -222,9 +223,10 @@ test("the Activity tab is replaced by Android Internet Share", () => {
   assert.match(tetherShareSource, /checked=\{running\}/);
   assert.match(tetherShareSource, /onCheckedChange=\{\(checked\) => void handleToggle\(checked\)\}/);
   assert.match(tetherShareSource, /nextRunning \? start\(shareMode\) : stop\(\)/);
-  assert.match(tetherShareSource, /TLS proxy host/);
-  assert.match(tetherShareSource, /Select an HTTPS\/TLS proxy mode/);
-  assert.match(tetherShareSource, /SOCKS clients need TLS-wrapper support/);
+  assert.match(tetherShareSource, /Secured TLS, HTTPS, and SOCKS5 Proxy Endpoints/);
+  assert.match(tetherShareSource, /HTTPS proxy endpoint \(TLS\)/);
+  assert.match(tetherShareSource, /SOCKS5 endpoint \(TLS-wrapped\)/);
+  assert.match(tetherShareSource, /The HTTPS proxy uses TLS and supports\s+HTTPS CONNECT\. SOCKS5 clients must support\s+SOCKS through a TLS wrapper/);
   assert.match(tetherShareSource, /TLS certificate SHA-256 fingerprint/);
   assert.match(tetherShareSource, /Open Android Wi-Fi &amp; hotspot settings/);
   assert.match(tetherShareSource, /separate from SafeNet&apos;s Private DNS setting/);

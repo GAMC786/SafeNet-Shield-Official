@@ -414,14 +414,14 @@ export default function TetherShare() {
         </div>
       </CyberCard>
 
-      <CyberCard className="border-emerald-400/20 bg-emerald-400/[0.04]">
+      <>
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
           <div className="min-w-0 flex-1 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-lg font-bold text-white">Recommended family DNS setup</h2>
+                  <h2 className="font-display text-lg font-bold text-white">DNS resolver controls</h2>
                   <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
                     Manage active resolver
                   </span>
@@ -547,7 +547,8 @@ export default function TetherShare() {
               </Button>
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Internet Share uses a manual HTTP proxy and does not decrypt HTTPS traffic. Keep SafeNet protection enabled on the phone; connected devices still need the proxy settings shown below.
+              Internet Share uses explicit TLS-protected proxy endpoints and does not decrypt HTTPS traffic.
+              Keep SafeNet protection enabled on the phone; connected devices need to use one of the endpoints below.
             </p>
           </div>
         </div>
@@ -641,11 +642,10 @@ export default function TetherShare() {
             </form>
           </DialogContent>
         </Dialog>
-      </CyberCard>
+      </>
 
-      {running && status && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <CyberCard className="space-y-4">
+      <div className={`grid gap-4 ${running && status ? "md:grid-cols-2" : ""}`}>
+          {running && status && <CyberCard className="space-y-4">
             <div className="flex items-center gap-2">
               <Wifi className="h-5 w-5 text-primary" />
               <h3 className="font-display text-lg font-bold text-white">
@@ -666,33 +666,44 @@ export default function TetherShare() {
             <Button type="button" variant="outline" className="w-full" onClick={() => void openWifiSettings()}>
               <ExternalLink className="mr-2 h-4 w-4" /> Open Android Wi-Fi &amp; hotspot settings
             </Button>
-          </CyberCard>
+          </CyberCard>}
 
           <CyberCard className="space-y-4">
             <div className="flex items-center gap-2">
               <Globe2 className="h-5 w-5 text-sky-300" />
-              <h3 className="font-display text-lg font-bold text-white">Proxy settings</h3>
+              <h3 className="font-display text-lg font-bold text-white">
+                Secured TLS, HTTPS, and SOCKS5 Proxy Endpoints
+              </h3>
             </div>
             <p className="text-sm text-muted-foreground">
               On each connected device, choose manual proxy settings for this network.
             </p>
             <div className="space-y-2">
-              <CopyValue value={status.proxyHost || "192.168.49.1"} label="TLS proxy host" />
-              <CopyValue
-                value={String(status.httpProxyPort || status.proxyPort || 8228)}
-                label="TLS HTTP proxy port"
-              />
-              <CopyValue
-                value={String(status.socksProxyPort || 8229)}
-                label="TLS SOCKS4/5 port"
-              />
+              {running && status ? (
+                <>
+                  <CopyValue value={status.proxyHost || "192.168.49.1"} label="Proxy host" />
+                  <CopyValue
+                    value={`https://${status.proxyHost || "192.168.49.1"}:${status.httpProxyPort || status.proxyPort || 8228}`}
+                    label="HTTPS proxy endpoint (TLS)"
+                  />
+                  <CopyValue
+                    value={`${status.proxyHost || "192.168.49.1"}:${status.socksProxyPort || 8229}`}
+                    label="SOCKS5 endpoint (TLS-wrapped)"
+                  />
+                </>
+              ) : (
+                <p className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm text-muted-foreground">
+                  Start Internet Share to activate these endpoints. HTTPS proxy uses port 8228;
+                  TLS-wrapped SOCKS5 uses port 8229. The host address depends on the selected network.
+                </p>
+              )}
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Select an HTTPS/TLS proxy mode. Save the PEM as a certificate file, import it as
-              a trusted CA on each client, and verify its fingerprint. Some apps ignore
-              user-installed CAs. SOCKS clients need TLS-wrapper support.
+              The HTTPS proxy uses TLS and supports HTTPS CONNECT. SOCKS5 clients must support
+              SOCKS through a TLS wrapper. Verify the server certificate fingerprint before
+              trusting it; some apps require the certificate to be installed on the client.
             </p>
-            {status.tlsFingerprint && status.tlsCertificatePem && (
+            {status?.tlsFingerprint && status?.tlsCertificatePem && (
               <div className="space-y-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
                 <p className="text-xs leading-5 text-emerald-100">
                   Verify this SHA-256 fingerprint when trusting the certificate. The certificate
@@ -713,8 +724,7 @@ export default function TetherShare() {
               routing every client app.
             </p>
           </CyberCard>
-        </div>
-      )}
+      </div>
 
       <CyberCard className="space-y-4">
         <div className="flex items-center justify-between gap-3">
