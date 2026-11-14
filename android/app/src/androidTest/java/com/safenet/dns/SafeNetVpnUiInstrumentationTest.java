@@ -305,6 +305,42 @@ abstract class SafeNetUiInstrumentationTestBase {
             handoff.getBoolean("soundtrackPresent"));
     }
 
+    @Test
+    public void returningFromBackgroundKeepsTheCurrentPageRendered() throws Exception {
+        callWebView(
+            "history.pushState({}, '', '/secure-dialer');" +
+                "window.dispatchEvent(new PopStateEvent('popstate')); true"
+        );
+        waitForWebView(
+            "window.location.pathname === '/secure-dialer' && " +
+                "document.body.innerText.toLowerCase().includes('dialer & spam blocker')"
+        );
+
+        device.pressHome();
+        Thread.sleep(700);
+        context.startActivity(
+            new Intent(context, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        );
+
+        waitForWebView(
+            "window.location.pathname === '/secure-dialer' && " +
+                "document.body.innerText.toLowerCase().includes('dialer & spam blocker')"
+        );
+        JSONObject returnedState = callWebView(
+            "({path:window.location.pathname," +
+                "pageVisible:Boolean(document.querySelector('#root > *'))," +
+                "dialerVisible:document.body.innerText.toLowerCase()" +
+                    ".includes('dialer & spam blocker')})"
+        );
+        assertEquals("Returning to SafeNet must preserve the active page",
+            "/secure-dialer", returnedState.optString("path"));
+        assertTrue("The WebView must still render React content after return",
+            returnedState.optBoolean("pageVisible", false));
+        assertTrue("The active page must be visible after return",
+            returnedState.optBoolean("dialerVisible", false));
+    }
+
     private void assertStartupElementBounds(JSONObject sample) throws Exception {
         JSONObject viewport = sample.getJSONObject("viewport");
         double viewportWidth = viewport.getDouble("width");

@@ -511,6 +511,10 @@ public class MainActivity extends BridgeActivity {
             appLockNeedsUnlockOnResume = false;
             appLockView.post(this::requestAppUnlock);
         }
+        WebView webView = getBridge() == null ? null : getBridge().getWebView();
+        if (webView != null && webView.getVisibility() == View.VISIBLE) {
+            beginStartupCheck(webView);
+        }
     }
 
     @Override
