@@ -43,7 +43,7 @@ export default function SecureDialer() {
   return (
     <div className="secure-dialer-page space-y-6">
       <Header
-        title="Dialer/Spam Blocker"
+        title="Dialer & Spam Blocker"
         subtitle="Open-Source Dialer, SMS/MMS, and Call Protection"
       />
 
