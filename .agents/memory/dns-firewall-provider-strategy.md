@@ -3,8 +3,8 @@ name: DNS Firewall provider strategy
 description: The chosen architecture for applying SafeNet DNS rules through family DNS provider APIs.
 ---
 
-Keep the DNS Firewall on provider-specific APIs for NextDNS, AdGuard DNS, and CleanBrowsing. Do not replace this setup with a SafeNet-hosted resolver or on-device DNS VPN unless the user explicitly asks.
+The user explicitly chose an opt-in SafeNet-hosted filtering resolver for Android Private DNS. Provider-specific APIs remain an alternative when supported, but do not assume arbitrary DNS providers can apply SafeNet rules.
 
-**Why:** The user asked to keep the current API-based setup rather than switch to SafeNet-hosted or local DNS filtering.
+**Why:** The user changed the product direction and asked to try a hosted resolver without restoring Local VPN.
 
-**How to apply:** Extend DNS rule syncing through supported provider APIs; clearly distinguish provider-native family filtering from SafeNet custom rules where an API is unavailable.
+**How to apply:** For hosted Android Private DNS, require a host reachable on fixed public TCP 853 with a valid TLS certificate. Provider API sync avoids SafeNet proxying but only works for integrated providers and supported domain rules.
