@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { Capacitor } from "@capacitor/core";
 import { Purchases } from "@revenuecat/purchases-capacitor";
@@ -52,6 +53,7 @@ function billingErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function Billing() {
+  const [, setLocation] = useLocation();
   const { signOut } = useClerk();
   const { isLoaded, isSignedIn, user } = useUser();
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
@@ -265,7 +267,7 @@ export default function Billing() {
   };
 
   const openSignIn = () => {
-    window.location.assign(`${basePath}/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
+    setLocation(`/sign-in?redirect_url=${encodeURIComponent(`${basePath}/billing`)}`);
   };
 
   const retryClerkLoading = () => {
