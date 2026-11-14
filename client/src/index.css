@@ -548,6 +548,31 @@
   background-color: hsl(214 82% 36%) !important;
 }
 
+.ddns-updater-page .ddns-test-button {
+  border-color: #55b8f5 !important;
+  background-color: rgb(18 91 148 / 28%) !important;
+  color: #d7f0ff !important;
+  font-weight: 600;
+}
+
+.ddns-updater-page .ddns-test-button:hover:not(:disabled) {
+  border-color: #91d6ff !important;
+  background-color: rgb(18 112 180 / 42%) !important;
+  color: #fff !important;
+}
+
+.light .ddns-updater-page .ddns-test-button {
+  border-color: #245da8 !important;
+  background-color: #eaf3ff !important;
+  color: #164a8a !important;
+}
+
+.light .ddns-updater-page .ddns-test-button:hover:not(:disabled) {
+  border-color: #174b92 !important;
+  background-color: #dceaff !important;
+  color: #103c78 !important;
+}
+
 .light [data-testid="ai-shield-controls"] [class~="border-white/10"] {
   border-color: hsl(var(--border));
 }

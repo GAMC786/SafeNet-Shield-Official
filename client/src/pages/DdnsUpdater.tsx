@@ -259,7 +259,7 @@ export default function DdnsUpdater() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="ddns-updater-page space-y-6">
       <Header
           title="Dynamic DNS"
         subtitle="Auto-Update DNS Records"
@@ -579,12 +579,7 @@ export default function DdnsUpdater() {
                    title={updater.isEnabled === false
                      ? "Manual verification remains available while automatic updates are off."
                      : undefined}
-                   className={cn(
-                     "min-h-10 flex-1",
-                     updater.isEnabled === false
-                       ? "border-muted-foreground/40 text-muted-foreground hover:border-muted-foreground/60 hover:bg-muted/10"
-                       : "border-sky-400/40 text-sky-300 hover:border-sky-300 hover:bg-sky-400/10",
-                   )}
+                    className="ddns-test-button min-h-10 flex-1"
                    data-testid={`button-test-ddns-${updater.id}`}
                  >
                    {testingUpdaterId === updater.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
