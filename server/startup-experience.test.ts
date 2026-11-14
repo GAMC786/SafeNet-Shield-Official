@@ -95,6 +95,7 @@ const settingsSource = readFileSync(
   path.join(clientRoot, "src/pages/Settings.tsx"),
   "utf8",
 );
+const clamAvHookSource = readFileSync(path.join(clientRoot, "src/hooks/use-clamav.ts"), "utf8");
 const billingSource = readFileSync(
   path.join(clientRoot, "src/pages/Billing.tsx"),
   "utf8",
@@ -398,6 +399,11 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
+});
+
+test("ClamAV verification waits for both scans and shows its pending state", () => {
+  assert.match(clamAvHookSource, /timeoutMs: 80000/);
+  assert.match(antivirusSource, /Verifying engine…/);
 });
 
 test("Settings use the current package version and expose only current controls", () => {

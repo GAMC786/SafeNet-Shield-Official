@@ -386,7 +386,7 @@ export default function Antivirus() {
             {verifyClamAv.isPending
               ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               : <RefreshCw className="mr-2 h-4 w-4" />}
-            Verify engine
+            {verifyClamAv.isPending ? "Verifying engine…" : "Verify engine"}
           </Button>
         </div>
         {verifyClamAv.data && (

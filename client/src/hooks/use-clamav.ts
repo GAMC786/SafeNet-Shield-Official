@@ -49,7 +49,9 @@ export function useVerifyClamAv() {
       const response = await apiFetch("/api/antivirus/clamav/verify", {
         method: "POST",
         headers: { Accept: "application/json" },
-        timeoutMs: 30000,
+        // Verification performs two sequential scans, each with a 30s server timeout,
+        // plus health checks before and after. Leave enough time for the full proof.
+        timeoutMs: 80000,
       });
       const body = await response.json() as ClamAvVerification & { message?: string };
       if (!response.ok) {
