@@ -665,12 +665,6 @@
   color: #003b5c !important;
 }
 
-.dark .safenet-settings-brand-footer .safenet-settings-brand-wordmark {
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  background-color: #fff;
-}
-
 @layer base {
   * {
     @apply border-border;
