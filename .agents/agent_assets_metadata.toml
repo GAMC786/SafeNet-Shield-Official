@@ -168,3 +168,17 @@ mtime_ms = 1794678725461
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/8de88b33-c080-4888-bb83-45b92c607433/ce047ef7-4b99-478e-b81c-ad2fcabd9033"
 storage_version_token = "1794678762694590"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "BaPbuyx0XdjJD4TbiwQ9D"
+uri = "file://attached_assets/generated_audio/cyberpunk_mode_synth_preview.mp3"
+type = "audio"
+title = "Cyberpunk Mode soundtrack preview"
+description = "Original 23-second instrumental synthwave preview. Standalone listening sample only; not embedded in the app."
+logical_id = "58f51b2d-7f84-41c4-a8ae-760f6b2484ea"
+content_hash = "sha256:25dc564944e86724b6302473c09c0d4e71b3113b0d982ff67aad7410234321a7"
+size = 375371
+mtime_ms = 1794755899905
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/58f51b2d-7f84-41c4-a8ae-760f6b2484ea/43fbea64-1040-4aa4-8c4d-6b635d5a9bb1"
+storage_version_token = "1794755908740788"
+content_type = "audio/mpeg"
