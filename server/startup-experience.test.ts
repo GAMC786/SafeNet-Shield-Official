@@ -264,7 +264,7 @@ test("the document canvas stays dark behind the app while scrolling", () => {
 
 test("Wonderland Light Mode page subtitles use dark gray", () => {
   const css = readFileSync(path.join(clientRoot, "src/index.css"), "utf8");
-  assert.match(headerSource, /className="safenet-page-subtitle text-sm text-muted-foreground/);
+  assert.match(headerSource, /className=\{cn\("safenet-page-subtitle text-sm text-muted-foreground/);
   assert.match(css, /\.light \.safenet-page-subtitle\s*\{\s*color: #4b5563 !important;\s*opacity: 1;/);
 });
 
@@ -523,7 +523,11 @@ test("the Sign-Up back button keeps the original post-auth destination", () => {
 
 test("Premium page shows the requested subscription subtitle", () => {
   assert.match(billingSource, /nativePackage\.product\.priceString/);
-  assert.doesNotMatch(billingSource, /CAD \$3\.00 Monthly - Subscribe and Conquer!/);
+  assert.match(
+    billingSource,
+    /subtitle="Pay via Google Play Store - CAD \$3\.00 Monthly - Subscribe and Conquer!"/,
+  );
+  assert.match(billingSource, /subtitleClassName="normal-case tracking-normal"/);
 });
 
 test("Private DNS is a built-in dashboard feature, not a DNS resolver wrapper", () => {
