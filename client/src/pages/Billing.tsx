@@ -24,6 +24,7 @@ const CLERK_LOAD_TIMEOUT_MS = 12_000;
 const CLERK_STALL_QUERY_PARAM = "billing_clerk_stall";
 const CLERK_RETURN_REFRESH_QUERY_PARAM = "clerk_return_refresh";
 const CLERK_RETURN_REFRESH_SESSION_KEY = "safenet:clerk-return-refresh";
+const CLERK_RETURN_CACHE_BUST_PARAM = "clerk_session_reload";
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -70,7 +71,7 @@ export default function Billing() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const { toast } = useToast();
-  const clerkReturnRefreshStarted = useRef(false);
+  const clerkReturnRefreshTimeout = useRef<number | null>(null);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const isAndroid = Capacitor.getPlatform() === "android";
   const clerkStartupStallRequested =
@@ -93,6 +94,16 @@ export default function Billing() {
 
   useEffect(() => {
     const returnUrl = new URL(window.location.href);
+    if (returnUrl.searchParams.has(CLERK_RETURN_CACHE_BUST_PARAM)) {
+      returnUrl.searchParams.delete(CLERK_RETURN_CACHE_BUST_PARAM);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
+      );
+      return;
+    }
+
     let hasPendingAuthReturn = false;
     try {
       hasPendingAuthReturn =
@@ -103,24 +114,46 @@ export default function Billing() {
     const hasAuthReturnMarker =
       returnUrl.searchParams.get(CLERK_RETURN_REFRESH_QUERY_PARAM) === "1";
     if (!hasPendingAuthReturn && !hasAuthReturnMarker) return;
-    if (!clerkIsLoaded || clerkReturnRefreshStarted.current) return;
+    if (!clerkIsLoaded) return;
 
-    clerkReturnRefreshStarted.current = true;
     returnUrl.searchParams.delete(CLERK_RETURN_REFRESH_QUERY_PARAM);
     const cleanUrl = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
-    try {
-      window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
-    } catch {
-      // Continue with the one-time URL marker fallback.
-    }
 
     if (isSignedIn) {
+      if (clerkReturnRefreshTimeout.current !== null) {
+        window.clearTimeout(clerkReturnRefreshTimeout.current);
+        clerkReturnRefreshTimeout.current = null;
+      }
+      try {
+        window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
+      } catch {
+        // The sign-in state is already available, so this cleanup is optional.
+      }
       window.history.replaceState(window.history.state, "", cleanUrl);
-    } else {
-      // Reinitialize Clerk once after the OAuth callback so the session cookie
-      // is picked up before Premium decides whether the user is signed in.
-      window.location.replace(cleanUrl);
+      return;
     }
+
+    if (clerkReturnRefreshTimeout.current !== null) return;
+
+    // Give Clerk time to finish persisting the OAuth session before reloading.
+    clerkReturnRefreshTimeout.current = window.setTimeout(() => {
+      clerkReturnRefreshTimeout.current = null;
+      try {
+        window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
+      } catch {
+        // The URL fallback still guarantees this reload is only attempted once.
+      }
+      const reloadUrl = new URL(cleanUrl, window.location.origin);
+      reloadUrl.searchParams.set(CLERK_RETURN_CACHE_BUST_PARAM, String(Date.now()));
+      window.location.replace(`${reloadUrl.pathname}${reloadUrl.search}${reloadUrl.hash}`);
+    }, 1500);
+
+    return () => {
+      if (clerkReturnRefreshTimeout.current !== null) {
+        window.clearTimeout(clerkReturnRefreshTimeout.current);
+        clerkReturnRefreshTimeout.current = null;
+      }
+    };
   }, [clerkIsLoaded, isSignedIn]);
 
   useEffect(() => {
