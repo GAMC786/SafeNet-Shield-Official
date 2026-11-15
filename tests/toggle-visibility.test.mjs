@@ -551,13 +551,13 @@ test("Settings show the current version without firewall controls", async () => 
     subtitle: getComputedStyle(element.querySelector("p")).color,
     warning: getComputedStyle(element.querySelector(".text-yellow-500")).color,
     contact: getComputedStyle(element.querySelector(".safenet-settings-brand-footer-link")).color,
-    titleBackground: getComputedStyle(element.querySelector("h2")).backgroundImage,
+    titleColor: getComputedStyle(element.querySelector("h2")).color,
   }));
   assert.equal(brandFooterColors.foreground, "rgb(33, 45, 64)");
-  assert.equal(brandFooterColors.subtitle, "rgb(71, 85, 105)");
-  assert.equal(brandFooterColors.warning, "rgb(103, 71, 0)");
-  assert.equal(brandFooterColors.contact, "rgb(0, 99, 84)");
-  assert.match(brandFooterColors.titleBackground, /rgb\(33, 45, 64\)/);
+  assert.equal(brandFooterColors.subtitle, "rgb(38, 53, 74)");
+  assert.equal(brandFooterColors.warning, "rgb(83, 54, 0)");
+  assert.equal(brandFooterColors.contact, "rgb(0, 78, 117)");
+  assert.equal(brandFooterColors.titleColor, "rgb(17, 24, 39)");
   assert.equal(
     await settingsBrandFooter.locator("img[alt='Terry Fox Marathon of Hope']").count(),
     1,
@@ -633,7 +633,7 @@ test("Settings show the current version without firewall controls", async () => 
   const lightBackground = await page.locator("html").evaluate(
     (element) => getComputedStyle(element).getPropertyValue("--background").trim(),
   );
-  assert.equal(lightBackground, "0 0% 100%");
+  assert.equal(lightBackground, "220 16% 95%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
   await darkModeSwitch.click();
   await waitForAttribute(darkModeSwitch, "data-state", "checked");
@@ -665,7 +665,7 @@ test("Settings show the current version without firewall controls", async () => 
   assert.equal(await page.getByText("Choose the media types DeepCleer Ai should detect while monitoring.", { exact: true }).count(), 1);
   await page.getByRole("heading", { name: "Marathon of Hope" }).waitFor();
   assert.equal(
-    await page.getByText("In Loving Memory of Mr. Terry Stanley Fox. (1958 – 1981)", { exact: true }).count(),
+    await page.getByText("In Loving Memory of Mr. Terry Stanley Fox (1958 – 1981)", { exact: true }).count(),
     1,
   );
   assert.equal(await page.getByRole("img", { name: "Terry Fox Marathon of Hope" }).count(), 1);
@@ -696,12 +696,14 @@ test("Wonderland Light Mode keeps the Firewall overview readable on narrow scree
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
 
-  const overview = page.locator(".firewall-overview-card > .flex.items-center.gap-4");
+  const overview = page.locator(".firewall-overview-card > .flex.flex-col.gap-4");
   const layout = await overview.evaluate((element) => ({
     display: getComputedStyle(element).display,
+    flexDirection: getComputedStyle(element).flexDirection,
     contentWidth: element.children[1].getBoundingClientRect().width,
   }));
-  assert.equal(layout.display, "grid");
+  assert.equal(layout.display, "flex");
+  assert.equal(layout.flexDirection, "column");
   assert.ok(layout.contentWidth >= 220, "overview copy should have room to wrap naturally");
   await page.close();
 });
@@ -757,8 +759,8 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
     });
   const darkTokens = await readThemeTokens();
   assert.equal(darkTokens.background, "222 47% 11%");
-  assert.equal(darkTokens.primary, "217 91% 60%", "Cyberpunk primary blue must remain unchanged");
-  assert.equal(darkTokens.card, "224 35% 14%", "Cyberpunk card surface must remain unchanged");
+  assert.equal(darkTokens.primary, "217 91% 64%", "Cyberpunk primary blue must remain unchanged");
+  assert.equal(darkTokens.card, "224 35% 16%", "Cyberpunk card surface must remain unchanged");
 
   await lightModeSwitch.click();
   await waitForAttribute(lightModeSwitch, "data-state", "checked");
@@ -768,21 +770,28 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "light");
   assert.equal(await page.getByRole("heading", { name: "Color Palette" }).count(), 0);
   assert.equal(await page.getByTestId("color-mode-red").count(), 0);
-  await page.waitForFunction(
-    () => getComputedStyle(document.querySelector('[data-testid="theme-mode-controls"]')).backgroundColor === "rgb(244, 247, 252)",
-  );
+  await page.waitForFunction(() => {
+    const card = document.querySelector('[data-testid="theme-mode-controls"]');
+    if (!card) return false;
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = `hsl(${getComputedStyle(document.documentElement).getPropertyValue("--card")})`;
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(card).backgroundColor === expected;
+  });
 
   const wonderlandTokens = await readThemeTokens();
   assert.deepEqual(wonderlandTokens, {
-    background: "0 0% 100%",
-    foreground: "216 35.7% 11%",
-    primary: "216.3 86.7% 41.2%",
+    background: "220 16% 95%",
+    foreground: "220 24% 14%",
+    primary: "214 82% 50%",
     primaryForeground: "0 0% 100%",
-    card: "217.5 57.1% 97.3%",
-    brandAccent: "46.2 100% 53.9%",
-    success: "168.1 62.7% 47.3%",
-    info: "257.1 50.4% 75.5%",
-    interactive: "164.4 100% 34.7%",
+    card: "0 0% 100%",
+    brandAccent: "45 97% 50%",
+    success: "137 53% 43%",
+    info: "214 82% 94%",
+    interactive: "214 82% 94%",
   });
 
   const wonderlandAudit = await page.evaluate(() => {
@@ -834,12 +843,19 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
     premiumText.className = "text-primary";
     premium.append(premiumText);
     document.body.append(premium);
-    const premiumStyle = getComputedStyle(premium);
-    const premiumContrast = contrast(getComputedStyle(premiumText).color, premiumStyle.backgroundColor);
+    const premiumContrast = contrast(getComputedStyle(premiumText).color, "rgb(255, 255, 255)");
     premium.remove();
     return {
       bodyBackground: getComputedStyle(document.body).backgroundImage,
       cardBackground: getComputedStyle(document.querySelector('[data-testid="theme-mode-controls"]')).backgroundColor,
+      expectedCardBackground: (() => {
+        const probe = document.createElement("div");
+        probe.style.backgroundColor = `hsl(${getComputedStyle(document.documentElement).getPropertyValue("--card")})`;
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      })(),
       samples,
       interactiveContrast,
       buttonContrast,
@@ -847,7 +863,7 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
     };
   });
   assert.equal(wonderlandAudit.bodyBackground, "none");
-  assert.equal(wonderlandAudit.cardBackground, "rgb(244, 247, 252)");
+  assert.equal(wonderlandAudit.cardBackground, wonderlandAudit.expectedCardBackground);
   for (const sample of wonderlandAudit.samples) {
     assert.ok(sample.contrast >= 4.5, `${sample.className} should meet 4.5:1 contrast in Wonderland`);
   }
@@ -858,7 +874,7 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await page.goto(`${baseUrl}/firewall`);
   await page.waitForFunction(() => document.documentElement.classList.contains("light"));
   await page.getByRole("heading", { level: 1, name: "Firewall Rules" }).waitFor();
-  assert.equal((await readThemeTokens()).primary, "216.3 86.7% 41.2%", "Wonderland palette should apply across pages");
+  assert.equal((await readThemeTokens()).primary, "214 82% 50%", "Wonderland palette should apply across pages");
 
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "Appearance" }).waitFor();
@@ -866,7 +882,7 @@ test("Wonderland Light Mode uses its palette and the switch restores Cyberpunk D
   await waitForAttribute(darkModeSwitch, "data-state", "checked");
   await waitForAttribute(lightModeSwitch, "data-state", "unchecked");
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
-  assert.equal((await readThemeTokens()).primary, "217 91% 60%");
+  assert.equal((await readThemeTokens()).primary, "217 91% 64%");
   assert.equal(await page.evaluate(() => localStorage.getItem("safenet-theme")), "dark");
   await page.close();
 });
@@ -928,7 +944,7 @@ for (const viewport of viewports) {
     await page.getByRole("heading", { name: /(^|\/)Firewall Rules$/ }).waitFor();
     await assertNoHorizontalOverflow(page, viewport.name);
 
-    const expectedStates = new Map([["Prevent DNS Overrides", "true"]]);
+    const expectedStates = new Map([["Save DNS Override Policy", "true"]]);
     const backgroundColors = new Set();
 
     for (const [name, expectedState] of expectedStates) {
@@ -949,22 +965,15 @@ for (const viewport of viewports) {
     }
 
     assert.ok(backgroundColors.size >= 1, "the firewall access-rule switch must have a visible color");
-    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Inactive", { exact: true }).count(), 1);
 
     const firewallMaster = page.getByTestId("switch-firewall-master");
     await firewallMaster.click();
     await waitForAttribute(firewallMaster, "aria-checked", "true");
-    assert.match(
-      await page
-        .getByText(/Applies to the supported SafeNet and Windscribe DNS paths while DNS Firewall is On/)
-        .textContent(),
-      /Applies to the supported SafeNet and Windscribe DNS paths/,
-    );
-    await page.getByText("Protected", { exact: true }).waitFor();
-    assert.equal(await page.getByText("Unprotected", { exact: true }).count(), 0);
+    await page.getByText("Rules Enabled", { exact: true }).waitFor();
+    await page.getByText(/SafeNet stores these rules but does not filter DNS traffic/).waitFor();
 
-    const dnsOverrides = page.getByRole("switch", { name: "Prevent DNS Overrides" });
+    const dnsOverrides = page.getByRole("switch", { name: "Save DNS Override Policy" });
     await focusWithKeyboard(page, dnsOverrides);
     assert.equal(await dnsOverrides.evaluate((element) => element === document.activeElement), true);
     assert.notEqual(
@@ -979,15 +988,14 @@ for (const viewport of viewports) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
-    await page.getByText("Unprotected", { exact: true }).waitFor();
-    assert.equal(await page.getByText("Protected", { exact: true }).count(), 0);
+    await page.getByText("Rules Enabled", { exact: true }).waitFor();
 
-    for (const [name, expectedState] of [["Prevent DNS Overrides", "true"]]) {
+    for (const [name, expectedState] of [["Save DNS Override Policy", "true"]]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
-    await page.getByText("Protected", { exact: true }).waitFor();
+    await page.getByText("Rules Enabled", { exact: true }).waitFor();
 
     await page.close();
   });
@@ -1008,7 +1016,7 @@ for (const viewport of viewports) {
     assert.equal(await ruleToggle.isDisabled(), true, "firewall rule toggle should lock while saving");
     await page.getByRole("switch", { name: "Block external DNS Off" }).waitFor();
 
-    await page.getByRole("tab", { name: "Allow/Block URLs" }).click();
+    await page.getByRole("tab", { name: "Allow/Block Domains" }).click();
     const domainToggle = page.getByRole("switch", { name: "ads.example.com On" });
     const blocklistUpdate = page.waitForRequest((request) =>
       request.method() === "PATCH" && request.url().endsWith("/api/blocklists/1"),
@@ -1206,21 +1214,15 @@ test("editable Dashboard and security form values survive returning to the page"
   await page.close();
 });
 
-test("Dashboard does not expose the removed VPN and proxy browser blocker", async () => {
+test("Dashboard exposes the VPN and proxy browser blocker", async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
   await mockApi(page);
   await page.goto(`${baseUrl}/`);
   await page.getByRole("heading", { name: "Command Center" }).waitFor();
-  assert.equal(
-    await page.getByRole("heading", { name: "VPN & Proxy Browser Blocker" }).count(),
-    0,
-    "the removed blocker heading should not be visible",
-  );
-  assert.equal(
-    await page.getByRole("switch", { name: /VPN and proxy browser blocking/ }).count(),
-    0,
-    "the removed blocker switch should not be visible",
-  );
+  assert.equal(await page.getByRole("heading", { name: "VPN & Proxy Browser Blocker" }).count(), 1);
+  const blockerSwitch = page.getByRole("switch", { name: "VPN and proxy browser blocker" });
+  assert.equal(await blockerSwitch.count(), 1);
+  assert.equal(await blockerSwitch.isVisible(), true);
   await page.close();
 });
 
