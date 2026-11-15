@@ -12,8 +12,16 @@ installGlitchTipGlobalHandlers();
 // Register the service worker for the production PWA only. A cache-first
 // service worker must not intercept Vite's development modules or HMR.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  let hasServiceWorkerController = Boolean(navigator.serviceWorker.controller);
   let reloadedForUpdatedWorker = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // The first controller takes over a newly installed app shell. Reloading
+    // on that event flashes the WebView during first launch; only reload when
+    // an already-controlled page receives an updated worker.
+    if (!hasServiceWorkerController) {
+      hasServiceWorkerController = true;
+      return;
+    }
     if (reloadedForUpdatedWorker) {
       return;
     }

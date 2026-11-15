@@ -407,6 +407,11 @@
   color: hsl(var(--muted-foreground)) !important;
 }
 
+.light .safenet-page-subtitle {
+  color: #4b5563 !important;
+  opacity: 1;
+}
+
 .light [class~="border-slate-700"],
 .light [class~="border-gray-500/30"] {
   border-color: hsl(var(--border)) !important;

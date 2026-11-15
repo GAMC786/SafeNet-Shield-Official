@@ -8,7 +8,9 @@ const indexHtml = readFileSync(
   path.resolve(process.cwd(), "client/index.html"),
   "utf8",
 );
-const scriptSource = indexHtml.match(/<script>\s*([\s\S]*?)\s*<\/script>/)?.[1];
+const scriptSource = [...indexHtml.matchAll(/<script>\s*([\s\S]*?)\s*<\/script>/g)]
+  .map((match) => match[1])
+  .find((script) => script.includes("window.__safeNetSoundtrack"));
 
 assert.ok(scriptSource, "The soundtrack controller must be present in the HTML shell.");
 

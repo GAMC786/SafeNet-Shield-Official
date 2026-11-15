@@ -254,10 +254,18 @@ test("Android keeps a Dashboard recovery state instead of a permanent dark scree
 });
 
 test("the document canvas stays dark behind the app while scrolling", () => {
-  assert.match(indexHtml, /<body style="margin: 0; background: #0f172a; color: #f8fafc;">/);
+  assert.match(indexHtml, /localStorage\.getItem\("safenet-theme"\) === "light"/);
+  assert.match(indexHtml, /html\.light, html\.light body \{ background: #f1f3f6; color: #1b2432; \}/);
+  assert.match(indexHtml, /<body>/);
   assert.match(appSource, /h-screen min-h-0 h-\[100dvh\][\s\S]*overflow-hidden bg-background/);
   assert.match(appSource, /min-h-0 flex-1[\s\S]*overflow-y-auto/);
   assert.match(readFileSync(path.join(clientRoot, "src/index.css"), "utf8"), /background: hsl\(var\(--background\)\);/);
+});
+
+test("Wonderland Light Mode page subtitles use dark gray", () => {
+  const css = readFileSync(path.join(clientRoot, "src/index.css"), "utf8");
+  assert.match(headerSource, /className="safenet-page-subtitle text-sm text-muted-foreground/);
+  assert.match(css, /\.light \.safenet-page-subtitle\s*\{\s*color: #4b5563 !important;\s*opacity: 1;/);
 });
 
 test("the soundtrack is configured as a persistent loop with an ended fallback", () => {
@@ -405,6 +413,8 @@ test("Android publishes live system-bar insets to the WebView layout", () => {
 
 test("app updates fetch pages and auth from network while reusing build assets", () => {
   assert.match(mainSource, /addEventListener\("controllerchange"/);
+  assert.match(mainSource, /let hasServiceWorkerController = Boolean\(navigator\.serviceWorker\.controller\)/);
+  assert.match(mainSource, /if \(!hasServiceWorkerController\) \{\s*hasServiceWorkerController = true;\s*return;/);
   assert.match(mainSource, /registration\.update\(\)/);
   assert.match(serviceWorkerSource, /safenet-dns-v4/);
   assert.match(serviceWorkerSource, /clients\.claim\(\)/);

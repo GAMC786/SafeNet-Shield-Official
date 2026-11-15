@@ -19,7 +19,7 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-muted-foreground mt-1 font-mono uppercase tracking-widest opacity-80">
+          <p className="safenet-page-subtitle text-sm text-muted-foreground mt-1 font-mono uppercase tracking-widest opacity-80">
             {subtitle}
           </p>
         )}
