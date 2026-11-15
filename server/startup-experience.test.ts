@@ -492,6 +492,13 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
+test("the Sign-Up back button keeps the original post-auth destination", () => {
+  assert.match(
+    appSource,
+    /function SignUpPage\(\)[\s\S]*?label="Back to SafeNet sign-in"\s+onClick=\{\(\) =>\s+setLocation\(authPathWithRedirect\("\/sign-in", redirectUrl\)\)\s*\}/,
+  );
+});
+
 test("Premium page shows the requested subscription subtitle", () => {
   assert.match(billingSource, /subtitle="CAD \$3\.00 Monthly - Subscribe and Conquer!"/);
 });

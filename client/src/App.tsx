@@ -404,7 +404,9 @@ function SignUpPage() {
       <div className="w-full max-w-[440px]">
         <AuthBackButton
           label="Back to SafeNet sign-in"
-          onClick={() => setLocation("/sign-in")}
+          onClick={() =>
+            setLocation(authPathWithRedirect("/sign-in", redirectUrl))
+          }
         />
         <SignUp
           routing="path"
