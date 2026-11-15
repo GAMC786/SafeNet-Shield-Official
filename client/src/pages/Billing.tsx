@@ -478,11 +478,8 @@ export default function Billing() {
     <div className="space-y-6">
       <Header
         title="SafeNet Premium"
-        subtitle={
-          isAndroid && nativePackage
-            ? `${nativePackage.product.priceString} through Google Play`
-            : "Android subscriptions via Google Play"
-        }
+        subtitle="Pay via Google Play Store - CAD $3.00 Monthly - Subscribe and Conquer!"
+        subtitleClassName="normal-case tracking-normal"
       />
 
       <CyberCard>

@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 interface HeaderProps {
   title: string;
   subtitle?: string;
+  subtitleClassName?: string;
   status?: "active" | "inactive" | "warning" | "unprotected" | "sharing" | "not-sharing" | "rules-enabled";
   action?: ReactNode;
 }
 
-export function Header({ title, subtitle, status, action }: HeaderProps) {
+export function Header({ title, subtitle, subtitleClassName, status, action }: HeaderProps) {
   return (
     <header className="flex items-start justify-between gap-3 mb-6 sm:mb-8 pb-4 border-b border-border/40">
       <div className="flex min-w-0 items-center gap-3">
@@ -19,7 +20,7 @@ export function Header({ title, subtitle, status, action }: HeaderProps) {
           {title}
         </h1>
         {subtitle && (
-          <p className="safenet-page-subtitle text-sm text-muted-foreground mt-1 font-mono uppercase tracking-widest opacity-80">
+          <p className={cn("safenet-page-subtitle text-sm text-muted-foreground mt-1 font-mono uppercase tracking-widest opacity-80", subtitleClassName)}>
             {subtitle}
           </p>
         )}
