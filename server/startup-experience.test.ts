@@ -484,12 +484,24 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
   assert.match(
     billingSource,
-    /!clerkIsLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !clerkIsLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{retryClerkLoading\}[\s\S]*?>\s*Retry/,
+    /!isAndroid && !clerkIsLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !isAndroid && !clerkIsLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{retryClerkLoading\}[\s\S]*?>\s*Retry/,
   );
   assert.match(
     billingSource,
     /!isSignedIn[\s\S]*?Sign in to manage billing[\s\S]*?onClick=\{openSignIn\}[\s\S]*?>\s*Sign in to continue/,
   );
+});
+
+test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in", () => {
+  assert.match(billingSource, /Purchases\.configure\(\{ apiKey: REVENUECAT_ANDROID_API_KEY \}\)/);
+  assert.match(billingSource, /fetchBilling\("\/api\/billing\/config"/);
+  assert.match(billingSource, /Google Play subscriptions/);
+  assert.match(billingSource, /SafeNet account sign-in is not required to subscribe or restore purchases/);
+  assert.match(billingSource, /Purchases\.purchasePackage/);
+  assert.match(billingSource, /Purchases\.restorePurchases/);
+  assert.match(billingSource, /Browser\.open\(\{ url: GOOGLE_PLAY_SUBSCRIPTIONS_URL \}\)/);
+  assert.match(billingSource, /Purchases\.logIn\(\{ appUserID: currentClerkUserId \}\)/);
+  assert.doesNotMatch(billingSource, /fetchBilling\("\/api\/billing\/preflight"/);
 });
 
 test("the Sign-Up back button keeps the original post-auth destination", () => {
@@ -500,7 +512,8 @@ test("the Sign-Up back button keeps the original post-auth destination", () => {
 });
 
 test("Premium page shows the requested subscription subtitle", () => {
-  assert.match(billingSource, /subtitle="CAD \$3\.00 Monthly - Subscribe and Conquer!"/);
+  assert.match(billingSource, /nativePackage\.product\.priceString/);
+  assert.doesNotMatch(billingSource, /CAD \$3\.00 Monthly - Subscribe and Conquer!/);
 });
 
 test("Private DNS is a built-in dashboard feature, not a DNS resolver wrapper", () => {

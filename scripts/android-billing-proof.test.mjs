@@ -88,7 +88,9 @@ test("release builds inject a public RevenueCat Android key and gate billing val
   assert.match(billing, /data-testid="billing-purchase"/);
   assert.match(billing, /data-testid="billing-restore"/);
   assert.match(billing, /data-testid="billing-account"/);
-  assert.match(billing, /api\/billing\/preflight/);
+  assert.match(billing, /Purchases\.configure\(\{ apiKey: REVENUECAT_ANDROID_API_KEY \}\)/);
+  assert.match(billing, /data-testid="billing-play-manage"/);
+  assert.doesNotMatch(billing, /fetchBilling\("\/api\/billing\/preflight"/);
 });
 
 test("manual billing validation fails before queueing without its prerequisites", () => {

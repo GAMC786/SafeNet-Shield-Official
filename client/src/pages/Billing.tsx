@@ -3,8 +3,9 @@ import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } fro
 import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { Purchases } from "@revenuecat/purchases-capacitor";
-import type { PurchasesPackage } from "@revenuecat/purchases-capacitor";
+import type { CustomerInfo, PurchasesPackage } from "@revenuecat/purchases-capacitor";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,8 @@ const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_K
   | undefined;
 const REVENUECAT_ANDROID_PACKAGE_IDENTIFIER = "$rc_monthly";
 const REVENUECAT_ANDROID_PRODUCT_IDENTIFIER = "premium_monthly:monthly";
+const GOOGLE_PLAY_SUBSCRIPTIONS_URL = "https://play.google.com/store/account/subscriptions";
+const REVENUECAT_ANONYMOUS_ID_PREFIX = "$RCAnonymousID:";
 
 async function fetchBilling(
   input: RequestInfo | URL,
@@ -55,6 +58,10 @@ function billingErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function isRevenueCatAnonymousId(appUserId: string) {
+  return appUserId.startsWith(REVENUECAT_ANONYMOUS_ID_PREFIX);
+}
+
 export default function Billing() {
   const [, setLocation] = useLocation();
   const { signOut } = useClerk();
@@ -65,7 +72,12 @@ export default function Billing() {
   const [clerkLoadTimedOut, setClerkLoadTimedOut] = useState(false);
   const [statusAttempt, setStatusAttempt] = useState(0);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [isOpeningPlaySubscriptions, setIsOpeningPlaySubscriptions] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [nativePurchasesReady, setNativePurchasesReady] = useState(false);
+  const [nativeIdentityReady, setNativeIdentityReady] = useState(false);
+  const [nativeCustomerInfo, setNativeCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [nativeEntitlementIdentifier, setNativeEntitlementIdentifier] = useState("premium");
   const [nativePackage, setNativePackage] = useState<PurchasesPackage | null>(null);
   const [nativeBillingError, setNativeBillingError] = useState<string | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -157,7 +169,9 @@ export default function Billing() {
   }, [clerkIsLoaded, isSignedIn]);
 
   useEffect(() => {
-    if (!clerkIsLoaded || !isSignedIn || !isAndroid || !user?.id) {
+    if (!isAndroid) {
+      setNativePurchasesReady(false);
+      setNativeCustomerInfo(null);
       setNativePackage(null);
       setNativeBillingError(null);
       return;
@@ -169,34 +183,26 @@ export default function Billing() {
         throw new Error("RevenueCat Android billing is not configured for this build.");
       }
 
-      try {
-        const preflightResponse = await fetchBilling("/api/billing/preflight", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        const preflight = await preflightResponse.json() as {
-          ready?: boolean;
-          message?: string;
-        };
-        if (!preflightResponse.ok || preflight.ready !== true) {
-          throw new Error(
-            preflight.message ||
-              "RevenueCat billing is not configured for this Android test account.",
-          );
-        }
-
-        const current = await Purchases.getAppUserID();
-        if (current.appUserID !== user.id) {
-          await Purchases.logIn({ appUserID: user.id });
-        }
-      } catch {
-        await Purchases.configure({
-          apiKey: REVENUECAT_ANDROID_API_KEY,
-          appUserID: user.id,
-        });
+      const configResponse = await fetchBilling("/api/billing/config", { cache: "no-store" });
+      const billingConfig = await configResponse.json() as {
+        configured?: boolean;
+        entitlementIdentifier?: string;
+      };
+      if (!configResponse.ok || billingConfig.configured !== true || !billingConfig.entitlementIdentifier) {
+        throw new Error("Google Play billing is not configured for SafeNet yet.");
       }
 
-      const offerings = await Purchases.getOfferings();
+      const configured = await Purchases.isConfigured();
+      if (!configured.isConfigured) {
+        // Anonymous RevenueCat identity lets Android purchases work without Clerk.
+        await Purchases.configure({ apiKey: REVENUECAT_ANDROID_API_KEY });
+      }
+
+      const [offerings, customerInfoResult] = await Promise.all([
+        Purchases.getOfferings(),
+        Purchases.getCustomerInfo(),
+      ]);
+      const appUser = await Purchases.getAppUserID();
       const monthlyPackage =
         offerings.current?.availablePackages.find(
           (candidate) =>
@@ -206,16 +212,22 @@ export default function Billing() {
         null;
 
       if (!cancelled) {
+        setNativeCustomerInfo(customerInfoResult.customerInfo);
         setNativePackage(monthlyPackage);
+        setNativePurchasesReady(true);
+        setNativeIdentityReady(isRevenueCatAnonymousId(appUser.appUserID));
+        setNativeEntitlementIdentifier(billingConfig.entitlementIdentifier);
         setNativeBillingError(
           monthlyPackage ? null : "RevenueCat has no active Android monthly offering yet.",
         );
       }
     })().catch((error) => {
       if (!cancelled) {
+        setNativePurchasesReady(false);
+        setNativeIdentityReady(false);
         setNativePackage(null);
         setNativeBillingError(
-          billingErrorMessage(error, "Unable to load the RevenueCat Android offering."),
+          billingErrorMessage(error, "Unable to load Google Play billing."),
         );
       }
     });
@@ -223,9 +235,81 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [clerkIsLoaded, isAndroid, isSignedIn, user?.id]);
+  }, [isAndroid]);
 
   useEffect(() => {
+    if (!isAndroid || !nativePurchasesReady) return;
+
+    let cancelled = false;
+    if (!clerkIsLoaded && !clerkLoadTimedOut) {
+      void Purchases.getAppUserID().then(({ appUserID }) => {
+        if (!cancelled) setNativeIdentityReady(isRevenueCatAnonymousId(appUserID));
+      }).catch(() => {
+        if (!cancelled) setNativeIdentityReady(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setNativeIdentityReady(false);
+    const currentClerkUserId = clerkIsLoaded && isSignedIn && user?.id ? user.id : null;
+    void (async () => {
+      const current = await Purchases.getAppUserID();
+      if (currentClerkUserId && current.appUserID !== currentClerkUserId) {
+        const result = await Purchases.logIn({ appUserID: currentClerkUserId });
+        if (!cancelled) setNativeCustomerInfo(result.customerInfo);
+      } else if (!currentClerkUserId && !isRevenueCatAnonymousId(current.appUserID)) {
+        const result = await Purchases.logOut();
+        if (!cancelled) setNativeCustomerInfo(result.customerInfo);
+      }
+
+      const info = await Purchases.getCustomerInfo();
+      if (!cancelled) {
+        setNativeCustomerInfo(info.customerInfo);
+        setNativeIdentityReady(true);
+        setNativeBillingError(null);
+      }
+    })().catch((error) => {
+      if (!cancelled) {
+        setNativeIdentityReady(false);
+        setNativeBillingError(
+          billingErrorMessage(error, "Unable to link your RevenueCat purchase history."),
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkIsLoaded, clerkLoadTimedOut, isAndroid, isSignedIn, nativePurchasesReady, user?.id]);
+
+  useEffect(() => {
+    if (!isAndroid || !nativePurchasesReady) return;
+
+    const refreshCustomerInfo = () => {
+      if (document.visibilityState !== "visible") return;
+      void Purchases.getCustomerInfo()
+        .then(({ customerInfo }) => setNativeCustomerInfo(customerInfo))
+        .catch((error) => {
+          setNativeBillingError(
+            billingErrorMessage(error, "Unable to refresh your Google Play subscription."),
+          );
+        });
+    };
+
+    document.addEventListener("visibilitychange", refreshCustomerInfo);
+    return () => document.removeEventListener("visibilitychange", refreshCustomerInfo);
+  }, [isAndroid, nativePurchasesReady]);
+
+  useEffect(() => {
+    if (isAndroid) {
+      setBillingStatus(null);
+      setBillingStatusError(null);
+      setIsLoadingStatus(false);
+      return;
+    }
+
     if (!clerkIsLoaded || !isSignedIn) {
       setBillingStatus(null);
       setBillingStatusError(null);
@@ -267,7 +351,7 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [clerkIsLoaded, isSignedIn, statusAttempt, toast]);
+  }, [clerkIsLoaded, isAndroid, isSignedIn, statusAttempt, toast]);
 
   const openManagementPortal = async () => {
     setIsOpeningPortal(true);
@@ -294,15 +378,15 @@ export default function Billing() {
   };
 
   const purchaseNativePackage = async () => {
-    if (!nativePackage) return;
+    if (!nativeIdentityReady || !nativePackage) return;
     setIsPurchasing(true);
     try {
-      await Purchases.purchasePackage({ aPackage: nativePackage });
+      const result = await Purchases.purchasePackage({ aPackage: nativePackage });
+      setNativeCustomerInfo(result.customerInfo);
       toast({
         title: "Subscription active",
-        description: "RevenueCat confirmed your SafeNet Premium purchase.",
+        description: "Google Play confirmed your SafeNet Premium purchase.",
       });
-      setStatusAttempt((attempt) => attempt + 1);
     } catch (error) {
       toast({
         title: "Purchase not completed",
@@ -315,14 +399,19 @@ export default function Billing() {
   };
 
   const restoreNativePurchases = async () => {
+    if (!nativeIdentityReady) return;
     setIsRestoring(true);
     try {
-      await Purchases.restorePurchases();
+      const result = await Purchases.restorePurchases();
+      setNativeCustomerInfo(result.customerInfo);
+      const restoredEntitlement =
+        result.customerInfo.entitlements.active[nativeEntitlementIdentifier];
       toast({
-        title: "Purchases restored",
-        description: "RevenueCat checked your Google Play purchase history.",
+        title: restoredEntitlement ? "Subscription restored" : "No active purchase found",
+        description: restoredEntitlement
+          ? "Your Google Play subscription is active in SafeNet."
+          : "No active SafeNet subscription was found for the Google Play account on this device.",
       });
-      setStatusAttempt((attempt) => attempt + 1);
     } catch (error) {
       toast({
         title: "Restore failed",
@@ -331,6 +420,21 @@ export default function Billing() {
       });
     } finally {
       setIsRestoring(false);
+    }
+  };
+
+  const openPlaySubscriptions = async () => {
+    setIsOpeningPlaySubscriptions(true);
+    try {
+      await Browser.open({ url: GOOGLE_PLAY_SUBSCRIPTIONS_URL });
+    } catch (error) {
+      toast({
+        title: "Could not open Google Play",
+        description: billingErrorMessage(error, "Open Play Store subscriptions to manage your plan."),
+        variant: "destructive",
+      });
+    } finally {
+      setIsOpeningPlaySubscriptions(false);
     }
   };
 
@@ -367,10 +471,19 @@ export default function Billing() {
   };
 
   const accountLabel = user?.primaryEmailAddress?.emailAddress ?? user?.username ?? user?.id;
+  const nativeEntitlement =
+    nativeCustomerInfo?.entitlements.active[nativeEntitlementIdentifier] ?? null;
 
   return (
     <div className="space-y-6">
-      <Header title="SafeNet Premium" subtitle="CAD $3.00 Monthly - Subscribe and Conquer!" />
+      <Header
+        title="SafeNet Premium"
+        subtitle={
+          isAndroid && nativePackage
+            ? `${nativePackage.product.priceString} through Google Play`
+            : "Android subscriptions via Google Play"
+        }
+      />
 
       <CyberCard>
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -385,7 +498,9 @@ export default function Billing() {
               </div>
             </div>
             <p className="max-w-xl text-sm text-muted-foreground">
-              SafeNet subscriptions are purchased and restored through the RevenueCat mobile app-store flow.
+              {isAndroid
+                ? "Google Play processes Android subscriptions. SafeNet account sign-in is not required to subscribe or restore purchases."
+                : "Android subscriptions are purchased and restored through Google Play."}
             </p>
           </div>
           <CreditCard className="hidden h-16 w-16 text-primary/30 md:block" />
@@ -394,13 +509,88 @@ export default function Billing() {
 
       <CyberCard>
         <div className="max-w-xl space-y-4">
+          {isAndroid ? (
+            <div data-testid="android-billing-panel" className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Google Play subscriptions</h2>
+                <p className="text-sm text-muted-foreground">
+                  Subscribe, restore, or manage your plan with the Google Play account on this device. No SafeNet sign-in is needed.
+                </p>
+              </div>
+
+              {!nativePurchasesReady && !nativeBillingError ? (
+                <p className="text-sm text-muted-foreground">Loading Google Play billing…</p>
+              ) : nativePurchasesReady && !nativeIdentityReady ? (
+                <p className="text-sm text-muted-foreground">Checking this device’s purchase account…</p>
+              ) : nativeIdentityReady && nativeEntitlement ? (
+                <div data-testid="billing-status-active" className="space-y-1">
+                  <p className="text-sm text-emerald-400">
+                    SafeNet Shield DNS Server+ is active
+                    {!nativeEntitlement.willRenew
+                      ? " and will end at the current billing period."
+                      : "."}
+                  </p>
+                  {nativeEntitlement.expirationDate && (
+                    <p className="text-xs text-muted-foreground">
+                      Renews or expires {new Date(nativeEntitlement.expirationDate).toLocaleDateString()}.
+                    </p>
+                  )}
+                </div>
+              ) : nativePurchasesReady && nativeIdentityReady ? (
+                <p data-testid="billing-status-inactive" className="text-sm text-muted-foreground">
+                  No active subscription was found for this RevenueCat customer. You can subscribe or restore purchases below.
+                </p>
+              ) : null}
+
+              {nativeBillingError && (
+                <p className="text-sm text-amber-200" role="alert">{nativeBillingError}</p>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  data-testid="billing-purchase"
+                  type="button"
+                  disabled={!nativePurchasesReady || !nativeIdentityReady || !nativePackage || Boolean(nativeEntitlement) || isPurchasing || isRestoring}
+                  onClick={() => void purchaseNativePackage()}
+                >
+                  {isPurchasing && <Loader2 className="animate-spin" />}
+                  {isPurchasing
+                    ? "Opening Google Play…"
+                    : nativeEntitlement
+                      ? "Subscription active"
+                      : `Subscribe${nativePackage ? ` for ${nativePackage.product.priceString}` : ""}`}
+                </Button>
+                <Button
+                  data-testid="billing-restore"
+                  type="button"
+                  variant="outline"
+                  disabled={!nativePurchasesReady || !nativeIdentityReady || isPurchasing || isRestoring}
+                  onClick={() => void restoreNativePurchases()}
+                >
+                  {isRestoring && <Loader2 className="animate-spin" />}
+                  {isRestoring ? "Restoring…" : "Restore purchases"}
+                </Button>
+                <Button
+                  data-testid="billing-play-manage"
+                  type="button"
+                  variant="outline"
+                  disabled={isOpeningPlaySubscriptions || isPurchasing || isRestoring}
+                  onClick={() => void openPlaySubscriptions()}
+                >
+                  {isOpeningPlaySubscriptions ? <Loader2 className="animate-spin" /> : <ExternalLink />}
+                  {isOpeningPlaySubscriptions ? "Opening Google Play…" : "Manage in Google Play"}
+                </Button>
+              </div>
+            </div>
+          ) : (
           <div>
             <h2 className="text-lg font-semibold text-white">Start or manage billing</h2>
             <p className="text-sm text-muted-foreground">
               Billing access is tied to your signed-in SafeNet account.
             </p>
           </div>
-          {!clerkIsLoaded && !clerkLoadTimedOut ? (
+          )}
+          {!isAndroid && !clerkIsLoaded && !clerkLoadTimedOut ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">Loading your account…</p>
               <Button
@@ -412,7 +602,7 @@ export default function Billing() {
                 Sign in to continue
               </Button>
             </div>
-          ) : !clerkIsLoaded ? (
+          ) : !isAndroid && !clerkIsLoaded ? (
             <div
               data-testid="billing-clerk-recovery"
               className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -440,7 +630,7 @@ export default function Billing() {
                 </Button>
               </div>
             </div>
-          ) : !isSignedIn ? (
+          ) : !isAndroid && !isSignedIn ? (
             <div
               data-testid="billing-signed-out"
               className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -465,7 +655,7 @@ export default function Billing() {
                 Sign in to continue
               </Button>
             </div>
-          ) : (
+          ) : !isAndroid ? (
             <div className="space-y-4">
               <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
@@ -478,7 +668,7 @@ export default function Billing() {
                     </p>
                     <p
                       data-testid="billing-account"
-                      data-clerk-user-id={user.id}
+                      data-clerk-user-id={user?.id}
                       className="truncate font-medium text-white"
                     >
                       {accountLabel}
@@ -520,40 +710,6 @@ export default function Billing() {
                     No active SafeNet RevenueCat entitlement is linked to this account.
                   </p>
               )}
-              {isAndroid && (
-                <div data-testid="android-billing-panel" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                  <div>
-                    <p className="font-medium text-white">Android purchase</p>
-                    <p className="text-sm text-muted-foreground">
-                      RevenueCat securely opens Google Play and links the purchase to this SafeNet account.
-                    </p>
-                  </div>
-                  {nativeBillingError && (
-                    <p className="text-sm text-amber-200">{nativeBillingError}</p>
-                  )}
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <Button
-                      data-testid="billing-purchase"
-                      type="button"
-                      disabled={!nativePackage || isPurchasing || isRestoring}
-                      onClick={() => void purchaseNativePackage()}
-                    >
-                      {isPurchasing && <Loader2 className="animate-spin" />}
-                      {isPurchasing ? "Opening Google Play…" : "Subscribe with Google Play"}
-                    </Button>
-                    <Button
-                      data-testid="billing-restore"
-                      type="button"
-                      variant="outline"
-                      disabled={isPurchasing || isRestoring}
-                      onClick={() => void restoreNativePurchases()}
-                    >
-                      {isRestoring && <Loader2 className="animate-spin" />}
-                      {isRestoring ? "Restoring…" : "Restore purchases"}
-                    </Button>
-                  </div>
-                </div>
-              )}
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button
                   type="button"
@@ -571,7 +727,7 @@ export default function Billing() {
                 </p>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       </CyberCard>
     </div>
