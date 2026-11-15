@@ -23,6 +23,7 @@ const BILLING_REQUEST_TIMEOUT_MS = 12_000;
 const CLERK_LOAD_TIMEOUT_MS = 12_000;
 const CLERK_STALL_QUERY_PARAM = "billing_clerk_stall";
 const CLERK_RETURN_REFRESH_QUERY_PARAM = "clerk_return_refresh";
+const CLERK_RETURN_REFRESH_SESSION_KEY = "safenet:clerk-return-refresh";
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -92,12 +93,26 @@ export default function Billing() {
 
   useEffect(() => {
     const returnUrl = new URL(window.location.href);
-    if (returnUrl.searchParams.get(CLERK_RETURN_REFRESH_QUERY_PARAM) !== "1") return;
+    let hasPendingAuthReturn = false;
+    try {
+      hasPendingAuthReturn =
+        window.sessionStorage.getItem(CLERK_RETURN_REFRESH_SESSION_KEY) === "1";
+    } catch {
+      // The redirect query parameter below remains a fallback if storage is unavailable.
+    }
+    const hasAuthReturnMarker =
+      returnUrl.searchParams.get(CLERK_RETURN_REFRESH_QUERY_PARAM) === "1";
+    if (!hasPendingAuthReturn && !hasAuthReturnMarker) return;
     if (!clerkIsLoaded || clerkReturnRefreshStarted.current) return;
 
     clerkReturnRefreshStarted.current = true;
     returnUrl.searchParams.delete(CLERK_RETURN_REFRESH_QUERY_PARAM);
     const cleanUrl = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
+    try {
+      window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
+    } catch {
+      // Continue with the one-time URL marker fallback.
+    }
 
     if (isSignedIn) {
       window.history.replaceState(window.history.state, "", cleanUrl);
@@ -288,6 +303,11 @@ export default function Billing() {
 
   const openSignIn = () => {
     const billingReturnUrl = `${basePath}/billing?${CLERK_RETURN_REFRESH_QUERY_PARAM}=1`;
+    try {
+      window.sessionStorage.setItem(CLERK_RETURN_REFRESH_SESSION_KEY, "1");
+    } catch {
+      // The redirect query parameter remains available as a fallback.
+    }
     setLocation(`/sign-in?redirect_url=${encodeURIComponent(billingReturnUrl)}`);
   };
 
