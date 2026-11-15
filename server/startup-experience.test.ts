@@ -403,11 +403,15 @@ test("Android publishes live system-bar insets to the WebView layout", () => {
   assert.match(androidMainActivity, /--safenet-navigation-bar-inset/);
 });
 
-test("updated web assets refresh without clearing app storage", () => {
+test("app updates fetch pages and auth from network while reusing build assets", () => {
   assert.match(mainSource, /addEventListener\("controllerchange"/);
   assert.match(mainSource, /registration\.update\(\)/);
-  assert.match(serviceWorkerSource, /safenet-dns-v3/);
+  assert.match(serviceWorkerSource, /safenet-dns-v4/);
   assert.match(serviceWorkerSource, /clients\.claim\(\)/);
+  assert.match(serviceWorkerSource, /event\.request\.mode === "navigate"/);
+  assert.match(serviceWorkerSource, /requestUrl\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(serviceWorkerSource, /requestUrl\.pathname\.startsWith\("\/assets\/"\)/);
+  assert.match(serviceWorkerSource, /cache: "no-store"/);
   assert.doesNotMatch(mainSource, /localStorage\.clear|sessionStorage\.clear|clearCache/);
 });
 

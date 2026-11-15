@@ -1,4 +1,4 @@
-const CACHE_NAME = "safenet-dns-v3";
+const CACHE_NAME = "safenet-dns-v4";
 const urlsToCache = [
   "/",
   "/index.html",
@@ -36,24 +36,45 @@ serviceWorker.addEventListener("fetch", (event) => {
     return;
   }
 
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== serviceWorker.location.origin) {
+    return;
+  }
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" }).catch(async () => {
+        const cachedPage = await caches.match("/index.html");
+        return cachedPage ?? (await caches.match("/")) ?? Response.error();
+      }),
+    );
+    return;
+  }
+
+  // Auth and API responses can change between requests; never serve them from
+  // the app-shell cache.
+  if (requestUrl.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(event.request, { cache: "no-store" }));
+    return;
+  }
+
+  // Only fingerprinted build assets are safe to reuse from cache.
+  if (!requestUrl.pathname.startsWith("/assets/")) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) {
-        return response;
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cachedAsset = await cache.match(event.request);
+      if (cachedAsset) {
+        return cachedAsset;
       }
 
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== "basic") {
-          return response;
-        }
-
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
-        return response;
-      });
+      const response = await fetch(event.request);
+      if (response.ok && response.type === "basic") {
+        void cache.put(event.request, response.clone());
+      }
+      return response;
     }),
   );
 });
