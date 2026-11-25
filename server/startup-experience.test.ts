@@ -456,6 +456,8 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.match(firewallSource, /DnsProviderBlocklists/);
   assert.match(dnsProviderBlocklistsSource, /OpenDNS Home is resolver-only/);
   assert.match(dnsProviderBlocklistsSource, /uBlockDNS has no supported account API/);
+  assert.match(dnsProviderBlocklistsSource, /CustomDnsBlocklists/);
+  assert.match(dnsProviderBlocklistsSource, /Provider dashboard/);
   assert.match(dnsProviderBlocklistsSource, /SafeNet rule sync updates only SafeNet-owned entries/);
   assert.match(dnsProviderBlocklistsSource, /provider !== "controld"/);
   assert.match(adGuardDnsBlocklistsSource, /AdGuard DNS Built-in Blocklists/);

@@ -20,6 +20,7 @@ export default defineConfig({
     "blocklists",
     "clamav_verifications",
     "control_d_credentials",
+    "custom_dns_blocklists",
     "conversations",
     "ddns_updaters",
     "dns_servers",

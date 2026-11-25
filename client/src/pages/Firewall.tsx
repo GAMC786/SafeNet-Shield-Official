@@ -525,7 +525,7 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              SafeNet applies DNS rules on this phone while its DNS-only VPN is active. It filters DNS names, not keywords or URL paths. DNS-over-HTTPS, DNS-over-TLS, and other VPNs may bypass local filtering. {blocklists?.filter((item) => item.isActive).length || 0} enabled rules saved.
+              SafeNet applies DNS rules on this phone while its DNS-only VPN is active. It filters DNS names, not keywords or URL paths. DNS-over-HTTPS, DNS-over-TLS, and other VPNs may bypass local filtering. {blocklists?.filter((item) => item.isActive).length || 0} manual rules saved.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">

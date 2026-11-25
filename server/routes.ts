@@ -42,6 +42,10 @@ import {
 import { registerControlDRoutes } from "./control-d-routes";
 import { registerNextDnsRoutes } from "./nextdns-routes";
 import { registerFamilyDnsRoutes } from "./family-dns-routes";
+import {
+  getCustomDnsBlocklistsForFirewall,
+  registerCustomDnsBlocklistRoutes,
+} from "./custom-dns-blocklist-routes";
 
 function publicSettings(settings: AppSettings) {
   const {
@@ -138,6 +142,7 @@ export async function registerRoutes(
   registerControlDRoutes(app, storage);
   registerNextDnsRoutes(app, storage);
   registerFamilyDnsRoutes(app, storage);
+  registerCustomDnsBlocklistRoutes(app);
 
   app.post("/api/speedtest/upload", (req, res) => {
     const maxUploadBytes = 10 * 1024 * 1024;
@@ -402,15 +407,16 @@ export async function registerRoutes(
   });
 
   app.get(api.firewall.config.path, async (req, res) => {
-    const [settings, rules, lists] = await Promise.all([
+    const [settings, rules, lists, customLists] = await Promise.all([
       storage.getSettings(),
       storage.getFirewallRules(),
       storage.getBlocklists(),
+      getCustomDnsBlocklistsForFirewall(),
     ]);
     res.json(firewallConfigSchema.parse({
       settings: publicSettings(settings),
       rules,
-      blocklists: lists,
+      blocklists: [...lists, ...customLists],
     }));
   });
 

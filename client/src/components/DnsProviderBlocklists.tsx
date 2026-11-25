@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { ExternalLink, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { CustomDnsBlocklists } from "@/components/CustomDnsBlocklists";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
@@ -23,6 +24,13 @@ const providerNames: Record<Provider, string> = {
   cleanbrowsing: "CleanBrowsing",
   nextdns: "NextDNS",
   controld: "Control D",
+};
+
+const providerDashboardUrls: Record<Provider, string> = {
+  adguard: "https://adguard-dns.io/en/dashboard/",
+  cleanbrowsing: "https://my.cleanbrowsing.org/",
+  nextdns: "https://my.nextdns.io/",
+  controld: "https://controld.com/dashboard",
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -159,8 +167,12 @@ export function DnsProviderBlocklists() {
     return (
       <CyberCard className="border-emerald-400/20 bg-emerald-400/5">
         <h3 className="font-display font-bold text-white">DNS provider blocklists</h3>
+        <CustomDnsBlocklists />
         <p className="mt-1 text-xs text-muted-foreground">Sign in to manage provider-native filters and SafeNet rule sync.</p>
         <Button className="mt-3" size="sm" onClick={() => setLocation(`/sign-in?redirect_url=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`)}>Sign in</Button>
+        <a className="ml-3 inline-flex items-center gap-1 text-xs text-primary underline" href={providerDashboardUrls.adguard} target="_blank" rel="noreferrer">
+          Open AdGuard dashboard <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
       </CyberCard>
     );
   }
@@ -178,12 +190,19 @@ export function DnsProviderBlocklists() {
                 Manage filters in the selected provider. SafeNet firewall rule sync is a separate action and does not replace these lists.
               </p>
             </div>
-            {availableProviders.length > 0 && (
-              <Button size="sm" variant="outline" onClick={() => void listQuery.refetch()} disabled={listQuery.isFetching || toggleMutation.isPending}>
-                {listQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Refresh
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <a className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm text-foreground hover:bg-accent" href={providerDashboardUrls[provider]} target="_blank" rel="noreferrer">
+                Provider dashboard <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+              {availableProviders.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => void listQuery.refetch()} disabled={listQuery.isFetching || toggleMutation.isPending}>
+                  {listQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Refresh
+                </Button>
+              )}
+            </div>
           </div>
+
+          <CustomDnsBlocklists />
 
           {statusQuery.isLoading ? (
             <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Checking provider connections…</p>

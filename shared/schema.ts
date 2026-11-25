@@ -45,6 +45,16 @@ export const blocklists = pgTable("blocklists", {
   isActive: boolean("is_active").default(true),
 });
 
+export const customDnsBlocklists = pgTable("custom_dns_blocklists", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  domains: json("domains").$type<string[]>().notNull().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const accessLogs = pgTable("access_logs", {
   id: serial("id").primaryKey(),
   domain: text("domain").notNull(),
@@ -303,6 +313,7 @@ export type DnsServer = typeof dnsServers.$inferSelect;
 export type InsertDnsServer = z.infer<typeof insertDnsServerSchema>;
 
 export type Blocklist = typeof blocklists.$inferSelect;
+export type CustomDnsBlocklist = typeof customDnsBlocklists.$inferSelect;
 export type InsertBlocklist = z.infer<typeof insertBlocklistSchema>;
 
 export type AccessLog = typeof accessLogs.$inferSelect;
