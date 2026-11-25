@@ -820,15 +820,21 @@ export async function registerRoutes(
     try {
       const { verifyClamAv } = await import("./clamav-service");
       const result = await verifyClamAv(storage);
-      res.status(result.verified ? 200 : 503).json(result);
+      res.status(200).json(result);
     } catch (error) {
-      res.status(503).json({
+      res.status(200).json({
         verified: false,
         verifiedAt: new Date().toISOString(),
         message: error instanceof Error ? error.message : "ClamAV verification failed.",
         cleanScan: null,
         threatScan: null,
         engineVersion: null,
+        checks: {
+          initialHealth: { status: "failed", message: error instanceof Error ? error.message : "REST health check failed." },
+          cleanFile: { status: "not_run", message: "Not run." },
+          eicarThreat: { status: "not_run", message: "Not run." },
+          finalHealth: { status: "not_run", message: "Not run." },
+        },
       });
     }
   });

@@ -45,6 +45,10 @@ test("ClamAV verification proves both clean and EICAR threat responses", async (
   assert.equal(verification.cleanScan?.verdict, "clean");
   assert.equal(verification.threatScan?.verdict, "threat");
   assert.equal(verification.threatScan?.threatName, "Eicar-Test-Signature");
+  assert.equal(verification.checks?.initialHealth.status, "passed");
+  assert.equal(verification.checks?.cleanFile.status, "passed");
+  assert.equal(verification.checks?.eicarThreat.status, "passed");
+  assert.equal(verification.checks?.finalHealth.status, "passed");
   assert.equal(scanCount, 2);
 
   const status = await getClamAvStatus();
@@ -64,6 +68,18 @@ test("ClamAV scanning stays unavailable until verification passes", async () => 
     () => scanWithClamAv(Buffer.from("a file")),
     /not verified/,
   );
+});
+
+test("ClamAV verification returns checklist failures when REST health is unavailable", async () => {
+  process.env.CLAMAV_REST_URL = "http://offline-clamav.example.test";
+  globalThis.fetch = async () => new Response("offline", { status: 503 });
+
+  const verification = await verifyClamAv();
+  assert.equal(verification.verified, false);
+  assert.equal(verification.checks?.initialHealth.status, "failed");
+  assert.equal(verification.checks?.cleanFile.status, "not_run");
+  assert.equal(verification.checks?.eicarThreat.status, "not_run");
+  assert.equal(verification.checks?.finalHealth.status, "not_run");
 });
 
 test("ClamAV proof is shared across instances and invalidated by engine changes", async () => {

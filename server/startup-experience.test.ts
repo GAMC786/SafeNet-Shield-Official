@@ -479,6 +479,11 @@ test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () =>
 test("ClamAV verification waits for both scans and shows its pending state", () => {
   assert.match(clamAvHookSource, /timeoutMs: 80000/);
   assert.match(antivirusSource, /Verifying engine…/);
+  assert.match(antivirusSource, /Verification checklist/);
+  assert.match(antivirusSource, /Check the REST health endpoint/);
+  assert.match(antivirusSource, /harmless test file/);
+  assert.match(antivirusSource, /EICAR test signature/);
+  assert.match(antivirusSource, /engine version stayed the same/);
 });
 
 test("Settings use the current package version and expose only current controls", () => {

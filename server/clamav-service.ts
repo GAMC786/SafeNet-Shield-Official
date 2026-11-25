@@ -30,6 +30,19 @@ export type ClamAvVerification = {
   cleanScan: ClamAvScanResult | null;
   threatScan: ClamAvScanResult | null;
   engineVersion: string | null;
+  checks?: ClamAvVerificationChecks;
+};
+
+export type ClamAvCheckStatus = "passed" | "failed" | "not_run";
+export type ClamAvVerificationCheck = {
+  status: ClamAvCheckStatus;
+  message: string;
+};
+export type ClamAvVerificationChecks = {
+  initialHealth: ClamAvVerificationCheck;
+  cleanFile: ClamAvVerificationCheck;
+  eicarThreat: ClamAvVerificationCheck;
+  finalHealth: ClamAvVerificationCheck;
 };
 
 export type ClamAvVerificationRecord = ClamAvVerification & {
@@ -309,44 +322,96 @@ export async function verifyClamAv(store?: ClamAvVerificationStore): Promise<Cla
     throw new Error("ClamAV REST is not configured. Set CLAMAV_REST_URL in the deployment.");
   }
 
+  const checks: ClamAvVerificationChecks = {
+    initialHealth: { status: "not_run", message: "Not run." },
+    cleanFile: { status: "not_run", message: "Not run." },
+    eicarThreat: { status: "not_run", message: "Not run." },
+    finalHealth: { status: "not_run", message: "Not run." },
+  };
+  let engineVersion: string | null = null;
+  let cleanScan: ClamAvScanResult | null = null;
+  let threatScan: ClamAvScanResult | null = null;
+
   try {
-    const { engineVersion } = await requestHealth(url);
-    const cleanScan = await scanRequest(url, Buffer.from("SafeNet ClamAV verification: clean fixture."));
-    const threatScan = await scanRequest(url, Buffer.from(EICAR_TEST_SIGNATURE));
-    const finalHealth = await requestHealth(url);
-    const engineStable = Boolean(
-      engineVersion &&
-      finalHealth.engineVersion &&
-      engineVersion === finalHealth.engineVersion,
-    );
-    const verified = cleanScan.verdict === "clean" &&
-      threatScan.verdict === "threat" &&
-      engineStable;
-    const message = verified
-      ? "ClamAV health, clean-file, and EICAR threat checks passed."
-      : !engineStable
-        ? "ClamAV engine version changed or was not reported consistently during verification."
-      : "ClamAV is reachable, but the clean-file and EICAR threat checks did not produce the expected results.";
-    const result = { verified, verifiedAt, message, cleanScan, threatScan, engineVersion };
-    lastVerification = { ...result, endpointUrl: url };
-    if (verified && store && engineVersion) {
-      await store.saveClamAvVerification({
-        ...result,
-        endpointUrl: url,
-        engineVersion,
-      });
-    }
-    return result;
-  } catch (error) {
-    lastVerification = {
-      verified: false,
-      verifiedAt,
-      message: error instanceof Error ? error.message : "ClamAV verification failed.",
-      cleanScan: null,
-      threatScan: null,
-      engineVersion: null,
-      endpointUrl: url,
+    const initialHealth = await requestHealth(url);
+    engineVersion = initialHealth.engineVersion;
+    checks.initialHealth = {
+      status: "passed",
+      message: engineVersion ? `REST health is OK. Engine: ${engineVersion}` : "REST health is OK.",
     };
-    throw error;
+  } catch (error) {
+    checks.initialHealth = {
+      status: "failed",
+      message: error instanceof Error ? error.message : "REST health check failed.",
+    };
   }
+
+  if (checks.initialHealth.status === "passed") {
+    try {
+      cleanScan = await scanRequest(url, Buffer.from("SafeNet ClamAV verification: clean fixture."));
+      checks.cleanFile = {
+        status: cleanScan.verdict === "clean" ? "passed" : "failed",
+        message: cleanScan.message,
+      };
+    } catch (error) {
+      checks.cleanFile = {
+        status: "failed",
+        message: error instanceof Error ? error.message : "Clean-file scan failed.",
+      };
+    }
+
+    try {
+      threatScan = await scanRequest(url, Buffer.from(EICAR_TEST_SIGNATURE));
+      checks.eicarThreat = {
+        status: threatScan.verdict === "threat" ? "passed" : "failed",
+        message: threatScan.message,
+      };
+    } catch (error) {
+      checks.eicarThreat = {
+        status: "failed",
+        message: error instanceof Error ? error.message : "EICAR threat scan failed.",
+      };
+    }
+
+    try {
+      const finalHealth = await requestHealth(url);
+      const engineStable = Boolean(
+        engineVersion &&
+        finalHealth.engineVersion &&
+        engineVersion === finalHealth.engineVersion,
+      );
+      checks.finalHealth = {
+        status: engineStable ? "passed" : "failed",
+        message: engineStable
+          ? `REST health is OK. Engine version stayed at ${engineVersion}.`
+          : `REST health is OK, but the engine version was missing or changed${finalHealth.engineVersion ? ` to ${finalHealth.engineVersion}` : ""}.`,
+      };
+    } catch (error) {
+      checks.finalHealth = {
+        status: "failed",
+        message: error instanceof Error ? error.message : "Final REST health check failed.",
+      };
+    }
+  }
+
+  const verified = Object.values(checks).every((check) => check.status === "passed");
+  const message = verified
+    ? "ClamAV health, clean-file, and EICAR threat checks passed."
+    : checks.initialHealth.status === "failed"
+      ? checks.initialHealth.message
+      : checks.cleanFile.status === "failed"
+        ? "The harmless test file was not confirmed clean."
+        : checks.eicarThreat.status === "failed"
+          ? "The EICAR test signature was not confirmed as a threat."
+          : "The final health check did not confirm a stable engine version.";
+  const result = { verified, verifiedAt, message, cleanScan, threatScan, engineVersion, checks };
+  lastVerification = { ...result, endpointUrl: url };
+  if (verified && store && engineVersion) {
+    await store.saveClamAvVerification({
+      ...result,
+      endpointUrl: url,
+      engineVersion,
+    });
+  }
+  return result;
 }

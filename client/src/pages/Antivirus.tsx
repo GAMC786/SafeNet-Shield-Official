@@ -389,26 +389,26 @@ export default function Antivirus() {
             {verifyClamAv.isPending ? "Verifying engine…" : "Verify engine"}
           </Button>
         </div>
-        {verifyClamAv.data && (
-          <div className="mt-4 grid gap-3 border-t border-white/10 pt-4 text-xs md:grid-cols-2" data-testid="clamav-verification-result">
-            <div className={`rounded-md border p-3 ${verifyClamAv.data.cleanScan?.verdict === "clean" ? "border-emerald-500/30 bg-emerald-500/10" : "border-yellow-500/30 bg-yellow-500/10"}`}>
-              <p className="font-medium">Clean fixture</p>
-              <p className="mt-1 text-muted-foreground">
-                {verifyClamAv.data.cleanScan?.verdict === "clean"
-                  ? "Passed: no threat detected."
-                  : `Did not pass: ${verifyClamAv.data.cleanScan?.message || "no response"}`}
-              </p>
-            </div>
-            <div className={`rounded-md border p-3 ${verifyClamAv.data.threatScan?.verdict === "threat" ? "border-emerald-500/30 bg-emerald-500/10" : "border-yellow-500/30 bg-yellow-500/10"}`}>
-              <p className="font-medium">EICAR test signature</p>
-              <p className="mt-1 text-muted-foreground">
-                {verifyClamAv.data.threatScan?.verdict === "threat"
-                  ? `Passed: ${verifyClamAv.data.threatScan.threatName || "test threat detected"}.`
-                  : `Did not pass: ${verifyClamAv.data.threatScan?.message || "no response"}`}
-              </p>
-            </div>
-          </div>
-        )}
+        <div className="mt-4 space-y-2 border-t border-white/10 pt-4" data-testid="clamav-verification-checklist">
+          <h3 className="text-sm font-semibold">Verification checklist</h3>
+          {([
+            ["initialHealth", "Check the REST health endpoint."],
+            ["cleanFile", "Scan a harmless test file; confirm it is clean."],
+            ["eicarThreat", "Scan the EICAR test signature; confirm it is detected."],
+            ["finalHealth", "Check health again and confirm the engine version stayed the same."],
+          ] as const).map(([key, label]) => {
+            const persistedProof = !verifyClamAv.isPending && !verifyClamAv.data && clamAv.data?.verified;
+            const check = verifyClamAv.data?.checks?.[key] ?? (persistedProof
+              ? { status: "passed" as const, message: "Passed in the most recent verification for this engine." }
+              : undefined);
+            const passed = check?.status === "passed";
+            const failed = check?.status === "failed";
+            return <div key={key} className="flex gap-2 text-xs">
+              {passed ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : failed ? <XCircle className="h-4 w-4 text-destructive" /> : verifyClamAv.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
+              <div><p>{label}</p><p className="text-muted-foreground">{check?.message ?? (verifyClamAv.isPending ? "Verification is running…" : "Not run yet.")}</p></div>
+            </div>;
+          })}
+        </div>
       </CyberCard>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

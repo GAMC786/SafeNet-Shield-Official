@@ -27,6 +27,7 @@ export type ClamAvVerification = {
   cleanScan: ClamAvScanResult | null;
   threatScan: ClamAvScanResult | null;
   engineVersion: string | null;
+  checks?: Record<"initialHealth" | "cleanFile" | "eicarThreat" | "finalHealth", {status:"passed"|"failed"|"not_run";message:string}>;
 };
 
 export function useClamAvStatus() {
