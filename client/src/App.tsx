@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import {
   AuthenticateWithRedirectCallback,
   ClerkProvider,
@@ -26,6 +28,10 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { ArrowLeft } from "lucide-react";
 import { useCallback } from "react";
 import { apiFetch } from "./lib/api";
+import {
+  getClerkSsoCallbackUrl,
+  getNativeClerkCallbackTarget,
+} from "./lib/clerk-native-callback";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -172,6 +178,7 @@ function SignInPage() {
     provider && provider in signInProviders
       ? signInProviders[provider as keyof typeof signInProviders]
       : undefined;
+  const isAndroidNative = Capacitor.getPlatform() === "android";
 
   if (providerConfig) {
     return (
@@ -179,9 +186,16 @@ function SignInPage() {
         provider={providerConfig}
         recoveryNonce={recoveryNonce}
         recoveryReturnUri={recoveryReturnUri}
+        redirectUrl={redirectUrl}
       />
     );
   }
+
+  const startAndroidGoogleSignIn = () => {
+    const params = new URLSearchParams({ provider: "google" });
+    if (redirectUrl) params.set("redirect_url", redirectUrl);
+    setLocation(`${basePath}/sign-in?${params.toString()}`);
+  };
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
@@ -190,10 +204,31 @@ function SignInPage() {
           label="Back to Premium billing"
           onClick={() => setLocation("/billing")}
         />
+        {isAndroidNative ? (
+          <button
+            type="button"
+            onClick={startAndroidGoogleSignIn}
+            className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:border-primary/50 hover:bg-slate-800"
+          >
+            Continue with Google
+          </button>
+        ) : null}
         <SignIn
           routing="path"
           path={`${basePath}/sign-in`}
           signUpUrl={authPathWithRedirect(`${basePath}/sign-up`, redirectUrl)}
+          {...(isAndroidNative
+            ? {
+                appearance: {
+                  ...clerkAppearance,
+                  elements: {
+                    ...clerkAppearance.elements,
+                    socialButtonsBlock: "hidden",
+                    socialButtonsBlockButton: "hidden",
+                  },
+                },
+              }
+            : {})}
           {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
         />
       </div>
@@ -214,10 +249,12 @@ function ProviderSignInPage({
   provider,
   recoveryNonce,
   recoveryReturnUri,
+  redirectUrl,
 }: {
   provider: SignInProvider;
   recoveryNonce?: string;
   recoveryReturnUri?: string;
+  redirectUrl?: string;
 }) {
   const [, setLocation] = useLocation();
   const { fetchStatus, signIn } = useSignIn();
@@ -240,10 +277,12 @@ function ProviderSignInPage({
         : null;
       const completionPath = isRecovery
         ? `${basePath}/sign-in/app-lock-recovery-complete?${recoveryParams!.toString()}`
-        : `${basePath}/`;
-      const callbackPath = `${window.location.origin}${basePath}/sign-in/sso-callback${
-        recoveryParams ? `?${recoveryParams.toString()}` : ""
-      }`;
+        : redirectUrl || `${basePath}/`;
+      const callbackPath = getClerkSsoCallbackUrl({
+        isAndroid: Capacitor.getPlatform() === "android",
+        origin: window.location.origin,
+        basePath,
+      }) + (recoveryParams ? `?${recoveryParams.toString()}` : "");
       const result = await signIn.sso({
         strategy: provider.strategy as Parameters<typeof signIn.sso>[0]["strategy"],
         redirectUrl: completionPath,
@@ -490,6 +529,47 @@ const clerkAppearance = {
 
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== "android") return;
+
+    let disposed = false;
+    let handledCallbackUrl: string | undefined;
+    let listener: PluginListenerHandle | undefined;
+
+    const forwardCallback = (callbackUrl?: string) => {
+      if (!callbackUrl || callbackUrl === handledCallbackUrl) return;
+      const target = getNativeClerkCallbackTarget({
+        callbackUrl,
+        origin: window.location.origin,
+        basePath,
+      });
+      if (!target) return;
+      handledCallbackUrl = callbackUrl;
+      window.location.replace(target);
+    };
+
+    void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+      forwardCallback(url);
+    }).then((registeredListener) => {
+      if (disposed) {
+        void registeredListener.remove();
+      } else {
+        listener = registeredListener;
+      }
+    }).catch((error: unknown) => {
+      console.error("Unable to register the Android Clerk callback listener.", error);
+    });
+
+    void CapacitorApp.getLaunchUrl()
+      .then((launch) => forwardCallback(launch?.url))
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      void listener?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const tileWindow = window as Window & {
