@@ -2,11 +2,78 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FamilyDnsApiError,
+  getCleanBrowsingCategories,
   getAdGuardFilterLists,
+  setCleanBrowsingCategory,
   setAdGuardFilterList,
+  setNextDnsBlocklist,
   syncFamilyDnsRules,
   verifyFamilyDnsAccount,
 } from "./family-dns-api";
+
+test("CleanBrowsing category toggles use provider categories and refresh the active set", async () => {
+  const originalFetch = globalThis.fetch;
+  let blocked = ["category_adult"];
+  const actions: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    const action = url.searchParams.get("action")!;
+    actions.push(action);
+    if (action === "categories/list") return Response.json({ status: "success", categories: blocked });
+    if (action === "category/block") blocked = [...blocked, url.searchParams.get("category_name")!];
+    return Response.json({ status: "success" });
+  }) as typeof fetch;
+  try {
+    const before = await getCleanBrowsingCategories("api-token", "Family");
+    assert.equal(before.find((item) => item.id === "category_adult")?.enabled, true);
+    assert.equal(before.find((item) => item.id === "category_gambling")?.enabled, false);
+    const after = await setCleanBrowsingCategory("api-token", "Family", "category_gambling", true);
+    assert.equal(after.find((item) => item.id === "category_gambling")?.enabled, true);
+    assert.deepEqual(actions, ["categories/list", "category/block", "categories/list"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("NextDNS blocklist toggles preserve the other selected provider lists", async () => {
+  const originalFetch = globalThis.fetch;
+  const current = new Set(["manual-list"]);
+  const calls: Array<{ path: string; method: string; body?: unknown }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = new URL(String(input));
+    const method = init.method ?? "GET";
+    const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+    calls.push({ path: url.pathname, method, body });
+    if (url.pathname === "/privacy/blocklists") {
+      return Response.json({ data: [
+        { id: "manual-list", name: "Manual list", entries: 100 },
+        { id: "nextdns-recommended", name: "Recommended", entries: 200 },
+      ] });
+    }
+    if (url.pathname === "/profiles/profile-1/privacy/blocklists" && method === "GET") {
+      return Response.json({ data: [...current].map((id) => ({ id })) });
+    }
+    if (url.pathname === "/profiles/profile-1/privacy/blocklists" && method === "POST") {
+      current.add(String(body.id));
+      return Response.json({ data: { id: body.id } });
+    }
+    if (url.pathname.endsWith("/manual-list") && method === "DELETE") {
+      current.delete("manual-list");
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({ errors: [{ code: "notFound" }] }, { status: 404 });
+  }) as typeof fetch;
+  try {
+    const added = await setNextDnsBlocklist("api-token", "profile-1", "nextdns-recommended", true);
+    assert.equal(added.find((item) => item.id === "nextdns-recommended")?.enabled, true);
+    const removed = await setNextDnsBlocklist("api-token", "profile-1", "manual-list", false);
+    assert.equal(removed.find((item) => item.id === "manual-list")?.enabled, false);
+    assert.ok(calls.some((call) => call.method === "POST" && call.path.endsWith("/privacy/blocklists")));
+    assert.ok(calls.some((call) => call.method === "DELETE" && call.path.endsWith("/manual-list")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("DNS provider verification only calls the explicitly selected provider API", async () => {
   const originalFetch = globalThis.fetch;
@@ -42,6 +109,19 @@ test("DNS provider verification rejects a token invalid for the selected provide
     await assert.rejects(verifyFamilyDnsAccount("adguard", "wrong-provider-token", "server-1"), FamilyDnsApiError);
     assert.equal(urls.length, 1);
     assert.match(urls[0]!, /^https:\/\/api\.adguard-dns\.io\//);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("CleanBrowsing marks plain-text permission denials as rejected credentials", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("Forbidden", { status: 403 })) as typeof fetch;
+  try {
+    await assert.rejects(
+      getCleanBrowsingCategories("api-token", "Family"),
+      (error: unknown) => error instanceof FamilyDnsApiError && error.rejected,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

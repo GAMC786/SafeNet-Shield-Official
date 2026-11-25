@@ -9,6 +9,25 @@ export type AdGuardFilterList = {
   rulesCount: number | null;
   enabled: boolean;
 };
+export type ProviderBlocklist = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  rulesCount: number | null;
+};
+
+const cleanBrowsingCategories = [
+  ["category_adult", "Adult content"], ["category_adultmixed", "Mixed adult content"],
+  ["category_advertising_tracking", "Advertising and tracking"], ["category_torrents", "Torrent trackers"],
+  ["category_p2p_file_sharing", "Peer-to-peer file sharing"], ["category_proxy_vpn", "VPN and proxy services"],
+  ["category_gaming", "Gaming"], ["category_gambling", "Gambling"], ["category_dating", "Dating"],
+  ["category_social_network", "Social networks"], ["category_search_engine", "Search engines"],
+  ["category_online_radio", "Online radio and podcasts"], ["category_weapons", "Weapons"],
+  ["category_malicious_blacklisted", "Malware and phishing"], ["category_video_streaming", "Video streaming"],
+  ["category_drugs", "Drugs"], ["category_alcohol", "Alcohol"], ["category_lingerie", "Lingerie"],
+  ["category_hate_speech", "Hate speech"], ["category_academic_fraud", "Academic fraud"],
+] as const;
 
 export class FamilyDnsApiError extends Error {
   constructor(readonly rejected: boolean) {
@@ -52,12 +71,49 @@ async function cleanBrowsingRequest(token: string, action: string, profileId: st
   } catch {
     throw new FamilyDnsApiError(false);
   }
+  if (response.status === 401 || response.status === 403) throw new FamilyDnsApiError(true);
   let body: any;
-  try { body = await response.json(); } catch { throw new FamilyDnsApiError(false); }
+  try {
+    body = await response.json();
+  } catch {
+    throw new FamilyDnsApiError(false);
+  }
   if (!response.ok || body?.status !== "success") {
     throw new FamilyDnsApiError(response.status === 401 || response.status === 403 || /api key|unauthorized/i.test(String(body?.reason ?? "")));
   }
   return body;
+}
+
+export async function getCleanBrowsingCategories(token: string, profileId: string): Promise<ProviderBlocklist[]> {
+  const body = await cleanBrowsingRequest(token, "categories/list", profileId);
+  const categoryPayload = body.categories ?? body.blocklist ?? body.blocked_categories ?? [];
+  const configured = Array.isArray(categoryPayload)
+    ? categoryPayload
+    : typeof categoryPayload === "object" && categoryPayload !== null
+      ? (categoryPayload as Record<string, unknown>)[profileId] ?? []
+      : [];
+  if (!Array.isArray(configured)) throw new FamilyDnsApiError(false);
+  const enabledIds = new Set(configured.map((item: unknown) =>
+    typeof item === "string" ? item : (item as { category_name?: string; id?: string })?.category_name ?? (item as { id?: string })?.id,
+  ));
+  return cleanBrowsingCategories.map(([id, name]) => ({
+    id,
+    name,
+    description: "",
+    enabled: enabledIds.has(id),
+    rulesCount: null,
+  }));
+}
+
+export async function setCleanBrowsingCategory(
+  token: string,
+  profileId: string,
+  categoryId: string,
+  enabled: boolean,
+) {
+  if (!cleanBrowsingCategories.some(([id]) => id === categoryId)) throw new FamilyDnsApiError(true);
+  await cleanBrowsingRequest(token, enabled ? "category/block" : "category/allow", profileId, { category_name: categoryId });
+  return getCleanBrowsingCategories(token, profileId);
 }
 
 export async function verifyFamilyDnsAccount(provider: FamilyDnsProvider, token: string, profileId: string) {
@@ -183,6 +239,58 @@ export async function setAdGuardFilterList(
     }),
   });
   return getAdGuardFilterLists(token, serverId);
+}
+
+async function nextDnsRequest<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`https://api.nextdns.io${path}`, {
+      ...init,
+      headers: { "X-Api-Key": token, ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new FamilyDnsApiError(false);
+  }
+  const body = await response.json().catch(() => null) as { data?: T; errors?: Array<{ code?: string }> } | null;
+  if (!response.ok || body?.errors?.length) throw new FamilyDnsApiError([400, 401, 403].includes(response.status));
+  return body?.data as T;
+}
+
+export async function getNextDnsBlocklists(token: string, profileId: string): Promise<ProviderBlocklist[]> {
+  const [catalog, configured] = await Promise.all([
+    nextDnsRequest<Array<{ id?: string; name?: string | null; description?: string; entries?: number }>>(token, "/privacy/blocklists"),
+    nextDnsRequest<Array<{ id?: string }>>(token, `/profiles/${encodeURIComponent(profileId)}/privacy/blocklists`),
+  ]);
+  if (!Array.isArray(catalog) || !Array.isArray(configured)) throw new FamilyDnsApiError(false);
+  const enabled = new Set(configured.map((item) => item.id).filter((id): id is string => Boolean(id)));
+  return catalog.flatMap((item) => typeof item.id === "string" ? [{
+    id: item.id,
+    name: item.name || item.id,
+    description: item.description ?? "",
+    enabled: enabled.has(item.id),
+    rulesCount: Number.isFinite(item.entries) ? item.entries! : null,
+  }] : []).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function setNextDnsBlocklist(token: string, profileId: string, listId: string, enabled: boolean) {
+  const [catalog, current] = await Promise.all([
+    nextDnsRequest<Array<{ id?: string }>>(token, "/privacy/blocklists"),
+    nextDnsRequest<Array<{ id?: string }>>(token, `/profiles/${encodeURIComponent(profileId)}/privacy/blocklists`),
+  ]);
+  if (!Array.isArray(catalog) || !catalog.some((item) => item.id === listId) || !Array.isArray(current)) {
+    throw new FamilyDnsApiError(true);
+  }
+  const active = current.some((item) => item.id === listId);
+  if (active !== enabled) {
+    const path = `/profiles/${encodeURIComponent(profileId)}/privacy/blocklists`;
+    if (enabled) {
+      await nextDnsRequest(token, path, { method: "POST", body: JSON.stringify({ id: listId }) });
+    } else {
+      await nextDnsRequest(token, `${path}/${encodeURIComponent(listId)}`, { method: "DELETE" });
+    }
+  }
+  return getNextDnsBlocklists(token, profileId);
 }
 
 export async function syncFamilyDnsRules(

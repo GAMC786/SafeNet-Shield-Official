@@ -119,6 +119,10 @@ const adGuardDnsBlocklistsSource = readFileSync(
   path.join(clientRoot, "src/components/AdGuardDnsBlocklists.tsx"),
   "utf8",
 );
+const dnsProviderBlocklistsSource = readFileSync(
+  path.join(clientRoot, "src/components/DnsProviderBlocklists.tsx"),
+  "utf8",
+);
 const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
@@ -445,7 +449,11 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
   assert.match(firewallSource, /SafeNet applies DNS rules on this phone while its DNS-only VPN is active/);
   assert.match(firewallSource, /Manual domain rules are saved in SafeNet/);
-  assert.match(firewallSource, /AdGuardDnsBlocklists/);
+  assert.match(firewallSource, /DnsProviderBlocklists/);
+  assert.match(dnsProviderBlocklistsSource, /OpenDNS Home is resolver-only/);
+  assert.match(dnsProviderBlocklistsSource, /uBlockDNS has no supported account API/);
+  assert.match(dnsProviderBlocklistsSource, /SafeNet rule sync updates only SafeNet-owned entries/);
+  assert.match(dnsProviderBlocklistsSource, /provider !== "controld"/);
   assert.match(adGuardDnsBlocklistsSource, /AdGuard DNS Built-in Blocklists/);
   assert.match(adGuardDnsBlocklistsSource, /button-adguard-sign-in/);
   assert.match(firewallSource, /DNS names, not keywords or URL paths/);

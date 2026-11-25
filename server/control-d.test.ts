@@ -6,7 +6,34 @@ import type { AddressInfo } from "node:net";
 import type { IStorage } from "./storage";
 import { encryptControlDToken, decryptControlDToken } from "./control-d-crypto";
 import { registerControlDRoutes } from "./control-d-routes";
+import { listControlDProfileFilters, setControlDProfileFilter } from "./control-d-api";
 import type { ControlDCredential } from "@shared/schema";
+
+test("Control D native filter toggles change only the selected filter", async () => {
+  let enabled = false;
+  let updateBody: unknown;
+  const fetchMock: typeof fetch = async (_input, init = {}) => {
+    if (init.method === "PUT") {
+      updateBody = JSON.parse(String(init.body));
+      enabled = (updateBody as { filters: Array<{ status: number }> }).filters[0]?.status === 1;
+    }
+    return Response.json({
+      success: true,
+      body: {
+        filters: [
+          { PK: "ads", name: "Ads & Trackers", description: "Ad blocking", status: enabled ? 1 : 0 },
+          { PK: "malware", name: "Malware", description: "Threat protection", status: 1 },
+        ],
+      },
+    });
+  };
+  const before = await listControlDProfileFilters("token", "profile-1", fetchMock);
+  assert.equal(before[1]?.enabled, true);
+  const after = await setControlDProfileFilter("token", "profile-1", "ads", true, fetchMock);
+  assert.equal(after[0]?.enabled, true);
+  assert.equal(after[1]?.enabled, true);
+  assert.deepEqual(updateBody, { filters: [{ filter: "ads", status: 1 }] });
+});
 
 test("Control D tokens are encrypted and bound to their SafeNet owner", () => {
   const originalSecret = process.env.SESSION_SECRET;

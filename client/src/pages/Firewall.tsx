@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { Link } from "wouter";
 import { useActivateDnsServer, useCreateDnsServer, useDnsServers } from "@/hooks/use-dns";
-import { AdGuardDnsBlocklists } from "@/components/AdGuardDnsBlocklists";
+import { DnsProviderBlocklists } from "@/components/DnsProviderBlocklists";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
 
 type EditablePhoneResolverType = "none" | DnsResolverPreset["type"];
@@ -547,7 +547,7 @@ export default function Firewall() {
                   : "No DNS resolver is selected. Choose one here or on DNS Servers before enabling phone protection."}
               </p>
               <p role="status" className="text-xs text-amber-200">
-                Manual domain rules are saved in SafeNet. Use the AdGuard panel below to manage built-in filters on your connected AdGuard DNS server.
+                Manual domain rules are saved in SafeNet. Use the provider blocklists panel below to manage native filters separately.
               </p>
             </div>
           </div>
@@ -602,7 +602,7 @@ export default function Firewall() {
             </div>
           </CyberCard>
 
-          <AdGuardDnsBlocklists />
+          <DnsProviderBlocklists />
 
           <CyberCard className="border-cyan-400/20 bg-cyan-400/5">
             <div className="flex items-start gap-3">

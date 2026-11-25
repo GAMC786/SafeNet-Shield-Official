@@ -6,6 +6,8 @@ import { decryptFamilyDnsToken, encryptFamilyDnsToken } from "./family-dns-crypt
 import {
   FamilyDnsApiError,
   getAdGuardFilterLists,
+  getCleanBrowsingCategories,
+  setCleanBrowsingCategory,
   setAdGuardFilterList,
   syncFamilyDnsRules,
   verifyFamilyDnsAccount,
@@ -129,6 +131,44 @@ export function registerFamilyDnsRoutes(
         body.data.enabled,
       );
       return res.json({ serverId: credential.profileId, filters });
+    } catch (error) {
+      return respondError(error, res);
+    }
+  });
+
+  app.get("/api/family-dns/cleanbrowsing/categories", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    try {
+      const credential = await storage.getFamilyDnsCredential(userId, "cleanbrowsing");
+      if (!credential) return res.status(409).json({ message: "Connect CleanBrowsing before managing its categories." });
+      return res.json({
+        profileId: credential.profileId,
+        lists: await getCleanBrowsingCategories(decryptFamilyDnsToken(credential, userId), credential.profileId),
+      });
+    } catch (error) {
+      return respondError(error, res);
+    }
+  });
+
+  app.patch("/api/family-dns/cleanbrowsing/categories/:categoryId", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const categoryId = z.string().trim().min(1).max(80).regex(/^category_[a-z0-9_]+$/).safeParse(req.params.categoryId);
+    const body = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+    if (!categoryId.success || !body.success) return res.status(400).json({ message: "Choose a valid CleanBrowsing category and enabled state." });
+    try {
+      const credential = await storage.getFamilyDnsCredential(userId, "cleanbrowsing");
+      if (!credential) return res.status(409).json({ message: "Connect CleanBrowsing before managing its categories." });
+      return res.json({
+        profileId: credential.profileId,
+        lists: await setCleanBrowsingCategory(
+          decryptFamilyDnsToken(credential, userId),
+          credential.profileId,
+          categoryId.data,
+          body.data.enabled,
+        ),
+      });
     } catch (error) {
       return respondError(error, res);
     }

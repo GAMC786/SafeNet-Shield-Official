@@ -5,7 +5,9 @@ import { getRequestUserId, requireAuth } from "./auth";
 import {
   ControlDApiError,
   listControlDDevices,
+  listControlDProfileFilters,
   listControlDProfiles,
+  setControlDProfileFilter,
   updateControlDDeviceProfile,
   verifyControlDToken,
 } from "./control-d-api";
@@ -171,6 +173,58 @@ export function registerControlDRoutes(
         fetchImpl,
       );
       return res.json({ device: updatedDevice });
+    } catch (error) {
+      return respondToControlDError(error, res, { savedCredential: true });
+    }
+  });
+
+  app.get("/api/control-d/profiles/:profileId/filters", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const profileId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/).safeParse(req.params.profileId);
+    if (!profileId.success) return res.status(400).json({ message: "Choose a valid Control D profile." });
+    try {
+      const credential = await storage.getControlDCredential(userId);
+      if (!credential) return res.status(409).json({ message: "Connect a Control D account first." });
+      const token = decryptControlDToken(credential, userId);
+      const profiles = await listControlDProfiles(token, fetchImpl);
+      if (!profiles.some((profile) => profile.id === profileId.data)) {
+        return res.status(404).json({ message: "That profile is not in your connected Control D account." });
+      }
+      return res.json({
+        profileId: profileId.data,
+        filters: await listControlDProfileFilters(token, profileId.data, fetchImpl),
+      });
+    } catch (error) {
+      return respondToControlDError(error, res, { savedCredential: true });
+    }
+  });
+
+  app.patch("/api/control-d/profiles/:profileId/filters/:filterId", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const profileId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/).safeParse(req.params.profileId);
+    const filterId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/).safeParse(req.params.filterId);
+    const body = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+    if (!profileId.success || !filterId.success || !body.success) {
+      return res.status(400).json({ message: "Choose a valid Control D profile, filter, and enabled state." });
+    }
+    try {
+      const credential = await storage.getControlDCredential(userId);
+      if (!credential) return res.status(409).json({ message: "Connect a Control D account first." });
+      const token = decryptControlDToken(credential, userId);
+      const profiles = await listControlDProfiles(token, fetchImpl);
+      if (!profiles.some((profile) => profile.id === profileId.data)) {
+        return res.status(404).json({ message: "That profile is not in your connected Control D account." });
+      }
+      const filters = await listControlDProfileFilters(token, profileId.data, fetchImpl);
+      if (!filters.some((filter) => filter.id === filterId.data)) {
+        return res.status(404).json({ message: "That native filter is not available for this profile." });
+      }
+      return res.json({
+        profileId: profileId.data,
+        filters: await setControlDProfileFilter(token, profileId.data, filterId.data, body.data.enabled, fetchImpl),
+      });
     } catch (error) {
       return respondToControlDError(error, res, { savedCredential: true });
     }

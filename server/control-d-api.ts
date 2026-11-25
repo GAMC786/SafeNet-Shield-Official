@@ -33,18 +33,20 @@ async function requestControlD(
   token: string,
   path: string,
   fetchImpl: typeof fetch,
-  options: { method?: "GET" | "PUT"; form?: Record<string, string> } = {},
+  options: { method?: "GET" | "PUT"; form?: Record<string, string>; json?: unknown } = {},
 ): Promise<Record<string, unknown>> {
   const headers: Record<string, string> = {
     accept: "application/json",
     authorization: `Bearer ${token}`,
   };
-  const body = options.form
-    ? new URLSearchParams(options.form).toString()
-    : undefined;
+  const body = options.json !== undefined
+    ? JSON.stringify(options.json)
+    : options.form
+      ? new URLSearchParams(options.form).toString()
+      : undefined;
 
   if (body) {
-    headers["content-type"] = "application/x-www-form-urlencoded";
+    headers["content-type"] = options.json !== undefined ? "application/json" : "application/x-www-form-urlencoded";
   }
 
   let response: Response;
@@ -77,6 +79,45 @@ async function requestControlD(
     throw new ControlDApiError("unavailable");
   }
   return payload.body;
+}
+
+export type ControlDNativeFilter = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+};
+
+export async function listControlDProfileFilters(
+  token: string,
+  profileId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ControlDNativeFilter[]> {
+  const body = await requestControlD(token, `/profiles/${encodeURIComponent(profileId)}/filters`, fetchImpl);
+  if (!Array.isArray(body.filters)) throw new ControlDApiError("unavailable");
+  return body.filters.flatMap((item: unknown) => {
+    if (!isRecord(item) || typeof item.PK !== "string" || typeof item.name !== "string") return [];
+    return [{
+      id: item.PK,
+      name: item.name,
+      description: typeof item.description === "string" ? item.description : "",
+      enabled: item.status === 1,
+    }];
+  });
+}
+
+export async function setControlDProfileFilter(
+  token: string,
+  profileId: string,
+  filterId: string,
+  enabled: boolean,
+  fetchImpl: typeof fetch = fetch,
+) {
+  await requestControlD(token, `/profiles/${encodeURIComponent(profileId)}/filters`, fetchImpl, {
+    method: "PUT",
+    json: { filters: [{ filter: filterId, status: enabled ? 1 : 0 }] },
+  });
+  return listControlDProfileFilters(token, profileId, fetchImpl);
 }
 
 export async function verifyControlDToken(

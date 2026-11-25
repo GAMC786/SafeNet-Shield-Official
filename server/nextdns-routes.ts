@@ -4,6 +4,7 @@ import type { IStorage } from "./storage";
 import { getRequestUserId, requireAuth } from "./auth";
 import { decryptNextDnsToken, encryptNextDnsToken } from "./nextdns-crypto";
 import { NextDnsApiError, syncNextDnsRules, verifyNextDnsProfile } from "./nextdns-api";
+import { FamilyDnsApiError, getNextDnsBlocklists, setNextDnsBlocklist } from "./family-dns-api";
 
 const connectSchema = z.object({
   token: z.string().trim().min(1).max(2048),
@@ -72,6 +73,54 @@ export function registerNextDnsRoutes(
     if (!userId) return;
     await storage.deleteNextDnsCredential(userId);
     return res.status(204).send();
+  });
+
+  app.get("/api/nextdns/blocklists", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    try {
+      const credential = await storage.getNextDnsCredential(userId);
+      if (!credential) return res.status(409).json({ message: "Connect a NextDNS profile before managing its blocklists." });
+      return res.json({
+        profileId: credential.profileId,
+        lists: await getNextDnsBlocklists(decryptNextDnsToken(credential, userId), credential.profileId),
+      });
+    } catch (error) {
+      if (error instanceof FamilyDnsApiError) {
+        return res.status(error.rejected ? 400 : 502).json({
+          message: error.rejected ? "NextDNS rejected this request or profile." : "NextDNS blocklists are temporarily unavailable.",
+        });
+      }
+      return sendError(error, res);
+    }
+  });
+
+  app.patch("/api/nextdns/blocklists/:listId", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const listId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/).safeParse(req.params.listId);
+    const body = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+    if (!listId.success || !body.success) return res.status(400).json({ message: "Choose a valid NextDNS blocklist and enabled state." });
+    try {
+      const credential = await storage.getNextDnsCredential(userId);
+      if (!credential) return res.status(409).json({ message: "Connect a NextDNS profile before managing its blocklists." });
+      return res.json({
+        profileId: credential.profileId,
+        lists: await setNextDnsBlocklist(
+          decryptNextDnsToken(credential, userId),
+          credential.profileId,
+          listId.data,
+          body.data.enabled,
+        ),
+      });
+    } catch (error) {
+      if (error instanceof FamilyDnsApiError) {
+        return res.status(error.rejected ? 400 : 502).json({
+          message: error.rejected ? "NextDNS rejected this blocklist or profile." : "NextDNS blocklists are temporarily unavailable.",
+        });
+      }
+      return sendError(error, res);
+    }
   });
 
   app.post("/api/nextdns/sync", authGate, async (req, res) => {
