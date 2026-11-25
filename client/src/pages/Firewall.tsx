@@ -619,57 +619,55 @@ export default function Firewall() {
                     return (
                       <div
                         key={provider.id}
-                        className="rounded-lg border border-white/10 bg-background/40 p-3"
+                        className="flex h-full flex-col rounded-lg border border-white/10 bg-background/40 p-3"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h4 className="font-display font-bold text-white">{provider.name}</h4>
-                            <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
-                          </div>
-                          <div className="flex w-36 shrink-0 flex-col gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full justify-center border-white/20"
-                              onClick={() => void handleAddDnsProvider(provider)}
-                              disabled={createRule.isPending}
-                              data-testid={`button-add-dns-provider-${provider.id}`}
-                            >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" />
-                              Add rules
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full justify-center border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
-                              onClick={() => void handleUseFamilyDnsOnPhone(provider)}
-                              disabled={createDnsServer.isPending || activateDnsServer.isPending || localVpn.busy}
-                              data-testid={`button-use-phone-dns-${provider.id}`}
-                            >
-                              Use on phone
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="w-full justify-center"
-                              onClick={() => openFamilyDnsPresetEditor(baseProvider)}
-                              data-testid={`button-edit-dns-preset-${provider.id}`}
-                            >
-                              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                              Edit
-                            </Button>
+                        <div>
+                          <h4 className="font-display font-bold text-white">{provider.name}</h4>
+                          <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {provider.addresses.map((address) => (
+                              <Badge
+                                key={address}
+                                variant="outline"
+                                className="border-white/10 font-mono text-[10px] text-muted-foreground"
+                              >
+                                {address}
+                              </Badge>
+                            ))}
                           </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {provider.addresses.map((address) => (
-                            <Badge
-                              key={address}
-                              variant="outline"
-                              className="border-white/10 font-mono text-[10px] text-muted-foreground"
-                            >
-                              {address}
-                            </Badge>
-                          ))}
+                        <div className="mt-auto flex w-full flex-col gap-2 pt-4">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full justify-center border-white/20"
+                            onClick={() => void handleAddDnsProvider(provider)}
+                            disabled={createRule.isPending}
+                            data-testid={`button-add-dns-provider-${provider.id}`}
+                          >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Add rules
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full justify-center border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            onClick={() => void handleUseFamilyDnsOnPhone(provider)}
+                            disabled={createDnsServer.isPending || activateDnsServer.isPending || localVpn.busy}
+                            data-testid={`button-use-phone-dns-${provider.id}`}
+                          >
+                            Use on phone
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="w-full justify-center"
+                            onClick={() => openFamilyDnsPresetEditor(baseProvider)}
+                            data-testid={`button-edit-dns-preset-${provider.id}`}
+                          >
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                            Edit
+                          </Button>
                         </div>
                       </div>
                     );
