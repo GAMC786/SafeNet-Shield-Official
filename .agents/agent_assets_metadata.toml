@@ -182,3 +182,17 @@ mtime_ms = 1794755899905
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/58f51b2d-7f84-41c4-a8ae-760f6b2484ea/43fbea64-1040-4aa4-8c4d-6b635d5a9bb1"
 storage_version_token = "1794755908740788"
 content_type = "audio/mpeg"
+
+[[outputs]]
+id = "BogG2SpWv_jdWAcAUlxnM"
+uri = "file://client/public/icon-512.png"
+type = "image"
+title = "SafeNet App Icon"
+description = "Current 512 × 512 PNG app icon."
+logical_id = "58c34522-7c23-48df-96bc-f63110fa8d85"
+content_hash = "sha256:ea6b4d2c2ba48ccf353a8768f22b7961a47955aa97974ab34a2d3fd5a60d180d"
+size = 30960
+mtime_ms = 1788235347313
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/58c34522-7c23-48df-96bc-f63110fa8d85/59770970-676e-463a-b959-64ddf3905036"
+storage_version_token = "1795632291240617"
+content_type = "image/png"
