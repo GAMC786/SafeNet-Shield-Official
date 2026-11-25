@@ -12,7 +12,7 @@ import {
   type FamilyDnsProvider,
 } from "./family-dns-api";
 
-const providerSchema = z.enum(["adguard", "cleanbrowsing"]);
+const providerSchema = z.enum(["adguard", "cleanbrowsing", "cloudflare", "umbrella"]);
 const connectionSchema = z.object({
   provider: providerSchema,
   profileId: z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/),

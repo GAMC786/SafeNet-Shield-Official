@@ -124,7 +124,7 @@ export const nextDnsCredentials = pgTable("nextdns_credentials", {
 export const familyDnsCredentials = pgTable("family_dns_credentials", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
-  provider: text("provider", { enum: ["adguard", "cleanbrowsing"] }).notNull(),
+  provider: text("provider", { enum: ["adguard", "cleanbrowsing", "cloudflare", "umbrella"] }).notNull(),
   profileId: text("profile_id").notNull(),
   tokenCiphertext: text("token_ciphertext").notNull(),
   tokenIv: text("token_iv").notNull(),
@@ -138,7 +138,7 @@ export const familyDnsCredentials = pgTable("family_dns_credentials", {
   unique("family_dns_credentials_user_provider_unique").on(table.userId, table.provider),
   check(
     "family_dns_credentials_provider_check",
-    sql`${table.provider} = ANY (ARRAY['adguard'::text, 'cleanbrowsing'::text])`,
+    sql`${table.provider} = ANY (ARRAY['adguard'::text, 'cleanbrowsing'::text, 'cloudflare'::text, 'umbrella'::text])`,
   ),
 ]);
 

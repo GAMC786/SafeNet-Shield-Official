@@ -16,6 +16,45 @@ export class FamilyDnsApiError extends Error {
   }
 }
 
+async function cloudflareRequest<T>(token: string, path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new FamilyDnsApiError(false);
+  }
+  const body = await response.json().catch(() => null) as { success?: boolean; result?: T } | null;
+  if (!response.ok || body?.success !== true) {
+    throw new FamilyDnsApiError(response.status === 401 || response.status === 403 || response.status === 404);
+  }
+  return body.result as T;
+}
+
+async function umbrellaAccessToken(clientId: string, clientSecret: string) {
+  let response: Response;
+  try {
+    response = await fetch("https://api.umbrella.com/auth/v2/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new FamilyDnsApiError(false);
+  }
+  const body = await response.json().catch(() => null) as { access_token?: string } | null;
+  if (!response.ok || typeof body?.access_token !== "string") {
+    throw new FamilyDnsApiError(response.status === 400 || response.status === 401 || response.status === 403);
+  }
+  return body.access_token;
+}
+
 function adGuardHeaders(token: string) {
   return { Authorization: `ApiKey ${token}`, Accept: "application/json" };
 }
@@ -61,6 +100,27 @@ async function cleanBrowsingRequest(token: string, action: string, profileId: st
 }
 
 export async function verifyFamilyDnsAccount(provider: FamilyDnsProvider, token: string, profileId: string) {
+  if (provider === "cloudflare") {
+    await cloudflareRequest(token, `/accounts/${encodeURIComponent(profileId)}/gateway/lists?per_page=1`);
+    return;
+  }
+  if (provider === "umbrella") {
+    let parsed: { clientId?: string; clientSecret?: string };
+    try { parsed = JSON.parse(token); } catch { throw new FamilyDnsApiError(true); }
+    if (!parsed.clientId || !parsed.clientSecret) throw new FamilyDnsApiError(true);
+    const bearer = await umbrellaAccessToken(parsed.clientId, parsed.clientSecret);
+    let response: Response;
+    try {
+      response = await fetch(`https://api.umbrella.com/policies/v2/destinationlists?organizationId=${encodeURIComponent(profileId)}`, {
+        headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      throw new FamilyDnsApiError(false);
+    }
+    if (!response.ok) throw new FamilyDnsApiError([400, 401, 403, 404].includes(response.status));
+    return;
+  }
   if (provider === "cleanbrowsing") {
     const body = await cleanBrowsingRequest(token, "profiles/list", profileId);
     if (!Array.isArray(body.profiles) || !body.profiles.includes(profileId)) throw new FamilyDnsApiError(true);
@@ -192,6 +252,9 @@ export async function syncFamilyDnsRules(
   desired: Rule[],
   previouslyOwned: string[],
 ) {
+  if (provider === "cloudflare" || provider === "umbrella") {
+    throw new FamilyDnsApiError(false);
+  }
   return provider === "cleanbrowsing"
     ? syncCleanBrowsing(token, profileId, desired, previouslyOwned)
     : syncAdGuard(token, profileId, desired, previouslyOwned);
