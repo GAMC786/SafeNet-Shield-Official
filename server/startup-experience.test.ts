@@ -435,6 +435,7 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.match(firewallSource, /Manual domain rules are saved in SafeNet/);
   assert.match(firewallSource, /AdGuardDnsBlocklists/);
   assert.match(adGuardDnsBlocklistsSource, /AdGuard DNS Built-in Blocklists/);
+  assert.match(adGuardDnsBlocklistsSource, /button-adguard-sign-in/);
   assert.match(firewallSource, /DNS names, not keywords or URL paths/);
   assert.match(firewallSource, /aria-label="Enable DNS filtering"/);
   assert.match(firewallSource, /Use on phone/);

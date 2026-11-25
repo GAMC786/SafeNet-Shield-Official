@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 type ConnectionStatus = {
   adguard: { connected: boolean; profileId: string | null; lastSyncedAt: string | null };
@@ -40,6 +41,7 @@ async function familyDnsRequest<T>(path: string, init: RequestInit = {}): Promis
 
 export function AdGuardDnsBlocklists() {
   const { isLoaded, isSignedIn, userId } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState("");
@@ -103,6 +105,10 @@ export function AdGuardDnsBlocklists() {
   };
 
   const filters = filtersQuery.data?.filters ?? [];
+  const openSignIn = () => {
+    const returnPath = `${window.location.pathname}${window.location.search}`;
+    setLocation(`/sign-in?redirect_url=${encodeURIComponent(returnPath)}`);
+  };
 
   return (
     <CyberCard className="border-emerald-400/20 bg-emerald-400/5">
@@ -131,8 +137,15 @@ export function AdGuardDnsBlocklists() {
           </div>
 
           {!connected && (
-            !isLoaded || !isSignedIn ? (
-              <p className="mt-4 text-sm text-muted-foreground">Sign in to connect and manage an AdGuard DNS server.</p>
+            !isLoaded ? (
+              <p className="mt-4 text-sm text-muted-foreground">Checking sign-in status…</p>
+            ) : !isSignedIn ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">Sign in to connect and manage an AdGuard DNS server.</p>
+                <Button size="sm" onClick={openSignIn} data-testid="button-adguard-sign-in">
+                  Sign in
+                </Button>
+              </div>
             ) : (
             <form onSubmit={handleConnect} className="mt-4 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
