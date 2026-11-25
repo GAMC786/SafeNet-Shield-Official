@@ -156,6 +156,23 @@ public final class DnsFirewall {
         return evaluateWithReason(query, sourceAddress, destinationAddress).decision;
     }
 
+    public Decision evaluateNetworkAccessRule(
+        String sourceAddress,
+        String destinationAddress,
+        String protocol,
+        int destinationPort
+    ) {
+        if (!enabled) {
+            return Decision.ALLOW;
+        }
+        for (AccessRule rule : accessRules) {
+            if (rule.matchesNetwork(sourceAddress, destinationAddress, protocol, destinationPort)) {
+                return rule.action.equals("allow") ? Decision.ALLOW : Decision.BLOCK;
+            }
+        }
+        return Decision.ALLOW;
+    }
+
     public Evaluation evaluateWithReason(
         byte[] query,
         String sourceAddress,
@@ -508,6 +525,21 @@ public final class DnsFirewall {
             if (!enabled || (!service.equals(DNS) && !service.equals(ALL))) {
                 return false;
             }
+            boolean sourceInterfaceMatches = sourceInterface.equals(ANY) || sourceInterface.equals("lan");
+            boolean destinationInterfaceMatches =
+                destinationInterface.equals(ANY) || destinationInterface.equals("wan");
+            return sourceInterfaceMatches &&
+                destinationInterfaceMatches &&
+                addressMatches(sourceAddress, source) &&
+                addressMatches(destinationAddress, destination);
+        }
+
+        private boolean matchesNetwork(String source, String destination, String protocol, int port) {
+            if (!enabled) return false;
+            boolean serviceMatches = service.equals(ALL)
+                || (service.equals("http") && protocol.equals("tcp") && port == 80)
+                || (service.equals("https") && port == 443);
+            if (!serviceMatches) return false;
             boolean sourceInterfaceMatches = sourceInterface.equals(ANY) || sourceInterface.equals("lan");
             boolean destinationInterfaceMatches =
                 destinationInterface.equals(ANY) || destinationInterface.equals("wan");

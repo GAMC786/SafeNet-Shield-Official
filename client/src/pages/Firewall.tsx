@@ -28,8 +28,13 @@ import { Link } from "wouter";
 import { useActivateDnsServer, useCreateDnsServer, useDnsServers } from "@/hooks/use-dns";
 import { DnsProviderBlocklists } from "@/components/DnsProviderBlocklists";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
+import { useFirewallConfig } from "@/hooks/use-firewall-config";
+import { SafeNetVpn } from "@/hooks/use-vpn";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
+import { LocalVpnEulaDialog } from "@/components/LocalVpnEulaDialog";
 
 type EditablePhoneResolverType = "none" | DnsResolverPreset["type"];
+const LOCAL_VPN_EULA_VERSION = "2026-11-25-access-rules";
 type FamilyDnsPresetOverride = {
   name: string;
   description: string;
@@ -76,6 +81,7 @@ export default function Firewall() {
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const localVpn = useLocalVpn();
+  const firewallConfigQuery = useFirewallConfig();
   const firewallEnabled = settings?.firewallEnabled ?? false;
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
@@ -116,6 +122,12 @@ export default function Firewall() {
   const [editingFamilyDnsPreset, setEditingFamilyDnsPreset] = useState<DnsProviderAccessRule | null>(null);
   const [familyDnsPresetDraft, setFamilyDnsPresetDraft] = useState<FamilyDnsPresetDraft | null>(null);
   const [familyDnsPresetError, setFamilyDnsPresetError] = useState<string | null>(null);
+  const [usePhoneEulaOpen, setUsePhoneEulaOpen] = useState(false);
+  const [usePhonePending, setUsePhonePending] = useState(false);
+  const [acceptedEulaVersion, setAcceptedEulaVersion] = usePersistentState<string | null>(
+    "safenet-local-vpn-eula-version",
+    null,
+  );
   const activeDns = dnsServers?.find((server) => server.isActive);
   const firewallHeaderStatus = firewallEnabled && localVpn.connected ? "rules-enabled" : "inactive";
 
@@ -250,6 +262,66 @@ export default function Firewall() {
         variant: "destructive",
       }),
     });
+  };
+
+  const applyRulesOnPhone = async () => {
+    if (!localVpn.supported) {
+      toast({
+        title: "Android app required",
+        description: "Open SafeNet on your Android phone to use its local VPN.",
+      });
+      return;
+    }
+    if (!activeDns) {
+      toast({
+        title: "Choose a DNS resolver first",
+        description: "Select an active resolver before using firewall rules on your phone.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (acceptedEulaVersion !== LOCAL_VPN_EULA_VERSION) {
+      setUsePhoneEulaOpen(true);
+      return;
+    }
+    await startPhoneFirewall();
+  };
+
+  const startPhoneFirewall = async () => {
+    if (!activeDns) return;
+    setUsePhonePending(true);
+    try {
+      if (!firewallEnabled) {
+        await updateSettings.mutateAsync({ firewallEnabled: true });
+      }
+      const refreshedConfig = await firewallConfigQuery.refetch();
+      if (!refreshedConfig.data) {
+        throw refreshedConfig.error ?? new Error("Could not load the latest firewall rules.");
+      }
+      await enqueueNativeCommand(() =>
+        SafeNetVpn.syncFirewallConfig({ config: refreshedConfig.data! }),
+      );
+      const status = await localVpn.start({
+        type: activeDns.type,
+        primaryAddress: activeDns.primaryAddress,
+        secondaryAddress: activeDns.secondaryAddress,
+      });
+      if (!status?.connected) {
+        throw new Error(localVpn.error || "SafeNet could not start its local VPN.");
+      }
+      toast({
+        title: "Firewall rules are active on this phone",
+        description: "DNS rules and TCP/UDP port and address rules are applied. HTTPS content is not inspected.",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not use firewall rules on this phone",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUsePhonePending(false);
+    }
   };
 
   const resetRuleForm = () => {
@@ -511,6 +583,16 @@ export default function Firewall() {
   const domains = blocklists?.filter(b => b.type === "domain") || [];
   return (
     <div className="space-y-6">
+      <LocalVpnEulaDialog
+        open={usePhoneEulaOpen}
+        onOpenChange={setUsePhoneEulaOpen}
+        onCancel={() => setUsePhoneEulaOpen(false)}
+        onAccept={() => {
+          setAcceptedEulaVersion(LOCAL_VPN_EULA_VERSION);
+          setUsePhoneEulaOpen(false);
+          void startPhoneFirewall();
+        }}
+      />
       <Header 
         title="Firewall Rules" 
         subtitle="DNS & Network Packet-Filtering Rules"
@@ -797,7 +879,11 @@ export default function Firewall() {
             </DialogContent>
           </Dialog>
 
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Phone rules filter IP addresses and ports; SafeNet does not inspect encrypted content.
+            </p>
+            <div className="flex justify-end gap-2">
             <Dialog open={isRuleDialogOpen} onOpenChange={(open) => {
               setIsRuleDialogOpen(open);
               if (!open) resetRuleForm();
@@ -913,6 +999,18 @@ export default function Firewall() {
                 </div>
               </DialogContent>
             </Dialog>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void applyRulesOnPhone()}
+              disabled={!localVpn.supported || !activeDns || localVpn.busy || usePhonePending || updateSettings.isPending}
+              title={!localVpn.supported ? "Available in the SafeNet Android app." : undefined}
+              data-testid="button-use-firewall-rules-on-phone"
+              className="border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
+            >
+              {usePhonePending ? "Applying…" : "Use on Phone"}
+            </Button>
+            </div>
           </div>
 
           <div className="grid gap-3">

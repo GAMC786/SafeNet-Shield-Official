@@ -156,6 +156,13 @@ class SafeNetLocalVpnService : VpnService() {
                         relayTcpDns(conn, srcIp, dstIp)
                         return@execute
                     }
+                    if (FirewallConfigStore.load(this@SafeNetLocalVpnService)
+                            .evaluateNetworkAccessRule(srcIp, dstIp, "tcp", dstPort.toInt()) ==
+                        DnsFirewall.Decision.BLOCK
+                    ) {
+                        runCatching { conn.close() }
+                        return@execute
+                    }
                     val upstream = Socket().also {
                         if (!protect(it)) throw IllegalStateException("Could not protect upstream socket")
                         it.connect(InetSocketAddress(InetAddress.getByName(dstIp), dstPort.toInt()), 12000)
@@ -172,6 +179,13 @@ class SafeNetLocalVpnService : VpnService() {
                         while (!stopped.get()) conn.send(resolveDns(conn.receive(), srcIp, dstIp))
                     } catch (_: Exception) { runCatching { conn.close() } }
                 } else {
+                    if (FirewallConfigStore.load(this@SafeNetLocalVpnService)
+                            .evaluateNetworkAccessRule(srcIp, dstIp, "udp", dstPort.toInt()) ==
+                        DnsFirewall.Decision.BLOCK
+                    ) {
+                        runCatching { conn.close() }
+                        return@execute
+                    }
                     val socket = DatagramSocket()
                     try {
                         if (!protect(socket)) throw IllegalStateException("Could not protect upstream socket")

@@ -8,7 +8,7 @@ import { useDnsServers } from "@/hooks/use-dns";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 
-const LOCAL_VPN_EULA_VERSION = "2026-11-25";
+const LOCAL_VPN_EULA_VERSION = "2026-11-25-access-rules";
 
 export function LocalDnsVpnCard() {
   const { data: dnsServers } = useDnsServers();

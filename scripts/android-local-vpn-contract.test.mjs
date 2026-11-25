@@ -10,7 +10,9 @@ const card = read("../client/src/components/PrivateDnsCard.tsx");
 const privateDnsEula = read("../client/src/components/PrivateDnsEulaDialog.tsx");
 const dnsSettings = read("../client/src/pages/DnsSettings.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
+const dnsFirewall = read("../android/app/src/main/java/com/safenet/dns/DnsFirewall.java");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
+const firewallPage = read("../client/src/pages/Firewall.tsx");
 const dnscryptBridge = read("../android/local-vpn-bridge/dnscrypt.go");
 const privateDnsHook = read("../client/src/hooks/use-private-dns.ts");
 
@@ -67,4 +69,18 @@ test("local packet forwarding captures direct DNS and protects upstream sockets"
   assert.match(plugin, /VpnService\.prepare/);
   assert.match(plugin, /primaryAddress/);
   assert.match(plugin, /startForegroundService/);
+});
+
+test("phone firewall action syncs policy, enables the local VPN, and exposes supported rule limits", () => {
+  const newRuleButton = firewallPage.indexOf("> New Rule");
+  const usePhoneButton = firewallPage.indexOf('data-testid="button-use-firewall-rules-on-phone"');
+  assert.ok(newRuleButton >= 0 && newRuleButton < usePhoneButton);
+  assert.match(firewallPage, /SafeNetVpn\.syncFirewallConfig/);
+  assert.match(firewallPage, /localVpn\.start\(/);
+  assert.match(firewallPage, /firewallEnabled: true/);
+  assert.match(service, /evaluateNetworkAccessRule\(srcIp, dstIp, "tcp"/);
+  assert.match(service, /evaluateNetworkAccessRule\(srcIp, dstIp, "udp"/);
+  assert.match(dnsFirewall, /service\.equals\("http"\).*port == 80/s);
+  assert.match(dnsFirewall, /service\.equals\("https"\).*port == 443/s);
+  assert.match(firewallPage, /HTTPS content is not inspected/);
 });

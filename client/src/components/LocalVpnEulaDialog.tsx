@@ -35,8 +35,9 @@ export function LocalVpnEulaDialog({
             <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2 text-left text-sm leading-6">
               <p>
                 SafeNet creates an on-device VPN connection on this Android
-                phone to capture DNS traffic and forward DNS requests through
-                the resolver you selected. It does not connect to a remote VPN
+                phone. It filters DNS requests through the resolver you selected
+                and can block TCP/UDP connections based on configured service,
+                port, and IP-address rules. It does not connect to a remote VPN
                 server.
               </p>
               <p>
@@ -47,10 +48,10 @@ export function LocalVpnEulaDialog({
               <p>
                 DNS filtering may not apply to apps that use their own
                 DNS-over-HTTPS, DNS-over-TLS, another VPN, or a private proxy.
-                SafeNet filters DNS requests; it does not inspect encrypted
-                HTTPS content. The selected DNS provider receives the requests
-                it resolves, and its availability and filtering results depend
-                on that provider and your network.
+                SafeNet does not inspect encrypted HTTPS content. The selected
+                DNS provider receives the requests it resolves, and its
+                availability and filtering results depend on that provider and
+                your network.
               </p>
               <p className="font-medium text-foreground">
                 By selecting “Agree &amp; Continue,” you acknowledge this

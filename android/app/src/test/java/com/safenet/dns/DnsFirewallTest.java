@@ -83,6 +83,36 @@ public class DnsFirewallTest {
     }
 
     @Test
+    public void networkAccessRulesFilterHttpHttpsAndAllByAddressAndPort() throws Exception {
+        DnsFirewall firewall = DnsFirewall.fromJson(
+            "{\"settings\":" + SETTINGS + ",\"rules\":["
+                + "{\"id\":1,\"sourceInterface\":\"lan\",\"sourceAddress\":\"Any\","
+                + "\"destinationInterface\":\"wan\",\"destinationAddress\":\"Any\","
+                + "\"service\":\"http\",\"action\":\"deny\",\"isEnabled\":true,\"priority\":30},"
+                + "{\"id\":2,\"sourceInterface\":\"lan\",\"sourceAddress\":\"Any\","
+                + "\"destinationInterface\":\"wan\",\"destinationAddress\":\"203.0.113.0/24\","
+                + "\"service\":\"https\",\"action\":\"deny\",\"isEnabled\":true,\"priority\":20},"
+                + "{\"id\":3,\"sourceInterface\":\"lan\",\"sourceAddress\":\"Any\","
+                + "\"destinationInterface\":\"wan\",\"destinationAddress\":\"Any\","
+                + "\"service\":\"all\",\"action\":\"allow\",\"isEnabled\":true,\"priority\":10}"
+                + "],\"blocklists\":[]}"
+        );
+
+        assertEquals(
+            DnsFirewall.Decision.BLOCK,
+            firewall.evaluateNetworkAccessRule("10.111.0.2", "198.51.100.8", "tcp", 80)
+        );
+        assertEquals(
+            DnsFirewall.Decision.BLOCK,
+            firewall.evaluateNetworkAccessRule("10.111.0.2", "203.0.113.8", "tcp", 443)
+        );
+        assertEquals(
+            DnsFirewall.Decision.ALLOW,
+            firewall.evaluateNetworkAccessRule("10.111.0.2", "198.51.100.8", "tcp", 443)
+        );
+    }
+
+    @Test
     public void preventDnsOverridesBlocksExternalDestinationsBeforeAllowRules() throws Exception {
         DnsFirewall firewall = DnsFirewall.fromJson(
             "{\"settings\":" + SETTINGS
