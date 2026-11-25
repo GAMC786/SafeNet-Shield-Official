@@ -880,7 +880,7 @@ export default function Firewall() {
           </Dialog>
 
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
+            <p className="flex-1 text-center text-xs text-muted-foreground">
               Phone rules filter IP addresses and ports; SafeNet does not inspect encrypted content.
             </p>
             <div className="flex justify-end gap-2">
