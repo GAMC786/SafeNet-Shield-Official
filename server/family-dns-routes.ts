@@ -5,6 +5,7 @@ import { getRequestUserId, requireAuth } from "./auth";
 import { decryptFamilyDnsToken, encryptFamilyDnsToken } from "./family-dns-crypto";
 import {
   FamilyDnsApiError,
+  listAdGuardDnsServers,
   getAdGuardFilterLists,
   getCleanBrowsingCategories,
   setCleanBrowsingCategory,
@@ -100,6 +101,20 @@ export function registerFamilyDnsRoutes(
       return res.status(204).send();
     } catch {
       return res.status(503).json({ message: "SafeNet could not remove this DNS provider connection." });
+    }
+  });
+
+  app.post("/api/family-dns/adguard/servers", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const parsed = z.object({ token: z.string().trim().min(1).max(2048) }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Enter an AdGuard DNS API key." });
+    try {
+      // Fail before contacting AdGuard if this account cannot encrypt credentials.
+      encryptFamilyDnsToken(parsed.data.token, userId, "adguard");
+      return res.json({ servers: await listAdGuardDnsServers(parsed.data.token) });
+    } catch (error) {
+      return respondError(error, res);
     }
   });
 

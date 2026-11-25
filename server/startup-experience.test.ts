@@ -484,9 +484,9 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
 });
 
 test("AdGuard API connections distinguish the API server ID from the device setup ID", () => {
-  assert.ok(dnsProviderConnectionsSource.includes("GET /oapi/v1/dns_servers"));
-  assert.match(dnsProviderConnectionsSource, /Server setup ID is for device enrollment/);
-  assert.match(dnsProviderConnectionsSource, /DoT hostname is not the API server ID/);
+  assert.match(dnsProviderConnectionsSource, /\/api\/family-dns\/adguard\/servers/);
+  assert.match(dnsProviderConnectionsSource, /Load AdGuard servers/);
+  assert.match(dnsProviderConnectionsSource, /Server setup ID is only for device enrollment/);
 });
 
 test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () => {

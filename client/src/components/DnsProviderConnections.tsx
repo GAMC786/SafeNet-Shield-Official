@@ -38,6 +38,7 @@ export default function DnsProviderConnections() {
   const [provider, setProvider] = useState<Provider>("nextdns");
   const [token, setToken] = useState("");
   const [profileId, setProfileId] = useState("");
+  const [adguardServers, setAdguardServers] = useState<Array<{ id: string; name: string }>>([]);
 
   const statusQuery = useQuery({
     queryKey: ["dns-api-provider-connections", userId],
@@ -69,12 +70,32 @@ export default function DnsProviderConnections() {
     onSuccess: async () => {
       setToken("");
       setProfileId("");
+      setAdguardServers([]);
       await queryClient.invalidateQueries({ queryKey: ["dns-api-provider-connections", userId] });
       toast({ title: `${providerNames[provider]} connected`, description: "The credential was verified and encrypted for your account." });
     },
     onError: (error) => toast({
       title: `${providerNames[provider]} could not be connected`,
       description: error instanceof Error ? error.message : "Check the token and account or profile ID.",
+      variant: "destructive",
+    }),
+  });
+
+  const loadAdGuardServersMutation = useMutation({
+    mutationFn: () => request<{ servers: Array<{ id: string; name: string }> }>("/api/family-dns/adguard/servers", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+    onSuccess: ({ servers }) => {
+      setAdguardServers(servers);
+      setProfileId(servers.length === 1 ? servers[0]!.id : "");
+      if (servers.length === 0) {
+        toast({ title: "No AdGuard DNS servers found", description: "This API key did not return any servers from its account." });
+      }
+    },
+    onError: (error) => toast({
+      title: "Could not load AdGuard DNS servers",
+      description: error instanceof Error ? error.message : "Check the API key and try again.",
       variant: "destructive",
     }),
   });
@@ -146,6 +167,7 @@ export default function DnsProviderConnections() {
                     setProvider(event.target.value as Provider);
                     setToken("");
                     setProfileId("");
+                    setAdguardServers([]);
                   }}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
                 >
@@ -154,15 +176,28 @@ export default function DnsProviderConnections() {
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="dns-api-profile" className="text-xs font-medium text-foreground">
-                  {provider === "adguard" ? "DNS server ID" : provider === "nextdns" ? "NextDNS profile ID" : "CleanBrowsing profile name"}
+                  {provider === "adguard" ? "AdGuard DNS server" : provider === "nextdns" ? "NextDNS profile ID" : "CleanBrowsing profile name"}
                 </label>
-                <Input
-                  id="dns-api-profile"
-                  value={profileId}
-                  onChange={(event) => setProfileId(event.target.value)}
-                  placeholder={provider === "adguard" ? "Server ID" : provider === "nextdns" ? "Profile ID" : "Profile name"}
-                  autoComplete="off"
-                />
+                {provider === "adguard" ? (
+                  <select
+                    id="dns-api-profile"
+                    value={profileId}
+                    onChange={(event) => setProfileId(event.target.value)}
+                    disabled={adguardServers.length === 0 || loadAdGuardServersMutation.isPending}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground disabled:opacity-50"
+                  >
+                    <option value="">{adguardServers.length ? "Choose a DNS server" : "Load servers from your account"}</option>
+                    {adguardServers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+                  </select>
+                ) : (
+                  <Input
+                    id="dns-api-profile"
+                    value={profileId}
+                    onChange={(event) => setProfileId(event.target.value)}
+                    placeholder={provider === "nextdns" ? "Profile ID" : "Profile name"}
+                    autoComplete="off"
+                  />
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
@@ -173,14 +208,32 @@ export default function DnsProviderConnections() {
                 autoComplete="off"
                 spellCheck={false}
                 value={token}
-                onChange={(event) => setToken(event.target.value)}
+                onChange={(event) => {
+                  setToken(event.target.value);
+                  if (provider === "adguard") {
+                    setProfileId("");
+                    setAdguardServers([]);
+                  }
+                }}
                 placeholder={`Paste your ${providerNames[provider]} API token`}
               />
             </div>
             {provider === "adguard" && (
-              <p className="text-xs text-muted-foreground">
-                Use an API key from AdGuard DNS User preferences and the DNS server id returned by GET /oapi/v1/dns_servers. The Server setup ID is for device enrollment, and the DoT hostname is not the API server ID.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  SafeNet loads server IDs from your account. The Server setup ID is only for device enrollment.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!token.trim() || loadAdGuardServersMutation.isPending || connectMutation.isPending}
+                  onClick={() => loadAdGuardServersMutation.mutate()}
+                >
+                  {loadAdGuardServersMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Load AdGuard servers
+                </Button>
+              </div>
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -202,7 +255,7 @@ export default function DnsProviderConnections() {
                     Disconnect
                   </Button>
                 )}
-                <Button type="submit" size="sm" disabled={!token.trim() || !profileId.trim() || connectMutation.isPending}>
+                <Button type="submit" size="sm" disabled={!token.trim() || !profileId.trim() || connectMutation.isPending || loadAdGuardServersMutation.isPending}>
                   {connectMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {connection?.connected ? "Replace connection" : `Connect ${providerNames[provider]}`}
                 </Button>

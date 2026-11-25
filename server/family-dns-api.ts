@@ -9,6 +9,10 @@ export type AdGuardFilterList = {
   rulesCount: number | null;
   enabled: boolean;
 };
+export type AdGuardDnsServer = {
+  id: string;
+  name: string;
+};
 export type ProviderBlocklist = {
   id: string;
   name: string;
@@ -33,6 +37,15 @@ export class FamilyDnsApiError extends Error {
   constructor(readonly rejected: boolean, readonly status: number | null = null) {
     super("Family DNS provider request failed.");
   }
+}
+
+export async function listAdGuardDnsServers(token: string): Promise<AdGuardDnsServer[]> {
+  const servers = await adGuardRequest<Array<{ id?: string; name?: string }>>(token, "/oapi/v1/dns_servers");
+  if (!Array.isArray(servers)) throw new FamilyDnsApiError(false);
+  return servers
+    .filter((server) => typeof server.id === "string" && typeof server.name === "string")
+    .map((server) => ({ id: server.id!, name: server.name! }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function adGuardHeaders(token: string) {

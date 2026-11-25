@@ -4,12 +4,37 @@ import {
   FamilyDnsApiError,
   getCleanBrowsingCategories,
   getAdGuardFilterLists,
+  listAdGuardDnsServers,
   setCleanBrowsingCategory,
   setAdGuardFilterList,
   setNextDnsBlocklist,
   syncFamilyDnsRules,
   verifyFamilyDnsAccount,
 } from "./family-dns-api";
+
+test("AdGuard server lookup returns API server IDs from the authenticated account", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  let authorization = "";
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requestedUrl = String(input);
+    authorization = new Headers(init?.headers).get("authorization") ?? "";
+    return Response.json([
+      { id: "a9f29be1", name: "Main DNS server" },
+      { id: "b02c9a17", name: "Family" },
+    ]);
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await listAdGuardDnsServers("api-token"), [
+      { id: "b02c9a17", name: "Family" },
+      { id: "a9f29be1", name: "Main DNS server" },
+    ]);
+    assert.equal(requestedUrl, "https://api.adguard-dns.io/oapi/v1/dns_servers");
+    assert.equal(authorization, "ApiKey api-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("CleanBrowsing category toggles use provider categories and refresh the active set", async () => {
   const originalFetch = globalThis.fetch;
