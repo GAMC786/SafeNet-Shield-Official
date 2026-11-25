@@ -449,6 +449,11 @@ private fun LockLockConfigurationScreen(activity: AppLockActivity, onSaved: Runn
                         )
                     }
                 },
+                navigationIcon = {
+                    TextButton(onClick = { activity.finish() }) {
+                        Text("Back to Dashboard")
+                    }
+                },
                 actions = {
                     IconButton(onClick = { dialog = LockLockDialog.SETTINGS }) {
                         Icon(Icons.Default.Settings, contentDescription = "Open Settings")

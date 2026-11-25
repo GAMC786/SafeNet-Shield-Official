@@ -11,6 +11,13 @@ const androidMainActivity = readFileSync(
   ),
   "utf8",
 );
+const appLockComposeSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/LockLockComposeUi.kt",
+  ),
+  "utf8",
+);
 const nativeFallbackSource = readFileSync(
   path.resolve(
     process.cwd(),
@@ -386,6 +393,11 @@ test("Android App Lock applies live system-bar insets to the native overlay", ()
   assert.match(androidMainActivity, /applySystemBarInsets\(webView\)/);
   assert.match(androidMainActivity, /target\.setPadding\(0, systemBars\.top, 0, systemBars\.bottom\)/);
   assert.doesNotMatch(androidMainActivity, /setOnApplyWindowInsetsListener\(container/);
+});
+
+test("Android App Lock can return to the SafeNet Dashboard", () => {
+  assert.match(appLockComposeSource, /navigationIcon\s*=\s*\{\s*TextButton\(onClick = \{ activity\.finish\(\) \}\)/);
+  assert.match(appLockComposeSource, /Text\("Back to Dashboard"\)/);
 });
 
 test("Android keeps a visible black status bar with white icons", () => {
