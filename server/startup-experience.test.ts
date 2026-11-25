@@ -489,6 +489,12 @@ test("AdGuard API connections distinguish the API server ID from the device setu
   assert.match(dnsProviderConnectionsSource, /Server setup ID is only for device enrollment/);
 });
 
+test("DNS API connection changes refresh provider blocklist status and lists", () => {
+  assert.match(dnsProviderConnectionsSource, /invalidateProviderBlocklistQueries/);
+  assert.match(dnsProviderConnectionsSource, /dns-provider-list-status/);
+  assert.match(dnsProviderConnectionsSource, /dns-provider-native-lists/);
+});
+
 test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () => {
   const dashboardSource = readFileSync(path.join(clientRoot, "src/pages/Dashboard.tsx"), "utf8");
   const localDnsVpnSource = readFileSync(

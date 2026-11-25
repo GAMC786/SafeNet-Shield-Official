@@ -40,6 +40,16 @@ export default function DnsProviderConnections() {
   const [profileId, setProfileId] = useState("");
   const [adguardServers, setAdguardServers] = useState<Array<{ id: string; name: string }>>([]);
 
+  const invalidateProviderBlocklistQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["dns-api-provider-connections", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["dns-provider-list-status", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["dns-provider-native-lists", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["family-dns-connections", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["adguard-dns-filter-lists", userId] }),
+    ]);
+  };
+
   const statusQuery = useQuery({
     queryKey: ["dns-api-provider-connections", userId],
     enabled: isLoaded && Boolean(isSignedIn && userId),
@@ -71,7 +81,7 @@ export default function DnsProviderConnections() {
       setToken("");
       setProfileId("");
       setAdguardServers([]);
-      await queryClient.invalidateQueries({ queryKey: ["dns-api-provider-connections", userId] });
+      await invalidateProviderBlocklistQueries();
       toast({ title: `${providerNames[provider]} connected`, description: "The credential was verified and encrypted for your account." });
     },
     onError: (error) => toast({
@@ -106,7 +116,7 @@ export default function DnsProviderConnections() {
       { method: "DELETE" },
     ),
     onSuccess: async (_, target) => {
-      await queryClient.invalidateQueries({ queryKey: ["dns-api-provider-connections", userId] });
+      await invalidateProviderBlocklistQueries();
       toast({ title: `${providerNames[target]} disconnected`, description: "SafeNet removed the encrypted API credential." });
     },
     onError: (error) => toast({
