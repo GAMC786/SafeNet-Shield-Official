@@ -3,7 +3,14 @@ import { z } from "zod";
 import type { IStorage } from "./storage";
 import { getRequestUserId, requireAuth } from "./auth";
 import { decryptFamilyDnsToken, encryptFamilyDnsToken } from "./family-dns-crypto";
-import { FamilyDnsApiError, syncFamilyDnsRules, verifyFamilyDnsAccount, type FamilyDnsProvider } from "./family-dns-api";
+import {
+  FamilyDnsApiError,
+  getAdGuardFilterLists,
+  setAdGuardFilterList,
+  syncFamilyDnsRules,
+  verifyFamilyDnsAccount,
+  type FamilyDnsProvider,
+} from "./family-dns-api";
 
 const providerSchema = z.enum(["adguard", "cleanbrowsing"]);
 const connectionSchema = z.object({
@@ -69,6 +76,46 @@ export function registerFamilyDnsRoutes(
       await verifyFamilyDnsAccount(provider, token, profileId);
       const saved = await storage.saveFamilyDnsCredential(userId, provider, profileId, encrypted);
       return res.json({ connected: true, provider, profileId: saved.profileId });
+    } catch (error) {
+      return respondError(error, res);
+    }
+  });
+
+  app.get("/api/family-dns/adguard/filters", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    try {
+      const credential = await storage.getFamilyDnsCredential(userId, "adguard");
+      if (!credential) return res.status(409).json({ message: "Connect an AdGuard DNS server before managing its blocklists." });
+      const token = decryptFamilyDnsToken(credential, userId);
+      return res.json({
+        serverId: credential.profileId,
+        filters: await getAdGuardFilterLists(token, credential.profileId),
+      });
+    } catch (error) {
+      return respondError(error, res);
+    }
+  });
+
+  app.patch("/api/family-dns/adguard/filters/:filterId", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const filterId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/).safeParse(req.params.filterId);
+    const body = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+    if (!filterId.success || !body.success) {
+      return res.status(400).json({ message: "Choose a valid AdGuard filter and enabled state." });
+    }
+    try {
+      const credential = await storage.getFamilyDnsCredential(userId, "adguard");
+      if (!credential) return res.status(409).json({ message: "Connect an AdGuard DNS server before managing its blocklists." });
+      const token = decryptFamilyDnsToken(credential, userId);
+      const filters = await setAdGuardFilterList(
+        token,
+        credential.profileId,
+        filterId.data,
+        body.data.enabled,
+      );
+      return res.json({ serverId: credential.profileId, filters });
     } catch (error) {
       return respondError(error, res);
     }

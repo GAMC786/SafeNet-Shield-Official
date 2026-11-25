@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { Link } from "wouter";
 import { useDnsServers } from "@/hooks/use-dns";
+import { AdGuardDnsBlocklists } from "@/components/AdGuardDnsBlocklists";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -365,7 +366,7 @@ export default function Firewall() {
                   : "No DNS resolver is selected. Choose one on the DNS Servers page; this will not enable SafeNet rule enforcement."}
               </p>
               <p role="status" className="text-xs text-amber-200">
-                These rules are saved in SafeNet; this page does not sync them to a DNS provider.
+                Manual domain rules are saved in SafeNet. Use the AdGuard panel below to manage built-in filters on your connected AdGuard DNS server.
               </p>
             </div>
           </div>
@@ -419,6 +420,8 @@ export default function Firewall() {
               />
             </div>
           </CyberCard>
+
+          <AdGuardDnsBlocklists />
 
           <CyberCard className="border-cyan-400/20 bg-cyan-400/5">
             <div className="flex items-start gap-3">

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { syncFamilyDnsRules } from "./family-dns-api";
+import { getAdGuardFilterLists, setAdGuardFilterList, syncFamilyDnsRules } from "./family-dns-api";
 
 test("CleanBrowsing sync preserves manual domains and removes only SafeNet-owned entries", async () => {
   const originalFetch = globalThis.fetch;
@@ -60,6 +60,100 @@ test("AdGuard DNS sync preserves manual user rules and updates the managed set",
     );
     assert.deepEqual(updatedRules, ["||manual.example^", "||blocked.example^", "@@||allowed.example^"]);
     assert.deepEqual(owned, ["||blocked.example^", "@@||allowed.example^"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AdGuard built-in lists expose current status without custom lists", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/oapi/v2/filter_lists") {
+      return Response.json({ items: [
+        { filter_id: "adguard_dns_filter", name: "AdGuard DNS filter", description: "Ads and trackers", rules_count: 12000, type: "INTERNAL" },
+        { filter_id: "custom_1", name: "My custom filter", type: "CUSTOM" },
+      ] });
+    }
+    return Response.json({
+      filter_lists_settings: {
+        enabled: true,
+        filter_list: [{ filter_id: "adguard_dns_filter", enabled: true }],
+      },
+    });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await getAdGuardFilterLists("api-secret", "server-123"), [{
+      filterId: "adguard_dns_filter",
+      name: "AdGuard DNS filter",
+      description: "Ads and trackers",
+      rulesCount: 12000,
+      enabled: true,
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Updating an AdGuard built-in list preserves unrelated settings and filters", async () => {
+  const originalFetch = globalThis.fetch;
+  const updates: Array<Record<string, any>> = [];
+  let savedFilters: Array<{ filter_id: string; enabled: boolean }> | null = null;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/oapi/v2/filter_lists") {
+      return Response.json({ items: [
+        { filter_id: "adguard_dns_filter", name: "AdGuard DNS filter", type: "INTERNAL" },
+        { filter_id: "custom_1", name: "Custom", type: "CUSTOM" },
+      ] });
+    }
+    if (init?.method === "PUT") {
+      const body = JSON.parse(String(init.body));
+      updates.push(body);
+      savedFilters = body.filter_lists_settings.filter_list;
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({
+      protection_enabled: true,
+      filter_lists_settings: {
+        enabled: true,
+        filter_list: savedFilters ?? [
+          { filter_id: "custom_1", enabled: true },
+          { filter_id: "adguard_dns_filter", enabled: false },
+        ],
+      },
+    });
+  }) as typeof fetch;
+  try {
+    const result = await setAdGuardFilterList("api-secret", "server-123", "adguard_dns_filter", true);
+    assert.deepEqual(updates, [{
+      filter_lists_settings: {
+        enabled: true,
+        filter_list: [
+          { filter_id: "custom_1", enabled: true },
+          { filter_id: "adguard_dns_filter", enabled: true },
+        ],
+      },
+    }]);
+    assert.equal(result[0]?.enabled, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AdGuard list updates reject custom IDs not returned as built-in filters", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests++;
+    return Response.json({ items: [{ filter_id: "custom_1", name: "Custom", type: "CUSTOM" }] });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      setAdGuardFilterList("api-secret", "server-123", "custom_1", true),
+      /Family DNS provider request failed/,
+    );
+    assert.equal(requests, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -108,6 +108,10 @@ const firewallSource = readFileSync(
   path.join(clientRoot, "src/pages/Firewall.tsx"),
   "utf8",
 );
+const adGuardDnsBlocklistsSource = readFileSync(
+  path.join(clientRoot, "src/components/AdGuardDnsBlocklists.tsx"),
+  "utf8",
+);
 const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
@@ -428,7 +432,9 @@ test("app updates fetch pages and auth from network while reusing build assets",
 test("DNS Firewall clearly explains domain rules and their enforcement limits", () => {
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
   assert.match(firewallSource, /SafeNet stores these rules but does not filter DNS traffic/);
-  assert.match(firewallSource, /this page does not sync them to a DNS provider/);
+  assert.match(firewallSource, /Manual domain rules are saved in SafeNet/);
+  assert.match(firewallSource, /AdGuardDnsBlocklists/);
+  assert.match(adGuardDnsBlocklistsSource, /AdGuard DNS Built-in Blocklists/);
   assert.match(firewallSource, /DNS rules match domain names, not keywords or URL paths/);
   assert.match(firewallSource, /aria-label="Enable saved DNS rules"/);
   assert.doesNotMatch(firewallSource, /Allow\/Block URLs|Domain or URL|Enter URL|URL rule/);

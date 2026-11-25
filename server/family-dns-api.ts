@@ -2,6 +2,13 @@ import type { FamilyDnsCredential } from "@shared/schema";
 
 export type FamilyDnsProvider = FamilyDnsCredential["provider"];
 type Rule = { domain: string; action: "allow" | "block" };
+export type AdGuardFilterList = {
+  filterId: string;
+  name: string;
+  description: string;
+  rulesCount: number | null;
+  enabled: boolean;
+};
 
 export class FamilyDnsApiError extends Error {
   constructor(readonly rejected: boolean) {
@@ -114,6 +121,68 @@ async function syncAdGuard(token: string, serverId: string, desired: Rule[], pre
     });
   }
   return ownedRules;
+}
+
+export async function getAdGuardFilterLists(token: string, serverId: string): Promise<AdGuardFilterList[]> {
+  const [available, settings] = await Promise.all([
+    adGuardRequest<{ items?: Array<{
+      filter_id?: string;
+      name?: string;
+      description?: string;
+      rules_count?: number;
+      type?: string;
+    }> }>(token, "/oapi/v2/filter_lists"),
+    adGuardRequest<any>(token, `/oapi/v1/dns_servers/${encodeURIComponent(serverId)}/settings`),
+  ]);
+  const configured = Array.isArray(settings?.filter_lists_settings?.filter_list)
+    ? settings.filter_lists_settings.filter_list as Array<{ filter_id?: string; enabled?: boolean }>
+    : [];
+  const enabledById = new Map(configured.map((item) => [item.filter_id, item.enabled === true]));
+  return (Array.isArray(available.items) ? available.items : [])
+    .filter((item) => item.type === "INTERNAL" && typeof item.filter_id === "string" && typeof item.name === "string")
+    .map((item) => ({
+      filterId: item.filter_id!,
+      name: item.name!,
+      description: typeof item.description === "string" ? item.description : "",
+      rulesCount: Number.isFinite(item.rules_count) ? item.rules_count! : null,
+      enabled: enabledById.get(item.filter_id!) ?? false,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function setAdGuardFilterList(
+  token: string,
+  serverId: string,
+  filterId: string,
+  enabled: boolean,
+) {
+  const available = await adGuardRequest<{ items?: Array<{ filter_id?: string; type?: string }> }>(
+    token,
+    "/oapi/v2/filter_lists",
+  );
+  const isBuiltIn = Array.isArray(available.items)
+    && available.items.some((item) => item.filter_id === filterId && item.type === "INTERNAL");
+  if (!isBuiltIn) throw new FamilyDnsApiError(true);
+
+  const path = `/oapi/v1/dns_servers/${encodeURIComponent(serverId)}/settings`;
+  const current = await adGuardRequest<any>(token, path);
+  const filterSettings = current?.filter_lists_settings;
+  if (!filterSettings || !Array.isArray(filterSettings.filter_list)) throw new FamilyDnsApiError(false);
+  const list = filterSettings.filter_list as Array<{ filter_id: string; enabled: boolean }>;
+  const found = list.some((item) => item.filter_id === filterId);
+  const filterList = found
+    ? list.map((item) => item.filter_id === filterId ? { ...item, enabled } : item)
+    : [...list, { filter_id: filterId, enabled }];
+  await adGuardRequest(token, path, {
+    method: "PUT",
+    body: JSON.stringify({
+      filter_lists_settings: {
+        enabled: Boolean(filterSettings.enabled || enabled),
+        filter_list: filterList,
+      },
+    }),
+  });
+  return getAdGuardFilterLists(token, serverId);
 }
 
 export async function syncFamilyDnsRules(
