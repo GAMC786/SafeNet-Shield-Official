@@ -22,6 +22,7 @@ import { Link } from "wouter";
 import { useActivateDnsServer, useCreateDnsServer, useDnsServers } from "@/hooks/use-dns";
 import { AdGuardDnsBlocklists } from "@/components/AdGuardDnsBlocklists";
 import { DNS_PROVIDER_PHONE_PRESETS } from "@shared/dns-resolvers";
+import { useLocalVpn } from "@/hooks/use-local-vpn";
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -39,6 +40,7 @@ export default function Firewall() {
   const deleteRule = useDeleteFirewallRule();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
+  const localVpn = useLocalVpn();
   const firewallEnabled = settings?.firewallEnabled ?? false;
   const preventDnsOverrides = settings?.preventDnsOverrides ?? true;
   const [newDomain, setNewDomain] = usePersistentState("safenet-firewall-new-domain", "");
@@ -75,7 +77,7 @@ export default function Firewall() {
     action: "deny" as const,
   });
   const activeDns = dnsServers?.find((server) => server.isActive);
-  const firewallHeaderStatus = firewallEnabled ? "rules-enabled" : "inactive";
+  const firewallHeaderStatus = firewallEnabled && localVpn.connected ? "rules-enabled" : "inactive";
 
   useEffect(() => {
     if (!editingRuleId || !rules) return;
@@ -114,7 +116,7 @@ export default function Firewall() {
         setNewDomain("");
         toast({
           title: "Domain rule saved",
-          description: `${content} was saved as a ${newDomainAction} rule. SafeNet does not apply it to DNS traffic from this page.`,
+          description: `${content} was saved as a ${newDomainAction} rule. It is enforced on this phone while SafeNet DNS-only VPN is active.`,
         });
       },
       onError: (error) => toast({
@@ -249,9 +251,18 @@ export default function Firewall() {
         });
       }
       await activateDnsServer.mutateAsync(server.id);
+      if (localVpn.connected) {
+        await localVpn.start({
+          type: preset.type,
+          primaryAddress: preset.primaryAddress,
+          secondaryAddress: preset.secondaryAddress,
+        });
+      }
       toast({
         title: `${provider.name} selected for this phone`,
-        description: "The Dashboard DNS-only VPN will use this family-safe resolver when enabled.",
+        description: localVpn.connected
+          ? "The active DNS-only VPN is now using this family-safe resolver."
+          : "The Dashboard DNS-only VPN will use this family-safe resolver when enabled.",
       });
     } catch (error) {
       toast({
@@ -311,7 +322,7 @@ export default function Firewall() {
       {
         onSuccess: () => toast({
           title: `${item.type === "keyword" ? "Keyword filter" : "Domain rule"} ${item.isActive ? "disabled" : "enabled"}`,
-          description: `${item.content} is now ${item.isActive ? "disabled" : "enabled"} in SafeNet's saved rules.`,
+          description: `${item.content} is now ${item.isActive ? "disabled" : "enabled"}; enforcement applies while SafeNet DNS-only VPN is active.`,
         }),
         onError: (error) => toast({
           title: "Filter status could not be changed",
@@ -418,7 +429,7 @@ export default function Firewall() {
               checked={firewallEnabled}
               disabled={!settings || updateSettings.isPending}
               onCheckedChange={(checked) => updateSettings.mutate({ firewallEnabled: checked })}
-              aria-label="Enable saved DNS rules"
+                aria-label="Enable DNS filtering"
               data-testid="switch-firewall-master"
             />
           </div>
@@ -492,7 +503,7 @@ export default function Firewall() {
                             variant="outline"
                             className="border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
                             onClick={() => void handleUseFamilyDnsOnPhone(provider)}
-                            disabled={createDnsServer.isPending || activateDnsServer.isPending}
+                            disabled={createDnsServer.isPending || activateDnsServer.isPending || localVpn.busy}
                             data-testid={`button-use-phone-dns-${provider.id}`}
                           >
                             Use on phone

@@ -445,6 +445,12 @@ class SafeNetLocalVpnService : VpnService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
-    override fun onRevoke() { stopTunnel(); stopSelf(); super.onRevoke() }
+    override fun onRevoke() {
+        clearSavedResolver()
+        stopTunnel()
+        lastError = "Android stopped SafeNet VPN access. Turn phone DNS protection on again to reauthorize it."
+        stopSelf()
+        super.onRevoke()
+    }
     override fun onDestroy() { stopTunnel(); super.onDestroy() }
 }

@@ -431,18 +431,39 @@ test("app updates fetch pages and auth from network while reusing build assets",
 
 test("DNS Firewall clearly explains domain rules and their enforcement limits", () => {
   assert.match(firewallSource, /<h2[^>]*>DNS Firewall<\/h2>/);
-  assert.match(firewallSource, /SafeNet stores these rules but does not filter DNS traffic/);
+  assert.match(firewallSource, /SafeNet applies DNS rules on this phone while its DNS-only VPN is active/);
   assert.match(firewallSource, /Manual domain rules are saved in SafeNet/);
   assert.match(firewallSource, /AdGuardDnsBlocklists/);
   assert.match(adGuardDnsBlocklistsSource, /AdGuard DNS Built-in Blocklists/);
-  assert.match(firewallSource, /DNS rules match domain names, not keywords or URL paths/);
-  assert.match(firewallSource, /aria-label="Enable saved DNS rules"/);
+  assert.match(firewallSource, /DNS names, not keywords or URL paths/);
+  assert.match(firewallSource, /aria-label="Enable DNS filtering"/);
+  assert.match(firewallSource, /Use on phone/);
+  assert.match(firewallSource, /DNS_PROVIDER_PHONE_PRESETS/);
   assert.doesNotMatch(firewallSource, /Allow\/Block URLs|Domain or URL|Enter URL|URL rule/);
   assert.match(firewallSource, /useDnsServers/);
-  assert.doesNotMatch(firewallSource, /useLocalVpn|SafeNet Local VPN/);
+  assert.match(firewallSource, /useLocalVpn/);
+  assert.match(firewallSource, /localVpn\.connected/);
   assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
+});
+
+test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () => {
+  const dashboardSource = readFileSync(path.join(clientRoot, "src/pages/Dashboard.tsx"), "utf8");
+  const localDnsVpnSource = readFileSync(
+    path.join(clientRoot, "src/components/LocalDnsVpnCard.tsx"),
+    "utf8",
+  );
+  const localVpnEulaSource = readFileSync(
+    path.join(clientRoot, "src/components/LocalVpnEulaDialog.tsx"),
+    "utf8",
+  );
+  assert.match(dashboardSource, /<LocalDnsVpnCard \/>/);
+  assert.match(localDnsVpnSource, /DNS-only VPN/);
+  assert.match(localDnsVpnSource, /UDP\/TCP DNS on port 53/);
+  assert.match(localDnsVpnSource, /other active Android VPN/);
+  assert.match(localVpnEulaSource, /Android allows one active VPN at a time/);
+  assert.match(localVpnEulaSource, /DNS-over-HTTPS, DNS-over-TLS, another VPN/);
 });
 
 test("ClamAV verification waits for both scans and shows its pending state", () => {
@@ -455,7 +476,7 @@ test("Settings use the current package version and expose only current controls"
   assert.match(settingsSource, /data-testid="settings-version"/);
   assert.match(firewallSource, /Save DNS Override Policy/);
   assert.match(firewallSource, /switch-prevent-dns-overrides/);
-  assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled \? "rules-enabled" : "inactive"/);
+  assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled && localVpn\.connected \? "rules-enabled" : "inactive"/);
   assert.match(firewallSource, /subtitle="DNS & Network Packet-Filtering Rules"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
@@ -467,7 +488,7 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(firewallSource, /Connect NextDNS|Sign in once to connect or sync this provider/);
   assert.doesNotMatch(firewallSource, /Sign in to connect another DNS provider/);
   assert.doesNotMatch(firewallSource, /Windscribe|IKEv2/);
-  assert.match(firewallSource, /restrict unencrypted DNS on port 53/);
+  assert.match(firewallSource, /restrict direct unencrypted DNS on port 53/i);
   assert.doesNotMatch(settingsSource, /Prevent DNS Overrides|switch-prevent-dns-overrides/);
   assert.doesNotMatch(settingsSource, /data-testid="switch-ai-shield"|aria-label="AI Shield"/);
   assert.doesNotMatch(settingsSource, /Always-On VPN|Device Admin|App Firewall|Device Integration/);

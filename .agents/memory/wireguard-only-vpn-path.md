@@ -1,10 +1,10 @@
 ---
-name: WireGuard-only VPN path
-description: The dashboard intentionally exposes only the official WireGuard tunnel while keeping resolver management for tunnel DNS settings.
+name: Android DNS-only VPN path
+description: SafeNet's Android user-facing VPN is now the local DNS-only tunnel, not WireGuard.
 ---
 
-The user-facing Android VPN path is WireGuard only. The legacy DNS-only VPN remains available only as native compatibility code so an older running service can be stopped safely; new UI and resolver activation flows must never start it.
+The user chose to replace the Android WireGuard tunnel with SafeNet's local DNS-only VPN. The local tunnel captures direct UDP/TCP port 53 requests and forwards them through the selected resolver; it does not connect to a remote VPN server, and app-owned encrypted DNS or other VPNs may bypass it. Keep WireGuard source/configuration only for compatibility unless the user separately asks to remove it.
 
-**Why:** The DNS-only path and the earlier WireGuard presentation were both observed as non-working in the Android UI, so exposing both controls made protection status ambiguous.
+**Why:** The user explicitly chose the DNS-only tunnel over retaining WireGuard, accepting the loss of the remote tunnel.
 
-**How to apply:** Treat WireGuard state as the dashboard protection state, keep the WireGuard gateway configuration error visible, and stop any legacy DNS tunnel before starting WireGuard.
+**How to apply:** Expose one Android VPN control for the local DNS filter, require Android VPN consent, show its live state and bypass limits, and never describe it as a remote VPN.

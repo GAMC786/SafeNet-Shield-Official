@@ -21,6 +21,7 @@ import {
   usePrivateDns,
 } from "@/hooks/use-private-dns";
 import { isProtectionActive } from "@/lib/protection-status";
+import { useLocalVpn } from "@/hooks/use-local-vpn";
 
 export default function Dashboard() {
   const statsQuery = useStats();
@@ -35,11 +36,13 @@ export default function Dashboard() {
   const appLock = useAppLock();
   const activeDns = dnsServers?.find(s => s.isActive);
   const privateDns = usePrivateDns(activeDns);
+  const localVpn = useLocalVpn();
   const isServerAvailable = !statsQuery.isError && !logsQuery.isError;
   const isProtected = isProtectionActive({
     platform: privateDns.supported ? "android" : "web",
     serverAvailable: isServerAvailable,
     privateDnsRunning: privateDns.status?.running === true,
+    localDnsVpnRunning: localVpn.connected,
     firewallEnabled: settings?.firewallEnabled === true,
     antivirusEnabled: antivirusSettings?.isEnabled === true,
     antivirusVerified: clamAv.data?.verified === true,
