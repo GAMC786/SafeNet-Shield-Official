@@ -7,4 +7,4 @@ When a fresh preview shows a static loader with 504 Outdated Optimize Dep errors
 
 **Why:** The preview browser may reuse an older optimized-module URL even after the server has rebuilt its dependency manifest.
 
-**How to apply:** Treat current workflow logs and direct module responses as authoritative, and avoid changing application code to work around stale preview cache state.
+**How to apply:** Treat current workflow logs and direct module responses as authoritative. If the preview remains blank after clearing the generated Vite cache and restarting the workflow, hard-refresh the browser to discard old module URLs before changing application code.
