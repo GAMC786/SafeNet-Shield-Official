@@ -40,8 +40,8 @@ public final class DnsFirewall {
     private static final String ANY = "any";
     private static final String DNS = "dns";
     private static final String ALL = "all";
-    private static final String VIRTUAL_DNS_V4 = "10.248.0.1";
-    private static final String VIRTUAL_DNS_V6 = "fd00:534e:5348::1";
+    private static final String VIRTUAL_DNS_V4 = "10.111.0.1";
+    private static final String VIRTUAL_DNS_V6 = "fd00:6e76:6376::1";
 
     private final boolean enabled;
     private final boolean preventDnsOverrides;

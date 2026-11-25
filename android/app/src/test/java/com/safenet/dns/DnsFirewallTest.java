@@ -17,7 +17,7 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("example.com"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("example.com"), "10.111.0.2", "10.111.0.1")
         );
     }
 
@@ -31,7 +31,7 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("accounts.google.com"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("accounts.google.com"), "10.111.0.2", "10.111.0.1")
         );
     }
 
@@ -44,19 +44,19 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("notexample.com"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("notexample.com"), "10.111.0.2", "10.111.0.1")
         );
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("example.net"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("example.net"), "10.111.0.2", "10.111.0.1")
         );
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("casino.example.net"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("casino.example.net"), "10.111.0.2", "10.111.0.1")
         );
         assertEquals(
             DnsFirewall.Decision.BLOCK,
-            firewall.evaluate(query("sub.example.com"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("sub.example.com"), "10.111.0.2", "10.111.0.1")
         );
     }
 
@@ -78,7 +78,7 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("example.com"), "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(query("example.com"), "10.111.0.2", "10.111.0.1")
         );
     }
 
@@ -95,7 +95,7 @@ public class DnsFirewallTest {
 
         DnsFirewall.Evaluation evaluation = firewall.evaluateWithReason(
             query("example.com"),
-            "10.248.0.2",
+            "10.111.0.2",
             "8.8.8.8"
         );
         assertEquals(DnsFirewall.Decision.BLOCK, evaluation.decision);
@@ -110,15 +110,15 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("safe.example"), "10.0.0.2", "10.248.0.1")
+            firewall.evaluate(query("safe.example"), "10.0.0.2", "10.111.0.1")
         );
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("safe.example"), "fd00::2", "fd00:534e:5348::1")
+            firewall.evaluate(query("safe.example"), "fd00::2", "fd00:6e76:6376::1")
         );
         assertEquals(
             DnsFirewall.Decision.BLOCK,
-            firewall.evaluate(query("blocked.example"), "10.0.0.2", "10.248.0.1")
+            firewall.evaluate(query("blocked.example"), "10.0.0.2", "10.111.0.1")
         );
     }
 
@@ -135,7 +135,7 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.ALLOW,
-            firewall.evaluate(query("example.com"), "10.248.0.2", "8.8.8.8")
+            firewall.evaluate(query("example.com"), "10.111.0.2", "8.8.8.8")
         );
     }
 
@@ -146,7 +146,7 @@ public class DnsFirewallTest {
 
         assertEquals(
             DnsFirewall.Decision.BLOCK,
-            firewall.evaluate(malformed, "10.248.0.2", "10.248.0.1")
+            firewall.evaluate(malformed, "10.111.0.2", "10.111.0.1")
         );
         byte[] response = DnsFirewall.blockedResponse(malformed);
         assertEquals(0x534e, unsignedShort(response, 0));
@@ -162,8 +162,8 @@ public class DnsFirewallTest {
 
         DnsFirewall.Evaluation blocked = firewall.evaluateWithReason(
             query("www.blocked.example"),
-            "10.248.0.2",
-            "10.248.0.1"
+            "10.111.0.2",
+            "10.111.0.1"
         );
         assertEquals(DnsFirewall.Decision.BLOCK, blocked.decision);
         assertEquals("domain_blocklist", blocked.reason);
@@ -171,8 +171,8 @@ public class DnsFirewallTest {
 
         DnsFirewall.Evaluation allowed = firewall.evaluateWithReason(
             query("safe.example"),
-            "10.248.0.2",
-            "10.248.0.1"
+            "10.111.0.2",
+            "10.111.0.1"
         );
         assertEquals(DnsFirewall.Decision.ALLOW, allowed.decision);
         assertEquals("allowed_by_policy", allowed.reason);

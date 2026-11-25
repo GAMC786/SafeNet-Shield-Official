@@ -125,6 +125,17 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
 ] as const;
 
 /**
+ * Family-safe upstreams that can be activated by the Android DNS-only VPN.
+ * NextDNS requires a user-specific profile URL and is intentionally excluded.
+ */
+export const DNS_PROVIDER_PHONE_PRESETS: Readonly<Record<string, DnsResolverPreset | null>> = {
+  nextdns: null,
+  "control-d": DNS_FAMILY_RESOLVER_PRESETS.find((preset) => preset.name.startsWith("Control D"))!,
+  opendns: DNS_FAMILY_RESOLVER_PRESETS.find((preset) => preset.name.startsWith("OpenDNS"))!,
+  "adguard-dns": DNS_FAMILY_RESOLVER_PRESETS.find((preset) => preset.name.startsWith("AdGuard DNS"))!,
+};
+
+/**
  * NextDNS's generic encrypted hostname. Profile-specific filtering uses
  * <profile-id>.dns.nextdns.io; the Android Private DNS card selects that
  * hostname when a NextDNS profile is connected.

@@ -39,6 +39,11 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
             call.reject("Select an active DNS server before starting SafeNet Local VPN.");
             return;
         }
+        if (!resolverType.equals("plain") && !resolverType.equals("dot") &&
+            !resolverType.equals("doh") && !resolverType.equals("sdns")) {
+            call.reject("The selected DNS server uses an unsupported protocol.");
+            return;
+        }
         Intent permission = VpnService.prepare(getContext());
         if (permission == null) {
             startService(call);

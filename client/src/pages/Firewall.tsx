@@ -19,12 +19,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { Link } from "wouter";
-import { useDnsServers } from "@/hooks/use-dns";
+import { useActivateDnsServer, useCreateDnsServer, useDnsServers } from "@/hooks/use-dns";
 import { AdGuardDnsBlocklists } from "@/components/AdGuardDnsBlocklists";
+import { DNS_PROVIDER_PHONE_PRESETS } from "@shared/dns-resolvers";
 
 export default function Firewall() {
   const { toast } = useToast();
   const { data: dnsServers } = useDnsServers();
+  const createDnsServer = useCreateDnsServer();
+  const activateDnsServer = useActivateDnsServer();
   const { data: blocklists } = useBlocklists();
   const createBlock = useCreateBlocklist();
   const updateBlock = useUpdateBlocklist();
@@ -219,6 +222,46 @@ export default function Firewall() {
     }
   };
 
+  const handleUseFamilyDnsOnPhone = async (provider: DnsProviderAccessRule) => {
+    const preset = DNS_PROVIDER_PHONE_PRESETS[provider.id];
+    if (!preset) {
+      toast({
+        title: "Connect a NextDNS profile first",
+        description: "NextDNS family filtering is profile-specific. Configure its profile URL in DNS Servers before using the phone VPN.",
+      });
+      return;
+    }
+
+    try {
+      let server = (dnsServers || []).find(
+        (candidate) =>
+          candidate.type === preset.type &&
+          candidate.primaryAddress.trim().toLowerCase() === preset.primaryAddress.toLowerCase(),
+      );
+      if (!server) {
+        server = await createDnsServer.mutateAsync({
+          name: preset.name,
+          type: preset.type,
+          ipVersion: preset.ipVersion,
+          primaryAddress: preset.primaryAddress,
+          secondaryAddress: preset.secondaryAddress,
+          isCustom: false,
+        });
+      }
+      await activateDnsServer.mutateAsync(server.id);
+      toast({
+        title: `${provider.name} selected for this phone`,
+        description: "The Dashboard DNS-only VPN will use this family-safe resolver when enabled.",
+      });
+    } catch (error) {
+      toast({
+        title: `${provider.name} could not be selected`,
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const openEditBlocklistDialog = (item: Blocklist) => {
     setEditingBlocklist(item);
     setEditingBlocklistId(item.id);
@@ -344,7 +387,7 @@ export default function Firewall() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-display font-bold text-white">DNS Firewall</h2>
             <p className="text-muted-foreground">
-              SafeNet stores these rules but does not filter DNS traffic. The switch controls the saved rule set; it does not turn on filtering. To enforce domain rules, sync them with a DNS provider that supports rule management. DNS rules match domain names, not keywords or URL paths. {blocklists?.filter((item) => item.isActive).length || 0} enabled rules saved.
+              SafeNet applies DNS rules on this phone while its DNS-only VPN is active. It filters DNS names, not keywords or URL paths. DNS-over-HTTPS, DNS-over-TLS, and other VPNs may bypass local filtering. {blocklists?.filter((item) => item.isActive).length || 0} enabled rules saved.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-sky-400/30 text-sky-200">
@@ -362,8 +405,8 @@ export default function Firewall() {
               <p className="text-xs font-semibold text-white">Selected DNS provider</p>
               <p className="text-xs text-muted-foreground">
                 {activeDns
-                  ? `${activeDns.name} is selected as the upstream resolver. SafeNet does not filter DNS queries sent to it.`
-                  : "No DNS resolver is selected. Choose one on the DNS Servers page; this will not enable SafeNet rule enforcement."}
+                  ? `${activeDns.name} is selected as the upstream resolver. Enable SafeNet DNS-only VPN on the Dashboard to enforce phone DNS rules.`
+                  : "No DNS resolver is selected. Choose one here or on DNS Servers before enabling phone protection."}
               </p>
               <p role="status" className="text-xs text-amber-200">
                 Manual domain rules are saved in SafeNet. Use the AdGuard panel below to manage built-in filters on your connected AdGuard DNS server.
@@ -402,12 +445,12 @@ export default function Firewall() {
                 <div>
                   <h3 className="font-display font-bold text-white">Save DNS Override Policy</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Save a policy to restrict unencrypted DNS on port 53 to your selected resolver addresses.
+                    Restrict direct unencrypted DNS on port 53 to SafeNet&apos;s selected upstream while the Android DNS-only VPN is active.
                   </p>
                   <p className="mt-2 text-xs text-primary/80">
                     {firewallEnabled
-                      ? "This saves the policy only. It does not block traffic; Android Private DNS and custom DNS-over-HTTPS are not affected."
-                      : "Turn this on to save the policy. A provider or packet filter must enforce it before traffic is blocked."}
+                      ? "The policy is enforced only while the Android DNS-only VPN is active. App-owned encrypted DNS and other VPNs may bypass it."
+                      : "Turn this on to enforce saved DNS rules when the Android DNS-only VPN is active."}
                   </p>
                 </div>
               </div>
@@ -429,8 +472,8 @@ export default function Firewall() {
               <div className="min-w-0 flex-1">
                 <h3 className="font-display font-bold text-white">Family DNS Provider Presets</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add allow rules for family-safe DNS resolver addresses. Each address is saved separately
-                  for IPv4 and IPv6 clients.
+                  Choose a family-safe upstream for this phone’s DNS-only VPN, or save the resolver IPs
+                  as access rules for other network equipment.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {DNS_PROVIDER_ACCESS_RULES.map((provider) => (
@@ -443,17 +486,29 @@ export default function Firewall() {
                           <h4 className="font-display font-bold text-white">{provider.name}</h4>
                           <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0 border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
-                          onClick={() => void handleAddDnsProvider(provider)}
-                          disabled={createRule.isPending}
-                          data-testid={`button-add-dns-provider-${provider.id}`}
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Add
-                        </Button>
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            onClick={() => void handleUseFamilyDnsOnPhone(provider)}
+                            disabled={createDnsServer.isPending || activateDnsServer.isPending}
+                            data-testid={`button-use-phone-dns-${provider.id}`}
+                          >
+                            Use on phone
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-white/20"
+                            onClick={() => void handleAddDnsProvider(provider)}
+                            disabled={createRule.isPending}
+                            data-testid={`button-add-dns-provider-${provider.id}`}
+                          >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Add rules
+                          </Button>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {provider.addresses.map((address) => (

@@ -54,23 +54,57 @@ class SafeNetLocalVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            clearSavedResolver()
             stopTunnel()
             stopSelf()
-        } else if (intent?.action == ACTION_START || !running) {
-            val nextType = intent?.getStringExtra("resolverType") ?: resolverType
-            val nextPrimary = intent?.getStringExtra("primaryAddress") ?: resolverPrimary
-            val nextSecondary = intent?.getStringExtra("secondaryAddress")
-            val changed = nextType != resolverType || nextPrimary != resolverPrimary || nextSecondary != resolverSecondary
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_START) {
+            val nextType = intent.getStringExtra("resolverType") ?: ""
+            val nextPrimary = intent.getStringExtra("primaryAddress") ?: ""
+            val nextSecondary = intent.getStringExtra("secondaryAddress")
+            val changed = nextType != resolverType ||
+                nextPrimary != resolverPrimary ||
+                nextSecondary != resolverSecondary
             resolverType = nextType
             resolverPrimary = nextPrimary
             resolverSecondary = nextSecondary
+            saveResolver()
             if (running && changed) stopTunnel()
-            if (!running) {
-                startForeground(7301, notification())
-                startTunnel()
+        }
+        if (!running) {
+            if (resolverType.isBlank() || resolverPrimary.isBlank()) loadSavedResolver()
+            if (resolverType.isBlank() || resolverPrimary.isBlank()) {
+                lastError = "Choose an active DNS server before starting the local VPN."
+                stopSelf()
+                return START_NOT_STICKY
             }
+            startForeground(7301, notification())
+            startTunnel()
         }
         return START_STICKY
+    }
+
+    private fun saveResolver() {
+        getSharedPreferences("safenet_local_vpn", MODE_PRIVATE).edit()
+            .putString("type", resolverType)
+            .putString("primary", resolverPrimary)
+            .putString("secondary", resolverSecondary)
+            .apply()
+    }
+
+    private fun loadSavedResolver() {
+        val saved = getSharedPreferences("safenet_local_vpn", MODE_PRIVATE)
+        resolverType = saved.getString("type", "") ?: ""
+        resolverPrimary = saved.getString("primary", "") ?: ""
+        resolverSecondary = saved.getString("secondary", null)
+    }
+
+    private fun clearSavedResolver() {
+        getSharedPreferences("safenet_local_vpn", MODE_PRIVATE).edit().clear().apply()
+        resolverType = ""
+        resolverPrimary = ""
+        resolverSecondary = null
     }
 
     private fun startTunnel() {
@@ -89,6 +123,7 @@ class SafeNetLocalVpnService : VpnService() {
                 .addAddress("10.111.0.2", 32)
                 .addAddress("fd00:6e76:6376::2", 128)
                 .addDnsServer("10.111.0.1")
+                .addDnsServer("fd00:6e76:6376::1")
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .establish()
