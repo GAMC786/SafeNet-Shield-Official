@@ -4,7 +4,12 @@ import { useBlocklists, useCreateBlocklist, useDeleteBlocklist } from "@/hooks/u
 import { useUpdateBlocklist } from "@/hooks/use-blocklists";
 import { useFirewallRules, useCreateFirewallRule, useUpdateFirewallRule, useDeleteFirewallRule } from "@/hooks/use-firewall-rules";
 import type { Blocklist, FirewallRule, InsertFirewallRule } from "@shared/schema";
-import { DNS_PROVIDER_ACCESS_RULES, type DnsProviderAccessRule } from "@shared/dns-resolvers";
+import {
+  DNS_PROVIDER_ACCESS_RULES,
+  DNS_PROVIDER_PHONE_PRESETS,
+  type DnsProviderAccessRule,
+  type DnsResolverPreset,
+} from "@shared/dns-resolvers";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
@@ -17,12 +22,42 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { Link } from "wouter";
 import { useActivateDnsServer, useCreateDnsServer, useDnsServers } from "@/hooks/use-dns";
 import { AdGuardDnsBlocklists } from "@/components/AdGuardDnsBlocklists";
-import { DNS_PROVIDER_PHONE_PRESETS } from "@shared/dns-resolvers";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
+
+type EditablePhoneResolverType = "none" | DnsResolverPreset["type"];
+type FamilyDnsPresetOverride = {
+  name: string;
+  description: string;
+  addresses: string[];
+  resolverType: EditablePhoneResolverType;
+  phoneResolverName: string;
+  primaryAddress: string;
+  secondaryAddress: string;
+};
+
+type FamilyDnsPresetDraft = Omit<FamilyDnsPresetOverride, "addresses"> & {
+  addresses: string;
+};
+
+function isValidPresetIpAddress(value: string) {
+  if (value.includes(":")) {
+    if (!/^[0-9a-f:]+$/i.test(value) || value.includes(":::")) return false;
+    const compressed = value.includes("::");
+    if (value.split("::").length > 2) return false;
+    const groups = value.split(":").filter(Boolean);
+    return groups.length <= 8 && groups.every((group) => group.length <= 4) &&
+      (compressed ? groups.length < 8 : groups.length === 8);
+  }
+  const parts = value.split(".");
+  return parts.length === 4 && parts.every((part) =>
+    /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255,
+  );
+}
 
 export default function Firewall() {
   const { toast } = useToast();
@@ -76,8 +111,98 @@ export default function Firewall() {
     service: "dns",
     action: "deny" as const,
   });
+  const [familyDnsPresetOverrides, setFamilyDnsPresetOverrides] =
+    usePersistentState<Record<string, FamilyDnsPresetOverride>>("safenet-family-dns-preset-overrides", {});
+  const [editingFamilyDnsPreset, setEditingFamilyDnsPreset] = useState<DnsProviderAccessRule | null>(null);
+  const [familyDnsPresetDraft, setFamilyDnsPresetDraft] = useState<FamilyDnsPresetDraft | null>(null);
+  const [familyDnsPresetError, setFamilyDnsPresetError] = useState<string | null>(null);
   const activeDns = dnsServers?.find((server) => server.isActive);
   const firewallHeaderStatus = firewallEnabled && localVpn.connected ? "rules-enabled" : "inactive";
+
+  const getFamilyDnsPreset = (provider: DnsProviderAccessRule): DnsProviderAccessRule => {
+    const override = familyDnsPresetOverrides[provider.id];
+    return override
+      ? { ...provider, name: override.name, description: override.description, addresses: override.addresses }
+      : provider;
+  };
+
+  const getPhoneResolverPreset = (provider: DnsProviderAccessRule): DnsResolverPreset | null => {
+    const override = familyDnsPresetOverrides[provider.id];
+    if (!override) return DNS_PROVIDER_PHONE_PRESETS[provider.id] ?? null;
+    if (override.resolverType === "none") return null;
+    return {
+      name: override.phoneResolverName || override.name,
+      type: override.resolverType,
+      ipVersion: "ipv4",
+      primaryAddress: override.primaryAddress,
+      secondaryAddress: override.secondaryAddress || null,
+      description: override.description,
+    };
+  };
+
+  const openFamilyDnsPresetEditor = (provider: DnsProviderAccessRule) => {
+    const resolver = getPhoneResolverPreset(provider);
+    const override = familyDnsPresetOverrides[provider.id];
+    setFamilyDnsPresetDraft({
+      name: override?.name ?? provider.name,
+      description: override?.description ?? provider.description,
+      addresses: (override?.addresses ?? provider.addresses).join("\n"),
+      resolverType: override?.resolverType ?? resolver?.type ?? "none",
+      phoneResolverName: override?.phoneResolverName ?? resolver?.name ?? provider.name,
+      primaryAddress: override?.primaryAddress ?? resolver?.primaryAddress ?? "",
+      secondaryAddress: override?.secondaryAddress ?? resolver?.secondaryAddress ?? "",
+    });
+    setFamilyDnsPresetError(null);
+    setEditingFamilyDnsPreset(provider);
+  };
+
+  const saveFamilyDnsPreset = () => {
+    if (!editingFamilyDnsPreset || !familyDnsPresetDraft) return;
+    const name = familyDnsPresetDraft.name.trim();
+    const addresses = familyDnsPresetDraft.addresses
+      .split(/[\n,]/)
+      .map((address) => address.trim())
+      .filter(Boolean);
+    if (!name) {
+      setFamilyDnsPresetError("Enter a name for this preset.");
+      return;
+    }
+    if (addresses.length === 0) {
+      setFamilyDnsPresetError("Enter at least one resolver IP address.");
+      return;
+    }
+    if (!addresses.every(isValidPresetIpAddress)) {
+      setFamilyDnsPresetError("Enter valid IPv4 or IPv6 resolver addresses.");
+      return;
+    }
+    if (familyDnsPresetDraft.resolverType !== "none" && !familyDnsPresetDraft.primaryAddress.trim()) {
+      setFamilyDnsPresetError("Enter the phone resolver address or hostname.");
+      return;
+    }
+    if (
+      familyDnsPresetDraft.resolverType === "doh" &&
+      !familyDnsPresetDraft.primaryAddress.trim().toLowerCase().startsWith("https://")
+    ) {
+      setFamilyDnsPresetError("DNS-over-HTTPS addresses must start with https://.");
+      return;
+    }
+
+    setFamilyDnsPresetOverrides({
+      ...familyDnsPresetOverrides,
+      [editingFamilyDnsPreset.id]: {
+        ...familyDnsPresetDraft,
+        name,
+        description: familyDnsPresetDraft.description.trim(),
+        addresses,
+        phoneResolverName: familyDnsPresetDraft.phoneResolverName.trim() || name,
+        primaryAddress: familyDnsPresetDraft.primaryAddress.trim(),
+        secondaryAddress: familyDnsPresetDraft.secondaryAddress.trim(),
+      },
+    });
+    setEditingFamilyDnsPreset(null);
+    setFamilyDnsPresetDraft(null);
+    toast({ title: "Family DNS preset saved", description: "Changes are stored on this device and apply to future actions." });
+  };
 
   useEffect(() => {
     if (!editingRuleId || !rules) return;
@@ -225,11 +350,13 @@ export default function Firewall() {
   };
 
   const handleUseFamilyDnsOnPhone = async (provider: DnsProviderAccessRule) => {
-    const preset = DNS_PROVIDER_PHONE_PRESETS[provider.id];
+    const preset = getPhoneResolverPreset(provider);
     if (!preset) {
       toast({
-        title: "Connect a NextDNS profile first",
-        description: "NextDNS family filtering is profile-specific. Configure its profile URL in DNS Servers before using the phone VPN.",
+        title: `${provider.name} phone resolver is not configured`,
+        description: provider.id === "nextdns"
+          ? "NextDNS family filtering is profile-specific. Configure its profile URL in DNS Servers or Edit this preset."
+          : "Edit this preset to add a phone resolver protocol and address.",
       });
       return;
     }
@@ -487,57 +614,190 @@ export default function Firewall() {
                   as access rules for other network equipment.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {DNS_PROVIDER_ACCESS_RULES.map((provider) => (
-                    <div
-                      key={provider.id}
-                      className="rounded-lg border border-white/10 bg-background/40 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h4 className="font-display font-bold text-white">{provider.name}</h4>
-                          <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
+                  {DNS_PROVIDER_ACCESS_RULES.map((baseProvider) => {
+                    const provider = getFamilyDnsPreset(baseProvider);
+                    return (
+                      <div
+                        key={provider.id}
+                        className="rounded-lg border border-white/10 bg-background/40 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h4 className="font-display font-bold text-white">{provider.name}</h4>
+                            <p className="mt-1 text-xs text-muted-foreground">{provider.description}</p>
+                          </div>
+                          <div className="flex w-36 shrink-0 flex-col gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full justify-center border-white/20"
+                              onClick={() => void handleAddDnsProvider(provider)}
+                              disabled={createRule.isPending}
+                              data-testid={`button-add-dns-provider-${provider.id}`}
+                            >
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              Add rules
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full justify-center border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
+                              onClick={() => void handleUseFamilyDnsOnPhone(provider)}
+                              disabled={createDnsServer.isPending || activateDnsServer.isPending || localVpn.busy}
+                              data-testid={`button-use-phone-dns-${provider.id}`}
+                            >
+                              Use on phone
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="w-full justify-center"
+                              onClick={() => openFamilyDnsPresetEditor(baseProvider)}
+                              data-testid={`button-edit-dns-preset-${provider.id}`}
+                            >
+                              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"
-                            onClick={() => void handleUseFamilyDnsOnPhone(provider)}
-                            disabled={createDnsServer.isPending || activateDnsServer.isPending || localVpn.busy}
-                            data-testid={`button-use-phone-dns-${provider.id}`}
-                          >
-                            Use on phone
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-white/20"
-                            onClick={() => void handleAddDnsProvider(provider)}
-                            disabled={createRule.isPending}
-                            data-testid={`button-add-dns-provider-${provider.id}`}
-                          >
-                            <Plus className="mr-1.5 h-3.5 w-3.5" />
-                            Add rules
-                          </Button>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {provider.addresses.map((address) => (
+                            <Badge
+                              key={address}
+                              variant="outline"
+                              className="border-white/10 font-mono text-[10px] text-muted-foreground"
+                            >
+                              {address}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {provider.addresses.map((address) => (
-                          <Badge
-                            key={address}
-                            variant="outline"
-                            className="border-white/10 font-mono text-[10px] text-muted-foreground"
-                          >
-                            {address}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </CyberCard>
+
+          <Dialog
+            open={editingFamilyDnsPreset !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingFamilyDnsPreset(null);
+                setFamilyDnsPresetDraft(null);
+                setFamilyDnsPresetError(null);
+              }
+            }}
+          >
+            <DialogContent className="bg-card border-border text-foreground sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle className="font-display tracking-wider">
+                  Edit {editingFamilyDnsPreset?.name ?? "Family DNS preset"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+                <p className="text-xs text-muted-foreground">
+                  Changes are saved on this device and affect future actions. Existing access rules are unchanged.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="family-dns-preset-name">Preset name</Label>
+                  <Input
+                    id="family-dns-preset-name"
+                    value={familyDnsPresetDraft?.name ?? ""}
+                    onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, name: event.target.value } : draft)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="family-dns-preset-description">Description</Label>
+                  <Textarea
+                    id="family-dns-preset-description"
+                    value={familyDnsPresetDraft?.description ?? ""}
+                    onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, description: event.target.value } : draft)}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="family-dns-preset-addresses">Resolver IP addresses</Label>
+                  <Textarea
+                    id="family-dns-preset-addresses"
+                    value={familyDnsPresetDraft?.addresses ?? ""}
+                    onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, addresses: event.target.value } : draft)}
+                    placeholder="One address per line"
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone upstream protocol</Label>
+                  <Select
+                    value={familyDnsPresetDraft?.resolverType ?? "none"}
+                    onValueChange={(value: EditablePhoneResolverType) =>
+                      setFamilyDnsPresetDraft((draft) => draft ? { ...draft, resolverType: value } : draft)
+                    }
+                  >
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      <SelectItem value="none">Not configured</SelectItem>
+                      <SelectItem value="plain">Plain DNS</SelectItem>
+                      <SelectItem value="dot">DNS over TLS</SelectItem>
+                      <SelectItem value="doh">DNS over HTTPS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {familyDnsPresetDraft?.resolverType !== "none" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="family-dns-phone-name">Phone resolver name</Label>
+                      <Input
+                        id="family-dns-phone-name"
+                        value={familyDnsPresetDraft?.phoneResolverName ?? ""}
+                        onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, phoneResolverName: event.target.value } : draft)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="family-dns-phone-primary">Primary address or hostname</Label>
+                      <Input
+                        id="family-dns-phone-primary"
+                        value={familyDnsPresetDraft?.primaryAddress ?? ""}
+                        onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, primaryAddress: event.target.value } : draft)}
+                        placeholder={familyDnsPresetDraft?.resolverType === "doh" ? "https://provider.example/dns-query" : "resolver.example"}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="family-dns-phone-secondary">Secondary address (optional)</Label>
+                      <Input
+                        id="family-dns-phone-secondary"
+                        value={familyDnsPresetDraft?.secondaryAddress ?? ""}
+                        onChange={(event) => setFamilyDnsPresetDraft((draft) => draft ? { ...draft, secondaryAddress: event.target.value } : draft)}
+                      />
+                    </div>
+                  </>
+                )}
+                {familyDnsPresetError && <p role="alert" className="text-sm text-destructive">{familyDnsPresetError}</p>}
+                <div className="flex flex-wrap justify-between gap-2">
+                  {editingFamilyDnsPreset && familyDnsPresetOverrides[editingFamilyDnsPreset.id] && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        const next = { ...familyDnsPresetOverrides };
+                        delete next[editingFamilyDnsPreset.id];
+                        setFamilyDnsPresetOverrides(next);
+                        setEditingFamilyDnsPreset(null);
+                        setFamilyDnsPresetDraft(null);
+                      }}
+                    >
+                      Restore defaults
+                    </Button>
+                  )}
+                  <Button type="button" className="ml-auto" onClick={saveFamilyDnsPreset}>
+                    Save preset
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <div className="flex justify-end mb-4">
             <Dialog open={isRuleDialogOpen} onOpenChange={(open) => {

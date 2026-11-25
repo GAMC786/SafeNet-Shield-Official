@@ -439,11 +439,21 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.match(firewallSource, /aria-label="Enable DNS filtering"/);
   assert.match(firewallSource, /Use on phone/);
   assert.match(firewallSource, /DNS_PROVIDER_PHONE_PRESETS/);
+  assert.match(firewallSource, /button-edit-dns-preset-/);
+  assert.match(firewallSource, /safenet-family-dns-preset-overrides/);
+  assert.match(firewallSource, /Changes are saved on this device/);
+  const addRulesButton = firewallSource.indexOf("data-testid={`button-add-dns-provider-");
+  const usePhoneButton = firewallSource.indexOf("data-testid={`button-use-phone-dns-");
+  const editPresetButton = firewallSource.indexOf("data-testid={`button-edit-dns-preset-");
+  assert.ok(
+    addRulesButton >= 0 && addRulesButton < usePhoneButton && usePhoneButton < editPresetButton,
+    "Family DNS actions should be ordered Add rules, Use on phone, then Edit",
+  );
   assert.doesNotMatch(firewallSource, /Allow\/Block URLs|Domain or URL|Enter URL|URL rule/);
   assert.match(firewallSource, /useDnsServers/);
   assert.match(firewallSource, /useLocalVpn/);
   assert.match(firewallSource, /localVpn\.connected/);
-  assert.doesNotMatch(firewallSource, /family-dns|nextdns\/connection|NextDNS API key|Sign in once to connect/);
+  assert.doesNotMatch(firewallSource, /nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
 });
