@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import ControlDIntegration from "@/components/ControlDIntegration";
+import DnsProviderConnections from "@/components/DnsProviderConnections";
 import { Globe, Lock, Pencil, Plus, Save, Server, Trash2, CheckCircle, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -271,6 +272,7 @@ export default function DnsSettings() {
     <div className="space-y-6">
       <Header title="DNS Servers" subtitle="Manage Resolvers" />
       <ControlDIntegration />
+      <DnsProviderConnections />
 
       <CyberCard className="border-primary/20">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

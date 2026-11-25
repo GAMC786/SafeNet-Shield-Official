@@ -1,6 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAdGuardFilterLists, setAdGuardFilterList, syncFamilyDnsRules } from "./family-dns-api";
+import {
+  FamilyDnsApiError,
+  getAdGuardFilterLists,
+  setAdGuardFilterList,
+  syncFamilyDnsRules,
+  verifyFamilyDnsAccount,
+} from "./family-dns-api";
+
+test("DNS provider verification only calls the explicitly selected provider API", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    urls.push(url.origin + url.pathname);
+    if (url.hostname === "api.adguard-dns.io") {
+      return Response.json({ user_rules_settings: { enabled: true, rules: [] } });
+    }
+    return Response.json({ status: "success", profiles: ["Family"] });
+  }) as typeof fetch;
+  try {
+    await verifyFamilyDnsAccount("adguard", "adguard-token", "server-1");
+    assert.deepEqual(urls, ["https://api.adguard-dns.io/oapi/v1/dns_servers/server-1/settings"]);
+    urls.length = 0;
+    await verifyFamilyDnsAccount("cleanbrowsing", "cleanbrowsing-token", "Family");
+    assert.equal(urls.length, 1);
+    assert.match(urls[0]!, /^https:\/\/my\.cleanbrowsing\.org\/api$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DNS provider verification rejects a token invalid for the selected provider", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    urls.push(String(input));
+    return new Response("unauthorized", { status: 401 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(verifyFamilyDnsAccount("adguard", "wrong-provider-token", "server-1"), FamilyDnsApiError);
+    assert.equal(urls.length, 1);
+    assert.match(urls[0]!, /^https:\/\/api\.adguard-dns\.io\//);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("CleanBrowsing sync preserves manual domains and removes only SafeNet-owned entries", async () => {
   const originalFetch = globalThis.fetch;

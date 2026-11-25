@@ -12,7 +12,7 @@ import {
   type FamilyDnsProvider,
 } from "./family-dns-api";
 
-const providerSchema = z.enum(["adguard", "cleanbrowsing", "cloudflare", "umbrella"]);
+const providerSchema = z.enum(["adguard", "cleanbrowsing"]);
 const connectionSchema = z.object({
   provider: providerSchema,
   profileId: z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.-]+$/),
@@ -78,6 +78,19 @@ export function registerFamilyDnsRoutes(
       return res.json({ connected: true, provider, profileId: saved.profileId });
     } catch (error) {
       return respondError(error, res);
+    }
+  });
+
+  app.delete("/api/family-dns/connections/:provider", authGate, async (req, res) => {
+    const userId = ownerId(req, res);
+    if (!userId) return;
+    const parsedProvider = providerSchema.safeParse(req.params.provider);
+    if (!parsedProvider.success) return res.status(404).json({ message: "This DNS provider connection is not supported." });
+    try {
+      await storage.deleteFamilyDnsCredential(userId, parsedProvider.data);
+      return res.status(204).send();
+    } catch {
+      return res.status(503).json({ message: "SafeNet could not remove this DNS provider connection." });
     }
   });
 

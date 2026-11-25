@@ -24,6 +24,7 @@ export interface IStorage {
   getFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"]): Promise<FamilyDnsCredential | null>;
   saveFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"], profileId: string, credential: Pick<FamilyDnsCredential, "tokenCiphertext" | "tokenIv" | "tokenAuthTag" | "encryptionKeyVersion">): Promise<FamilyDnsCredential>;
   updateFamilyDnsSyncedRules(userId: string, provider: FamilyDnsCredential["provider"], syncedRules: string[]): Promise<void>;
+  deleteFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"]): Promise<void>;
   deleteNextDnsCredential(userId: string): Promise<void>;
 
   // DNS Servers
@@ -168,6 +169,11 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     await db.update(familyDnsCredentials)
       .set({ syncedRules, lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(familyDnsCredentials.userId, userId), eq(familyDnsCredentials.provider, provider)));
+  }
+
+  async deleteFamilyDnsCredential(userId: string, provider: FamilyDnsCredential["provider"]): Promise<void> {
+    await db.delete(familyDnsCredentials)
       .where(and(eq(familyDnsCredentials.userId, userId), eq(familyDnsCredentials.provider, provider)));
   }
 
