@@ -30,7 +30,7 @@ const cleanBrowsingCategories = [
 ] as const;
 
 export class FamilyDnsApiError extends Error {
-  constructor(readonly rejected: boolean) {
+  constructor(readonly rejected: boolean, readonly status: number | null = null) {
     super("Family DNS provider request failed.");
   }
 }
@@ -50,7 +50,7 @@ async function adGuardRequest<T>(token: string, path: string, init?: RequestInit
   } catch {
     throw new FamilyDnsApiError(false);
   }
-  if (!response.ok) throw new FamilyDnsApiError([400, 401, 403, 404].includes(response.status));
+  if (!response.ok) throw new FamilyDnsApiError([400, 401, 403, 404].includes(response.status), response.status);
   if (response.status === 204) return undefined as T;
   try { return await response.json() as T; } catch { throw new FamilyDnsApiError(false); }
 }
@@ -71,7 +71,7 @@ async function cleanBrowsingRequest(token: string, action: string, profileId: st
   } catch {
     throw new FamilyDnsApiError(false);
   }
-  if (response.status === 401 || response.status === 403) throw new FamilyDnsApiError(true);
+  if (response.status === 401 || response.status === 403) throw new FamilyDnsApiError(true, response.status);
   let body: any;
   try {
     body = await response.json();
@@ -79,7 +79,10 @@ async function cleanBrowsingRequest(token: string, action: string, profileId: st
     throw new FamilyDnsApiError(false);
   }
   if (!response.ok || body?.status !== "success") {
-    throw new FamilyDnsApiError(response.status === 401 || response.status === 403 || /api key|unauthorized/i.test(String(body?.reason ?? "")));
+    throw new FamilyDnsApiError(
+      response.status === 401 || response.status === 403 || /api key|unauthorized/i.test(String(body?.reason ?? "")),
+      response.status,
+    );
   }
   return body;
 }
@@ -253,7 +256,7 @@ async function nextDnsRequest<T>(token: string, path: string, init?: RequestInit
     throw new FamilyDnsApiError(false);
   }
   const body = await response.json().catch(() => null) as { data?: T; errors?: Array<{ code?: string }> } | null;
-  if (!response.ok || body?.errors?.length) throw new FamilyDnsApiError([400, 401, 403].includes(response.status));
+  if (!response.ok || body?.errors?.length) throw new FamilyDnsApiError([400, 401, 403].includes(response.status), response.status);
   return body?.data as T;
 }
 

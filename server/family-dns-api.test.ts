@@ -98,17 +98,21 @@ test("DNS provider verification only calls the explicitly selected provider API"
   }
 });
 
-test("DNS provider verification rejects a token invalid for the selected provider", async () => {
+test("DNS provider verification preserves rejected HTTP status for troubleshooting", async () => {
   const originalFetch = globalThis.fetch;
-  const urls: string[] = [];
+  const statuses = [400, 401, 403, 404];
   globalThis.fetch = (async (input: string | URL | Request) => {
-    urls.push(String(input));
-    return new Response("unauthorized", { status: 401 });
+    const url = new URL(String(input));
+    assert.equal(url.hostname, "api.adguard-dns.io");
+    return new Response("rejected", { status: statuses.shift() });
   }) as typeof fetch;
   try {
-    await assert.rejects(verifyFamilyDnsAccount("adguard", "wrong-provider-token", "server-1"), FamilyDnsApiError);
-    assert.equal(urls.length, 1);
-    assert.match(urls[0]!, /^https:\/\/api\.adguard-dns\.io\//);
+    for (const status of [400, 401, 403, 404]) {
+      await assert.rejects(
+        verifyFamilyDnsAccount("adguard", "invalid-token", "server-1"),
+        (error: unknown) => error instanceof FamilyDnsApiError && error.rejected && error.status === status,
+      );
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

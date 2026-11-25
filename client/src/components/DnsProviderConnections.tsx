@@ -177,6 +177,11 @@ export default function DnsProviderConnections() {
                 placeholder={`Paste your ${providerNames[provider]} API token`}
               />
             </div>
+            {provider === "adguard" && (
+              <p className="text-xs text-muted-foreground">
+                Use an API key from AdGuard DNS User preferences and the server ID shown in that account. The DoT hostname is not the API server ID.
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">

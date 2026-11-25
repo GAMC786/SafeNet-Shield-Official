@@ -23,10 +23,17 @@ const connectionSchema = z.object({
 
 function respondError(error: unknown, res: Response) {
   if (error instanceof FamilyDnsApiError) {
+    const message = error.rejected
+      ? error.status === 401
+        ? "The provider did not accept this API key. Use a current provider API key, not your account password or DoT hostname."
+        : error.status === 403
+          ? "This API key does not have permission to access the selected DNS server or profile."
+          : error.status === 404
+            ? "The DNS server or profile ID was not found in this provider account. Use its dashboard ID, not the DoT hostname."
+            : "The provider rejected the API key, profile, or DNS server ID. Check that both values belong to the same provider account."
+      : "The DNS provider is temporarily unavailable.";
     return res.status(error.rejected ? 400 : 502).json({
-      message: error.rejected
-        ? "The provider rejected the API key, profile, or DNS server ID."
-        : "The DNS provider is temporarily unavailable.",
+      message,
     });
   }
   return res.status(503).json({ message: "SafeNet could not access this DNS provider connection." });
