@@ -179,7 +179,7 @@ export default function DnsProviderConnections() {
             </div>
             {provider === "adguard" && (
               <p className="text-xs text-muted-foreground">
-                Use an API key from AdGuard DNS User preferences and the server ID shown in that account. The DoT hostname is not the API server ID.
+                Use an API key from AdGuard DNS User preferences and the DNS server id returned by GET /oapi/v1/dns_servers. The Server setup ID is for device enrollment, and the DoT hostname is not the API server ID.
               </p>
             )}
 

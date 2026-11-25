@@ -123,6 +123,10 @@ const dnsProviderBlocklistsSource = readFileSync(
   path.join(clientRoot, "src/components/DnsProviderBlocklists.tsx"),
   "utf8",
 );
+const dnsProviderConnectionsSource = readFileSync(
+  path.join(clientRoot, "src/components/DnsProviderConnections.tsx"),
+  "utf8",
+);
 const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
@@ -477,6 +481,12 @@ test("DNS Firewall clearly explains domain rules and their enforcement limits", 
   assert.doesNotMatch(firewallSource, /nextdns\/connection|NextDNS API key|Sign in once to connect/);
   assert.match(firewallSource, /href="\/dns"/);
   assert.doesNotMatch(firewallSource, /local-vpn-firewall-scope|SafeNet Local VPN Firewall Rules/);
+});
+
+test("AdGuard API connections distinguish the API server ID from the device setup ID", () => {
+  assert.ok(dnsProviderConnectionsSource.includes("GET /oapi/v1/dns_servers"));
+  assert.match(dnsProviderConnectionsSource, /Server setup ID is for device enrollment/);
+  assert.match(dnsProviderConnectionsSource, /DoT hostname is not the API server ID/);
 });
 
 test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () => {
