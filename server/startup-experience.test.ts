@@ -556,6 +556,11 @@ test("Settings use the current package version and expose only current controls"
 });
 
 test("Billing recovers from Clerk loading stalls without skipping signed-out access", () => {
+  assert.match(billingSource, /import \{ apiFetch \} from "@\/lib\/api"/);
+  assert.match(
+    billingSource,
+    /return apiFetch\(input, \{ \.\.\.init, timeoutMs: BILLING_REQUEST_TIMEOUT_MS \}\)/,
+  );
   assert.match(billingSource, /const CLERK_LOAD_TIMEOUT_MS = 12_000/);
   assert.match(
     billingSource,

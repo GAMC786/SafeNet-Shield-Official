@@ -10,6 +10,7 @@ import { Header } from "@/components/Header";
 import { CyberCard } from "@/components/CyberCard";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 
 type BillingStatus = {
   provider: "revenuecat";
@@ -35,20 +36,10 @@ const GOOGLE_PLAY_SUBSCRIPTIONS_URL = "https://play.google.com/store/account/sub
 const REVENUECAT_ANONYMOUS_ID_PREFIX = "$RCAnonymousID:";
 
 async function fetchBilling(
-  input: RequestInfo | URL,
+  input: string,
   init: RequestInit = {},
 ) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(
-    () => controller.abort(),
-    BILLING_REQUEST_TIMEOUT_MS,
-  );
-
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+  return apiFetch(input, { ...init, timeoutMs: BILLING_REQUEST_TIMEOUT_MS });
 }
 
 function billingErrorMessage(error: unknown, fallback: string) {
