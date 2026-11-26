@@ -27,7 +27,8 @@ export function useLocalVpn() {
     try {
       const next = await enqueueNativeCommand(() => LocalVpn.getStatus());
       setStatus(next);
-      setError(next.error ?? null);
+      if (next.error) setError(next.error);
+      else if (next.connected) setError(null);
       return next;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Local VPN status is unavailable.");
@@ -39,7 +40,14 @@ export function useLocalVpn() {
     void refresh();
     if (!supported) return;
     const timer = window.setInterval(() => void refresh(), 1500);
-    return () => window.clearInterval(timer);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [refresh, supported]);
 
   const run = useCallback(async (action: "start" | "stop", resolver?: LocalVpnResolver) => {
@@ -54,6 +62,7 @@ export function useLocalVpn() {
         next = await enqueueNativeCommand(() => LocalVpn.stop());
       }
       setStatus(next);
+      setError(next.error ?? null);
       window.setTimeout(() => void refresh(), 500);
       return next;
     } catch (cause) {

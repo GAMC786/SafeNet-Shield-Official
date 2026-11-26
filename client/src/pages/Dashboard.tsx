@@ -220,7 +220,12 @@ export default function Dashboard() {
 
           <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm text-muted-foreground">{appLock.status.message}</p>
+              <p
+                role="status"
+                className={`text-sm ${appLock.error ? "text-amber-200" : "text-muted-foreground"}`}
+              >
+                {appLock.error ?? appLock.status.message}
+              </p>
               <p className="mt-1 text-[11px] text-muted-foreground/80">
                  SafeNet keeps passcode recovery on-device. Device Owner is separately provisioned; restrictions remain off until enabled, and SafeNet restores only policies it applied.
               </p>

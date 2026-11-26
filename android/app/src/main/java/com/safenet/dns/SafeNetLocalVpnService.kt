@@ -53,13 +53,27 @@ class SafeNetLocalVpnService : VpnService() {
     private val stopped = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return try {
+            handleStartCommand(intent, startId)
+        } catch (error: Exception) {
+            lastError = error.message ?: "Android could not start SafeNet DNS protection."
+            running = false
+            runCatching { stopTunnel() }
+            stopSelf(startId)
+            START_NOT_STICKY
+        }
+    }
+
+    private fun handleStartCommand(intent: Intent?, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             clearSavedResolver()
             stopTunnel()
+            lastError = null
             stopSelf()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_START) {
+            lastError = null
             val nextType = intent.getStringExtra("resolverType") ?: ""
             val nextPrimary = intent.getStringExtra("primaryAddress") ?: ""
             val nextSecondary = intent.getStringExtra("secondaryAddress")
@@ -76,7 +90,7 @@ class SafeNetLocalVpnService : VpnService() {
             if (resolverType.isBlank() || resolverPrimary.isBlank()) loadSavedResolver()
             if (resolverType.isBlank() || resolverPrimary.isBlank()) {
                 lastError = "Choose an active DNS server before starting the local VPN."
-                stopSelf()
+                stopSelf(startId)
                 return START_NOT_STICKY
             }
             startForeground(7301, notification())
@@ -108,7 +122,10 @@ class SafeNetLocalVpnService : VpnService() {
     }
 
     private fun startTunnel() {
-        require(resolverType in setOf("plain", "dot", "doh", "sdns") && resolverPrimary.isNotBlank()) {
+        require(resolverType in setOf("plain", "dot", "doh", "sdns")) {
+            "The selected DNS server uses an unsupported protocol."
+        }
+        require(resolverPrimary.isNotBlank()) {
             "Choose an active DNS server before starting the local VPN."
         }
         if (pool.isShutdown) pool = Executors.newCachedThreadPool()
@@ -456,7 +473,7 @@ class SafeNetLocalVpnService : VpnService() {
         runCatching { tun?.close() }
         tun = null
         pool.shutdownNow()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
     }
 
     override fun onRevoke() {

@@ -21,6 +21,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.core.content.ContextCompat;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
@@ -1641,6 +1642,65 @@ abstract class SafeNetUiInstrumentationTestBase {
     */
 
     @Test
+    public void localVpnToggleRecoversAfterRejectedNativeStart() throws Exception {
+        openDashboardWithResolverType("unsupported");
+        waitForWebView(
+            "(() => { const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]'); " +
+                "return Boolean(toggle && !toggle.disabled); })()"
+        );
+
+        clickControl("switch-local-dns-vpn");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"dialog-local-vpn-eula\"]'))");
+        clickControl("button-local-vpn-eula-accept");
+        waitForWebView("document.body.innerText.includes('unsupported protocol')");
+
+        JSONObject toggleState = callWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')?.getAttribute('aria-checked')"
+        );
+        assertEquals("false", toggleState.getString("value"));
+
+        // A second attempt and a later native status request must still work
+        // after the rejected start command.
+        clickControl("switch-local-dns-vpn");
+        waitForWebView("document.body.innerText.includes('unsupported protocol')");
+        JSONObject status = callWebView("window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()");
+        assertTrue("The WebView must remain able to query native status", status.getBoolean("ok"));
+        assertFalse(status.getJSONObject("value").getBoolean("connected"));
+        assertFalse("The activity must remain open after the failed toggle", activity.isFinishing());
+    }
+
+    @Test
+    public void localVpnServiceFailureDoesNotTerminateAppOrWebView() throws Exception {
+        openDashboardWithActiveResolver();
+        Intent invalidStart = new Intent(context, SafeNetLocalVpnService.class)
+            .setAction(SafeNetLocalVpnService.ACTION_START)
+            .putExtra("resolverType", "unsupported")
+            .putExtra("primaryAddress", "resolver.example");
+        ContextCompat.startForegroundService(context, invalidStart);
+
+        JSONObject status = null;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+            );
+            if (result.optBoolean("ok", false)) {
+                status = result.getJSONObject("value");
+                if (!status.optString("error").isEmpty()) break;
+            }
+            Thread.sleep(250);
+        }
+        assertNotNull("The service failure should be reported to the WebView", status);
+        assertFalse("A rejected resolver must leave DNS protection off",
+            status.getBoolean("connected"));
+        assertTrue("The service should expose a recoverable error",
+            status.getString("error").contains("unsupported"));
+        assertFalse("The Activity must survive the failed native start", activity.isFinishing());
+        assertTrue("The WebView must remain responsive after native failure",
+            callWebView("document.readyState === 'complete'").getBoolean("value"));
+    }
+
+    @Test
     public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
@@ -2383,6 +2443,10 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     private void openDashboardWithActiveResolver() throws Exception {
+        openDashboardWithResolverType("plain");
+    }
+
+    private void openDashboardWithResolverType(String resolverType) throws Exception {
         JSONObject result = callWebView(
             "(() => {" +
                 "const originalFetch = window.fetch;" +
@@ -2392,7 +2456,7 @@ abstract class SafeNetUiInstrumentationTestBase {
                         "return Promise.resolve(new Response(JSON.stringify([{" +
                             "id: 1," +
                             "name: 'SafeNet Test Resolver'," +
-                            "type: 'plain'," +
+                            "type: '" + jsQuote(resolverType) + "'," +
                             "ipVersion: 'ipv4'," +
                             "primaryAddress: '1.1.1.1'," +
                             "secondaryAddress: '8.8.8.8'," +
@@ -2410,6 +2474,15 @@ abstract class SafeNetUiInstrumentationTestBase {
             "})()"
         );
         assertTrue("Could not navigate to the Dashboard with an active resolver", result.getBoolean("ok"));
+    }
+
+    private void clickControl(String testId) throws Exception {
+        JSONObject result = callWebView(
+            "(() => { const control = document.querySelector('[data-testid=\"" + testId + "\"]'); " +
+                "if (!control || control.disabled) return false; control.click(); return true; })()"
+        );
+        assertTrue("Could not click Android control " + testId,
+            result.getBoolean("ok") && result.getBoolean("value"));
     }
 
     */

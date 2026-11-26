@@ -27,8 +27,21 @@ const browserStatus: AppLockStatus = {
   message: "SafeNet App Lock is available in the SafeNet Android app.",
 };
 
+function getAppLockFailureMessage(cause: unknown) {
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === "APP_LOCK_AUTHENTICATION_FAILED"
+  ) {
+    return "App Lock change was cancelled. Your previous setting is unchanged.";
+  }
+  return "App Lock could not be changed. Your previous setting is unchanged.";
+}
+
 export function useAppLock() {
   const supported = Capacitor.getPlatform() === "android";
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<AppLockStatus>(
     supported
       ? {
@@ -52,7 +65,7 @@ export function useAppLock() {
       setStatus(nextStatus);
       return nextStatus;
     } catch {
-       const unavailable: AppLockStatus = {
+      const unavailable: AppLockStatus = {
         supported: true,
         enabled: false,
         available: false,
@@ -80,6 +93,7 @@ export function useAppLock() {
   const setEnabled = useCallback(
     async (enabled: boolean) => {
       if (!supported) return null;
+      setError(null);
       setIsBusy(true);
       try {
         const nextStatus = await enqueueNativeCommand(() =>
@@ -87,9 +101,10 @@ export function useAppLock() {
         );
         setStatus(nextStatus);
         return nextStatus;
-      } catch (error) {
+      } catch (cause) {
         await refresh();
-        throw error;
+        setError(getAppLockFailureMessage(cause));
+        return null;
       } finally {
         setIsBusy(false);
       }
@@ -99,18 +114,24 @@ export function useAppLock() {
 
   const lockNow = useCallback(async () => {
     if (!supported) return null;
+    setError(null);
     setIsBusy(true);
     try {
       const nextStatus = await enqueueNativeCommand(() => SafeNetVpn.lockAppNow());
       setStatus(nextStatus);
       return nextStatus;
+    } catch (cause) {
+      await refresh();
+      setError(getAppLockFailureMessage(cause));
+      return null;
     } finally {
       setIsBusy(false);
     }
-  }, [supported]);
+  }, [refresh, supported]);
 
   const openSettings = useCallback(async () => {
     if (!supported) return null;
+    setError(null);
     setIsBusy(true);
     try {
       const nextStatus = await enqueueNativeCommand(() =>
@@ -118,13 +139,14 @@ export function useAppLock() {
       );
       setStatus(nextStatus);
       return nextStatus;
-    } catch (error) {
+    } catch (cause) {
       await refresh();
-      throw error;
+      setError(getAppLockFailureMessage(cause));
+      return null;
     } finally {
       setIsBusy(false);
     }
   }, [refresh, supported]);
 
-  return { supported, status, isBusy, refresh, setEnabled, lockNow, openSettings };
+  return { supported, status, error, isBusy, refresh, setEnabled, lockNow, openSettings };
 }

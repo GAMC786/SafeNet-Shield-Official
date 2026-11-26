@@ -89,7 +89,14 @@ export function usePrivateDns(server: DnsServer | null | undefined) {
     if (!supported) return;
     void refresh();
     const interval = window.setInterval(() => void refresh(), 1500);
-    return () => window.clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [refresh, supported]);
 
   const openSettings = useCallback(async () => {

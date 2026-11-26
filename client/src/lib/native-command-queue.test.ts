@@ -20,18 +20,23 @@ test("native commands remain serialized across feature hooks", async () => {
   assert.deepEqual(events, ["first-start", "first-end", "second-start", "second-end"]);
 });
 
-test("a failed feature command does not block the next feature", async () => {
+test("a rejected phone toggle still allows status refresh and a later retry", async () => {
   const events: string[] = [];
-  const failedFeature = enqueueNativeCommand(async () => {
-    events.push("ai-start");
-    throw new Error("AI Shield unavailable");
+  const failedToggle = enqueueNativeCommand(async () => {
+    events.push("toggle-start");
+    throw new Error("VPN permission was cancelled");
   });
-  const independentFeature = enqueueNativeCommand(async () => {
-    events.push("apk-start");
-    return "scanner-ready";
+  const statusRefresh = enqueueNativeCommand(async () => {
+    events.push("status-refresh");
+    return { connected: false };
+  });
+  const retryToggle = enqueueNativeCommand(async () => {
+    events.push("toggle-retry");
+    return { connected: true };
   });
 
-  await assert.rejects(failedFeature, /AI Shield unavailable/);
-  assert.equal(await independentFeature, "scanner-ready");
-  assert.deepEqual(events, ["ai-start", "apk-start"]);
+  await assert.rejects(failedToggle, /VPN permission was cancelled/);
+  assert.deepEqual(await statusRefresh, { connected: false });
+  assert.deepEqual(await retryToggle, { connected: true });
+  assert.deepEqual(events, ["toggle-start", "status-refresh", "toggle-retry"]);
 });

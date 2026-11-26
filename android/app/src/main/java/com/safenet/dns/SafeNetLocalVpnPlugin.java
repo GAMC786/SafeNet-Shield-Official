@@ -20,6 +20,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "SafeNetLocalVpn")
 public final class SafeNetLocalVpnPlugin extends Plugin {
     private static final int STOP_CONFIRMATION_ATTEMPTS = 20;
+    private static final int START_CONFIRMATION_ATTEMPTS = 80;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @PluginMethod
@@ -44,23 +45,40 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
             call.reject("The selected DNS server uses an unsupported protocol.");
             return;
         }
-        Intent permission = VpnService.prepare(getContext());
-        if (permission == null) {
-            startService(call);
-            resolveStartAccepted(call);
+        Intent permission;
+        try {
+            permission = VpnService.prepare(getContext());
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android could not check SafeNet VPN permission.",
+                "LOCAL_VPN_PERMISSION_CHECK_FAILED",
+                error
+            );
             return;
         }
-        startActivityForResult(call, permission, "vpnPermissionResult");
+        if (permission == null) {
+            if (startService(call)) resolveStartAccepted(call);
+            return;
+        }
+        try {
+            startActivityForResult(call, permission, "vpnPermissionResult");
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android could not open the SafeNet VPN permission prompt.",
+                "LOCAL_VPN_PERMISSION_PROMPT_FAILED",
+                error
+            );
+        }
     }
 
     @ActivityCallback
     private void vpnPermissionResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
         if (result == null || result.getResultCode() != Activity.RESULT_OK) {
             call.reject("Android VPN permission was not granted.", "VPN_PERMISSION_DENIED");
             return;
         }
-        startService(call);
-        resolveStartAccepted(call);
+        if (startService(call)) resolveStartAccepted(call);
     }
 
     @PluginMethod
@@ -93,16 +111,26 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
         );
     }
 
-    private void startService(PluginCall call) {
-        Intent intent = new Intent(getContext(), SafeNetLocalVpnService.class);
-        intent.setAction(SafeNetLocalVpnService.ACTION_START);
-        intent.putExtra("resolverType", call.getString("type"));
-        intent.putExtra("primaryAddress", call.getString("primaryAddress"));
-        intent.putExtra("secondaryAddress", call.getString("secondaryAddress"));
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ContextCompat.startForegroundService(getContext(), intent);
-        } else {
-            getContext().startService(intent);
+    private boolean startService(PluginCall call) {
+        try {
+            Intent intent = new Intent(getContext(), SafeNetLocalVpnService.class);
+            intent.setAction(SafeNetLocalVpnService.ACTION_START);
+            intent.putExtra("resolverType", call.getString("type"));
+            intent.putExtra("primaryAddress", call.getString("primaryAddress"));
+            intent.putExtra("secondaryAddress", call.getString("secondaryAddress"));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(getContext(), intent);
+            } else {
+                getContext().startService(intent);
+            }
+            return true;
+        } catch (RuntimeException error) {
+            call.reject(
+                "Android could not start SafeNet DNS protection.",
+                "LOCAL_VPN_START_FAILED",
+                error
+            );
+            return false;
         }
     }
 
@@ -115,9 +143,29 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
     }
 
     private void resolveStartAccepted(PluginCall call) {
-        JSObject result = new JSObject();
-        result.put("connected", true);
-        result.put("mode", "local");
-        call.resolve(result);
+        confirmStarted(call, START_CONFIRMATION_ATTEMPTS);
+    }
+
+    private void confirmStarted(PluginCall call, int attemptsRemaining) {
+        if (SafeNetLocalVpnService.isRunningNow()) {
+            resolveStatus(call);
+            return;
+        }
+        String error = SafeNetLocalVpnService.getLastErrorMessage();
+        if (error != null && !error.trim().isEmpty()) {
+            call.reject(error, "LOCAL_VPN_START_FAILED");
+            return;
+        }
+        if (attemptsRemaining <= 0) {
+            call.reject(
+                "Android did not confirm that SafeNet DNS protection started.",
+                "LOCAL_VPN_START_TIMEOUT"
+            );
+            return;
+        }
+        mainHandler.postDelayed(
+            () -> confirmStarted(call, attemptsRemaining - 1),
+            100
+        );
     }
 }

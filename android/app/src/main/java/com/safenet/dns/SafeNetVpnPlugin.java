@@ -140,7 +140,15 @@ public class SafeNetVpnPlugin extends Plugin {
         if (configured) {
             intent.putExtra(AppLockManager.EXTRA_OPEN_DASHBOARD_AFTER_AUTH, true);
         }
-        startActivityForResult(call, intent, "appLockActivityResult");
+        try {
+            startActivityForResult(call, intent, "appLockActivityResult");
+        } catch (RuntimeException error) {
+            call.reject(
+                    "App Lock settings could not be opened.",
+                    "APP_LOCK_ACTIVITY_UNAVAILABLE",
+                    error
+            );
+        }
     }
 
     @PluginMethod
@@ -199,22 +207,29 @@ public class SafeNetVpnPlugin extends Plugin {
     }
 
     private void startAppLockActivity(PluginCall call, String mode) {
-        if (getActivity() == null) {
+        Activity activity = getActivity();
+        if (activity == null) {
             call.reject("Secure App Lock is unavailable.", "APP_LOCK_UNAVAILABLE");
             return;
         }
         Intent intent = new Intent(getContext(), AppLockActivity.class)
             .putExtra(AppLockManager.EXTRA_MODE, mode)
             .putExtra(AppLockManager.EXTRA_LOCKED_PACKAGE, getContext().getPackageName());
-        startActivityForResult(call, intent, "appLockActivityResult");
+        try {
+            startActivityForResult(call, intent, "appLockActivityResult");
+        } catch (RuntimeException error) {
+            call.reject(
+                "Secure App Lock could not be opened.",
+                "APP_LOCK_ACTIVITY_UNAVAILABLE",
+                error
+            );
+        }
     }
 
     @ActivityCallback
     private void appLockActivityResult(PluginCall call, ActivityResult result) {
-        if (call == null) {
-            return;
-        }
-        if (result.getResultCode() == Activity.RESULT_OK) {
+        if (call == null) return;
+        if (result != null && result.getResultCode() == Activity.RESULT_OK) {
             call.resolve(AppLockManager.status(getContext()));
         } else {
             call.reject(
