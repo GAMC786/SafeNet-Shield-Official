@@ -1671,7 +1671,7 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
-    public void localVpnConsentCancellationLeavesToggleOffAndRetryable() throws Exception {
+    public void localVpnConsentBackCancellationLeavesToggleOffAndRetryable() throws Exception {
         assertNotNull(
             "This check needs a fresh install so Android will show the real VPN consent prompt",
             VpnService.prepare(context)
@@ -1686,7 +1686,7 @@ abstract class SafeNetUiInstrumentationTestBase {
         clickControl("switch-local-dns-vpn");
         waitForWebView("Boolean(document.querySelector('[data-testid=\"dialog-local-vpn-eula\"]'))");
         clickControl("button-local-vpn-eula-accept");
-        cancelVpnPermissionDialog();
+        pressBackFromVpnPermissionDialog();
 
         waitForWebView(
             "document.body.innerText.includes(" +
@@ -3018,6 +3018,29 @@ abstract class SafeNetUiInstrumentationTestBase {
             Thread.sleep(250);
         }
         throw new AssertionError("Android VPN consent dialog did not expose a cancel action");
+    }
+
+    private void pressBackFromVpnPermissionDialog() throws Exception {
+        assertNotNull(
+            "Android must still require VPN consent before the Back cancellation check",
+            VpnService.prepare(context)
+        );
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(allow|ok|connect|i trust this application)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                device.pressBack();
+                assertNotNull(
+                    "Pressing Android Back must leave VPN consent available for a retry",
+                    VpnService.prepare(context)
+                );
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android VPN permission dialog did not appear before pressing Back");
     }
 
     private void grantVpnPermissionDialog() throws Exception {

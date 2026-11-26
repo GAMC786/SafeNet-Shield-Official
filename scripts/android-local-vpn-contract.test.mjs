@@ -80,14 +80,14 @@ test("Android consent cancellation stays off and is retried in release smoke", (
   );
   assert.match(
     vpnUiInstrumentation,
-    /localVpnConsentCancellationLeavesToggleOffAndRetryable/
+    /localVpnConsentBackCancellationLeavesToggleOffAndRetryable/
   );
   assert.match(vpnUiInstrumentation, /VpnService\.prepare\(context\)/);
-  assert.match(vpnUiInstrumentation, /cancelVpnPermissionDialog\(\)/);
+  assert.match(vpnUiInstrumentation, /pressBackFromVpnPermissionDialog\(\)/);
   assert.match(vpnUiInstrumentation, /grantVpnPermissionDialog\(\)/);
   assert.match(
     androidSmokeTest,
-    /SafeNetUiInstrumentationTest#localVpnConsentCancellationLeavesToggleOffAndRetryable/
+    /SafeNetUiInstrumentationTest#localVpnConsentBackCancellationLeavesToggleOffAndRetryable/
   );
 });
 
