@@ -1,5 +1,7 @@
 import "./instrumentation";
 import express, { type Request, Response, NextFunction } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -106,6 +108,36 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// Temporary development-only download while the Replit Files panel truncates large APKs.
+if (process.env.NODE_ENV !== "production") {
+  app.get("/__test-download/safenet-apk", (_req, res, next) => {
+    const apkPath = path.resolve(
+      process.cwd(),
+      "generated-artifacts/android-test/SafeNet-Test-APK-v1.0.111.apk",
+    );
+
+    try {
+      const apkStat = fs.statSync(apkPath);
+      if (!apkStat.isFile() || apkStat.size === 0) {
+        res.status(404).send("Test APK is not available.");
+        return;
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.type("application/vnd.android.package-archive");
+      res.download(apkPath, "SafeNet-Test-APK-v1.0.111.apk", (error) => {
+        if (error && !res.headersSent) next(error);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        res.status(404).send("Test APK is not available.");
+        return;
+      }
+      next(error);
+    }
+  });
+}
 
 (async () => {
   await registerRoutes(httpServer, app);
