@@ -91,6 +91,15 @@ function authPathWithRedirect(path: string, redirectUrl?: string) {
     : path;
 }
 
+function getSupabaseCallbackUrl(returnTo: string) {
+  const isAndroidNative = Capacitor.getPlatform() === "android";
+  const callback = isAndroidNative
+    ? new URL("safenet://auth/callback")
+    : new URL(`${basePath}/auth/callback`, window.location.origin);
+  callback.searchParams.set("return_to", returnTo);
+  return callback.toString();
+}
+
 function MainLayout() {
   const queryClient = useQueryClient();
   const refreshActivePage = useCallback(
@@ -166,6 +175,7 @@ function SignInPage() {
   const [password, setPassword] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
   const searchParams = new URLSearchParams(window.location.search);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
   const isAndroidNative = Capacitor.getPlatform() === "android";
@@ -181,13 +191,12 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     try {
-      const callback = isAndroidNative
-        ? new URL("safenet://auth/callback")
-        : new URL(`${basePath}/auth/callback`, window.location.origin);
-      callback.searchParams.set("return_to", returnTo);
       const { data, error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: callback.toString(), skipBrowserRedirect: true },
+        options: {
+          redirectTo: getSupabaseCallbackUrl(returnTo),
+          skipBrowserRedirect: true,
+        },
       });
       if (authError) throw authError;
       if (!data.url) throw new Error("Supabase did not return a Google sign-in URL.");
@@ -216,6 +225,23 @@ function SignInPage() {
       return;
     }
     setLocation(returnTo);
+  };
+
+  const sendPasswordReset = async () => {
+    if (!email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setIsWorking(true);
+    setError("");
+    setResetMessage("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      { redirectTo: getSupabaseCallbackUrl(`${basePath}/reset-password`) },
+    );
+    setIsWorking(false);
+    if (resetError) setError(resetError.message);
+    else setResetMessage("Check your email for a password reset link.");
   };
 
   return (
@@ -272,6 +298,15 @@ function SignInPage() {
             {isWorking ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={() => void sendPasswordReset()}
+          disabled={isWorking}
+          className="mt-4 w-full text-sm text-slate-300 hover:text-white disabled:opacity-60"
+        >
+          Forgot password?
+        </button>
+        {resetMessage ? <p role="status" className="mt-2 text-sm text-emerald-300">{resetMessage}</p> : null}
         <button
           type="button"
           onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-up`, redirectUrl))}
@@ -407,7 +442,7 @@ function SignUpPage() {
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}${basePath}/auth/callback`,
+        emailRedirectTo: getSupabaseCallbackUrl(`${basePath}/`),
       },
     });
     setIsWorking(false);
@@ -464,6 +499,57 @@ function SignUpPage() {
             {isWorking ? "Creating account…" : "Create account"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordPage() {
+  const [, setLocation] = useLocation();
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsWorking(true);
+    setError("");
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setIsWorking(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setMessage("Password updated. You can continue using SafeNet.");
+  };
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6">
+        <h1 className="mb-5 text-2xl font-bold text-white">Choose a new password</h1>
+        <form onSubmit={(event) => void submit(event)} className="space-y-4">
+          <label className="block text-sm text-slate-200">
+            New password
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label>
+          {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
+          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
+          <button type="submit" disabled={isWorking} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+            {isWorking ? "Saving…" : "Update password"}
+          </button>
+        </form>
+        <button type="button" onClick={() => setLocation(`${basePath}/`)} className="mt-4 w-full text-sm text-slate-300">
+          Return to SafeNet
+        </button>
       </div>
     </div>
   );
@@ -649,6 +735,7 @@ function ClerkProviderWithRoutes() {
               component={AppLockRecoveryCompletePage}
             />
             <Route path="/auth/callback" component={SupabaseAuthCallbackPage} />
+            <Route path="/reset-password" component={ResetPasswordPage} />
             <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />

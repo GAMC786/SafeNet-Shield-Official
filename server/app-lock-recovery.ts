@@ -1,10 +1,9 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import { createClerkClient } from "@clerk/backend";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { appLockRecoveryChallenges } from "@shared/schema";
 import { db } from "./db";
 
-const CODE_LENGTH = 6;
 const CODE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_COOLDOWN_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -31,43 +30,39 @@ function hashHandoffSecret(secret: string) {
     .digest("hex");
 }
 
-function signHandoffPayload(payload: string) {
-  return createHmac("sha256", recoverySecret())
-    .update(`app-lock-handoff-token:${payload}`)
-    .digest("base64url");
-}
-
-function configuredRecoverySender() {
-  const sender = (
-    process.env.CLERK_RECOVERY_FROM_EMAIL
-    || process.env.SAFENET_SUPPORT_EMAIL
-    || "Post@SafeNetInc.Ca"
-  ).trim();
-  if (!sender) {
-    throw new Error("CLERK_RECOVERY_FROM_EMAIL is required for App Lock email recovery.");
-  }
-  return sender;
-}
-
-function clerkClient() {
-  const secretKey = process.env.CLERK_SECRET_KEY?.trim();
-  if (!secretKey) {
-    throw new Error("CLERK_SECRET_KEY is required for App Lock email recovery.");
-  }
-  return createClerkClient({ secretKey });
-}
-
-function newCode() {
-  return randomInt(0, 1_000_000).toString().padStart(CODE_LENGTH, "0");
-}
-
 function codesMatch(expectedHash: string, actualHash: string) {
   const expected = Buffer.from(expectedHash, "hex");
   const actual = Buffer.from(actualHash, "hex");
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-export async function requestAppLockEmailRecovery(userId: string) {
+function signHandoffPayload(payload: string) {
+  return createHmac("sha256", recoverySecret())
+    .update(`app-lock-handoff-token:${payload}`)
+    .digest("base64url");
+}
+
+function supabaseAuthClient() {
+  const url = process.env.VITE_SUPABASE_URL?.trim();
+  const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  if (!url || !key) {
+    throw new Error("Supabase Auth is not configured for App Lock recovery.");
+  }
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+export async function requestAppLockEmailRecovery(emailAddress: string) {
+  const email = emailAddress.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+    return { sent: false, message: "Enter a valid account email address." };
+  }
+  const userId = `supabase-otp:${email}`;
   const now = new Date();
   const recentCutoff = new Date(now.getTime() - REQUEST_COOLDOWN_MS);
   const [recent] = await db
@@ -85,60 +80,47 @@ export async function requestAppLockEmailRecovery(userId: string) {
   if (recent) {
     return {
       sent: false,
-      message: "A recovery code was sent recently. Check your email or wait before requesting another.",
+      message: "If this email has a SafeNet account, a one-time code will arrive shortly. Check your email or wait before requesting another.",
     };
   }
 
-  const code = newCode();
   const expiresAt = new Date(now.getTime() + CODE_TTL_MS);
   const [challenge] = await db
     .insert(appLockRecoveryChallenges)
     .values({
       userId,
-      codeHash: hashCode(userId, code),
+      codeHash: hashCode(userId, randomBytes(32).toString("hex")),
       expiresAt,
     })
     .returning({ id: appLockRecoveryChallenges.id });
 
-  try {
-    await clerkClient().emails.create(
-      {
-        to: { userId },
-        from: { address: configuredRecoverySender(), name: "SafeNet" },
-        subject: "Your SafeNet App Lock recovery code",
-        text: [
-          "Use this one-time SafeNet App Lock recovery code:",
-          "",
-          code,
-          "",
-          "This code expires in 10 minutes and can reset your local App Lock passcode.",
-          "It does not unlock protected apps by itself.",
-          "If you did not request this, you can ignore this email.",
-        ].join("\n"),
-        html: [
-          "<p>Use this one-time SafeNet App Lock recovery code:</p>",
-          `<p style="font-size:24px;font-weight:700;letter-spacing:0.2em">${code}</p>`,
-          "<p>This code expires in 10 minutes and can reset your local App Lock passcode.</p>",
-          "<p>It does not unlock protected apps by itself.</p>",
-          "<p>If you did not request this, you can ignore this email.</p>",
-        ].join(""),
-      },
-      { idempotencyKey: `app-lock-recovery-${challenge.id}` },
-    );
-  } catch (error) {
-    await db
-      .delete(appLockRecoveryChallenges)
-      .where(eq(appLockRecoveryChallenges.id, challenge.id));
-    throw error;
+  const { error } = await supabaseAuthClient().auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false },
+  });
+  if (error) {
+    if (/rate limit|too many/i.test(error.message)) {
+      return {
+        sent: false,
+        message: "A recovery request was made recently. Wait before trying again.",
+      };
+    }
+    // Keep the per-email cooldown and do not reveal whether the email is registered.
+    return {
+      sent: true,
+      message: "If this email has a SafeNet account, a one-time code will arrive shortly.",
+    };
   }
 
   return {
     sent: true,
-    message: "A one-time recovery code was sent to your verified SafeNet account email.",
+    message: "If this email has a SafeNet account, a one-time code will arrive shortly.",
   };
 }
 
-export async function verifyAppLockEmailRecovery(userId: string, code: string) {
+export async function verifyAppLockEmailRecovery(emailAddress: string, code: string) {
+  const email = emailAddress.trim().toLowerCase();
+  const userId = `supabase-otp:${email}`;
   const now = new Date();
   const [challenge] = await db
     .select()
@@ -157,10 +139,17 @@ export async function verifyAppLockEmailRecovery(userId: string, code: string) {
   }
 
   const nextAttempts = challenge.attempts + 1;
-  const matches = codesMatch(
-    challenge.codeHash,
-    hashCode(userId, code),
-  );
+  let matches = false;
+  try {
+    const { data, error } = await supabaseAuthClient().auth.verifyOtp({
+      email,
+      token: code,
+      type: "email",
+    });
+    matches = !error && Boolean(data.user?.id);
+  } catch {
+    matches = false;
+  }
   await db
     .update(appLockRecoveryChallenges)
     .set({

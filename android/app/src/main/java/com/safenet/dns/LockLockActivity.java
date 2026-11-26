@@ -622,6 +622,8 @@ public class LockLockActivity extends FragmentActivity {
         );
         content.addView(warning, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
 
+        EditText email = field("SafeNet account email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        content.addView(email, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
         Button requestCode = secondaryButton("Send recovery code");
         content.addView(requestCode, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
         EditText code = field("Six-digit email recovery code", InputType.TYPE_CLASS_NUMBER);
@@ -639,12 +641,23 @@ public class LockLockActivity extends FragmentActivity {
         content.addView(back, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
 
         requestCode.setOnClickListener(view -> {
+            String emailValue = email.getText().toString().trim();
+            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(emailValue).matches()) {
+                showStatus("Enter the email address for your SafeNet account.");
+                return;
+            }
             requestCode.setEnabled(false);
             showStatus("Requesting a one-time recovery code…");
             recoveryExecutor.execute(() -> {
+                JSONObject payload = new JSONObject();
+                try {
+                    payload.put("email", emailValue);
+                } catch (Exception ignored) {
+                    // The literal email value cannot fail JSONObject encoding.
+                }
                 RecoveryResponse response = postRecovery(
                         "/api/app-lock/recovery/request",
-                        new JSONObject()
+                        payload
                 );
                 runOnUiThread(() -> {
                     requestCode.setEnabled(true);
@@ -655,7 +668,12 @@ public class LockLockActivity extends FragmentActivity {
 
         reset.setOnClickListener(view -> {
             String codeValue = code.getText().toString().trim();
+            String emailValue = email.getText().toString().trim();
             String pinValue = pin.getText().toString();
+            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(emailValue).matches()) {
+                showStatus("Enter the email address for your SafeNet account.");
+                return;
+            }
             if (!codeValue.matches("\\d{6}")) {
                 showStatus("Enter the six-digit recovery code from your email.");
                 return;
@@ -669,9 +687,10 @@ public class LockLockActivity extends FragmentActivity {
             recoveryExecutor.execute(() -> {
                 JSONObject payload = new JSONObject();
                 try {
+                    payload.put("email", emailValue);
                     payload.put("code", codeValue);
                 } catch (Exception ignored) {
-                    // The literal code value cannot fail JSONObject encoding.
+                    // The literal email and code values cannot fail JSONObject encoding.
                 }
                 RecoveryResponse response = postRecovery(
                         "/api/app-lock/recovery/verify",

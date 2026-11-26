@@ -457,13 +457,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/app-lock/recovery/request", requireAuth, async (req, res) => {
-    const userId = getRequestUserId(req);
-    if (!userId) {
-      return res.status(401).json({ message: "Sign in is required to request App Lock recovery." });
+  app.post("/api/app-lock/recovery/request", async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+    if (!email || email.length > 320) {
+      return res.status(400).json({ message: "Enter the email address for your SafeNet account." });
     }
     try {
-      const result = await requestAppLockEmailRecovery(userId);
+      const result = await requestAppLockEmailRecovery(email);
       return res.status(result.sent ? 200 : 429).json(result);
     } catch (error) {
       console.error("App Lock email recovery request failed:", error);
@@ -473,17 +473,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/app-lock/recovery/verify", requireAuth, async (req, res) => {
-    const userId = getRequestUserId(req);
-    if (!userId) {
-      return res.status(401).json({ message: "Sign in is required to verify App Lock recovery." });
-    }
+  app.post("/api/app-lock/recovery/verify", async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
     const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
-    if (!/^\d{6}$/.test(code)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\d{6}$/.test(code)) {
       return res.status(400).json({ message: "Enter the six-digit recovery code from your email." });
     }
     try {
-      const result = await verifyAppLockEmailRecovery(userId, code);
+      const result = await verifyAppLockEmailRecovery(email, code);
       return res.status(result.verified ? 200 : 400).json(result);
     } catch (error) {
       console.error("App Lock email recovery verification failed:", error);

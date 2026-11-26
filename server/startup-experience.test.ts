@@ -598,7 +598,11 @@ test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in"
 test("the Sign-Up back button keeps the original post-auth destination", () => {
   assert.match(
     appSource,
-    /function SignUpPage\(\)[\s\S]*?label="Back to SafeNet sign-in"\s+onClick=\{\(\) =>\s+setLocation\(authPathWithRedirect\("\/sign-in", redirectUrl\)\)\s*\}/,
+    /function SignUpPage\(\)[\s\S]*?label="Back to SafeNet sign-in"/,
+  );
+  assert.match(
+    appSource,
+    /onClick=\{\(\) => setLocation\(authPathWithRedirect\(`\$\{basePath\}\/sign-in`, redirectUrl\)\)\}/,
   );
 });
 
