@@ -364,6 +364,8 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(activity, /Email-assisted recovery/);
   assert.match(activity, /\/api\/app-lock\/recovery\/request/);
   assert.match(activity, /\/api\/app-lock\/recovery\/verify/);
+  assert.match(activity, /SafeNet account email/);
+  assert.match(activity, /payload\.put\("email", emailValue\)/);
   assert.match(activity, /AppLockManager\.resetPin\(this, pinValue\)/);
   assert.match(activity, /AppLockManager\.clearSession\(\)/);
   assert.match(activity, /showUnlock\(\)/);
@@ -371,8 +373,10 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(manager, /Passcode must contain 4 to 12 digits/);
   assert.match(recoveryService, /CODE_TTL_MS = 10 \* 60 \* 1000/);
   assert.match(recoveryService, /MAX_ATTEMPTS = 5/);
-  assert.match(recoveryService, /clerkClient\(\)\.emails\.create/);
-  assert.match(recoveryService, /to: \{ userId \}/);
+  assert.match(recoveryService, /auth\.signInWithOtp/);
+  assert.match(recoveryService, /auth\.verifyOtp/);
+  assert.match(recoveryService, /shouldCreateUser: false/);
+  assert.doesNotMatch(recoveryService, /createClerkClient|CLERK_SECRET_KEY/);
 });
 
 test("provider recovery returns through a one-time Android handoff", () => {

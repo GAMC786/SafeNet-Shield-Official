@@ -215,16 +215,21 @@ function SignInPage() {
     event.preventDefault();
     setIsWorking(true);
     setError("");
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (authError) {
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (authError) {
+        setError(authError.message);
+        return;
+      }
+      setLocation(returnTo);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Email sign-in could not complete.");
+    } finally {
       setIsWorking(false);
-      setError(authError.message);
-      return;
     }
-    setLocation(returnTo);
   };
 
   const sendPasswordReset = async () => {
@@ -235,13 +240,18 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     setResetMessage("");
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      { redirectTo: getSupabaseCallbackUrl(`${basePath}/reset-password`) },
-    );
-    setIsWorking(false);
-    if (resetError) setError(resetError.message);
-    else setResetMessage("Check your email for a password reset link.");
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: getSupabaseCallbackUrl(`${basePath}/reset-password`) },
+      );
+      if (resetError) setError(resetError.message);
+      else setResetMessage("Check your email for a password reset link.");
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : "Password reset could not start.");
+    } finally {
+      setIsWorking(false);
+    }
   };
 
   return (
@@ -326,13 +336,18 @@ function SupabaseAuthCallbackPage() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const returnTo = getSafeAuthRedirect(`?redirect_url=${encodeURIComponent(url.searchParams.get("return_to") || "/")}`) || "/";
-    void supabase.auth.exchangeCodeForSession(url.toString()).then(({ error: authError }) => {
-      if (authError) {
-        setError(authError.message);
-        return;
+    void (async () => {
+      try {
+        const { error: authError } = await supabase.auth.exchangeCodeForSession(url.toString());
+        if (authError) {
+          setError(authError.message);
+          return;
+        }
+        setLocation(returnTo);
+      } catch (authError) {
+        setError(authError instanceof Error ? authError.message : "Sign-in verification failed.");
       }
-      setLocation(returnTo);
-    });
+    })();
   }, [setLocation]);
 
   return (
@@ -438,22 +453,27 @@ function SignUpPage() {
     event.preventDefault();
     setIsWorking(true);
     setError("");
-    const { data, error: signupError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: getSupabaseCallbackUrl(`${basePath}/`),
-      },
-    });
-    setIsWorking(false);
-    if (signupError) {
-      setError(signupError.message);
-      return;
-    }
-    if (data.session) {
-      setLocation(redirectUrl || `${basePath}/`);
-    } else {
-      setMessage("Check your email for a confirmation link before signing in.");
+    try {
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: getSupabaseCallbackUrl(`${basePath}/`),
+        },
+      });
+      if (signupError) {
+        setError(signupError.message);
+        return;
+      }
+      if (data.session) {
+        setLocation(redirectUrl || `${basePath}/`);
+      } else {
+        setMessage("Check your email for a confirmation link before signing in.");
+      }
+    } catch (signupError) {
+      setError(signupError instanceof Error ? signupError.message : "Account creation could not complete.");
+    } finally {
+      setIsWorking(false);
     }
   };
 
@@ -515,13 +535,18 @@ function ResetPasswordPage() {
     event.preventDefault();
     setIsWorking(true);
     setError("");
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setIsWorking(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
+        return;
+      }
+      setMessage("Password updated. You can continue using SafeNet.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Password could not be updated.");
+    } finally {
+      setIsWorking(false);
     }
-    setMessage("Password updated. You can continue using SafeNet.");
   };
 
   return (
