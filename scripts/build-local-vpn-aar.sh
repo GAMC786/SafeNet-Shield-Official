@@ -39,6 +39,8 @@ export ANDROID_SDK_ROOT="$sdk_root"
 export ANDROID_HOME="$sdk_root"
 export ANDROID_NDK_HOME="$ndk_root"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+# Keep gomobile's JNI library loadable on Android devices using 16 KB pages.
+export CGO_LDFLAGS="${CGO_LDFLAGS:-$(go env CGO_LDFLAGS)} -Wl,-z,max-page-size=16384"
 mkdir -p "$android_work_temp"
 export TMPDIR="$android_work_temp"
 export GOTMPDIR="$android_work_temp"

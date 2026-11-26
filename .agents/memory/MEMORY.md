@@ -98,6 +98,7 @@
 - [App Lock email recovery](app-lock-email-recovery.md) — verified email recovery may reset only the local passcode; it must clear native auth state and require normal unlock afterward.
 - [App Lock provider handoff](app-lock-provider-handoff.md) — browser-owned provider auth returns through a short-lived one-time token; native recovery never receives provider credentials.
 - [SafeNet Local VPN Go runtime](gomobile-runtime-aggregation.md) — keep the packet engine and DNSCrypt in one AAR, with gomobile declared as module tools.
+- [Android gomobile 16 KB alignment](android-gomobile-16k-alignment.md) — pass the 16 KB linker alignment flag to gomobile and verify native ELF segments for modern Pixel devices.
 - [Windscribe firewall boundary](windscribe-firewall-boundary.md) — the SDNS wrapper redirects virtual-resolver queries but does not enforce synced SafeNet DNS policy.
 - [DNS Firewall provider strategy](dns-firewall-provider-strategy.md) — prefer provider-hosted encrypted DNS; separate paid resolver hosting is not feasible for the user.
 - [DNS native blocklist capability](dns-native-blocklist-capability.md) — expose only documented account-level provider filters; keep those controls separate from SafeNet-owned rule sync.
