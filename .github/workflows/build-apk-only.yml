@@ -128,30 +128,6 @@ jobs:
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/safenet-release.keystore"
 
-      - name: Print release signing certificate SHA-1
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/safenet-release.keystore
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: |
-          set -euo pipefail
-          fingerprint="$(
-            keytool -list -v \
-              -keystore "$ANDROID_KEYSTORE_FILE" \
-              -alias "$ANDROID_KEY_ALIAS" \
-              -storepass "$ANDROID_KEYSTORE_PASSWORD" |
-              awk '/SHA-?1:/ {
-                sub(/^.*SHA-?1:[[:space:]]*/, "")
-                print
-                found = 1
-              }
-              END {
-                if (!found) exit 1
-              }'
-          )"
-          printf 'Release signing certificate SHA-1: %s\n' "$fingerprint"
-
       - name: Build signed release APK
         working-directory: android
         env:
