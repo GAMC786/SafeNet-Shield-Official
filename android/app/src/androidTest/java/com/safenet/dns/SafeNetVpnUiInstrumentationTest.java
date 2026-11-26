@@ -1868,34 +1868,30 @@ abstract class SafeNetUiInstrumentationTestBase {
             Thread.sleep(100);
         }
         assertEquals(
-            "The resolver must be persisted before simulating process death",
+            "The resolver must be persisted before Android reclaims the app process",
             "1.1.1.1",
             context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)
                 .getString("primary", "")
         );
 
-        executeShellCommand("am force-stop " + PACKAGE_NAME);
+        String originalPid = appProcessId();
+        assertFalse("The VPN must be running in a separate app process",
+            originalPid.isEmpty());
+        device.pressHome();
+        assertNotEquals("SafeNet must be in the background before process reclaim",
+            PACKAGE_NAME, device.getCurrentPackageName());
         Thread.sleep(500);
-        relaunchActivity();
-        JSONObject beforeAndroidRestart = requireWebViewValue(callWebView(
-            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
-        ));
-        assertFalse(
-            "Saved resolver settings alone must not make protection appear active",
-            beforeAndroidRestart.getBoolean("connected")
-        );
-        waitForWebView(
-            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
-                "?.getAttribute('aria-checked') === 'false'"
-        );
 
-        // Android sends a null start intent when it recreates a START_STICKY
-        // service. Force-stop above resets process state; this dispatch models
-        // that system restart without making the test depend on memory pressure.
-        ContextCompat.startForegroundService(
-            context,
-            new Intent(context, SafeNetLocalVpnService.class)
-        );
+        // Ask Android's ActivityManager to reclaim the background process.
+        // Unlike force-stop, this leaves the sticky service start request intact.
+        executeShellCommand("am kill " + PACKAGE_NAME);
+        String restartedPid = waitForStickyVpnServiceProcess(originalPid);
+        assertNotEquals("Android must create a new app process for the sticky service",
+            originalPid, restartedPid);
+        assertNotEquals("Android must restart DNS protection without reopening SafeNet",
+            PACKAGE_NAME, device.getCurrentPackageName());
+
+        relaunchActivity();
         JSONObject recovered = waitForLocalVpnState(true);
         assertTrue("The restarted service must restore its saved resolver",
             recovered.getBoolean("connected"));
@@ -2651,6 +2647,35 @@ abstract class SafeNetUiInstrumentationTestBase {
             Thread.sleep(250);
         }
         throw new AssertionError("Native local VPN recovery did not expose an error: " + latest);
+    }
+
+    private String appProcessId() throws Exception {
+        String output = executeShellCommand("pidof " + PACKAGE_NAME).trim();
+        if (output.isEmpty()) return "";
+        return output.split("\\s+")[0];
+    }
+
+    private String waitForStickyVpnServiceProcess(String previousPid) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        String latestPid = "";
+        String latestServices = "";
+        while (System.nanoTime() < deadline) {
+            latestPid = appProcessId();
+            if (!latestPid.isEmpty() && !previousPid.equals(latestPid)) {
+                latestServices = executeShellCommand(
+                    "dumpsys activity services " + PACKAGE_NAME
+                );
+                if (latestServices.contains("SafeNetLocalVpnService") &&
+                    latestServices.contains(latestPid + ":" + PACKAGE_NAME)) {
+                    return latestPid;
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(
+            "Android did not recreate the app process for SafeNetLocalVpnService. " +
+                "pid=" + latestPid + " services=" + latestServices
+        );
     }
 
     /*

@@ -91,6 +91,32 @@ test("Android consent cancellation stays off and is retried in release smoke", (
   );
 });
 
+test("Android process death restarts the sticky VPN service in device smoke", () => {
+  const recoveryStart = vpnUiInstrumentation.indexOf(
+    "public void localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure()"
+  );
+  const reclaimStart = vpnUiInstrumentation.indexOf(
+    "String originalPid = appProcessId();",
+    recoveryStart
+  );
+  const reopenStart = vpnUiInstrumentation.indexOf("relaunchActivity();", reclaimStart);
+  const reclaimFlow = vpnUiInstrumentation.slice(reclaimStart, reopenStart);
+
+  assert.ok(recoveryStart >= 0);
+  assert.ok(reclaimStart > recoveryStart);
+  assert.ok(reopenStart > reclaimStart);
+  assert.match(reclaimFlow, /device\.pressHome\(\)/);
+  assert.match(reclaimFlow, /am kill /);
+  assert.match(reclaimFlow, /waitForStickyVpnServiceProcess\(originalPid\)/);
+  assert.match(reclaimFlow, /device\.getCurrentPackageName\(\)/);
+  assert.doesNotMatch(reclaimFlow, /am force-stop|startForegroundService/);
+  assert.match(vpnUiInstrumentation, /private String waitForStickyVpnServiceProcess/);
+  assert.match(
+    androidSmokeTest,
+    /SafeNetUiInstrumentationTest#localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure/
+  );
+});
+
 test("phone firewall action syncs policy, enables the local VPN, and exposes supported rule limits", () => {
   const newRuleButton = firewallPage.indexOf("> New Rule");
   const usePhoneButton = firewallPage.indexOf('data-testid="button-use-firewall-rules-on-phone"');
