@@ -1838,7 +1838,7 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
-    public void localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure() throws Exception {
+    public void localVpnRetriesFromUiAfterSavedResolverRecoveryFailure() throws Exception {
         openDashboardWithResolverType("plain");
         waitForWebView(
             "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]') !== null"
@@ -1930,11 +1930,99 @@ abstract class SafeNetUiInstrumentationTestBase {
         waitForWebView(
             "(() => {" +
                 "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
-                "const message = document.querySelector('[role=\"status\"]');" +
+                "const message = document.querySelector('[data-testid=\"local-dns-vpn-error\"]');" +
                 "return Boolean(toggle && toggle.getAttribute('aria-checked') === 'false' && " +
                     "message && message.textContent.includes('unsupported protocol'));" +
             "})()"
         );
+
+        JSONObject retryGate = callWebView(
+            "(() => {" +
+                "const cap = window.Capacitor;" +
+                "const originalNativePromise = cap.nativePromise;" +
+                "window.__releaseLocalVpnRetry = null;" +
+                "window.__restoreLocalVpnNativePromise = () => {" +
+                    "cap.nativePromise = originalNativePromise;" +
+                "};" +
+                "const gatedNativePromise = (pluginName, methodName, options) => {" +
+                    "if (pluginName !== 'SafeNetLocalVpn' || methodName !== 'start') {" +
+                        "return originalNativePromise.call(cap, pluginName, methodName, options);" +
+                    "}" +
+                    "return new Promise((resolve, reject) => {" +
+                        "window.__releaseLocalVpnRetry = () => " +
+                            "originalNativePromise.call(cap, pluginName, methodName, options)" +
+                                ".then(resolve, reject);" +
+                    "});" +
+                "};" +
+                "cap.nativePromise = gatedNativePromise;" +
+                "return cap.nativePromise === gatedNativePromise;" +
+            "})()"
+        );
+        assertTrue("The test must be able to hold the UI retry before native start",
+            retryGate.optBoolean("value", false));
+
+        clickControl("switch-local-dns-vpn");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"dialog-local-vpn-eula\"]'))");
+        clickControl("button-local-vpn-eula-accept");
+        waitForWebView(
+            "Boolean(window.__releaseLocalVpnRetry) && " +
+                "document.querySelector('[data-testid=\"local-dns-vpn-error\"]')" +
+                    "?.textContent.includes('unsupported protocol')"
+        );
+        JSONObject beforeNativeRetry = requireWebViewValue(callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
+                "const message = document.querySelector('[data-testid=\"local-dns-vpn-error\"]');" +
+                "return {" +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "message: message?.textContent || ''" +
+                "};" +
+            "})()"
+        ));
+        assertEquals("The failed recovery must stay off while retry is pending",
+            "false", beforeNativeRetry.getString("checked"));
+        assertTrue("The prior resolver error must remain visible before native retry",
+            beforeNativeRetry.getString("message").contains("unsupported protocol"));
+        JSONObject stillOff = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertFalse("Protection must remain off before releasing the retry",
+            stillOff.getBoolean("connected"));
+
+        JSONObject released = callWebView(
+            "window.__releaseLocalVpnRetry(); true"
+        );
+        assertTrue("The UI must release the valid resolver retry",
+            released.optBoolean("value", false));
+        JSONObject retried = waitForLocalVpnState(true);
+        assertTrue("The valid resolver retry must start native protection",
+            retried.getBoolean("connected"));
+        JSONObject restoredBridge = callWebView(
+            "window.__restoreLocalVpnNativePromise(); true"
+        );
+        assertTrue("The test must restore the normal native bridge after retry",
+            restoredBridge.optBoolean("value", false));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true' && " +
+                "!document.querySelector('[data-testid=\"local-dns-vpn-error\"]')"
+        );
+        JSONObject recoveredUi = requireWebViewValue(callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
+                "const message = document.querySelector('[data-testid=\"local-dns-vpn-error\"]');" +
+                "return {" +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "errorVisible: Boolean(message)" +
+                "};" +
+            "})()"
+        ));
+        assertEquals("The retry UI must show active protection",
+            "true", recoveredUi.getString("checked"));
+        assertFalse("The old recovery error must clear only after native protection starts",
+            recoveredUi.getBoolean("errorVisible"));
+        clickControl("switch-local-dns-vpn");
+        waitForLocalVpnState(false);
     }
 
     @Test

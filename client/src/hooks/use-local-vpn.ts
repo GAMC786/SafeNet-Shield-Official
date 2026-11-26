@@ -27,7 +27,10 @@ export function useLocalVpn() {
     try {
       const next = await enqueueNativeCommand(() => LocalVpn.getStatus());
       setStatus(next);
-      setError(next.error ?? null);
+      setError((currentError) => {
+        if (next.connected || next.error) return next.error ?? null;
+        return currentError;
+      });
       return next;
     } catch (cause) {
       setStatus({ connected: false, mode: "local" });
@@ -52,7 +55,7 @@ export function useLocalVpn() {
 
   const run = useCallback(async (action: "start" | "stop", resolver?: LocalVpnResolver) => {
     setBusy(true);
-    setError(null);
+    if (action === "stop") setError(null);
     try {
       let next: LocalVpnStatus;
       if (action === "start") {
@@ -62,7 +65,10 @@ export function useLocalVpn() {
         next = await enqueueNativeCommand(() => LocalVpn.stop());
       }
       setStatus(next);
-      setError(next.error ?? null);
+      setError((currentError) => {
+        if (next.connected || next.error) return next.error ?? null;
+        return action === "start" ? currentError : null;
+      });
       window.setTimeout(() => void refresh(), 500);
       return next;
     } catch (cause) {

@@ -107,7 +107,7 @@ export function LocalDnsVpnCard() {
           replaces any other active Android VPN; it is not a remote VPN service.
         </p>
         {(localVpn.error || (localVpn.supported && !activeDns && !localVpn.connected)) && (
-          <p role="status" className="text-xs text-amber-200">
+          <p role="status" data-testid="local-dns-vpn-error" className="text-xs text-amber-200">
             {localVpn.error ?? "Choose a DNS provider on Firewall or DNS Servers first."}
           </p>
         )}

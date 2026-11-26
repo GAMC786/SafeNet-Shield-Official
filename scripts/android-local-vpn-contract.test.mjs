@@ -93,7 +93,7 @@ test("Android consent cancellation stays off and is retried in release smoke", (
 
 test("Android process death restarts the sticky VPN service in device smoke", () => {
   const recoveryStart = vpnUiInstrumentation.indexOf(
-    "public void localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure()"
+    "public void localVpnRetriesFromUiAfterSavedResolverRecoveryFailure()"
   );
   const reclaimStart = vpnUiInstrumentation.indexOf(
     "String originalPid = appProcessId();",
@@ -113,7 +113,19 @@ test("Android process death restarts the sticky VPN service in device smoke", ()
   assert.match(vpnUiInstrumentation, /private String waitForStickyVpnServiceProcess/);
   assert.match(
     androidSmokeTest,
-    /SafeNetUiInstrumentationTest#localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure/
+    /SafeNetUiInstrumentationTest#localVpnRetriesFromUiAfterSavedResolverRecoveryFailure/
+  );
+  assert.match(
+    vpnUiInstrumentation,
+    /public void localVpnRetriesFromUiAfterSavedResolverRecoveryFailure\(\)/
+  );
+  assert.match(
+    vpnUiInstrumentation,
+    /prior resolver error must remain visible before native retry/
+  );
+  assert.match(
+    vpnUiInstrumentation,
+    /old recovery error must clear only after native protection starts/
   );
 });
 
