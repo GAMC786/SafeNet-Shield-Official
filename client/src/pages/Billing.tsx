@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useLocation } from "wouter";
-import { useClerk, useUser } from "@clerk/react";
+import { useSafeNetClerk as useClerk, useSafeNetUser as useUser } from "@/lib/safenet-auth";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { Purchases } from "@revenuecat/purchases-capacitor";
@@ -470,7 +470,7 @@ export default function Billing() {
     }
   };
 
-  const accountLabel = user?.primaryEmailAddress?.emailAddress ?? user?.username ?? user?.id;
+  const accountLabel = user?.email ?? user?.id;
   const nativeEntitlement =
     nativeCustomerInfo?.entitlements.active[nativeEntitlementIdentifier] ?? null;
 

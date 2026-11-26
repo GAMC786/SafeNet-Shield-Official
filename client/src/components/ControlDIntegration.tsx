@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useAuth } from "@clerk/react";
+import { useSafeNetAuth as useAuth } from "@/lib/safenet-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";

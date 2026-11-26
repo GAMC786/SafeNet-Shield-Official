@@ -100,6 +100,13 @@ export const appLockRecoveryChallenges = pgTable("app_lock_recovery_challenges",
   ),
 ]);
 
+export const authUserLinks = pgTable("auth_user_links", {
+  supabaseUserId: text("supabase_user_id").primaryKey(),
+  canonicalUserId: text("canonical_user_id").notNull().unique(),
+  verifiedEmail: text("verified_email").notNull(),
+  linkedAt: timestamp("linked_at").notNull().defaultNow(),
+});
+
 // Control D API credentials are stored per authenticated SafeNet user and
 // contain only authenticated-encryption output, never the provider token.
 export const controlDCredentials = pgTable("control_d_credentials", {

@@ -17,6 +17,7 @@ export default defineConfig({
     "antivirus_settings",
     "app_lock_recovery_challenges",
     "app_settings",
+    "auth_user_links",
     "blocklists",
     "clamav_verifications",
     "control_d_credentials",

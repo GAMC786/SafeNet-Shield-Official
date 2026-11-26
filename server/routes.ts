@@ -139,6 +139,16 @@ export async function registerRoutes(
   options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
+  app.get("/api/auth/session", requireAuth, (req, res) => {
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Sign in is required to continue." });
+    }
+    return res.json({
+      userId,
+      email: req.supabaseAuthEmail ?? null,
+    });
+  });
   registerControlDRoutes(app, storage);
   registerNextDnsRoutes(app, storage);
   registerFamilyDnsRoutes(app, storage);

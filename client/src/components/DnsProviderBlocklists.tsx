@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@clerk/react";
+import { useSafeNetAuth as useAuth } from "@/lib/safenet-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { CyberCard } from "@/components/CyberCard";

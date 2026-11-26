@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 const configuredApiOrigin = (import.meta.env?.VITE_API_URL as string | undefined)
   ?.trim()
   .replace(/\/+$/, "");
@@ -52,8 +54,14 @@ export async function apiFetch(
   signal?.addEventListener("abort", abortFromCaller, { once: true });
 
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = new Headers(init.headers);
+    if (session?.access_token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${session.access_token}`);
+    }
     return await fetch(resolveApiUrl(path), {
       ...init,
+      headers,
       signal: controller.signal,
       credentials: init.credentials ?? "include",
     });

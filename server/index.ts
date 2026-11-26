@@ -9,6 +9,7 @@ import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 import { registerRevenueCatRoutes } from "./revenuecat";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import { supabaseAuthMiddleware } from "./auth";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -35,6 +36,7 @@ app.use(
     ),
   })),
 );
+app.use(supabaseAuthMiddleware);
 app.use(
   express.json({
     verify: (req, _res, buf) => {

@@ -3,17 +3,12 @@ import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import {
-  AuthenticateWithRedirectCallback,
   ClerkProvider,
-  SignIn,
-  SignUp,
-  useAuth,
-  useClerk,
-  useSignIn,
 } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { queryClient } from "./lib/queryClient";
+import { SafeNetAuthProvider, useSafeNetAuth } from "./lib/safenet-auth";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
@@ -28,10 +23,8 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { ArrowLeft } from "lucide-react";
 import { useCallback } from "react";
 import { apiFetch } from "./lib/api";
-import {
-  getClerkSsoCallbackUrl,
-  getNativeClerkCallbackTarget,
-} from "./lib/clerk-native-callback";
+import { Browser } from "@capacitor/browser";
+import { supabase } from "./lib/supabase";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -169,190 +162,157 @@ function AuthBackButton({
 
 function SignInPage() {
   const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
   const searchParams = new URLSearchParams(window.location.search);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
-  const provider = searchParams.get("provider");
+  const isAndroidNative = Capacitor.getPlatform() === "android";
   const recoveryNonce = searchParams.get("recovery_nonce") || "";
   const recoveryReturnUri = searchParams.get("return_uri") || "";
-  const providerConfig =
-    provider && provider in signInProviders
-      ? signInProviders[provider as keyof typeof signInProviders]
-      : undefined;
-  const isAndroidNative = Capacitor.getPlatform() === "android";
+  const isRecovery = /^[A-Za-z0-9_-]{32,128}$/.test(recoveryNonce) &&
+    recoveryReturnUri === APP_LOCK_RETURN_URI;
+  const returnTo = isRecovery
+    ? `${basePath}/sign-in/app-lock-recovery-complete?recovery_nonce=${encodeURIComponent(recoveryNonce)}&return_uri=${encodeURIComponent(APP_LOCK_RETURN_URI)}`
+    : redirectUrl || `${basePath}/`;
 
-  if (providerConfig) {
-    return (
-      <ProviderSignInPage
-        provider={providerConfig}
-        recoveryNonce={recoveryNonce}
-        recoveryReturnUri={recoveryReturnUri}
-        redirectUrl={redirectUrl}
-      />
-    );
-  }
+  const signInWithGoogle = async () => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const callback = isAndroidNative
+        ? new URL("safenet://auth/callback")
+        : new URL(`${basePath}/auth/callback`, window.location.origin);
+      callback.searchParams.set("return_to", returnTo);
+      const { data, error: authError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: callback.toString(), skipBrowserRedirect: true },
+      });
+      if (authError) throw authError;
+      if (!data.url) throw new Error("Supabase did not return a Google sign-in URL.");
+      if (isAndroidNative) {
+        await Browser.open({ url: data.url });
+      } else {
+        window.location.assign(data.url);
+      }
+    } catch (authError) {
+      setIsWorking(false);
+      setError(authError instanceof Error ? authError.message : "Google sign-in could not start.");
+    }
+  };
 
-  const startAndroidGoogleSignIn = () => {
-    const params = new URLSearchParams({ provider: "google" });
-    if (redirectUrl) params.set("redirect_url", redirectUrl);
-    setLocation(`${basePath}/sign-in?${params.toString()}`);
+  const signInWithEmail = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsWorking(true);
+    setError("");
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (authError) {
+      setIsWorking(false);
+      setError(authError.message);
+      return;
+    }
+    setLocation(returnTo);
   };
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-[440px]">
+      <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6 shadow-2xl shadow-primary/10">
         <AuthBackButton
           label="Back to Premium billing"
           onClick={() => setLocation("/billing")}
         />
-        {isAndroidNative ? (
+        <h1 className="mb-2 text-2xl font-bold text-white">Welcome back</h1>
+        <p className="mb-6 text-sm text-slate-300">Sign in to manage your SafeNet account.</p>
+        <button
+          type="button"
+          onClick={() => void signInWithGoogle()}
+          disabled={isWorking}
+          className="mb-5 w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition-colors hover:border-primary/50 hover:bg-slate-700 disabled:opacity-60"
+        >
+          Continue with Google
+        </button>
+        <div className="mb-5 flex items-center gap-3 text-xs text-slate-500">
+          <span className="h-px flex-1 bg-slate-700" />
+          <span>OR USE EMAIL</span>
+          <span className="h-px flex-1 bg-slate-700" />
+        </div>
+        <form onSubmit={(event) => void signInWithEmail(event)} className="space-y-4">
+          <label className="block text-sm text-slate-200">
+            Email
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label>
+          <label className="block text-sm text-slate-200">
+            Password
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label>
+          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <button
-            type="button"
-            onClick={startAndroidGoogleSignIn}
-            className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:border-primary/50 hover:bg-slate-800"
+            type="submit"
+            disabled={isWorking}
+            className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-60"
           >
-            Continue with Google
+            {isWorking ? "Signing in…" : "Sign in"}
           </button>
-        ) : null}
-        <SignIn
-          routing="path"
-          path={`${basePath}/sign-in`}
-          signUpUrl={authPathWithRedirect(`${basePath}/sign-up`, redirectUrl)}
-          {...(isAndroidNative
-            ? {
-                appearance: {
-                  ...clerkAppearance,
-                  elements: {
-                    ...clerkAppearance.elements,
-                    socialButtonsBlock: "hidden",
-                    socialButtonsBlockButton: "hidden",
-                  },
-                },
-              }
-            : {})}
-          {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
-        />
+        </form>
+        <button
+          type="button"
+          onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-up`, redirectUrl))}
+          className="mt-4 w-full text-sm text-red-300 hover:text-red-200"
+        >
+          Create a SafeNet account
+        </button>
       </div>
     </div>
   );
 }
 
-const signInProviders = {
-  google: { label: "Google", strategy: "oauth_google" as const },
-  microsoft: { label: "Microsoft", strategy: "oauth_microsoft" as const },
-  yahoo: { label: "Yahoo", strategy: "oauth_yahoo" as const },
-  apple: { label: "Apple", strategy: "oauth_apple" as const },
-} as const;
-
-type SignInProvider = (typeof signInProviders)[keyof typeof signInProviders];
-
-function ProviderSignInPage({
-  provider,
-  recoveryNonce,
-  recoveryReturnUri,
-  redirectUrl,
-}: {
-  provider: SignInProvider;
-  recoveryNonce?: string;
-  recoveryReturnUri?: string;
-  redirectUrl?: string;
-}) {
+function SupabaseAuthCallbackPage() {
   const [, setLocation] = useLocation();
-  const { fetchStatus, signIn } = useSignIn();
-  const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState("");
 
-  const startProviderSignIn = async () => {
-    if (fetchStatus === "fetching") return;
-    setIsStarting(true);
-    setError("");
-    try {
-      const isRecovery =
-        /^[A-Za-z0-9_-]{32,128}$/.test(recoveryNonce || "") &&
-        recoveryReturnUri === APP_LOCK_RETURN_URI;
-      const recoveryParams = isRecovery
-        ? new URLSearchParams({
-            recovery_nonce: recoveryNonce!,
-            return_uri: APP_LOCK_RETURN_URI,
-          })
-        : null;
-      const completionPath = isRecovery
-        ? `${basePath}/sign-in/app-lock-recovery-complete?${recoveryParams!.toString()}`
-        : redirectUrl || `${basePath}/`;
-      const callbackPath = getClerkSsoCallbackUrl({
-        isAndroid: Capacitor.getPlatform() === "android",
-        origin: window.location.origin,
-        basePath,
-      }) + (recoveryParams ? `?${recoveryParams.toString()}` : "");
-      const result = await signIn.sso({
-        strategy: provider.strategy as Parameters<typeof signIn.sso>[0]["strategy"],
-        redirectUrl: completionPath,
-        redirectCallbackUrl: callbackPath,
-      });
-      if (result.error) {
-        throw new Error(result.error.message);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const returnTo = getSafeAuthRedirect(`?redirect_url=${encodeURIComponent(url.searchParams.get("return_to") || "/")}`) || "/";
+    void supabase.auth.exchangeCodeForSession(url.toString()).then(({ error: authError }) => {
+      if (authError) {
+        setError(authError.message);
+        return;
       }
-    } catch (providerError) {
-      setIsStarting(false);
-      setError(
-        providerError instanceof Error
-          ? providerError.message
-          : `${provider.label} sign-in is not enabled for this SafeNet account.`,
-      );
-    }
-  };
+      setLocation(returnTo);
+    });
+  }, [setLocation]);
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-md">
-        <AuthBackButton
-          label="Back to SafeNet sign-in"
-          onClick={() => setLocation(`${basePath}/sign-in`)}
-        />
-        <div className="rounded-2xl border border-primary/20 bg-slate-900/90 p-6 shadow-2xl shadow-primary/10">
-          <div className="mb-6 space-y-2">
-            <p className="font-mono text-xs uppercase tracking-[0.22em] text-primary">
-              SAFENET / APP LOCK RECOVERY
-            </p>
-            <h1 className="text-2xl font-bold text-white">
-              Continue with {provider.label}
-            </h1>
-            <p className="text-sm leading-6 text-slate-300">
-              Authenticate with your provider on its secure page. SafeNet does not
-              collect your provider password.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void startProviderSignIn()}
-            disabled={fetchStatus === "fetching" || isStarting}
-            className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-            data-testid={`button-provider-sign-in-${provider.label.toLowerCase()}`}
-          >
-            {isStarting ? "Opening secure sign-in…" : `Sign in with ${provider.label}`}
-          </button>
-          {error ? (
-            <p
-              className="mt-4 rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm leading-5 text-red-200"
-              role="alert"
-            >
-              {error}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setLocation(`${basePath}/sign-in`)}
-            className="mt-4 w-full rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:border-primary/50 hover:bg-slate-800"
-          >
-            Use another SafeNet sign-in option
-          </button>
-        </div>
+      <div className="w-full max-w-md rounded-2xl border border-primary/20 bg-slate-900/90 p-6 text-center text-slate-200">
+        <h1 className="text-xl font-semibold">Completing secure sign-in</h1>
+        <p className="mt-3 text-sm">{error || "Please wait while SafeNet verifies your account…"}</p>
+        {error ? <button className="mt-5 text-red-300" onClick={() => setLocation(`${basePath}/sign-in`)}>Return to sign in</button> : null}
       </div>
     </div>
   );
 }
 
 function AppLockRecoveryCompletePage() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useSafeNetAuth();
   const searchParams = new URLSearchParams(window.location.search);
   const nonce = searchParams.get("recovery_nonce") || "";
   const returnUri = searchParams.get("return_uri") || "";
@@ -427,52 +387,99 @@ function AppLockRecoveryCompletePage() {
 }
 
 function SignInSsoCallbackPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 text-sm text-slate-300">
-      <AuthenticateWithRedirectCallback />
-    </div>
-  );
+  return <SupabaseAuthCallbackPage />;
 }
 
 function SignUpPage() {
   const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsWorking(true);
+    setError("");
+    const { data, error: signupError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${basePath}/auth/callback`,
+      },
+    });
+    setIsWorking(false);
+    if (signupError) {
+      setError(signupError.message);
+      return;
+    }
+    if (data.session) {
+      setLocation(redirectUrl || `${basePath}/`);
+    } else {
+      setMessage("Check your email for a confirmation link before signing in.");
+    }
+  };
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-[440px]">
+      <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6">
         <AuthBackButton
           label="Back to SafeNet sign-in"
-          onClick={() =>
-            setLocation(authPathWithRedirect("/sign-in", redirectUrl))
-          }
+          onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-in`, redirectUrl))}
         />
-        <SignUp
-          routing="path"
-          path={`${basePath}/sign-up`}
-          signInUrl={authPathWithRedirect(`${basePath}/sign-in`, redirectUrl)}
-          {...(redirectUrl ? { forceRedirectUrl: redirectUrl, fallbackRedirectUrl: redirectUrl } : {})}
-        />
+        <h1 className="mb-5 text-2xl font-bold text-white">Create your SafeNet account</h1>
+        <form onSubmit={(event) => void submit(event)} className="space-y-4">
+          <label className="block text-sm text-slate-200">
+            Email
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label>
+          <label className="block text-sm text-slate-200">
+            Password
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label>
+          {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
+          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
+          <button
+            type="submit"
+            disabled={isWorking}
+            className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {isWorking ? "Creating account…" : "Create account"}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
 
 function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = useClerk();
+  const { userId } = useSafeNetAuth();
   const queryClient = useQueryClient();
   const previousUserId = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
-        queryClient.clear();
-      }
-      previousUserId.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, queryClient]);
+    if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+      queryClient.clear();
+    }
+    previousUserId.current = userId;
+  }, [queryClient, userId]);
 
   return null;
 }
@@ -539,14 +546,32 @@ function ClerkProviderWithRoutes() {
 
     const forwardCallback = (callbackUrl?: string) => {
       if (!callbackUrl || callbackUrl === handledCallbackUrl) return;
-      const target = getNativeClerkCallbackTarget({
-        callbackUrl,
-        origin: window.location.origin,
-        basePath,
-      });
-      if (!target) return;
+      let callback: URL;
+      try {
+        callback = new URL(callbackUrl);
+      } catch {
+        return;
+      }
+      if (
+        callback.protocol !== "safenet:" ||
+        callback.hostname !== "auth" ||
+        callback.pathname !== "/callback"
+      ) return;
       handledCallbackUrl = callbackUrl;
-      window.location.replace(target);
+      void supabase.auth.exchangeCodeForSession(callbackUrl).then(({ error }) => {
+        if (error) {
+          console.error("Unable to complete the Supabase Android sign-in callback.", error);
+          setLocation("/sign-in");
+          return;
+        }
+        const requestedReturn = callback.searchParams.get("return_to") || "/";
+        const safeReturn = getSafeAuthRedirect(
+          `?redirect_url=${encodeURIComponent(requestedReturn)}`,
+        ) || "/";
+        setLocation(safeReturn);
+      }).finally(() => {
+        void Browser.close().catch(() => undefined);
+      });
     };
 
     void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
@@ -558,7 +583,7 @@ function ClerkProviderWithRoutes() {
         listener = registeredListener;
       }
     }).catch((error: unknown) => {
-      console.error("Unable to register the Android Clerk callback listener.", error);
+      console.error("Unable to register the Android Supabase callback listener.", error);
     });
 
     void CapacitorApp.getLaunchUrl()
@@ -615,20 +640,23 @@ function ClerkProviderWithRoutes() {
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
-      <QueryClientProvider client={queryClient}>
-        <ClerkQueryClientCacheInvalidator />
-        <Switch>
-          <Route
-            path="/sign-in/app-lock-recovery-complete"
-            component={AppLockRecoveryCompletePage}
-          />
-          <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
-          <Route path="/sign-in/*?" component={SignInPage} />
-          <Route path="/sign-up/*?" component={SignUpPage} />
-          <Route component={AppContent} />
-        </Switch>
-        <Toaster />
-      </QueryClientProvider>
+      <SafeNetAuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <ClerkQueryClientCacheInvalidator />
+          <Switch>
+            <Route
+              path="/sign-in/app-lock-recovery-complete"
+              component={AppLockRecoveryCompletePage}
+            />
+            <Route path="/auth/callback" component={SupabaseAuthCallbackPage} />
+            <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
+            <Route path="/sign-in/*?" component={SignInPage} />
+            <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route component={AppContent} />
+          </Switch>
+          <Toaster />
+        </QueryClientProvider>
+      </SafeNetAuthProvider>
     </ClerkProvider>
   );
 }
