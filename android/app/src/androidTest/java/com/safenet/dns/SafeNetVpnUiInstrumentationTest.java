@@ -1736,6 +1736,77 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
+    public void localVpnConsentCancellationRemainsRetryableAfterReopeningApp() throws Exception {
+        assertNotNull(
+            "This check needs a fresh install so Android will show the real VPN consent prompt",
+            VpnService.prepare(context)
+        );
+        openDashboardWithActiveResolver();
+        waitForWebView(
+            "(() => { const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]'); " +
+                "return Boolean(toggle && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-checked') === 'false'); })()"
+        );
+
+        clickControl("switch-local-dns-vpn");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"dialog-local-vpn-eula\"]'))");
+        clickControl("button-local-vpn-eula-accept");
+        cancelVpnPermissionDialog();
+        waitForWebView(
+            "document.body.innerText.includes(" +
+                "'Android VPN permission was canceled. DNS protection remains off; try again to enable it.')"
+        );
+        JSONObject canceledStatus = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertFalse("Canceling Android consent must leave native protection off",
+            canceledStatus.getBoolean("connected"));
+
+        stopAndRelaunchAppProcess();
+        assertNotNull(
+            "Canceling consent must leave Android able to show a fresh VPN prompt",
+            VpnService.prepare(context)
+        );
+        openDashboardWithActiveResolver();
+        waitForWebView(
+            "(() => { const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]'); " +
+                "return Boolean(toggle && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-checked') === 'false'); })()"
+        );
+        JSONObject reopenedState = requireWebViewValue(callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
+                "return {" +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "enabled: toggle && !toggle.disabled" +
+                "};" +
+            "})()"
+        ));
+        assertEquals("The local DNS VPN switch must remain off after reopening",
+            "false", reopenedState.getString("checked"));
+        assertTrue("The local DNS VPN switch must remain enabled after reopening",
+            reopenedState.getBoolean("enabled"));
+        JSONObject reopenedStatus = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertFalse("Reopening SafeNet must not start protection without consent",
+            reopenedStatus.getBoolean("connected"));
+
+        clickControl("switch-local-dns-vpn");
+        grantVpnPermissionDialog();
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true'"
+        );
+        JSONObject approvedStatus = waitForLocalVpnState(true);
+        assertTrue("Approving the fresh prompt must start native DNS protection",
+            approvedStatus.getBoolean("connected"));
+
+        clickControl("switch-local-dns-vpn");
+        waitForLocalVpnState(false);
+    }
+
+    @Test
     public void localVpnServiceFailureDoesNotTerminateAppOrWebView() throws Exception {
         openDashboardWithActiveResolver();
         Intent invalidStart = new Intent(context, SafeNetLocalVpnService.class)
