@@ -75,6 +75,14 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Keep an opt-in test APK separate from the installed release app.
+            // This avoids replacing or deleting the user's production app data.
+            if (project.findProperty("testInstall") == "true") {
+                applicationIdSuffix ".test"
+                versionNameSuffix "-test"
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
