@@ -10,6 +10,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.VpnService;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
@@ -1766,6 +1767,110 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
+    public void localVpnRestoresSavedResolverAfterServiceRestartAndReportsFailure() throws Exception {
+        openDashboardWithResolverType("plain");
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]') !== null"
+        );
+
+        ConsentAction consentAction = VpnService.prepare(context) == null
+            ? null
+            : this::grantVpnPermissionDialog;
+        JSONObject started = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.start({" +
+                "type:'plain',primaryAddress:'1.1.1.1',secondaryAddress:'8.8.8.8'" +
+            "})",
+            consentAction
+        ));
+        assertTrue("The initial native VPN start must be confirmed",
+            started.getBoolean("connected"));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true'"
+        );
+        long resolverSaveDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < resolverSaveDeadline &&
+            !"1.1.1.1".equals(context.getSharedPreferences(
+                "safenet_local_vpn",
+                Context.MODE_PRIVATE
+            ).getString("primary", ""))) {
+            Thread.sleep(100);
+        }
+        assertEquals(
+            "The resolver must be persisted before simulating process death",
+            "1.1.1.1",
+            context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)
+                .getString("primary", "")
+        );
+
+        executeShellCommand("am force-stop " + PACKAGE_NAME);
+        Thread.sleep(500);
+        relaunchActivity();
+        JSONObject beforeAndroidRestart = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertFalse(
+            "Saved resolver settings alone must not make protection appear active",
+            beforeAndroidRestart.getBoolean("connected")
+        );
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'false'"
+        );
+
+        // Android sends a null start intent when it recreates a START_STICKY
+        // service. Force-stop above resets process state; this dispatch models
+        // that system restart without making the test depend on memory pressure.
+        ContextCompat.startForegroundService(
+            context,
+            new Intent(context, SafeNetLocalVpnService.class)
+        );
+        JSONObject recovered = waitForLocalVpnState(true);
+        assertTrue("The restarted service must restore its saved resolver",
+            recovered.getBoolean("connected"));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true'"
+        );
+
+        pauseAndResumeActivity();
+        JSONObject afterReturn = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertTrue("Returning to the app must show the recovered native VPN state",
+            afterReturn.getBoolean("connected"));
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true'"
+        );
+
+        context.stopService(new Intent(context, SafeNetLocalVpnService.class));
+        waitForLocalVpnState(false);
+        context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)
+            .edit()
+            .putString("type", "unsupported")
+            .apply();
+        ContextCompat.startForegroundService(
+            context,
+            new Intent(context, SafeNetLocalVpnService.class)
+        );
+
+        JSONObject failedRecovery = waitForLocalVpnError();
+        assertFalse("Failed resolver recovery must leave native protection off",
+            failedRecovery.getBoolean("connected"));
+        assertTrue("Failed resolver recovery must explain the problem",
+            failedRecovery.getString("error").contains("unsupported protocol"));
+        waitForWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
+                "const message = document.querySelector('[role=\"status\"]');" +
+                "return Boolean(toggle && toggle.getAttribute('aria-checked') === 'false' && " +
+                    "message && message.textContent.includes('unsupported protocol'));" +
+            "})()"
+        );
+    }
+
+    @Test
     public void aiShieldCameraConsentInfersAndPauseReleasesCapture() throws Exception {
         assertTrue(
             "The attached Android target must expose a camera for AI Shield device evidence",
@@ -2394,6 +2499,87 @@ abstract class SafeNetUiInstrumentationTestBase {
             "})()"
         );
         assertTrue("Could not navigate to the Dashboard in the WebView", result.getBoolean("ok"));
+    }
+
+    private void openDashboardWithResolverType(String resolverType) throws Exception {
+        JSONObject result = callWebView(
+            "(() => {" +
+                "const originalFetch = window.fetch;" +
+                "window.fetch = function(input, init) {" +
+                    "const url = typeof input === 'string' ? input : ((input && input.url) || '');" +
+                    "if (url.includes('/api/dns')) {" +
+                        "return Promise.resolve(new Response(JSON.stringify([{" +
+                            "id: 1," +
+                            "name: 'SafeNet Test Resolver'," +
+                            "type: '" + jsQuote(resolverType) + "'," +
+                            "ipVersion: 'ipv4'," +
+                            "primaryAddress: '1.1.1.1'," +
+                            "secondaryAddress: '8.8.8.8'," +
+                            "isActive: true" +
+                        "}]), {" +
+                            "status: 200," +
+                            "headers: {'Content-Type': 'application/json'}" +
+                        "}));" +
+                    "}" +
+                    "return originalFetch.call(this, input, init);" +
+                "};" +
+                "history.pushState({}, '', '/');" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));" +
+                "return true;" +
+            "})()"
+        );
+        assertTrue("Could not navigate to the Dashboard with an active resolver",
+            result.getBoolean("ok") && result.getBoolean("value"));
+    }
+
+    private void openDashboardWithActiveResolver() throws Exception {
+        openDashboardWithResolverType("plain");
+    }
+
+    private void clickControl(String testId) throws Exception {
+        JSONObject result = callWebView(
+            "(() => { const control = document.querySelector('[data-testid=\"" + testId + "\"]'); " +
+                "if (!control || control.disabled) return false; control.click(); return true; })()"
+        );
+        assertTrue("Could not click Android control " + testId,
+            result.getBoolean("ok") && result.getBoolean("value"));
+    }
+
+    private JSONObject waitForLocalVpnState(boolean expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        JSONObject latest = null;
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+            );
+            if (result.optBoolean("ok", false)) {
+                latest = result.optJSONObject("value");
+                if (latest != null && expected == latest.optBoolean("connected", false)) {
+                    return latest;
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native local VPN did not become connected=" + expected +
+            ": " + latest);
+    }
+
+    private JSONObject waitForLocalVpnError() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        JSONObject latest = null;
+        while (System.nanoTime() < deadline) {
+            JSONObject result = callWebView(
+                "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+            );
+            if (result.optBoolean("ok", false)) {
+                latest = result.optJSONObject("value");
+                if (latest != null && !latest.optString("error").isEmpty()) {
+                    return latest;
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Native local VPN recovery did not expose an error: " + latest);
     }
 
     /*

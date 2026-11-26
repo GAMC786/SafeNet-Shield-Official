@@ -27,10 +27,10 @@ export function useLocalVpn() {
     try {
       const next = await enqueueNativeCommand(() => LocalVpn.getStatus());
       setStatus(next);
-      if (next.error) setError(next.error);
-      else if (next.connected) setError(null);
+      setError(next.error ?? null);
       return next;
     } catch (cause) {
+      setStatus({ connected: false, mode: "local" });
       setError(cause instanceof Error ? cause.message : "Local VPN status is unavailable.");
       return null;
     }
