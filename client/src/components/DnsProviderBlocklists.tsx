@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { CustomDnsBlocklists } from "@/components/CustomDnsBlocklists";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { apiFetch } from "@/lib/api";
 
 type Provider = "adguard" | "cleanbrowsing" | "nextdns" | "controld";
 type ListItem = { id: string; name: string; description: string; enabled: boolean; rulesCount: number | null };
@@ -34,7 +35,7 @@ const providerDashboardUrls: Record<Provider, string> = {
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     credentials: "include",
     headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },

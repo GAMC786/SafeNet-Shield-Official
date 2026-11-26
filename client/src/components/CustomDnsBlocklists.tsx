@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { firewallConfigQueryKey } from "@/hooks/firewall-config-key";
+import { apiFetch } from "@/lib/api";
 
 type CustomDnsBlocklist = {
   id: number;
@@ -17,7 +18,7 @@ type CustomDnsBlocklist = {
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     credentials: "include",
     headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },

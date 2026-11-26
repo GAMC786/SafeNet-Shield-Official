@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { apiFetch } from "@/lib/api";
 
 type ConnectionStatus = {
   adguard: { connected: boolean; profileId: string | null; lastSyncedAt: string | null };
@@ -24,7 +25,7 @@ type Filter = {
 type FilterResponse = { serverId: string; filters: Filter[] };
 
 async function familyDnsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     credentials: "include",
     headers: {

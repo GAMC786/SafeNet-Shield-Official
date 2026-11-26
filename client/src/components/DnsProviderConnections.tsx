@@ -7,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { CyberCard } from "@/components/CyberCard";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { apiFetch } from "@/lib/api";
 
 type Provider = "nextdns" | "adguard" | "cleanbrowsing";
 type ProviderStatuses = Record<Provider, { connected: boolean; profileId: string | null }>;
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     credentials: "include",
     headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },

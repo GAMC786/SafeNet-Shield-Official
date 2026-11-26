@@ -127,6 +127,14 @@ const dnsProviderConnectionsSource = readFileSync(
   path.join(clientRoot, "src/components/DnsProviderConnections.tsx"),
   "utf8",
 );
+const controlDIntegrationSource = readFileSync(
+  path.join(clientRoot, "src/components/ControlDIntegration.tsx"),
+  "utf8",
+);
+const customDnsBlocklistsSource = readFileSync(
+  path.join(clientRoot, "src/components/CustomDnsBlocklists.tsx"),
+  "utf8",
+);
 const dashboardSource = readFileSync(
   path.join(clientRoot, "src/pages/Dashboard.tsx"),
   "utf8",
@@ -586,6 +594,21 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
     billingSource,
     /!isSignedIn[\s\S]*?Sign in to manage billing[\s\S]*?onClick=\{openSignIn\}[\s\S]*?>\s*Sign in to continue/,
   );
+});
+
+test("Supabase-authenticated screens send bearer tokens on protected API requests", () => {
+  for (const source of [
+    billingSource,
+    adGuardDnsBlocklistsSource,
+    dnsProviderBlocklistsSource,
+    dnsProviderConnectionsSource,
+    controlDIntegrationSource,
+    customDnsBlocklistsSource,
+  ]) {
+    assert.match(source, /import \{ apiFetch \} from "@\/lib\/api"/);
+    assert.match(source, /apiFetch\(/);
+  }
+  assert.match(privateDnsCardSource, /apiFetch\("\/api\/nextdns\/connection"\)/);
 });
 
 test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in", () => {

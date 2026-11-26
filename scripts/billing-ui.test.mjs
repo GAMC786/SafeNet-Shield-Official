@@ -6,10 +6,16 @@ const source = await readFile(
   new URL("../client/src/pages/Billing.tsx", import.meta.url),
   "utf8",
 );
+const apiSource = await readFile(
+  new URL("../client/src/lib/api.ts", import.meta.url),
+  "utf8",
+);
 
 test("Premium billing requests cannot leave the page loading forever", () => {
   assert.match(source, /BILLING_REQUEST_TIMEOUT_MS = 12_000/);
-  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /import \{ apiFetch \} from "@\/lib\/api"/);
+  assert.match(source, /return apiFetch\(input, \{ \.\.\.init, timeoutMs: BILLING_REQUEST_TIMEOUT_MS \}\)/);
+  assert.match(apiSource, /headers\.set\("Authorization", `Bearer \$\{session\.access_token\}`\)/);
   assert.match(source, /fetchBilling\("\/api\/billing\/status"/);
   assert.match(source, /fetchBilling\("\/api\/billing\/portal"/);
   assert.match(source, /billingStatusError/);

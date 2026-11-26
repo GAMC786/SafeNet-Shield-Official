@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSafeNetUser as useUser } from "@/lib/safenet-auth";
+import { apiFetch } from "@/lib/api";
 import { Globe2, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ export function PrivateDnsCard() {
       setNextDnsProfileId(null);
       return;
     }
-    void fetch("/api/nextdns/connection")
+    void apiFetch("/api/nextdns/connection")
       .then(async (response) => response.ok ? response.json() : null)
       .then((result) => setNextDnsProfileId(result?.connected ? result.profileId : null))
       .catch(() => setNextDnsProfileId(null));
