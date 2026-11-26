@@ -399,6 +399,7 @@ test("replaces rerun records without consuming retention slots", () => {
   const configuredHistory = JSON.parse(
     readFileSync(new URL("../.github/workflow-lint-history.json", import.meta.url), "utf8"),
   );
+  configuredHistory.runs = [];
   const workspace = mkdtempSync(join(tmpdir(), "workflow-lint-history-rerun-"));
   const historyDirectory = join(workspace, ".github");
   const resultsDirectory = join(workspace, "workflow-lint-results");
