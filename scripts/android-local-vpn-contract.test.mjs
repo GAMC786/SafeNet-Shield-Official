@@ -15,6 +15,8 @@ const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVp
 const firewallPage = read("../client/src/pages/Firewall.tsx");
 const dnscryptBridge = read("../android/local-vpn-bridge/dnscrypt.go");
 const privateDnsHook = read("../client/src/hooks/use-private-dns.ts");
+const vpnUiInstrumentation = read("../android/app/src/androidTest/java/com/safenet/dns/SafeNetVpnUiInstrumentationTest.java");
+const androidSmokeTest = read("../scripts/android-smoke-test.sh");
 
 test("SafeNet declares a local Android VPN service without the old VPN service", () => {
   assert.match(manifest, /android:name="\.SafeNetLocalVpnService"/);
@@ -69,6 +71,24 @@ test("local packet forwarding captures direct DNS and protects upstream sockets"
   assert.match(plugin, /VpnService\.prepare/);
   assert.match(plugin, /primaryAddress/);
   assert.match(plugin, /startForegroundService/);
+});
+
+test("Android consent cancellation stays off and is retried in release smoke", () => {
+  assert.match(
+    plugin,
+    /Android VPN permission was canceled\. DNS protection remains off; try again to enable it\./
+  );
+  assert.match(
+    vpnUiInstrumentation,
+    /localVpnConsentCancellationLeavesToggleOffAndRetryable/
+  );
+  assert.match(vpnUiInstrumentation, /VpnService\.prepare\(context\)/);
+  assert.match(vpnUiInstrumentation, /cancelVpnPermissionDialog\(\)/);
+  assert.match(vpnUiInstrumentation, /grantVpnPermissionDialog\(\)/);
+  assert.match(
+    androidSmokeTest,
+    /SafeNetUiInstrumentationTest#localVpnConsentCancellationLeavesToggleOffAndRetryable/
+  );
 });
 
 test("phone firewall action syncs policy, enables the local VPN, and exposes supported rule limits", () => {

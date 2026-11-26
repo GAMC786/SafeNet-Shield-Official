@@ -75,7 +75,10 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
     private void vpnPermissionResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
         if (result == null || result.getResultCode() != Activity.RESULT_OK) {
-            call.reject("Android VPN permission was not granted.", "VPN_PERMISSION_DENIED");
+            call.reject(
+                "Android VPN permission was canceled. DNS protection remains off; try again to enable it.",
+                "VPN_PERMISSION_DENIED"
+            );
             return;
         }
         if (startService(call)) resolveStartAccepted(call);

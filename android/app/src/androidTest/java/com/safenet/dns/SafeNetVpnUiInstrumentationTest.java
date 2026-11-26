@@ -1670,6 +1670,71 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
+    public void localVpnConsentCancellationLeavesToggleOffAndRetryable() throws Exception {
+        assertNotNull(
+            "This check needs a fresh install so Android will show the real VPN consent prompt",
+            VpnService.prepare(context)
+        );
+        openDashboardWithActiveResolver();
+        waitForWebView(
+            "(() => { const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]'); " +
+                "return Boolean(toggle && !toggle.disabled && " +
+                    "toggle.getAttribute('aria-checked') === 'false'); })()"
+        );
+
+        clickControl("switch-local-dns-vpn");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"dialog-local-vpn-eula\"]'))");
+        clickControl("button-local-vpn-eula-accept");
+        cancelVpnPermissionDialog();
+
+        waitForWebView(
+            "document.body.innerText.includes(" +
+                "'Android VPN permission was canceled. DNS protection remains off; try again to enable it.')"
+        );
+        JSONObject canceledState = requireWebViewValue(callWebView(
+            "(() => {" +
+                "const toggle = document.querySelector('[data-testid=\"switch-local-dns-vpn\"]');" +
+                "const message = document.querySelector('[role=\"status\"]');" +
+                "return {" +
+                    "checked: toggle?.getAttribute('aria-checked')," +
+                    "enabled: toggle && !toggle.disabled," +
+                    "message: message?.textContent || ''" +
+                "};" +
+            "})()"
+        ));
+        assertEquals("false", canceledState.getString("checked"));
+        assertTrue("The switch must remain enabled after consent is canceled",
+            canceledState.getBoolean("enabled"));
+        assertEquals(
+            "Android VPN permission was canceled. DNS protection remains off; try again to enable it.",
+            canceledState.getString("message")
+        );
+        JSONObject afterCancel = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertFalse("Canceling Android consent must leave native protection off",
+            afterCancel.getBoolean("connected"));
+
+        clickControl("switch-local-dns-vpn");
+        grantVpnPermissionDialog();
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'true'"
+        );
+        JSONObject afterRetry = requireWebViewValue(callWebView(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.getStatus()"
+        ));
+        assertTrue("Approving the retry must start native DNS protection",
+            afterRetry.getBoolean("connected"));
+
+        clickControl("switch-local-dns-vpn");
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]')" +
+                "?.getAttribute('aria-checked') === 'false'"
+        );
+    }
+
+    @Test
     public void localVpnServiceFailureDoesNotTerminateAppOrWebView() throws Exception {
         openDashboardWithActiveResolver();
         Intent invalidStart = new Intent(context, SafeNetLocalVpnService.class)
@@ -2678,6 +2743,40 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     */
+
+    private void cancelVpnPermissionDialog() throws Exception {
+        assertNotNull(
+            "Android must still require VPN consent before the cancellation check",
+            VpnService.prepare(context)
+        );
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 cancel = device.findObject(
+                By.text(Pattern.compile("(?i)(cancel|deny|not now|don't allow|do not allow)"))
+            );
+            if (cancel != null && cancel.isEnabled()) {
+                cancel.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android VPN consent dialog did not expose a cancel action");
+    }
+
+    private void grantVpnPermissionDialog() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            UiObject2 allow = device.findObject(
+                By.text(Pattern.compile("(?i)(allow|ok|connect|i trust this application)"))
+            );
+            if (allow != null && allow.isEnabled()) {
+                allow.click();
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Android VPN consent dialog did not expose an approval action");
+    }
 
     private void grantCameraPermissionDialog() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(JS_TIMEOUT_SECONDS);
