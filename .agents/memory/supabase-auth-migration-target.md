@@ -8,3 +8,9 @@ Use Supabase Auth for Google and email/password sign-in after the planned migrat
 **Why:** The user selected Supabase for Google and email/password sign-in, chose to preserve existing accounts rather than start fresh, approved Supabase email OTP for App Lock recovery, and chose an isolated test project.
 
 **How to apply:** Route development builds to the test project and production builds to the existing project; configure Google sign-in and OTP email templates per project, and retain the Clerk-ID mapping for production account-owned data and billing. Do not treat Google SHA-1 registration or the Supabase agent plugin as an app auth migration.
+
+**PKCE callback constraint:** Supabase OAuth completion must happen in the same browser and device that started the sign-in because the verifier is stored locally. An embedded preview and a separately opened browser may not share it.
+
+**Why:** Supabase rejects a callback that cannot retrieve the original PKCE verifier, even when the Google provider and redirect URL are configured correctly.
+
+**How to apply:** Test web OAuth by starting and completing the flow in one browser context; do not copy or reopen the callback URL elsewhere.

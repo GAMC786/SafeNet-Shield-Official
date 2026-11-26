@@ -22,7 +22,8 @@ test("the Android app exchanges Supabase callback links for a session", () => {
   assert.match(appSource, /CapacitorApp\.addListener\("appUrlOpen"/);
   assert.match(appSource, /CapacitorApp\.getLaunchUrl\(\)/);
   assert.match(appSource, /callback\.protocol !== "safenet:"/);
-  assert.match(appSource, /supabase\.auth\.exchangeCodeForSession\(callbackUrl\)/);
+  assert.match(appSource, /callback\.searchParams\.get\("code"\)/);
+  assert.match(appSource, /supabase\.auth\.exchangeCodeForSession\(code\)/);
   assert.match(appSource, /getSupabaseCallbackUrl\(returnTo\)/);
   assert.match(appSource, /Continue with Google/);
 });

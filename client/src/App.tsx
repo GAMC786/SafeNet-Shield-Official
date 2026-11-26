@@ -338,9 +338,23 @@ function SupabaseAuthCallbackPage() {
     const returnTo = getSafeAuthRedirect(`?redirect_url=${encodeURIComponent(url.searchParams.get("return_to") || "/")}`) || "/";
     void (async () => {
       try {
-        const { error: authError } = await supabase.auth.exchangeCodeForSession(url.toString());
+        const providerError = url.searchParams.get("error_description") || url.searchParams.get("error");
+        if (providerError) {
+          setError(providerError);
+          return;
+        }
+        const code = url.searchParams.get("code");
+        if (!code) {
+          setError("No sign-in code was returned. Start Google sign-in again from this browser.");
+          return;
+        }
+        const { error: authError } = await supabase.auth.exchangeCodeForSession(code);
         if (authError) {
-          setError(authError.message);
+          setError(
+            /flow state|code verifier/i.test(authError.message)
+              ? "The sign-in started in a different browser session. Open SafeNet in this browser and try again."
+              : authError.message,
+          );
           return;
         }
         setLocation(returnTo);
@@ -669,7 +683,12 @@ function ClerkProviderWithRoutes() {
         callback.pathname !== "/callback"
       ) return;
       handledCallbackUrl = callbackUrl;
-      void supabase.auth.exchangeCodeForSession(callbackUrl).then(({ error }) => {
+      const code = callback.searchParams.get("code");
+      if (!code) {
+        setLocation("/sign-in");
+        return;
+      }
+      void supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
         if (error) {
           console.error("Unable to complete the Supabase Android sign-in callback.", error);
           setLocation("/sign-in");
@@ -680,6 +699,9 @@ function ClerkProviderWithRoutes() {
           `?redirect_url=${encodeURIComponent(requestedReturn)}`,
         ) || "/";
         setLocation(safeReturn);
+      }).catch((error: unknown) => {
+        console.error("Unable to complete the Supabase Android sign-in callback.", error);
+        setLocation("/sign-in");
       }).finally(() => {
         void Browser.close().catch(() => undefined);
       });
