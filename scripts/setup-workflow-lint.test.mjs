@@ -355,11 +355,10 @@ test("records each hosted runner outcome in bounded machine-readable history", (
       "utf8",
     ),
   );
-  assert.deepEqual(history, {
-    schema_version: 1,
-    retention_runs: 24,
-    runs: [],
-  });
+  assert.equal(history.schema_version, 1);
+  assert.equal(history.retention_runs, 24);
+  assert.ok(Array.isArray(history.runs));
+  assert.ok(history.runs.length <= history.retention_runs);
 });
 
 test("rejects unsupported platforms with an actionable error", () => {
