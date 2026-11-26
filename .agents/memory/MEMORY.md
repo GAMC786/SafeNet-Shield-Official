@@ -102,3 +102,4 @@
 - [DNS Firewall provider strategy](dns-firewall-provider-strategy.md) — prefer provider-hosted encrypted DNS; separate paid resolver hosting is not feasible for the user.
 - [DNS native blocklist capability](dns-native-blocklist-capability.md) — expose only documented account-level provider filters; keep those controls separate from SafeNet-owned rule sync.
 - [Secure Dialer integration boundary](secure-dialer-integration-boundary.md) — link to the standalone Android app; its project has no network permission and GitHub forbids embedding repository pages.
+- [Android Google sign-in boundary](android-google-sign-in-boundary.md) — do not run Google OAuth inside the app WebView; use Clerk's native Android flow and production provider setup.
