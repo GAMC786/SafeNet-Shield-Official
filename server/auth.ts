@@ -21,8 +21,13 @@ let supabaseAuthClient: SupabaseClient | null = null;
 function getSupabaseAuthClient() {
   if (supabaseAuthClient) return supabaseAuthClient;
 
-  const url = process.env.VITE_SUPABASE_URL?.trim();
-  const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const isProduction = process.env.NODE_ENV === "production";
+  const url = (isProduction
+    ? process.env.VITE_SUPABASE_URL
+    : process.env.VITE_SUPABASE_DEVELOPMENT_URL)?.trim();
+  const publishableKey = (isProduction
+    ? process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+    : process.env.VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY)?.trim();
   if (!url || !publishableKey) return null;
 
   supabaseAuthClient = createClient(url, publishableKey, {
@@ -53,32 +58,35 @@ async function resolveCanonicalUserId(
     });
   }
 
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY?.trim();
-  if (!clerkSecretKey) {
-    throw Object.assign(new Error("Existing SafeNet accounts cannot be linked right now."), {
-      statusCode: 503,
+  let canonicalUserId = supabaseUserId;
+  if (process.env.NODE_ENV === "production") {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY?.trim();
+    if (!clerkSecretKey) {
+      throw Object.assign(new Error("Existing SafeNet accounts cannot be linked right now."), {
+        statusCode: 503,
+      });
+    }
+
+    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+    const matches = await clerk.users.getUserList({
+      emailAddress: [email],
+      limit: 5,
     });
+    const verifiedMatches = matches.data.filter((user) =>
+      user.emailAddresses.some(
+        (address) =>
+          address.emailAddress.toLowerCase() === email &&
+          address.verification?.status === "verified",
+      ),
+    );
+    if (verifiedMatches.length > 1) {
+      throw Object.assign(new Error("This email matches multiple SafeNet accounts. Contact support to link them safely."), {
+        statusCode: 409,
+      });
+    }
+    canonicalUserId = verifiedMatches[0]?.id ?? supabaseUserId;
   }
 
-  const clerk = createClerkClient({ secretKey: clerkSecretKey });
-  const matches = await clerk.users.getUserList({
-    emailAddress: [email],
-    limit: 5,
-  });
-  const verifiedMatches = matches.data.filter((user) =>
-    user.emailAddresses.some(
-      (address) =>
-        address.emailAddress.toLowerCase() === email &&
-        address.verification?.status === "verified",
-    ),
-  );
-  if (verifiedMatches.length > 1) {
-    throw Object.assign(new Error("This email matches multiple SafeNet accounts. Contact support to link them safely."), {
-      statusCode: 409,
-    });
-  }
-
-  const canonicalUserId = verifiedMatches[0]?.id ?? supabaseUserId;
   await db
     .insert(authUserLinks)
     .values({

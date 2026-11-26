@@ -43,10 +43,15 @@ function signHandoffPayload(payload: string) {
 }
 
 function supabaseAuthClient() {
-  const url = process.env.VITE_SUPABASE_URL?.trim();
-  const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const isProduction = process.env.NODE_ENV === "production";
+  const url = (isProduction
+    ? process.env.VITE_SUPABASE_URL
+    : process.env.VITE_SUPABASE_DEVELOPMENT_URL)?.trim();
+  const key = (isProduction
+    ? process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+    : process.env.VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY)?.trim();
   if (!url || !key) {
-    throw new Error("Supabase Auth is not configured for App Lock recovery.");
+    throw new Error("Supabase Auth is not configured for this environment's App Lock recovery.");
   }
   return createClient(url, key, {
     auth: {
