@@ -623,7 +623,6 @@ public class LockLockActivity extends FragmentActivity {
         content.addView(warning, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
 
         EditText email = field("SafeNet account email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        content.addView(email, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 8));
         Button requestCode = secondaryButton("Send recovery code");
         content.addView(requestCode, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
         EditText code = field("Six-digit email recovery code", InputType.TYPE_CLASS_NUMBER);
