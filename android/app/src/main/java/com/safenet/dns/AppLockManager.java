@@ -41,6 +41,7 @@ public final class AppLockManager {
     public static final String EXTRA_OPEN_DASHBOARD_AFTER_AUTH = "open_dashboard_after_auth";
     public static final String EXTRA_RECOVERY_HANDOFF = "recovery_handoff";
     public static final String EXTRA_RECOVERY_NONCE = "recovery_nonce";
+    public static final String EXTRA_START_RECOVERY_SCREEN = "start_recovery_screen";
     public static final String MODE_SETUP = "setup";
     public static final String MODE_UNLOCK = "unlock";
     public static final String MODE_DISABLE = "disable";

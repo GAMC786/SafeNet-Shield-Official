@@ -38,3 +38,14 @@ test("production Android builds reject development-auth assets", () => {
   );
   assert.match(apkOnlyWorkflow, /"authEnvironment": "production"/);
 });
+
+test("debug-signed instrumentation builds keep the app separate from the test package", () => {
+  assert.match(
+    gradle,
+    /applicationIdSuffix project\.findProperty\("appLockTestBuildType"\) == "debug"\s*\?\s*"\.debugtest"\s*:\s*"\.test"/,
+  );
+  assert.match(
+    gradle,
+    /testBuildType project\.findProperty\("appLockTestBuildType"\) == "debug"\s*\?\s*"debug"\s*:\s*"release"/,
+  );
+});

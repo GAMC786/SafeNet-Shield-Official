@@ -113,6 +113,15 @@ public class LockLockActivity extends FragmentActivity {
             return;
         }
 
+        if (AppLockManager.MODE_UNLOCK.equals(mode)
+                && getIntent().getBooleanExtra(
+                        AppLockManager.EXTRA_START_RECOVERY_SCREEN,
+                        false
+                )) {
+            showRecovery();
+            return;
+        }
+
         if (AppLockManager.MODE_SETUP.equals(mode) && useEmbeddedAppLockDashboard()) {
             return;
         }
@@ -507,6 +516,13 @@ public class LockLockActivity extends FragmentActivity {
         Button emailRecovery = secondaryButton("Email-assisted recovery");
         emailRecovery.setOnClickListener(view -> showEmailRecovery());
         content.addView(emailRecovery, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
+        Button accountRecovery = secondaryButton("Use email sign-in recovery");
+        accountRecovery.setOnClickListener(view -> showEmailRecovery());
+        content.addView(accountRecovery, marginParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48,
+                8
+        ));
         Button back = secondaryButton("Back to passcode");
         back.setOnClickListener(view -> showUnlock());
         content.addView(back, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
@@ -1013,6 +1029,13 @@ public class LockLockActivity extends FragmentActivity {
 
     @Override
     public void onBackPressed() {
+        if (getIntent().getBooleanExtra(
+                AppLockManager.EXTRA_START_RECOVERY_SCREEN,
+                false
+        )) {
+            finish();
+            return;
+        }
         if (AppLockManager.MODE_SETUP.equals(mode)) {
             super.onBackPressed();
             return;

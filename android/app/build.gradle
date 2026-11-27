@@ -79,7 +79,9 @@ android {
             // Keep an opt-in test APK separate from the installed release app.
             // This avoids replacing or deleting the user's production app data.
             if (project.findProperty("testInstall") == "true") {
-                applicationIdSuffix ".test"
+                applicationIdSuffix project.findProperty("appLockTestBuildType") == "debug"
+                    ? ".debugtest"
+                    : ".test"
                 versionNameSuffix "-test"
             }
         }
@@ -91,7 +93,9 @@ android {
             }
         }
     }
-    testBuildType "release"
+    // Production verification stays on the signed release variant. A local
+    // debug-signed test APK is opt-in for SDKs without the release keystore.
+    testBuildType project.findProperty("appLockTestBuildType") == "debug" ? "debug" : "release"
 }
 
 tasks.register("verifyAndroidToolchain") {
