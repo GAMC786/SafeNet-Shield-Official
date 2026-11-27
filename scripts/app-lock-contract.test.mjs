@@ -68,6 +68,15 @@ const revivedLockActivity = await readSource(
 const revivedLockScreen = await readSource(
   "android/app/src/main/java/com/safenet/dns/AppLockRevivedLockScreen.kt",
 );
+const revivedTheme = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockRevivedTheme.kt",
+);
+const revivedRecovery = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockRevivedRecoveryUi.kt",
+);
+const revivedAccess = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockRevivedAccessUi.kt",
+);
 
 const repositoryRoot = new URL("..", import.meta.url);
 
@@ -314,6 +323,26 @@ test("AppLock setup uses labeled controls and scrollable SafeNet Compose surface
   assert.match(revivedSetupUi, /verticalScroll\(rememberScrollState\(\)\)/);
 });
 
+test("Forgot Passcode renders the AppLock-Revived recovery screen instead of a blank activity", () => {
+  assert.match(activity, /AppLockRevivedRecoveryUi\.render/);
+  assert.match(activity, /AppLockManager\.verifyRecoveryAnswer/);
+  assert.match(activity, /AppLockRevivedStateBridge\.configurePasscode/);
+  assert.match(revivedRecovery, /activity\.setContentView\(host\)/);
+  assert.match(revivedRecovery, /Text\("Recover your passcode"/);
+  assert.match(revivedRecovery, /Text\("Email-assisted recovery"\)/);
+});
+
+test("AppLock-Revived setup, recovery, and lock screens follow the saved SafeNet theme", () => {
+  assert.match(plugin, /getSharedPreferences\(\s*"safenet_ui_preferences"/);
+  assert.match(plugin, /putString\("theme", theme\)/);
+  assert.match(revivedTheme, /lightColorScheme/);
+  assert.match(revivedTheme, /darkColorScheme/);
+  assert.match(revivedSetupUi, /AppLockRevivedTheme\.Content/);
+  assert.match(revivedRecovery, /AppLockRevivedTheme\.Content/);
+  assert.match(revivedLockScreen, /AppLockRevivedTheme\.Content/);
+  assert.match(revivedLockActivity, /applySystemBars/);
+});
+
 test("the SDNS resolver option uses a provider-neutral label", () => {
   assert.match(
     dnsSettings,
@@ -340,8 +369,10 @@ test("enabling, disabling, recovery, and passcode unlock use the native App Lock
   assert.match(plugin, /startActivityForResult\(call, intent, "appLockActivityResult"\)/);
   assert.match(plugin, /appLockActivityResult/);
   assert.match(activity, /Save passcode and enable App Lock/);
-  assert.match(activity, /Use passcode fallback/);
-  assert.match(activity, /Forgot passcode/);
+  assert.match(activity, /"Use passcode fallback"/);
+  assert.match(revivedAccess, /AppLockRevivedTheme\.Content/);
+  assert.match(revivedAccess, /Text\("Forgot passcode"\)/);
+  assert.match(revivedAccess, /Text\("Forgot passcode"\)/);
   assert.match(activity, /verifyRecoveryAnswer/);
   assert.match(activity, /Open Accessibility Settings/);
   assert.match(activity, /Allow App Lock Overlay/);

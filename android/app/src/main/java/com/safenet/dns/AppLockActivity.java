@@ -34,6 +34,10 @@ public final class AppLockActivity extends LockLockActivity {
     }
 
     private void showAppLockDashboard() {
+        AppLockRevivedTheme.applySystemBars(
+                this,
+                AppLockRevivedTheme.isLight(this)
+        );
         ComposeView composeView = new ComposeView(this);
         AppLockRevivedSetupUi.render(this, composeView, this::markComposeSetupSaved);
         setContentView(composeView);

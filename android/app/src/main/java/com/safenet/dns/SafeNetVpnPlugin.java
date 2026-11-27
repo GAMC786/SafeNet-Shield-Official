@@ -65,6 +65,10 @@ public class SafeNetVpnPlugin extends Plugin {
             call.reject("Theme must be light or dark.", "INVALID_SYSTEM_BAR_THEME");
             return;
         }
+        getContext().getSharedPreferences(
+                "safenet_ui_preferences",
+                android.content.Context.MODE_PRIVATE
+        ).edit().putString("theme", theme).apply();
         if (getActivity() instanceof MainActivity) {
             ((MainActivity) getActivity()).setSystemBarAppearance("light".equals(theme));
         }

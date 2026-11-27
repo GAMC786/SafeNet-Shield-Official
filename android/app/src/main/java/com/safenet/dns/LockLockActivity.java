@@ -21,6 +21,7 @@ import android.widget.Toast;
 import android.webkit.CookieManager;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.compose.ui.platform.ComposeView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -431,34 +432,29 @@ public class LockLockActivity extends FragmentActivity {
 
     private void showUnlock() {
         String title = AppLockManager.MODE_DISABLE.equals(mode)
-                ? "Disable SafeNet App Lock"
-                : "SafeNet App Lock";
+                ? "Disable AppLock-Revived"
+                : "AppLock-Revived";
         String description = AppLockManager.MODE_DISABLE.equals(mode)
                 ? "Enter the local passcode to disable SafeNet protection."
                 : "Enter the local SafeNet passcode to continue.";
-        content = baseContent(title, description);
-        EditText pin = field("Fallback passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        Button unlock = secondaryButton(
-                AppLockManager.MODE_DISABLE.equals(mode) ? "Disable with passcode" : "Use passcode fallback"
+        AppLockRevivedAccessUi.render(
+                this,
+                title,
+                description,
+                AppLockManager.MODE_DISABLE.equals(mode)
+                        ? "Disable with passcode"
+                        : "Use passcode fallback",
+                passcode -> {
+                    AppLockManager.PinResult result =
+                            AppLockRevivedStateBridge.verifyPasscode(this, passcode);
+                    if (!result.success) {
+                        return result.message;
+                    }
+                    completeAuthentication();
+                    return null;
+                },
+                this::showRecovery
         );
-        content.addView(unlock, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
-        statusView = statusText();
-        content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
-        Button forgot = secondaryButton("Forgot passcode");
-        forgot.setOnClickListener(view -> showRecovery());
-        content.addView(forgot, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
-
-        unlock.setOnClickListener(view -> {
-            AppLockManager.PinResult result =
-                    AppLockRevivedStateBridge.verifyPasscode(this, pin.getText().toString());
-            if (!result.success) {
-                showStatus(result.message);
-                pin.setText("");
-                return;
-            }
-            completeAuthentication();
-        });
-        setContentView(scrollRoot(content));
     }
 
     protected final void completeAuthentication() {
@@ -494,64 +490,51 @@ public class LockLockActivity extends FragmentActivity {
     }
 
     protected void showRecovery() {
-        content = baseContent(
-                "Recover your passcode",
-                "Answer your offline recovery question and choose a new passcode."
+        AppLockRevivedRecoveryUi.render(
+                this,
+                AppLockRevivedTheme.isLight(this),
+                this::resetPasscodeFromRecovery,
+                this::showEmailRecovery,
+                () -> {
+                    if (getIntent().getBooleanExtra(
+                            AppLockManager.EXTRA_START_RECOVERY_SCREEN,
+                            false
+                    )) {
+                        finish();
+                    } else {
+                        showUnlock();
+                    }
+                }
         );
-        TextView question = bodyText(AppLockManager.recoveryQuestion(this));
-        question.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
-        content.addView(question, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
-        EditText answer = field("Recovery answer", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        EditText pin = field("New passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        EditText confirm = field("Confirm new passcode", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        Button reset = primaryButton("Reset passcode");
-        content.addView(reset, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 52, 16));
-        statusView = statusText();
-        content.addView(statusView, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 8));
-        TextView emailHelp = bodyText(
-                "Need another option? Use your verified SafeNet account email to reset the local passcode. "
-                        + "Email recovery does not unlock App Lock by itself."
-        );
-        content.addView(emailHelp, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 14));
-        Button emailRecovery = secondaryButton("Email-assisted recovery");
-        emailRecovery.setOnClickListener(view -> showEmailRecovery());
-        content.addView(emailRecovery, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
-        Button accountRecovery = secondaryButton("Use email sign-in recovery");
-        accountRecovery.setOnClickListener(view -> showEmailRecovery());
-        content.addView(accountRecovery, marginParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                48,
-                8
-        ));
-        Button back = secondaryButton("Back to passcode");
-        back.setOnClickListener(view -> showUnlock());
-        content.addView(back, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, 48, 8));
-        reset.setOnClickListener(view -> {
-            if (!AppLockManager.verifyRecoveryAnswer(this, answer.getText().toString())) {
-                showStatus("Recovery answer is incorrect.");
-                answer.setText("");
-                return;
-            }
-            if (!pin.getText().toString().equals(confirm.getText().toString())) {
-                showStatus("The new passcodes do not match.");
-                return;
-            }
-            try {
-                AppLockRevivedStateBridge.configurePasscode(
-                        this,
-                        pin.getText().toString(),
-                        AppLockManager.recoveryQuestion(this),
-                        answer.getText().toString()
-                );
-                AppLockManager.setEnabled(this, true);
-                AppLockManager.markAuthenticated();
-                AppLockManager.allowTemporaryUnlock(this, lockedPackage);
-                Toast.makeText(this, "Passcode reset successfully.", Toast.LENGTH_SHORT).show();
-                finishSuccess();
-            } catch (IllegalArgumentException error) {
-                showStatus(error.getMessage());
-            }
-        });
+    }
+
+    private String resetPasscodeFromRecovery(
+            String answer,
+            String pin,
+            String confirm
+    ) {
+        if (!AppLockManager.verifyRecoveryAnswer(this, answer)) {
+            return "Recovery answer is incorrect.";
+        }
+        if (!pin.equals(confirm)) {
+            return "The new passcodes do not match.";
+        }
+        try {
+            AppLockRevivedStateBridge.configurePasscode(
+                    this,
+                    pin,
+                    AppLockManager.recoveryQuestion(this),
+                    answer
+            );
+            AppLockManager.setEnabled(this, true);
+            AppLockManager.markAuthenticated();
+            AppLockManager.allowTemporaryUnlock(this, lockedPackage);
+            Toast.makeText(this, "Passcode reset successfully.", Toast.LENGTH_SHORT).show();
+            finishSuccess();
+            return null;
+        } catch (IllegalArgumentException error) {
+            return error.getMessage();
+        }
     }
 
     private void showAccountRecovery() {

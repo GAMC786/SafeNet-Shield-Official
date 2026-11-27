@@ -54,10 +54,14 @@ internal object AppLockRevivedSetupUi {
     @JvmStatic
     fun render(activity: AppLockActivity, host: ComposeView, onSaved: Runnable) {
         host.setContent {
-            AppLockConfigurationScreen(
-                activity = activity,
-                onSaved = onSaved,
-            )
+            AppLockRevivedTheme.Content(
+                light = AppLockRevivedTheme.isLight(activity),
+            ) {
+                AppLockConfigurationScreen(
+                    activity = activity,
+                    onSaved = onSaved,
+                )
+            }
         }
     }
 }

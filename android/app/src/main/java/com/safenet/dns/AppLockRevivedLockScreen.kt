@@ -18,7 +18,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,36 +33,21 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-private val LockBackground = Color(0xFF0F172A)
-private val LockSurface = Color(0xFF1E293B)
-private val LockAccent = Color(0xFF38BDF8)
-private val LockText = Color(0xFFF8FAFC)
-private val LockMuted = Color(0xFFCBD5E1)
-
 @Composable
 internal fun AppLockRevivedLockScreen(
     appName: String,
+    lightTheme: Boolean,
     onVerify: (String) -> String?,
     onRecover: () -> Unit,
 ) {
     var passcode by rememberSaveable { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = LockAccent,
-            onPrimary = LockBackground,
-            background = LockBackground,
-            surface = LockSurface,
-            onSurface = LockText,
-            error = Color(0xFFF87171),
-        )
-    ) {
+    AppLockRevivedTheme.Content(light = lightTheme) {
         Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .background(LockBackground),
-            color = LockBackground,
+                .fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
         ) {
             Column(
                 modifier = Modifier
@@ -75,13 +59,13 @@ internal fun AppLockRevivedLockScreen(
             ) {
                 Text(
                     text = "SAFENET  /  APP LOCK",
-                    color = LockAccent,
+                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(32.dp))
                 Surface(
-                    color = LockSurface,
+                    color = MaterialTheme.colorScheme.surface,
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
                     Column(
@@ -92,7 +76,7 @@ internal fun AppLockRevivedLockScreen(
                     ) {
                         Text(
                             text = "AppLock-Revived",
-                            color = LockText,
+                            color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
@@ -100,7 +84,7 @@ internal fun AppLockRevivedLockScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = "Enter your SafeNet passcode to open $appName.",
-                            color = LockMuted,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyLarge,
                             textAlign = TextAlign.Center,
                         )
@@ -118,13 +102,13 @@ internal fun AppLockRevivedLockScreen(
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = LockText,
-                                unfocusedTextColor = LockText,
-                                focusedBorderColor = LockAccent,
-                                unfocusedBorderColor = LockMuted,
-                                focusedLabelColor = LockAccent,
-                                unfocusedLabelColor = LockMuted,
-                                cursorColor = LockAccent,
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                cursorColor = MaterialTheme.colorScheme.primary,
                             ),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.NumberPassword,

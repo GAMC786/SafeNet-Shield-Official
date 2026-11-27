@@ -31,12 +31,17 @@ class AppLockRevivedLockActivity : LockLockActivity() {
             return
         }
 
+        AppLockRevivedTheme.applySystemBars(
+            this,
+            AppLockRevivedTheme.isLight(this),
+        )
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val appName = protectedAppLabel(lockedPackage)
         setContentView(ComposeView(this).apply {
             setContent {
                 AppLockRevivedLockScreen(
                     appName = appName,
+                    lightTheme = AppLockRevivedTheme.isLight(this@AppLockRevivedLockActivity),
                     onVerify = { passcode ->
                         val result = AppLockRevivedStateBridge.verifyPasscode(
                             this@AppLockRevivedLockActivity,
