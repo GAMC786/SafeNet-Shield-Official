@@ -159,7 +159,9 @@ export async function supabaseAuthMiddleware(
 }
 
 export function getRequestUserId(req: Request): string | null {
-  return req.canonicalUserId ?? getAuth(req).userId ?? null;
+  if (req.canonicalUserId) return req.canonicalUserId;
+  if (process.env.NODE_ENV === "development") return null;
+  return getAuth(req).userId ?? null;
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {

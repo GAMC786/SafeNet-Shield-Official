@@ -36,6 +36,14 @@ const serverIndexSource = readFileSync(
   path.resolve(process.cwd(), "server/index.ts"),
   "utf8",
 );
+const serverAuthSource = readFileSync(
+  path.resolve(process.cwd(), "server/auth.ts"),
+  "utf8",
+);
+const safeNetAuthSource = readFileSync(
+  path.join(clientRoot, "src/lib/safenet-auth.tsx"),
+  "utf8",
+);
 const glitchTipSource = readFileSync(
   path.resolve(process.cwd(), "server/glitchtip.ts"),
   "utf8",
@@ -609,6 +617,18 @@ test("Supabase-authenticated screens send bearer tokens on protected API request
     assert.match(source, /apiFetch\(/);
   }
   assert.match(privateDnsCardSource, /apiFetch\("\/api\/nextdns\/connection"\)/);
+});
+
+test("development authentication uses Supabase while production retains Clerk fallback", () => {
+  assert.match(safeNetAuthSource, /const supabaseOnly = import\.meta\.env\.DEV/);
+  assert.match(
+    safeNetAuthSource,
+    /isSignedIn:[\s\S]*?!supabaseOnly && Boolean\(clerkAuth\.isSignedIn\)/,
+  );
+  assert.match(
+    serverAuthSource,
+    /if \(process\.env\.NODE_ENV === "development"\) return null;[\s\S]*?getAuth\(req\)\.userId/,
+  );
 });
 
 test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in", () => {

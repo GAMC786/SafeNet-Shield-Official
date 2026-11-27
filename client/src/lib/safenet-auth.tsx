@@ -33,6 +33,7 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
   const clerkAuth = useClerkAuth();
   const clerk = useClerk();
   const { user: clerkUser } = useClerkUser();
+  const supabaseOnly = import.meta.env.DEV;
   const [session, setSession] = useState<Session | null>(null);
   const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -87,8 +88,13 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<SafeNetAuthState>(() => {
     const hasSupabaseSession = Boolean(session);
-    const userId = hasSupabaseSession ? supabaseUserId : clerkAuth.userId ?? null;
-    const email = session?.user.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? null;
+    const userId = hasSupabaseSession
+      ? supabaseUserId
+      : supabaseOnly
+        ? null
+        : clerkAuth.userId ?? null;
+    const email = session?.user.email
+      ?? (supabaseOnly ? null : clerkUser?.primaryEmailAddress?.emailAddress ?? null);
     const metadataName = session?.user.user_metadata?.full_name;
     const [firstName, ...lastParts] =
       typeof metadataName === "string" ? metadataName.trim().split(/\s+/) : [];
@@ -96,20 +102,29 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
       ? {
           id: userId,
           email,
-          firstName: firstName ?? clerkUser?.firstName ?? null,
-          lastName: lastParts.join(" ") || clerkUser?.lastName || null,
+          firstName: firstName ?? (supabaseOnly ? null : clerkUser?.firstName ?? null),
+          lastName: lastParts.join(" ") || (supabaseOnly ? null : clerkUser?.lastName ?? null),
         }
       : null;
 
     return {
       isLoaded: session
         ? sessionLoaded && (Boolean(supabaseUserId) || Boolean(linkError))
-        : clerkAuth.isLoaded,
-      isSignedIn: session ? Boolean(supabaseUserId) : Boolean(clerkAuth.isSignedIn),
+        : supabaseOnly
+          ? sessionLoaded
+          : clerkAuth.isLoaded,
+      isSignedIn: session
+        ? Boolean(supabaseUserId)
+        : !supabaseOnly && Boolean(clerkAuth.isSignedIn),
       userId,
       user,
       error: linkError,
       signOut: async () => {
+        if (supabaseOnly) {
+          const { error } = await supabase.auth.signOut();
+          if (error) throw error;
+          return;
+        }
         await Promise.allSettled([supabase.auth.signOut(), clerk.signOut()]);
       },
     };
@@ -121,6 +136,7 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
     clerkUser?.firstName,
     clerkUser?.lastName,
     clerkUser?.primaryEmailAddress?.emailAddress,
+    supabaseOnly,
     linkError,
     session,
     sessionLoaded,
