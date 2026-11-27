@@ -105,3 +105,4 @@
 - [Secure Dialer integration boundary](secure-dialer-integration-boundary.md) — link to the standalone Android app; its project has no network permission and GitHub forbids embedding repository pages.
 - [Android Google sign-in boundary](android-google-sign-in-boundary.md) — do not run Google OAuth inside the app WebView; use Clerk's native Android flow and production provider setup.
 - [Supabase auth migration target](supabase-auth-migration-target.md) — SafeNet will use Supabase Auth for Google sign-in after the migration; keep current Clerk auth until setup is ready.
+- [AppLock-Revived integration decision](applock-revived-integration-decision.md) — port the standalone project into SafeNet while preserving local lock state and Supabase email recovery.
