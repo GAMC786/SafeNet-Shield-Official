@@ -485,8 +485,10 @@ public class LockLockActivity extends FragmentActivity {
     }
 
     private void showRecovery() {
-        content.removeAllViews();
-        addHeading(content, "Recover your passcode", "Answer your offline recovery question and choose a new passcode.");
+        content = baseContent(
+                "Recover your passcode",
+                "Answer your offline recovery question and choose a new passcode."
+        );
         TextView question = bodyText(AppLockManager.recoveryQuestion(this));
         question.setTypeface(SafeNetLockBrand.displayTypeface(), Typeface.BOLD);
         content.addView(question, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, -2, 16));
@@ -610,9 +612,7 @@ public class LockLockActivity extends FragmentActivity {
     }
 
     private void showEmailRecovery() {
-        content.removeAllViews();
-        addHeading(
-                content,
+        content = baseContent(
                 "Email-assisted recovery",
                 "Request a one-time code at your verified SafeNet account email, then reset the local passcode."
         );
@@ -713,6 +713,7 @@ public class LockLockActivity extends FragmentActivity {
                 });
             });
         });
+        setContentView(scrollRoot(content));
     }
 
     private RecoveryResponse postRecovery(String path, JSONObject payload) {

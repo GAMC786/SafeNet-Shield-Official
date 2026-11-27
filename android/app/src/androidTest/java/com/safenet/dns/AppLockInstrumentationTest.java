@@ -207,6 +207,11 @@ public class AppLockInstrumentationTest {
         scrollToText("Forgot passcode").click();
         assertVisibleText("Recover your passcode");
         assertVisibleText("What is the recovery answer?");
+        scrollToText("Email-assisted recovery").click();
+        assertVisibleText("Email-assisted recovery");
+        assertVisibleText("Send recovery code");
+        scrollToText("Back to passcode recovery").click();
+        assertVisibleText("Recover your passcode");
 
         List<UiObject2> recoveryFields = waitForFields(3);
         fill(recoveryFields.get(0), "wrong answer");
