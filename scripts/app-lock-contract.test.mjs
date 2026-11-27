@@ -271,7 +271,7 @@ test("the AppLock dashboard covers setup, app selection, and permission recovery
   assert.match(revivedSetupUi, /Text\("Add protected apps"\)/);
   assert.match(revivedSetupUi, /Text\("Open Accessibility Settings"\)/);
   assert.match(revivedSetupUi, /Text\("Allow overlay"\)/);
-  assert.match(revivedSetupUi, /Text\("Open Device Administrator"\)/);
+  assert.match(revivedSetupUi, /Text\("Open Device Administrator Settings"\)/);
   assert.match(revivedSetupUi, /AppLockRevivedStateBridge\.saveProtectedPackages/);
   assert.match(appLock, /onAuthenticationSucceeded/);
   assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
@@ -412,8 +412,9 @@ test("App Lock setup uses the SafeNet dashboard visual hierarchy", () => {
   assert.match(revivedSetupUi, /Text\("SAFENET  \/  APP LOCK"/);
   assert.match(revivedSetupUi, /Text\("AppLock"/);
   assert.match(revivedSetupUi, /Text\("Passcode and recovery settings"/);
-  assert.match(revivedSetupUi, /Text\("PROTECTED APPS"/);
-  assert.match(revivedSetupUi, /Text\("ANDROID PERMISSIONS"/);
+  assert.match(revivedSetupUi, /Text\("Protected apps",/);
+  assert.match(revivedSetupUi, /Text\("Open Accessibility Settings"\)/);
+  assert.match(revivedSetupUi, /Text\("Open Device Administrator Settings"\)/);
 });
 
 test("the lock surface and dashboard identify AppLock local passcode protection", () => {
