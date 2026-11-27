@@ -164,13 +164,13 @@ export default function Dashboard() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-display text-lg font-bold text-white">App Lock Protection</h3>
+                  <h3 className="font-display text-lg font-bold text-white">AppLock-Revived Protection with Safe Return</h3>
                   <Badge variant="outline" className={`text-[10px] font-bold tracking-wider ${appLockStateClass}`}>
                     {appLockStateLabel}
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  AppLock-style protection with a local passcode and optional Device Owner controls for apps and Android system restrictions
+                  AppLock-Revived protection with a local passcode and optional Device Owner controls for apps and Android system restrictions
                 </p>
               </div>
             </div>
@@ -182,7 +182,7 @@ export default function Dashboard() {
                   void appLock.setEnabled(enabled).catch(() => undefined);
                 }}
                 disabled={!appLock.supported || appLock.isBusy}
-                aria-label={`App Lock Protection ${appLock.status.enabled ? "On" : "Off"}`}
+                aria-label={`AppLock-Revived Protection with Safe Return ${appLock.status.enabled ? "On" : "Off"}`}
                 data-testid="switch-app-lock"
               />
             </div>
