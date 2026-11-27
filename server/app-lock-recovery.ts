@@ -104,6 +104,11 @@ export async function requestAppLockEmailRecovery(emailAddress: string) {
     options: { shouldCreateUser: false },
   });
   if (error) {
+    console.error("Supabase Auth rejected App Lock email OTP request.", {
+      name: error.name,
+      status: error.status,
+      code: error.code,
+    });
     if (/rate limit|too many/i.test(error.message)) {
       return {
         sent: false,
