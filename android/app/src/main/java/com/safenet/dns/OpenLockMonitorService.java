@@ -214,8 +214,11 @@ public final class OpenLockMonitorService extends AccessibilityService {
     }
 
     private void requestLock(String packageName) {
-        if (!AppLockManager.shouldLockPackage(this, packageName)
-                || AppLockManager.isLockActivityActive()) {
+        if (!AppLockManager.shouldLockPackage(this, packageName)) {
+            return;
+        }
+        if (AppLockManager.isLockActivityActive()) {
+            schedulePendingLock(packageName);
             return;
         }
         if (packageName.equals(pendingPackage)) {
@@ -241,10 +244,14 @@ public final class OpenLockMonitorService extends AccessibilityService {
             // Android may briefly reject a background activity launch during a
             // window transition. Retry the same package instead of waiting for
             // another distinct foreground event.
-            pendingPackage = packageName;
-            mainHandler.removeCallbacks(retryPendingLaunch);
-            mainHandler.postDelayed(retryPendingLaunch, RETRY_DELAY_MS);
+            schedulePendingLock(packageName);
         }
+    }
+
+    private void schedulePendingLock(String packageName) {
+        pendingPackage = packageName;
+        mainHandler.removeCallbacks(retryPendingLaunch);
+        mainHandler.postDelayed(retryPendingLaunch, RETRY_DELAY_MS);
     }
 
     private void blockLaunch(String packageName) {
@@ -268,6 +275,7 @@ public final class OpenLockMonitorService extends AccessibilityService {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacks(retryPendingLaunch);
+        pendingPackage = null;
         clearTemporaryUnlock();
         try {
             unregisterReceiver(screenReceiver);

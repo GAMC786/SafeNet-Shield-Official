@@ -377,12 +377,14 @@ public class MainActivity extends BridgeActivity {
     }
 
     public void lockAppNow() {
-        if (appLockWebView == null || appLockView == null) {
-            return;
-        }
-        appLockWebView.setVisibility(View.INVISIBLE);
-        appLockView.setVisibility(View.VISIBLE);
-        requestAppUnlock();
+        runOnUiThread(() -> {
+            if (appLockWebView == null || appLockView == null) {
+                return;
+            }
+            appLockWebView.setVisibility(View.INVISIBLE);
+            appLockView.setVisibility(View.VISIBLE);
+            requestAppUnlock();
+        });
     }
 
     @Override
