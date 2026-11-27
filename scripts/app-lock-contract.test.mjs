@@ -258,7 +258,7 @@ test("the embedded AppLock dashboard covers setup, app selection, and permission
   assert.match(appLock, /Allow overlay/);
   assert.match(appLock, /Open Device Administrator/);
   assert.match(appLock, /AppLock passcode saved/);
-  assert.match(appLock, /AppLockManager\.setLockedPackages/);
+  assert.match(appLock, /AppLockRevivedStateBridge\.saveProtectedPackages/);
   assert.match(appLock, /onAuthenticationSucceeded/);
   assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
   assert.match(manifest, /android:name="\.AppLockActivity"/);

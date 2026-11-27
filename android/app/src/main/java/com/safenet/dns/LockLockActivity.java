@@ -301,7 +301,7 @@ public class LockLockActivity extends FragmentActivity {
                         this,
                         antiUninstallCheck.isChecked()
                 );
-                AppLockManager.setLockedPackages(this, selectedPackages());
+                AppLockRevivedStateBridge.saveProtectedPackages(this, selectedPackages());
                 AppLockManager.setEnabled(this, true);
                 AppLockManager.clearSession();
                 setupSaved = true;
@@ -317,7 +317,7 @@ public class LockLockActivity extends FragmentActivity {
         if (appList == null) {
             return;
         }
-        Set<String> selected = AppLockManager.getLockedPackages(this);
+        Set<String> selected = AppLockRevivedStateBridge.read(this).protectedPackages;
         List<ResolveInfo> launchableApps = new ArrayList<>();
         Intent launcherIntent = new Intent(Intent.ACTION_MAIN);
         launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER);
@@ -441,7 +441,7 @@ public class LockLockActivity extends FragmentActivity {
 
         unlock.setOnClickListener(view -> {
             AppLockManager.PinResult result =
-                    AppLockManager.verifyPin(this, pin.getText().toString());
+                    AppLockRevivedStateBridge.verifyPasscode(this, pin.getText().toString());
             if (!result.success) {
                 showStatus(result.message);
                 pin.setText("");

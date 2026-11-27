@@ -91,6 +91,32 @@ public class AppLockInstrumentationTest {
         assertTrue(command.contains(context.getPackageName()));
     }
 
+    @Test
+    public void revivedStateBridgePreservesExistingPasscodeAndProtectedApps() {
+        Set<String> protectedApps = new HashSet<>();
+        protectedApps.add(context.getPackageName());
+        protectedApps.add("com.example.mail");
+        AppLockManager.configure(
+                context,
+                PIN,
+                "What is the recovery answer?",
+                "offline answer"
+        );
+        AppLockManager.setLockedPackages(context, protectedApps);
+        AppLockManager.setEnabled(context, true);
+        AppLockManager.clearSession();
+
+        AppLockRevivedStateBridge.Snapshot snapshot =
+                AppLockRevivedStateBridge.read(context);
+
+        assertTrue(snapshot.enabled);
+        assertTrue(snapshot.hasPasscode);
+        assertTrue(snapshot.protectedPackages.containsAll(protectedApps));
+        assertTrue(AppLockRevivedStateBridge.verifyPasscode(context, PIN).success);
+        assertTrue(AppLockManager.hasPin(context));
+        assertTrue(AppLockManager.getLockedPackages(context).containsAll(protectedApps));
+    }
+
     @Before
     public void resetOpenLockState() throws Exception {
         originalAccessibilityServices = secureSetting("enabled_accessibility_services");

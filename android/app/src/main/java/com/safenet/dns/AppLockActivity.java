@@ -492,7 +492,7 @@ public final class AppLockActivity extends LockLockActivity {
                         question.getText().toString(),
                         answer.getText().toString()
                 );
-                AppLockManager.setLockedPackages(this, selectedPackages);
+                AppLockRevivedStateBridge.saveProtectedPackages(this, selectedPackages);
                 AppLockManager.setEnabled(this, true);
                 setupCompletedThisSession = true;
                 Toast.makeText(this, "AppLock passcode saved.", Toast.LENGTH_SHORT).show();
@@ -537,7 +537,7 @@ public final class AppLockActivity extends LockLockActivity {
         Button save = primaryButton("Protect selected apps");
         save.setOnClickListener(view -> {
             selectedPackages.add(getPackageName());
-            AppLockManager.setLockedPackages(this, selectedPackages);
+                AppLockRevivedStateBridge.saveProtectedPackages(this, selectedPackages);
             pickerVisible = false;
             showAppLockDashboard();
         });
