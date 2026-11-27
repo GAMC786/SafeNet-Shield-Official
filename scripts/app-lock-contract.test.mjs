@@ -62,6 +62,12 @@ const clientApp = await readSource("client/src/App.tsx");
 const appLockActivity = await readSource(
   "android/app/src/main/java/com/safenet/dns/AppLockActivity.java",
 );
+const revivedLockActivity = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockRevivedLockActivity.kt",
+);
+const revivedLockScreen = await readSource(
+  "android/app/src/main/java/com/safenet/dns/AppLockRevivedLockScreen.kt",
+);
 
 const repositoryRoot = new URL("..", import.meta.url);
 
@@ -220,7 +226,7 @@ test("AppLock uses explicit Accessibility, overlay, and Device Admin boundaries"
   assert.match(manager, /isDeviceAdminEnabled/);
   assert.match(service, /AccessibilityService/);
   assert.match(service, /TYPE_WINDOW_STATE_CHANGED/);
-  assert.match(service, /AppLockActivity.class/);
+  assert.match(service, /AppLockRevivedLockActivity.class/);
   assert.match(service, /postDelayed\(retryPendingLaunch, RETRY_DELAY_MS\)/);
   assert.match(service, /packageName\.equals\(pendingPackage\)/);
   assert.match(service, /observeForegroundPackage/);
@@ -262,6 +268,17 @@ test("the embedded AppLock dashboard covers setup, app selection, and permission
   assert.match(appLock, /onAuthenticationSucceeded/);
   assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
   assert.match(manifest, /android:name="\.AppLockActivity"/);
+});
+
+test("protected-app launches use the adapted AppLock-Revived lock surface", () => {
+  assert.match(manifest, /android:name="\.AppLockRevivedLockActivity"/);
+  assert.match(revivedLockActivity, /AppLockManager\.isProtectionActive\(this\)/);
+  assert.match(revivedLockActivity, /AppLockManager\.shouldLockPackage\(this, lockedPackage\)/);
+  assert.match(revivedLockActivity, /AppLockRevivedStateBridge\.verifyPasscode/);
+  assert.match(revivedLockActivity, /onRecover = \{ this@AppLockRevivedLockActivity\.showRecovery\(\) \}/);
+  assert.match(revivedLockActivity, /completeAuthentication\(\)/);
+  assert.match(revivedLockScreen, /Enter your SafeNet passcode/);
+  assert.match(revivedLockScreen, /Forgot passcode\?/);
 });
 
 test("the active AppLock configuration is the LockLock Compose integration", () => {
@@ -443,7 +460,7 @@ test("instrumentation covers lifecycle, permissions, duplicate activity protecti
     "LOCKLOCK_PHYSICAL_WRONG_PIN result=PASS",
     "com.android.settings",
     "dumpsys activity activities",
-    "countActivityRecords(activities, \"com.safenet.dns/.LockLockActivity\")",
+    "countActivityRecords(activities, \"com.safenet.dns/.AppLockRevivedLockActivity\")",
     "unlockCurrentLockScreen(PIN)",
     "rejectCurrentLockScreen(\"0000\")",
     "isForegroundPackage(targetPackage)",

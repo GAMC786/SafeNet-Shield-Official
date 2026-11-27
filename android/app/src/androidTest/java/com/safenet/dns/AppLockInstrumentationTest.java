@@ -449,7 +449,7 @@ public class AppLockInstrumentationTest {
                 "Repeated protected foreground events must keep one LockLockActivity record.\n"
                         + activities,
                 1,
-                countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
+                countActivityRecords(activities, "com.safenet.dns/.AppLockRevivedLockActivity")
         );
         Log.i(TAG, "OPENLOCK_ACCESSIBILITY result=PASS activity_records=1");
     }
@@ -577,7 +577,7 @@ public class AppLockInstrumentationTest {
             shell("am start -W -n " + launchComponent.flattenToShortString());
             waitForLockActivity();
             waitForPackage(context.getPackageName());
-            assertVisibleText("SafeNet App Lock");
+            assertVisibleText("AppLock-Revived");
             assertFalse(
                     "The selected third-party app must remain behind the lock screen before authentication.",
                     isForegroundPackage(targetPackage)
@@ -587,10 +587,10 @@ public class AppLockInstrumentationTest {
                     1,
                     countActivityRecords(
                             shell("dumpsys activity activities"),
-                            "com.safenet.dns/.LockLockActivity"
+                            "com.safenet.dns/.AppLockRevivedLockActivity"
                     )
             );
-            waitForButton("Use passcode fallback");
+            waitForButton("Unlock");
             Log.i(
                     TAG,
                     "LOCKLOCK_PHYSICAL_APP cycle=" + (cycle + 1) +
@@ -603,7 +603,7 @@ public class AppLockInstrumentationTest {
                 "Repeated physical-app foreground events must keep one LockLockActivity record.\n"
                         + activities,
                 1,
-                countActivityRecords(activities, "com.safenet.dns/.LockLockActivity")
+                countActivityRecords(activities, "com.safenet.dns/.AppLockRevivedLockActivity")
         );
 
         AppLockManager.clearSession();
@@ -654,7 +654,7 @@ public class AppLockInstrumentationTest {
                 "The selected app must be reopened within 15 seconds of switching Home.",
                 SystemClock.elapsedRealtime() - switchedHomeAt < TEMPORARY_UNLOCK_WINDOW_MS
         );
-        assertVisibleText("SafeNet App Lock");
+        assertVisibleText("AppLock-Revived");
         assertFalse(
                 "The selected app must be blocked again after leaving and reopening it.",
                 isForegroundPackage(targetPackage)
@@ -664,7 +664,7 @@ public class AppLockInstrumentationTest {
                 1,
                 countActivityRecords(
                         shell("dumpsys activity activities"),
-                        "com.safenet.dns/.LockLockActivity"
+                        "com.safenet.dns/.AppLockRevivedLockActivity"
                 )
         );
         Log.i(
@@ -689,7 +689,7 @@ public class AppLockInstrumentationTest {
 
         launchSafeNet();
         waitForLockActivity();
-        waitForButton("Use passcode fallback");
+        waitForButton("Unlock");
         assertTrue(
                 "Launching protected SafeNet must show LockLock after the selected app was unlocked.",
                 isLockActivityForeground()
@@ -910,27 +910,27 @@ public class AppLockInstrumentationTest {
 
     private void waitForLockActivity() throws Exception {
         waitFor(
-                "LockLockActivity to be foreground",
+                "AppLock-Revived lock activity to be foreground",
                 () -> shell("dumpsys activity activities")
-                        .contains("com.safenet.dns/.LockLockActivity")
+                        .contains("com.safenet.dns/.AppLockRevivedLockActivity")
         );
     }
 
     private void unlockCurrentLockScreen(String pin) throws Exception {
         List<UiObject2> fields = waitForFields(1);
         fill(fields.get(0), pin);
-        waitForButton("Use passcode fallback").click();
+        waitForButton("Unlock").click();
         waitFor(
-                "LockLockActivity to finish after a valid passcode",
+                "AppLock-Revived lock activity to finish after a valid passcode",
                 () -> !shell("dumpsys activity activities")
-                        .contains("com.safenet.dns/.LockLockActivity")
+                        .contains("com.safenet.dns/.AppLockRevivedLockActivity")
         );
     }
 
     private void rejectCurrentLockScreen(String pin) throws Exception {
         List<UiObject2> fields = waitForFields(1);
         fill(fields.get(0), pin);
-        waitForButton("Use passcode fallback").click();
+        waitForButton("Unlock").click();
         assertVisibleText("Incorrect passcode. Attempt 1 of 5.");
     }
 
@@ -953,7 +953,7 @@ public class AppLockInstrumentationTest {
             if ((line.contains("mResumedActivity")
                     || line.contains("mCurrentFocus")
                     || line.contains("mFocusedApp"))
-                    && line.contains("com.safenet.dns/.LockLockActivity")) {
+                    && line.contains("com.safenet.dns/.AppLockRevivedLockActivity")) {
                 return true;
             }
         }

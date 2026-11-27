@@ -452,7 +452,7 @@ public class LockLockActivity extends FragmentActivity {
         setContentView(scrollRoot(content));
     }
 
-    private void completeAuthentication() {
+    protected final void completeAuthentication() {
         if (AppLockManager.MODE_DISABLE.equals(mode)) {
             AppLockManager.setEnabled(this, false);
             boolean adminRemoved = AppLockManager.disableAntiUninstall(this);
@@ -484,7 +484,7 @@ public class LockLockActivity extends FragmentActivity {
         }
     }
 
-    private void showRecovery() {
+    protected void showRecovery() {
         content = baseContent(
                 "Recover your passcode",
                 "Answer your offline recovery question and choose a new passcode."

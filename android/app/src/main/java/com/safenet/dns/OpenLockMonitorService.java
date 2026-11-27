@@ -227,7 +227,7 @@ public final class OpenLockMonitorService extends AccessibilityService {
             return;
         }
 
-        Intent lockIntent = new Intent(this, AppLockActivity.class)
+        Intent lockIntent = new Intent(this, AppLockRevivedLockActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_NO_ANIMATION
                         | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
