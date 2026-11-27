@@ -59,6 +59,13 @@ const androidInstrumentationSource = readFileSync(
   ),
   "utf8",
 );
+const localVpnServiceSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt",
+  ),
+  "utf8",
+);
 const headerSource = readFileSync(
   path.join(clientRoot, "src/components/Header.tsx"),
   "utf8",
@@ -553,6 +560,19 @@ test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () =>
   assert.match(localDnsVpnSource, /other active Android VPN/);
   assert.match(localVpnEulaSource, /Android allows one active VPN at a time/);
   assert.match(localVpnEulaSource, /DNS-over-HTTPS, DNS-over-TLS, another VPN/);
+});
+
+test("Android VPN forwards TCP and UDP through the validated physical network", () => {
+  assert.match(localVpnServiceSource, /newForwardingTcpSocket\(\)/);
+  assert.match(localVpnServiceSource, /newForwardingUdpSocket\(\)/);
+  assert.match(
+    localVpnServiceSource,
+    /private fun newForwardingTcpSocket\(\): Socket \{[\s\S]*?upstreamNetwork\(\)[\s\S]*?network\.socketFactory\.createSocket\(\)[\s\S]*?protect\(socket\)/,
+  );
+  assert.match(
+    localVpnServiceSource,
+    /private fun newForwardingUdpSocket\(\): DatagramSocket \{[\s\S]*?upstreamNetwork\(\)[\s\S]*?DatagramSocket\(null\)[\s\S]*?network\.bindSocket\(socket\)[\s\S]*?protect\(socket\)/,
+  );
 });
 
 test("ClamAV verification waits for both scans and shows its pending state", () => {

@@ -141,6 +141,9 @@ class SafeNetLocalVpnService : VpnService() {
                 .addAddress("fd00:6e76:6376::2", 128)
                 .addDnsServer("10.111.0.1")
                 .addDnsServer("fd00:6e76:6376::1")
+                // Android routes by IP prefix, not destination port. Capture
+                // DNS plus ordinary flows here, then relay non-DNS TCP/UDP
+                // sockets over the validated physical network below.
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .establish()
@@ -180,8 +183,7 @@ class SafeNetLocalVpnService : VpnService() {
                         runCatching { conn.close() }
                         return@execute
                     }
-                    val upstream = Socket().also {
-                        if (!protect(it)) throw IllegalStateException("Could not protect upstream socket")
+                    val upstream = newForwardingTcpSocket().also {
                         it.connect(InetSocketAddress(InetAddress.getByName(dstIp), dstPort.toInt()), 12000)
                     }
                     pump(conn, upstream)
@@ -203,9 +205,8 @@ class SafeNetLocalVpnService : VpnService() {
                         runCatching { conn.close() }
                         return@execute
                     }
-                    val socket = DatagramSocket()
+                    val socket = newForwardingUdpSocket()
                     try {
-                        if (!protect(socket)) throw IllegalStateException("Could not protect upstream socket")
                         socket.connect(InetAddress.getByName(dstIp), dstPort.toInt())
                         val reader = pool.submit {
                             val data = ByteArray(65507)
@@ -227,6 +228,33 @@ class SafeNetLocalVpnService : VpnService() {
         }
 
         override fun log(level: Long, msg: String) {}
+    }
+
+    private fun newForwardingTcpSocket(): Socket {
+        val network = upstreamNetwork()
+            ?: throw IllegalStateException("No validated internet network is available for TCP forwarding.")
+        val socket = network.socketFactory.createSocket()
+        if (!protect(socket)) {
+            socket.close()
+            throw IllegalStateException("Could not protect the TCP forwarding socket")
+        }
+        return socket
+    }
+
+    private fun newForwardingUdpSocket(): DatagramSocket {
+        val network = upstreamNetwork()
+            ?: throw IllegalStateException("No validated internet network is available for UDP forwarding.")
+        val socket = DatagramSocket(null)
+        try {
+            network.bindSocket(socket)
+            if (!protect(socket)) {
+                throw IllegalStateException("Could not protect the UDP forwarding socket")
+            }
+            return socket
+        } catch (error: Exception) {
+            socket.close()
+            throw error
+        }
     }
 
     private fun dotSocket(address: String): SSLSocket {
