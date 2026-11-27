@@ -42,6 +42,7 @@ import {
 import { registerControlDRoutes } from "./control-d-routes";
 import { registerNextDnsRoutes } from "./nextdns-routes";
 import { registerFamilyDnsRoutes } from "./family-dns-routes";
+import { registerMobileAuthConfigRoute } from "./mobile-auth-config";
 import {
   getCustomDnsBlocklistsForFirewall,
   registerCustomDnsBlocklistRoutes,
@@ -139,6 +140,7 @@ export async function registerRoutes(
   options: { seed?: boolean } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
+  registerMobileAuthConfigRoute(app);
   app.get("/api/auth/session", requireAuth, (req, res) => {
     const userId = getRequestUserId(req);
     if (!userId) {

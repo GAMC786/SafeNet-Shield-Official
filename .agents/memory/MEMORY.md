@@ -31,7 +31,7 @@
 - [Npm security refresh fallback](npm-security-refresh-fallback.md) — when Replit’s audit endpoint is unavailable, verify resolved lock entries and retry registry propagation before pinning.
 - [PIN auth status cache](pin-auth-status-cache.md) — never cache auth status across PIN verification or a valid PIN can appear rejected.
 - [Android PIN session cookies](android-pin-session-cookies.md) — packaged Android auth crosses origins; WebView must retain third-party cookies or valid PINs remain locked.
- - [Android Clerk startup configuration](android-clerk-startup-config.md) — packaged builds must load public Clerk config before mounting React or a missing CI key produces a blank WebView.
+- [Android runtime auth configuration](android-clerk-startup-config.md) — load public Clerk and Supabase settings from the HTTPS API before React mounts; publish the backend before rebuilding APKs.
 - [Android startup loader first paint](android-startup-loader-first-paint.md) — render the loader before async Clerk configuration so fast WebView startup cannot skip it.
 - [Capacitor activity-result recovery](capacitor-activity-result-recovery.md) — restore plugin-local pending/result state because Capacitor rebuilds pending activity calls as dangling callbacks.
  - [Clerk WebView proxy origin](clerk-webview-proxy-origin.md) — native WebViews must present the public proxy origin to Clerk upstream or Clerk rejects the localhost origin.

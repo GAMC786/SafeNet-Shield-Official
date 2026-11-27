@@ -42,23 +42,21 @@ import NotFound from "@/pages/not-found";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const APP_LOCK_RETURN_URI = "safenet://app-lock/recovery";
+const runtimeConfig = window.__SAFENET_RUNTIME_CONFIG__;
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+  runtimeConfig?.clerkPublishableKey || import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
 const configuredClerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL as
   | string
   | undefined;
 const nativeApiOrigin = import.meta.env.VITE_API_URL as string | undefined;
 const clerkProxyUrl =
+  runtimeConfig?.clerkProxyUrl?.trim() ||
   configuredClerkProxyUrl?.trim() ||
   (window.location.hostname === "localhost" && nativeApiOrigin?.trim()
     ? `${nativeApiOrigin.trim().replace(/\/+$/, "")}/api/__clerk`
     : undefined);
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY.");
-}
 
 function stripBase(path: string) {
   return basePath && path.startsWith(basePath)

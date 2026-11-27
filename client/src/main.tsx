@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
-import App from "./App";
 import "./index.css";
 import {
   initializeGlitchTip,
   installGlitchTipGlobalHandlers,
 } from "./lib/glitchtip";
+import { loadSafeNetRuntimeConfig } from "./lib/runtime-config";
 
 void initializeGlitchTip();
 installGlitchTipGlobalHandlers();
@@ -51,6 +51,69 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 const root = createRoot(document.getElementById("root")!);
 
+function renderStartupMessage(message: string, retry = false) {
+  root.render(
+    <main
+      id={retry ? undefined : "startup-loader"}
+      role={retry ? "alert" : "status"}
+      style={{
+        alignItems: "center",
+        background: "#090b14",
+        color: "#f8fafc",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        justifyContent: "center",
+        minHeight: "100dvh",
+        padding: "24px",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0 }}>
+        {retry ? "SafeNet needs a connection" : "Starting SafeNet"}
+      </h1>
+      <p style={{ color: "#94a3b8", margin: 0 }}>{message}</p>
+      {retry && (
+        <button
+          type="button"
+          onClick={() => {
+            renderStartupMessage("Loading SafeNet's public settings…");
+            void bootstrap();
+          }}
+          style={{
+            background: "#2563eb",
+            border: 0,
+            borderRadius: "8px",
+            color: "#fff",
+            fontWeight: 600,
+            padding: "12px 20px",
+          }}
+        >
+          Retry
+        </button>
+      )}
+    </main>,
+  );
+}
+
+async function bootstrap() {
+  try {
+    const runtimeConfig = await loadSafeNetRuntimeConfig(import.meta.env, {
+      origin: window.location.origin,
+    });
+    window.__SAFENET_RUNTIME_CONFIG__ = runtimeConfig;
+    const { default: App } = await import("./App");
+    openDashboardOnLaunch();
+    root.render(<App />);
+  } catch (error) {
+    console.error("SafeNet startup configuration failed.", error);
+    renderStartupMessage(
+      "SafeNet could not load the public authentication settings. Check your connection and try again.",
+      true,
+    );
+  }
+}
+
 function isPackagedApp() {
   return (
     window.location.hostname === "localhost" &&
@@ -69,6 +132,5 @@ function openDashboardOnLaunch() {
   );
 }
 
-openDashboardOnLaunch();
-
-root.render(<App />);
+renderStartupMessage("Loading SafeNet's public settings…");
+void bootstrap();

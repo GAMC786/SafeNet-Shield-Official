@@ -187,24 +187,30 @@ const packageVersion = JSON.parse(
   readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
 ).version as string;
 
-test("the app mounts directly without a startup loader", () => {
+test("startup shows a loader and retry screen while public settings are loading", () => {
   assert.doesNotMatch(indexHtml, /startup-loader|dashboard-fallback|Loading protected network status/);
   assert.doesNotMatch(indexHtml, /SafeNet_Astronaut_White_Background\.png/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
-  assert.match(mainSource, /root\.render\(<App \/>/);
-  assert.doesNotMatch(mainSource, /STARTUP_LOADER|startup-loader|dashboard-fallback|hideDashboardFallback/);
+  assert.match(mainSource, /id=\{retry \? undefined : "startup-loader"\}/);
+  assert.match(mainSource, /SafeNet could not load the public authentication settings/);
+  assert.match(mainSource, /Retry/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);
   assert.doesNotMatch(indexHtml, /boot-surface|Loading secure server/i);
 });
 
-test("startup renders the app without an authentication configuration", () => {
+test("startup loads public auth settings before importing the app", () => {
+  assert.match(mainSource, /loadSafeNetRuntimeConfig/);
+  assert.match(mainSource, /window\.__SAFENET_RUNTIME_CONFIG__ = runtimeConfig/);
+  assert.match(mainSource, /await import\("\.\/App"\)/);
   assert.match(mainSource, /root\.render\(<App \/>/);
+  assert.doesNotMatch(mainSource, /import App from "\.\/App"/);
   assert.match(mainSource, /openDashboardOnLaunch/);
-  assert.doesNotMatch(mainSource, /loadClerkConfig|auth\/config|ClerkRuntimeConfig/);
+  assert.doesNotMatch(appSource, /throw new Error\("Missing VITE_CLERK_PUBLISHABLE_KEY\."\)/);
 });
 
-test("startup is not gated by sign-in configuration", () => {
-  assert.doesNotMatch(mainSource, /STARTUP_CONFIG_RESPONSE_DELAY_MS|STARTUP_CONFIG_TEST_QUERY|STARTUP_CONFIG_DELAYED_TEST_VALUE/);
+test("startup retries configuration failures and normalizes Android deep links", () => {
+  assert.match(mainSource, /void bootstrap\(\)/);
+  assert.match(mainSource, /onClick=\{\(\) => \{/);
   assert.match(mainSource, /openDashboardOnLaunch\(\);\s*root\.render\(<App \/>/);
 });
 
