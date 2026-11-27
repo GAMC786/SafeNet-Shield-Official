@@ -507,6 +507,13 @@ test("AdGuard API connections distinguish the API server ID from the device setu
   assert.match(dnsProviderConnectionsSource, /Server setup ID is only for device enrollment/);
 });
 
+test("DNS API connection provider selection persists across tab navigation", () => {
+  assert.match(
+    dnsProviderConnectionsSource,
+    /usePersistentState<Provider>\(\s*"safenet-dns-api-provider-selection",\s*"nextdns"/,
+  );
+});
+
 test("DNS API connection changes refresh provider blocklist status and lists", () => {
   assert.match(dnsProviderConnectionsSource, /invalidateProviderBlocklistQueries/);
   assert.match(dnsProviderConnectionsSource, /dns-provider-list-status/);

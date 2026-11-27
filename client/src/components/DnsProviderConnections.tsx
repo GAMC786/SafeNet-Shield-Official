@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CyberCard } from "@/components/CyberCard";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/api";
 
@@ -36,7 +37,10 @@ export default function DnsProviderConnections() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [provider, setProvider] = useState<Provider>("nextdns");
+  const [provider, setProvider] = usePersistentState<Provider>(
+    "safenet-dns-api-provider-selection",
+    "nextdns",
+  );
   const [token, setToken] = useState("");
   const [profileId, setProfileId] = useState("");
   const [adguardServers, setAdguardServers] = useState<Array<{ id: string; name: string }>>([]);
