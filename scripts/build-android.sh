@@ -13,6 +13,26 @@ if [ -z "${MOBILE_API_URL:-}" ]; then
     exit 1
 fi
 
+auth_environment="production"
+case "${MOBILE_TEST_BUILD:-false}" in
+    true|1)
+        if [ -z "${VITE_SUPABASE_DEVELOPMENT_URL:-}" ] || \
+           [ -z "${VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY:-}" ]; then
+            echo "ERROR: Test APK builds require the development Supabase URL and publishable key."
+            exit 1
+        fi
+        export VITE_SUPABASE_URL="$VITE_SUPABASE_DEVELOPMENT_URL"
+        export VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY"
+        auth_environment="development"
+        ;;
+    false|0|"")
+        ;;
+    *)
+        echo "ERROR: MOBILE_TEST_BUILD must be true or false."
+        exit 1
+        ;;
+esac
+
 echo "Checking backend settings endpoint..."
 if ! VITE_API_URL=$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL"); then
     exit 1
@@ -35,6 +55,7 @@ fi
 cat > dist/public/mobile-build.json <<EOF
 {
   "apiOrigin": "$VITE_API_URL",
+  "authEnvironment": "$auth_environment",
   "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF

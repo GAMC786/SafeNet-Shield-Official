@@ -205,6 +205,17 @@ tasks.register("verifyMobileWebAssets") {
         if (!(config.apiOrigin instanceof String) || !config.apiOrigin.startsWith("https://")) {
             throw new GradleException("Android mobile-build.json contains an invalid API origin.")
         }
+        def authEnvironment = config.authEnvironment
+        if (!(authEnvironment in ["production", "development"])) {
+            throw new GradleException("Android mobile-build.json must declare its Supabase auth environment.")
+        }
+        def testInstall = project.findProperty("testInstall") == "true"
+        if (testInstall && authEnvironment != "development") {
+            throw new GradleException("Test APKs must use the development Supabase project. Rebuild with MOBILE_TEST_BUILD=true.")
+        }
+        if (!testInstall && authEnvironment != "production") {
+            throw new GradleException("Production APK builds cannot use the development Supabase project.")
+        }
     }
 }
 
