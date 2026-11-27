@@ -366,7 +366,7 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(activity, /\/api\/app-lock\/recovery\/verify/);
   assert.match(activity, /SafeNet account email/);
   assert.match(activity, /payload\.put\("email", emailValue\)/);
-  assert.match(activity, /AppLockManager\.resetPin\(this, pinValue\)/);
+  assert.match(activity, /AppLockRevivedStateBridge\.resetPasscode\(this, pinValue\)/);
   assert.match(activity, /AppLockManager\.clearSession\(\)/);
   assert.match(activity, /showUnlock\(\)/);
   assert.match(manager, /public static void resetPin\(Context context, String pin\)/);

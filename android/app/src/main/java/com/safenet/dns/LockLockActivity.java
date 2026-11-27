@@ -291,7 +291,7 @@ public class LockLockActivity extends FragmentActivity {
                 return;
             }
             try {
-                AppLockManager.configure(
+                AppLockRevivedStateBridge.configurePasscode(
                         this,
                         pinValue,
                         question.getText().toString(),
@@ -521,7 +521,7 @@ public class LockLockActivity extends FragmentActivity {
                 return;
             }
             try {
-                AppLockManager.configure(
+                AppLockRevivedStateBridge.configurePasscode(
                         this,
                         pin.getText().toString(),
                         AppLockManager.recoveryQuestion(this),
@@ -598,7 +598,7 @@ public class LockLockActivity extends FragmentActivity {
                         return;
                     }
                     try {
-                        AppLockManager.resetPin(this, pinValue);
+                        AppLockRevivedStateBridge.resetPasscode(this, pinValue);
                         AppLockManager.clearSession();
                         showUnlock();
                         showStatus("Passcode reset. Enter the new passcode to continue.");
@@ -702,7 +702,7 @@ public class LockLockActivity extends FragmentActivity {
                         return;
                     }
                     try {
-                        AppLockManager.resetPin(this, pinValue);
+                        AppLockRevivedStateBridge.resetPasscode(this, pinValue);
                         AppLockManager.clearSession();
                         showUnlock();
                         showStatus("Passcode reset. Enter the new passcode to continue.");

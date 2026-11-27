@@ -486,7 +486,7 @@ public final class AppLockActivity extends LockLockActivity {
                 return;
             }
             try {
-                AppLockManager.configure(
+                AppLockRevivedStateBridge.configurePasscode(
                         this,
                         pin.getText().toString(),
                         question.getText().toString(),

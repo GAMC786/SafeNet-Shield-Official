@@ -30,6 +30,19 @@ public final class AppLockRevivedStateBridge {
         return AppLockManager.verifyPin(context, passcode);
     }
 
+    public static void configurePasscode(
+            Context context,
+            String passcode,
+            String recoveryQuestion,
+            String recoveryAnswer
+    ) {
+        AppLockManager.configure(context, passcode, recoveryQuestion, recoveryAnswer);
+    }
+
+    public static void resetPasscode(Context context, String passcode) {
+        AppLockManager.resetPin(context, passcode);
+    }
+
     public static void saveProtectedPackages(Context context, Set<String> packageNames) {
         AppLockManager.setLockedPackages(context, packageNames);
     }
