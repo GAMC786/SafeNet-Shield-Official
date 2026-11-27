@@ -70,6 +70,7 @@
 - [LibreSpeed SafeNet integration](librespeed-safenet-integration.md) — keep the custom UI and use same-origin LibreSpeed-compatible timed transfer endpoints.
 - [Local ClamAV sidecar](local-clamav-sidecar.md) — when no external service is available, run token-protected clamd locally but re-verify on every fresh autoscale instance.
 - [GitHub Git transport authentication](github-git-transport-auth.md) — GitHub API Bearer auth differs from Git HTTPS Basic auth; use x-access-token with the PAT for pushes.
+- [Protected Git writes](protected-git-writes.md) — authorized Git mutations in this workspace require the explicit Git-write guard; keep pushes scoped and never force them.
 - [Diverged release branch strategy](diverged-release-branch-strategy.md) — when GitHub main is older than the workspace, dispatch the signed release workflow from a versioned release branch instead of force-pushing main.
 - [WireGuard release secret boundary](wireguard-release-secret-boundary.md) — tagged Android builds fail closed until all protected WireGuard values exist as GitHub Actions secrets.
 - [Persistent form drafts](persistent-form-drafts.md) — keep unsaved security form values in browser-local storage while submitted state remains server/native-backed.
