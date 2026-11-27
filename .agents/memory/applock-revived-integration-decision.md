@@ -7,4 +7,6 @@ SafeNet should replace its embedded App Lock with an integrated port of AppLock-
 
 **Why:** the user explicitly chose AppLock-Revived. It is a standalone Android application, so SafeNet must port the needed implementation and preserve SafeNet-specific identity, permissions, local state, and Supabase email recovery.
 
-**How to apply:** keep the port dependent on the Supabase sign-in migration so the new App Lock retains the correct recovery flow. Do not silently discard existing local passcodes or protected-app selections.
+**How to apply:** prioritize the AppLock-Revived port before completing Supabase sign-in setup. Preserve SafeNet's local passcode and protected-app selections, and keep email recovery behind its existing boundary without embedding provider credentials.
+
+**Why:** the user changed the order after repeated recovery crashes and wants the App Lock replacement tested before finishing Supabase setup.

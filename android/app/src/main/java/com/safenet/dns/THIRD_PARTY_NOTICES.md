@@ -40,3 +40,16 @@ https://github.com/jesusalbertodeveloper/AppLock
 Copyright (c) 2026 Jesús Alberto Developer (jesusalbertodeveloper)
 Licensed under the MIT License. The license text is in
 `licenses/AppLock-NOTICE.md`.
+
+## AppLock-Revived port
+
+SafeNet's App Lock replacement is based on the MIT-licensed AppLock-Revived
+project:
+
+https://github.com/riyadmondol2006/AppLock-Revived
+
+Porting baseline: commit `0ec43cb6510e03985cc3ddb0a6eb5b95782a89e0`.
+Copyright (c) 2023-2025 Pranav Purwar
+Copyright (c) 2026 Riyad M
+Licensed under the MIT License. The license text is in
+`licenses/AppLock-Revived-NOTICE.md`.
