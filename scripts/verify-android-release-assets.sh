@@ -211,8 +211,9 @@ require_badging \
     "Android instrumentation APK package"
 
 command -v unzip >/dev/null 2>&1 || fail "unzip is required to inspect the application APK."
-unzip -l "$apk" | grep -Fq "assets/public/" ||
+if ! unzip -l "$apk" | grep -F "assets/public/" >/dev/null; then
     fail "Android application APK does not contain the bundled web assets."
+fi
 
 archive_entries="$(tar -tzf "$smoke_archive")" ||
     fail "Smoke evidence archive is not a readable gzip tar archive."

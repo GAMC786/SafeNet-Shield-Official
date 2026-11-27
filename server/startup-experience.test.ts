@@ -11,10 +11,10 @@ const androidMainActivity = readFileSync(
   ),
   "utf8",
 );
-const appLockComposeSource = readFileSync(
+const appLockSetupSource = readFileSync(
   path.resolve(
     process.cwd(),
-    "android/app/src/main/java/com/safenet/dns/LockLockComposeUi.kt",
+    "android/app/src/main/java/com/safenet/dns/AppLockRevivedSetupUi.kt",
   ),
   "utf8",
 );
@@ -419,9 +419,20 @@ test("Android App Lock applies live system-bar insets to the native overlay", ()
   assert.doesNotMatch(androidMainActivity, /setOnApplyWindowInsetsListener\(container/);
 });
 
-test("Android App Lock can return to the SafeNet Dashboard", () => {
-  assert.match(appLockComposeSource, /navigationIcon\s*=\s*\{\s*TextButton\(onClick = \{ activity\.finish\(\) \}\)/);
-  assert.match(appLockComposeSource, /Text\("Back to Dashboard"\)/);
+test("Android App Lock setup returns to the SafeNet Dashboard with system Back", () => {
+  assert.match(appLockSetupSource, /BackHandler\(enabled = pickerVisible \|\| recoverySettingsVisible\)/);
+  assert.match(appLockSetupSource, /Text\("Back to settings"\)/);
+  assert.match(
+    appLockSetupSource,
+    /onClick = \{ recoverySettingsVisible = false \}[\s\S]*?Text\("Back to settings"\)/,
+  );
+  assert.match(
+    readFileSync(
+      path.resolve(process.cwd(), "android/app/src/main/java/com/safenet/dns/AppLockActivity.java"),
+      "utf8",
+    ),
+    /public void onBackPressed\(\)\s*\{\s*super\.onBackPressed\(\);\s*\}/,
+  );
 });
 
 test("Android keeps a visible black status bar with white icons", () => {

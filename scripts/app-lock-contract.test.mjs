@@ -33,8 +33,8 @@ const [
   dashboard,
   recoveryService,
   strings,
-  composeUi,
-  lockLockNotice,
+  revivedSetupUi,
+  thirdPartyNotices,
   dnsSettings,
 ] = await Promise.all([
   readSource("android/app/build.gradle"),
@@ -54,8 +54,8 @@ const [
   readSource("client/src/pages/Dashboard.tsx"),
   readSource("server/app-lock-recovery.ts"),
   readSource("android/app/src/main/res/values/strings.xml"),
-  readSource("android/app/src/main/java/com/safenet/dns/LockLockComposeUi.kt"),
-  readSource("android/third_party/locklock/NOTICE.md"),
+  readSource("android/app/src/main/java/com/safenet/dns/AppLockRevivedSetupUi.kt"),
+  readSource("android/app/src/main/java/com/safenet/dns/THIRD_PARTY_NOTICES.md"),
   readSource("client/src/pages/DnsSettings.tsx"),
 ]);
 const clientApp = await readSource("client/src/App.tsx");
@@ -213,7 +213,7 @@ test("App Lock uses a local passcode and the AppLock-style Accessibility Service
   assert.match(manager, /PREF_COOLDOWN_UNTIL/);
   assert.match(manager, /verifyRecoveryAnswer/);
   assert.match(manager, /isAccessibilityServiceEnabled/);
-  assert.match(appLockActivity, /AppLockManager\.isProtectionActive\(this\)/);
+  assert.match(revivedLockActivity, /AppLockManager\.isProtectionActive\(this\)/);
   assert.match(manager, /disableAntiUninstall/);
   assert.match(manager, /removeActiveAdmin/);
   assert.doesNotMatch(activity, /BiometricPrompt/);
@@ -262,18 +262,17 @@ test("predictive system Back uses the protected lock-screen guard", () => {
   assert.match(instrumentation, /getOnBackPressedDispatcher\(\)[\s\S]*\.onBackPressed\(\)/);
 });
 
-test("the embedded AppLock dashboard covers setup, app selection, and permission recovery", () => {
+test("the AppLock dashboard covers setup, app selection, and permission recovery", () => {
   assert.match(appLock, /public final class AppLockActivity extends LockLockActivity/);
   assert.match(appLock, /useEmbeddedAppLockDashboard/);
   assert.match(appLock, /showAppLockDashboard/);
-  assert.match(appLock, /Select Apps/);
-  assert.match(appLock, /Search apps/);
-  assert.match(appLock, /Add protected apps/);
-  assert.match(appLock, /Open Accessibility Settings/);
-  assert.match(appLock, /Allow overlay/);
-  assert.match(appLock, /Open Device Administrator/);
-  assert.match(appLock, /AppLock passcode saved/);
-  assert.match(appLock, /AppLockRevivedStateBridge\.saveProtectedPackages/);
+  assert.match(revivedSetupUi, /Text\("Select Apps"/);
+  assert.match(revivedSetupUi, /label = \{ Text\("Search apps"\) \}/);
+  assert.match(revivedSetupUi, /Text\("Add protected apps"\)/);
+  assert.match(revivedSetupUi, /Text\("Open Accessibility Settings"\)/);
+  assert.match(revivedSetupUi, /Text\("Allow overlay"\)/);
+  assert.match(revivedSetupUi, /Text\("Open Device Administrator"\)/);
+  assert.match(revivedSetupUi, /AppLockRevivedStateBridge\.saveProtectedPackages/);
   assert.match(appLock, /onAuthenticationSucceeded/);
   assert.match(appLock, /EXTRA_OPEN_DASHBOARD_AFTER_AUTH/);
   assert.match(manifest, /android:name="\.AppLockActivity"/);
@@ -290,42 +289,29 @@ test("protected-app launches use the adapted AppLock-Revived lock surface", () =
   assert.match(revivedLockScreen, /Forgot passcode\?/);
 });
 
-test("the active AppLock configuration is the LockLock Compose integration", () => {
-  assert.match(appLock, /LockLockComposeUi\.render/);
-  assert.match(appLock, /openHostedSignInFromCompose/);
+test("the active AppLock configuration uses SafeNet's AppLock-Revived setup UI", () => {
+  assert.match(appLock, /AppLockRevivedSetupUi\.render\(this, composeView, this::markComposeSetupSaved\)/);
+  assert.match(revivedSetupUi, /SafeNet-maintained configuration UI for the AppLock-Revived integration/);
+  assert.match(revivedSetupUi, /host\.setContent/);
+  assert.match(revivedSetupUi, /AppLockRevivedStateBridge\.read\(activity\)/);
+  assert.match(revivedSetupUi, /AppLockRevivedStateBridge\.saveProtectedPackages/);
+  assert.match(revivedSetupUi, /Text\("Select Apps"/);
+  assert.match(revivedSetupUi, /Text\("Passcode and recovery settings"/);
   assert.match(appGradle, /org\.jetbrains\.kotlin\.android/);
   assert.match(appGradle, /org\.jetbrains\.kotlin\.plugin\.compose/);
   assert.match(appGradle, /androidx\.compose\.material3:material3/);
-  assert.match(composeUi, /import androidx\.compose\.ui\.platform\.ViewCompositionStrategy/);
-  assert.doesNotMatch(composeUi, /import androidx\.compose\.ui\.platform\.setContent/);
-  assert.match(
-    composeUi,
-    /LockLockSwitch\(checked\) \{ newChecked ->\s*if \(newChecked != checked\) onClick\(\)/,
-  );
-  assert.match(composeUi, /https:\/\/github\.com\/nethical6\/LockLock/);
-  assert.match(composeUi, /SELECT APPS/);
-  assert.match(composeUi, /LockLockRecoveryDialog/);
-  assert.match(composeUi, /LockLockAppSelectionItem/);
-  assert.match(composeUi, /Not protecting apps — check permissions/);
-  assert.match(lockLockNotice, /GNU General Public License v3\.0/);
-  assert.match(lockLockNotice, /github\.com\/nethical6\/LockLock/);
+  assert.match(thirdPartyNotices, /MIT-licensed AppLock-Revived/);
+  assert.match(thirdPartyNotices, /licenses\/AppLock-Revived-NOTICE\.md/);
+  assert.doesNotMatch(thirdPartyNotices, /GNU General Public License v3\.0/);
 });
 
-test("the embedded LockLock pages use SafeNet's cyber visual system", () => {
-  assert.match(composeUi, /SafeNetBackground/);
-  assert.match(composeUi, /SafeNetPrimary/);
-  assert.match(composeUi, /SafeNetAccent/);
-  assert.match(composeUi, /SafeNetMonoFontFamily/);
-  assert.match(composeUi, /Font\(R\.font\.safenet_space_grotesk_variable/);
-  assert.match(composeUi, /Font\(R\.font\.safenet_rajdhani_regular/);
-  assert.match(composeUi, /Font\(R\.font\.safenet_space_mono_regular/);
-  assert.match(composeUi, /RoundedCornerShape\(8\.dp\)/);
-  assert.match(composeUi, /SafeNetBackground = Color\.hsl\(222f, 0\.47f, 0\.11f\)/);
-  assert.match(composeUi, /Brush\.radialGradient/);
-  assert.match(composeUi, /BorderStroke/);
-  assert.match(composeUi, /ANDROID PERMISSION GATE/);
-  assert.match(composeUi, /SECURE LOCAL CONTROL/);
-  assert.match(composeUi, /safeNetFieldColors/);
+test("AppLock setup uses labeled controls and scrollable SafeNet Compose surfaces", () => {
+  assert.match(revivedSetupUi, /MaterialTheme\.typography/);
+  assert.match(revivedSetupUi, /Modifier\.fillMaxSize\(\)/);
+  assert.match(revivedSetupUi, /OutlinedTextField/);
+  assert.match(revivedSetupUi, /Checkbox/);
+  assert.match(revivedSetupUi, /contentDescription/);
+  assert.match(revivedSetupUi, /verticalScroll\(rememberScrollState\(\)\)/);
 });
 
 test("the SDNS resolver option uses a provider-neutral label", () => {
@@ -337,7 +323,7 @@ test("the SDNS resolver option uses a provider-neutral label", () => {
 
 test("Dashboard places the VPN and proxy browser blocker above App Lock Protection", () => {
   const blockerIndex = dashboard.indexOf("<VpnProxyBrowserBlocker />");
-  const appLockIndex = dashboard.indexOf(">App Lock Protection</h3>");
+  const appLockIndex = dashboard.indexOf(">AppLock-Revived Protection with Safe Return</h3>");
   assert.ok(blockerIndex >= 0 && appLockIndex >= 0 && blockerIndex < appLockIndex);
 });
 
@@ -407,7 +393,7 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
 
 test("provider recovery returns through a one-time Android handoff", () => {
   assert.match(manager, /EXTRA_RECOVERY_HANDOFF/);
-  assert.match(appLock, /safenet:\/\/app-lock\/recovery/);
+  assert.match(clientApp, /safenet:\/\/app-lock\/recovery/);
   assert.match(activity, /MODE_ACCOUNT_RECOVERY/);
   assert.match(activity, /handoff\/exchange/);
   assert.match(activity, /consumeRecoveryNonce/);
@@ -423,21 +409,18 @@ test("provider recovery returns through a one-time Android handoff", () => {
 });
 
 test("App Lock setup uses the SafeNet dashboard visual hierarchy", () => {
-  assert.match(activity, /"App Lock Configuration"/);
-  assert.match(activity, /sectionLabel\("PASSCODE FALLBACK"\)/);
-  assert.match(activity, /sectionLabel\("OFFLINE RECOVERY"\)/);
-  assert.match(activity, /sectionLabel\("PROTECTED APPS"\)/);
-  assert.match(activity, /sectionLabel\("ANDROID PERMISSIONS"\)/);
-  assert.match(activity, /private LinearLayout sectionCard\(\)/);
-  assert.match(activity, /title\.toUpperCase\(Locale\.US\)/);
-  assert.match(activity, /description\.toUpperCase\(Locale\.US\)/);
+  assert.match(revivedSetupUi, /Text\("SAFENET  \/  APP LOCK"/);
+  assert.match(revivedSetupUi, /Text\("AppLock"/);
+  assert.match(revivedSetupUi, /Text\("Passcode and recovery settings"/);
+  assert.match(revivedSetupUi, /Text\("PROTECTED APPS"/);
+  assert.match(revivedSetupUi, /Text\("ANDROID PERMISSIONS"/);
 });
 
 test("the lock surface and dashboard identify AppLock local passcode protection", () => {
   assert.match(nativeView, /SafeNet App Lock/);
   assert.match(nativeView, /local SafeNet passcode/);
-  assert.match(dashboard, /App Lock Protection/);
-  assert.match(dashboard, /AppLock-style protection/);
+  assert.match(dashboard, /AppLock-Revived Protection with Safe Return/);
+  assert.match(dashboard, /AppLock-Revived protection/);
   assert.match(dashboard, /Accessibility Service/);
   assert.doesNotMatch(dashboard, /disabled=\{!appLock\.supported \|\| !appLock\.status\.available/);
 });
