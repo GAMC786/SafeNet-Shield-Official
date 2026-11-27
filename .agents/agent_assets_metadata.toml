@@ -196,3 +196,17 @@ mtime_ms = 1788235347313
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/58c34522-7c23-48df-96bc-f63110fa8d85/59770970-676e-463a-b959-64ddf3905036"
 storage_version_token = "1795632291240617"
 content_type = "image/png"
+
+[[outputs]]
+id = "Ja6GVCmGNbairKiM8Lrm7"
+uri = "file://build/icon.png"
+type = "image"
+title = "SafeNet Google sign-in icon"
+description = "512×512 PNG SafeNet shield icon, ready to upload in Google Auth Platform branding."
+logical_id = "7544780d-4c90-4183-a3aa-f719e612489f"
+content_hash = "sha256:ea6b4d2c2ba48ccf353a8768f22b7961a47955aa97974ab34a2d3fd5a60d180d"
+size = 30960
+mtime_ms = 1788235343689
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:84a3b9b2-9212-4f9d-8d85-dbda0f722f9c/7544780d-4c90-4183-a3aa-f719e612489f/d0083226-7291-4c7d-addc-2cecc8c38005"
+storage_version_token = "1795821523251844"
+content_type = "image/png"
