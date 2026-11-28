@@ -14,6 +14,7 @@ import { betterAuthSessionMiddleware } from "./auth";
 import { toNodeHandler } from "better-auth/node";
 import { betterAuthInstance } from "./better-auth";
 import { registerMobileAuthConfigRoute } from "./mobile-auth-config";
+import { registerMobileAuthRoutes } from "./mobile-auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -40,6 +41,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 registerRequestOriginMiddleware(app);
+registerMobileAuthRoutes(app);
 registerRevenueCatRoutes(app);
 
 export function log(message: string, source = "express") {
@@ -73,6 +75,8 @@ app.use((req, res, next) => {
               username: bodyJson.username ? "[configured]" : null,
               credential: bodyJson.credential ? "[configured]" : null,
             };
+    } else if (/^\/api\/(auth|safenet\/auth|mobile-auth)(\/|$)/.test(path)) {
+      capturedJsonResponse = { result: "redacted" };
     } else {
       capturedJsonResponse = bodyJson;
     }

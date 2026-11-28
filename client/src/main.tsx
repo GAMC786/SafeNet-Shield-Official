@@ -52,6 +52,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 const root = createRoot(document.getElementById("root")!);
 
 function renderStartupMessage(message: string, retry = false) {
+  const isWonderlandLightMode = document.documentElement.classList.contains("light");
   root.render(
     <main
       id={retry ? undefined : "startup-loader"}
@@ -69,7 +70,14 @@ function renderStartupMessage(message: string, retry = false) {
         textAlign: "center",
       }}
     >
-      <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0 }}>
+      <h1
+        style={{
+          color: isWonderlandLightMode ? "#f8fafc" : undefined,
+          fontSize: "20px",
+          fontWeight: 700,
+          margin: 0,
+        }}
+      >
         {retry ? "SafeNet needs a connection" : "Starting SafeNet"}
       </h1>
       <p style={{ color: "#94a3b8", margin: 0 }}>{message}</p>

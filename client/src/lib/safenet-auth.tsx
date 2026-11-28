@@ -3,6 +3,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { apiFetch } from "./api";
 import { betterAuthClient } from "./better-auth-client";
 import { setAuthTokenProvider } from "./api";
+import { getNativeAuthValue, isNativeAndroid, removeNativeAuthValue } from "./native-auth-storage";
 
 type SafeNetUser = {
   id: string;
@@ -26,17 +27,31 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
   const legacyAuth = useAuth0();
   const audience = window.__SAFENET_RUNTIME_CONFIG__?.auth0Audience ?? "";
   const [canonicalUserId, setCanonicalUserId] = useState<string | null>(null);
+  const [nativeToken, setNativeToken] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [identityLoaded, setIdentityLoaded] = useState(false);
-  const isAuthenticated = Boolean(session?.user) || legacyAuth.isAuthenticated;
+  const isAuthenticated = Boolean(session?.user) || legacyAuth.isAuthenticated || Boolean(nativeToken);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isNativeAndroid()) {
+      setNativeToken(null);
+      return () => { cancelled = true; };
+    }
+    void getNativeAuthValue("better_auth_token")
+      .then((token) => { if (!cancelled) setNativeToken(token); })
+      .catch(() => { if (!cancelled) setNativeToken(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     setAuthTokenProvider(async () => {
+      if (nativeToken) return nativeToken;
       if (!legacyAuth.isAuthenticated) return undefined;
       return legacyAuth.getAccessTokenSilently({ authorizationParams: { audience } });
     });
     return () => setAuthTokenProvider(null);
-  }, [audience, legacyAuth.getAccessTokenSilently, legacyAuth.isAuthenticated]);
+  }, [audience, legacyAuth.getAccessTokenSilently, legacyAuth.isAuthenticated, nativeToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,13 +99,18 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
       error: linkError,
       signOut: async () => {
         if (authUser) await betterAuthClient.signOut();
+        if (nativeToken) {
+          await apiFetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined);
+          await removeNativeAuthValue("better_auth_token");
+          setNativeToken(null);
+        }
         if (legacyAuth.isAuthenticated) {
           const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
           await legacyAuth.logout({ logoutParams: { returnTo: `${window.location.origin}${basePath}/` } });
         }
       },
     };
-  }, [session, legacyAuth, canonicalUserId, identityLoaded, isAuthenticated, isLoading, linkError]);
+  }, [session, legacyAuth, nativeToken, canonicalUserId, identityLoaded, isAuthenticated, isLoading, linkError]);
 
   return <SafeNetAuthContext.Provider value={value}>{children}</SafeNetAuthContext.Provider>;
 }

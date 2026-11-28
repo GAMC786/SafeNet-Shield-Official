@@ -21,6 +21,7 @@ import { useCallback } from "react";
 import { apiFetch } from "./lib/api";
 import { Browser } from "@capacitor/browser";
 import { betterAuthClient } from "./lib/better-auth-client";
+import { isNativeAndroid, removeNativeAuthValue, setNativeAuthValue, getNativeAuthValue } from "./lib/native-auth-storage";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -45,6 +46,42 @@ const auth0Audience = runtimeConfig?.auth0Audience ?? "";
 const auth0RedirectUri = Capacitor.getPlatform() === "android"
   ? "safenet://auth/callback"
   : `${window.location.origin}${basePath}/auth/callback`;
+
+function base64Url(value: ArrayBuffer) {
+  const binary = Array.from(new Uint8Array(value), (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+async function startAndroidBetterAuth(returnTo = "/") {
+  const random = crypto.getRandomValues(new Uint8Array(64));
+  const verifier = base64Url(random.buffer);
+  const state = base64Url(crypto.getRandomValues(new Uint8Array(32)).buffer);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const codeChallenge = base64Url(digest);
+  const response = await apiFetch("/api/mobile-auth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state, codeChallenge, returnTo }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || typeof result.browserUrl !== "string" || typeof result.challengeId !== "string") {
+    throw new Error(result.message || "SafeNet could not start secure Android sign-in.");
+  }
+  await setNativeAuthValue("pkce_state", state);
+  await setNativeAuthValue("pkce_verifier", verifier);
+  await setNativeAuthValue("mobile_auth_challenge", result.challengeId);
+  await Browser.open({ url: result.browserUrl });
+}
+
+function mobileFinishUrl(id: string, state: string) {
+  const url = new URL("/api/mobile-auth/finish", window.location.origin);
+  url.searchParams.set("id", id);
+  url.searchParams.set("state", state);
+  return url.toString();
+}
 
 function stripBase(path: string) {
   return basePath && path.startsWith(basePath)
@@ -159,6 +196,12 @@ function SignInPage() {
   const isAndroidNative = Capacitor.getPlatform() === "android";
   const recoveryNonce = searchParams.get("recovery_nonce") || "";
   const recoveryReturnUri = searchParams.get("return_uri") || "";
+  const mobileAuthId = searchParams.get("mobile_auth_id") || "";
+  const mobileAuthState = searchParams.get("state") || "";
+  const finishUrl = /^[0-9a-f-]{36}$/i.test(mobileAuthId) &&
+    /^[A-Za-z0-9_-]{32,128}$/.test(mobileAuthState)
+      ? mobileFinishUrl(mobileAuthId, mobileAuthState)
+      : "";
   const isRecovery = /^[A-Za-z0-9_-]{32,128}$/.test(recoveryNonce) &&
     recoveryReturnUri === APP_LOCK_RETURN_URI;
   const returnTo = isRecovery
@@ -173,7 +216,10 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     try {
-      const result = await betterAuthClient.signIn.social({ provider: "google", callbackURL: returnTo });
+      const result = await betterAuthClient.signIn.social({
+        provider: "google",
+        callbackURL: finishUrl || returnTo,
+      });
       if (result.error) throw new Error(result.error.message || "Google sign-in could not start.");
       if (result.data?.url) window.location.assign(result.data.url);
     } catch (authError) {
@@ -188,15 +234,7 @@ function SignInPage() {
     setError("");
     try {
       if (isAndroidNative) {
-        await loginWithRedirect({
-          appState: { returnTo },
-          authorizationParams: {
-            audience: auth0Audience,
-            login_hint: email.trim(),
-            redirect_uri: auth0RedirectUri,
-          },
-          openUrl: async (url: string) => { await Browser.open({ url }); },
-        });
+        await startAndroidBetterAuth(returnTo);
         return;
       }
       const result = await betterAuthClient.signIn.email({
@@ -204,7 +242,8 @@ function SignInPage() {
         password,
       });
       if (result.error) throw new Error(result.error.message || "Email sign-in could not complete.");
-      setLocation(returnTo);
+      if (finishUrl) window.location.assign(finishUrl);
+      else setLocation(returnTo);
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Email sign-in could not complete.");
     } finally {
@@ -285,7 +324,7 @@ function SignInPage() {
             disabled={isWorking}
             className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-60"
           >
-            {isWorking ? "Signing in…" : "Sign in with email"}
+            {isWorking ? "Signing in…" : isAndroidNative ? "Continue securely" : "Sign in with email"}
           </button>
         </form>
         <button
@@ -310,7 +349,9 @@ function SignInPage() {
         {resetMessage ? <p role="status" className="mt-2 text-sm text-emerald-300">{resetMessage}</p> : null}
         <button
           type="button"
-          onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-up`, redirectUrl))}
+          onClick={() => setLocation(finishUrl
+            ? `${basePath}/sign-up?mobile_auth_id=${encodeURIComponent(mobileAuthId)}&state=${encodeURIComponent(mobileAuthState)}`
+            : authPathWithRedirect(`${basePath}/sign-up`, redirectUrl))}
           className="mt-4 w-full text-sm text-red-300 hover:text-red-200"
         >
           Create a SafeNet account
@@ -434,8 +475,15 @@ function SignUpPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const searchParams = new URLSearchParams(window.location.search);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
   const isAndroidNative = Capacitor.getPlatform() === "android";
+  const mobileAuthId = searchParams.get("mobile_auth_id") || "";
+  const mobileAuthState = searchParams.get("state") || "";
+  const finishUrl = /^[0-9a-f-]{36}$/i.test(mobileAuthId) &&
+    /^[A-Za-z0-9_-]{32,128}$/.test(mobileAuthState)
+      ? mobileFinishUrl(mobileAuthId, mobileAuthState)
+      : "";
 
   const submit = async () => {
     setIsWorking(true);
@@ -457,7 +505,7 @@ function SignUpPage() {
         name: name.trim(),
         email: email.trim(),
         password,
-        callbackURL: redirectUrl || `${basePath}/`,
+        callbackURL: finishUrl || redirectUrl || `${basePath}/`,
       });
       if (result.error) throw new Error(result.error.message || "Account creation could not complete.");
       setMessage("Check your email to verify your SafeNet account before signing in.");
@@ -473,7 +521,9 @@ function SignUpPage() {
       <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6">
         <AuthBackButton
           label="Back to SafeNet sign-in"
-          onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-in`, redirectUrl))}
+          onClick={() => setLocation(finishUrl
+            ? `${basePath}/sign-in?mobile_auth_id=${encodeURIComponent(mobileAuthId)}&state=${encodeURIComponent(mobileAuthState)}&redirect_url=${encodeURIComponent(redirectUrl || "/")}`
+            : authPathWithRedirect(`${basePath}/sign-in`, redirectUrl))}
         />
         <h1 className="mb-5 text-2xl font-bold text-white">Create your SafeNet account</h1>
         {isAndroidNative ? (
@@ -606,6 +656,39 @@ function Auth0NativeCallbackListener() {
       ) return;
       handledCallbackUrl = callbackUrl;
       try {
+        const code = callback.searchParams.get("code");
+        const state = callback.searchParams.get("state");
+        if (code && state) {
+          const [expectedState, verifier] = await Promise.all([
+            getNativeAuthValue("pkce_state"),
+            getNativeAuthValue("pkce_verifier"),
+          ]);
+          if (!expectedState || state !== expectedState || !verifier) {
+            throw new Error("The Android sign-in response did not match its request.");
+          }
+          const response = await apiFetch("/api/mobile-auth/exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, state, verifier }),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || typeof result.accessToken !== "string") {
+            throw new Error(result.message || "SafeNet could not finish Android sign-in.");
+          }
+          await setNativeAuthValue("better_auth_token", result.accessToken);
+          await Promise.all([
+            removeNativeAuthValue("pkce_state"),
+            removeNativeAuthValue("pkce_verifier"),
+            removeNativeAuthValue("mobile_auth_challenge"),
+          ]);
+          await Browser.close().catch(() => undefined);
+          const returnTo = typeof result.returnTo === "string" &&
+            result.returnTo.startsWith("/") && !result.returnTo.startsWith("//")
+              ? result.returnTo
+              : "/";
+          window.location.replace(returnTo);
+          return;
+        }
         const result = await handleRedirectCallback(callbackUrl);
         const requestedReturn = result.appState?.returnTo || "/";
         const safeReturn = getSafeAuthRedirect(

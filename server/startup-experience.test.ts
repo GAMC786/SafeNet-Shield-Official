@@ -40,6 +40,17 @@ const serverAuthSource = readFileSync(
   path.resolve(process.cwd(), "server/auth.ts"),
   "utf8",
 );
+const mobileAuthSource = readFileSync(
+  path.resolve(process.cwd(), "server/mobile-auth.ts"),
+  "utf8",
+);
+const nativeAuthStorageSource = readFileSync(
+  path.resolve(
+    process.cwd(),
+    "android/app/src/main/java/com/safenet/dns/SafeNetAuthStoragePlugin.java",
+  ),
+  "utf8",
+);
 const safeNetAuthSource = readFileSync(
   path.join(clientRoot, "src/lib/safenet-auth.tsx"),
   "utf8",
@@ -199,6 +210,8 @@ test("startup shows a loader and retry screen while public settings are loading"
   assert.doesNotMatch(indexHtml, /SafeNet_Astronaut_White_Background\.png/);
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(mainSource, /id=\{retry \? undefined : "startup-loader"\}/);
+  assert.match(mainSource, /document\.documentElement\.classList\.contains\("light"\)/);
+  assert.match(mainSource, /color: isWonderlandLightMode \? "#f8fafc" : undefined/);
   assert.match(mainSource, /SafeNet could not load the public authentication settings/);
   assert.match(mainSource, /Retry/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);
@@ -667,9 +680,14 @@ test("Better Auth powers browser sign-in while Auth0 remains a temporary API fal
   assert.match(safeNetAuthSource, /betterAuthClient\.useSession\(\)/);
   assert.match(appSource, /betterAuthClient\.signIn\.email/);
   assert.match(appSource, /betterAuthClient\.signUp\.email/);
-  assert.match(serverAuthSource, /betterAuthInstance\.api\.getSession/);
+  assert.match(serverAuthSource, /getBetterAuthSessionFromHeaders/);
   assert.match(serverAuthSource, /auth0JwtAuth\(config\)/);
   assert.match(serverIndexSource, /toNodeHandler\(betterAuthInstance\)/);
+  assert.match(mobileAuthSource, /mobile-code:/);
+  assert.match(mobileAuthSource, /codeChallenge/);
+  assert.match(appSource, /api\/mobile-auth\/exchange/);
+  assert.match(nativeAuthStorageSource, /EncryptedSharedPreferences/);
+  assert.doesNotMatch(mobileAuthSource, /callback\.searchParams\.set\(["']accessToken["']/i);
   assert.doesNotMatch(safeNetAuthSource, /supabase|clerk/i);
   assert.doesNotMatch(serverAuthSource, /supabase|clerk/i);
 });
@@ -693,7 +711,7 @@ test("the Sign-Up back button keeps the original post-auth destination", () => {
   );
   assert.match(
     appSource,
-    /onClick=\{\(\) => setLocation\(authPathWithRedirect\(`\$\{basePath\}\/sign-in`, redirectUrl\)\)\}/,
+    /onClick=\{\(\) => setLocation\(finishUrl[\s\S]*?authPathWithRedirect\(`\$\{basePath\}\/sign-in`, redirectUrl\)\)\}/,
   );
 });
 
