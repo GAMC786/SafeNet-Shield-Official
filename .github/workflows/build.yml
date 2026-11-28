@@ -674,7 +674,9 @@ jobs:
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
-      MOBILE_API_URL: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      # Native production APKs must always target the public production API.
+      # AUTH_SMOKE_BASE_URL is reserved for smoke-test origins, never APK config.
+      MOBILE_API_URL: https://safe-net-shield-official.replit.app
       ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code

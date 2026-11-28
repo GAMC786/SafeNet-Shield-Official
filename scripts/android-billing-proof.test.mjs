@@ -82,6 +82,12 @@ test("packaged Clerk sign-in uses the SafeNet proxy for Android WebViews", () =>
   assert.match(workflow, /VITE_CLERK_PROXY_URL="\$\{api_origin\}\/api\/__clerk"/);
 });
 
+test("production APKs use the public API instead of the auth smoke host", () => {
+  const buildAndroidEnv = workflow.match(/^  build-android:[\s\S]*?^    steps:/m)?.[0] || "";
+  assert.match(buildAndroidEnv, /MOBILE_API_URL:\s*https:\/\/safe-net-shield-official\.replit\.app/);
+  assert.doesNotMatch(buildAndroidEnv, /MOBILE_API_URL:\s*\$\{\{\s*secrets\.AUTH_SMOKE_BASE_URL/);
+});
+
 test("release builds inject a public RevenueCat Android key and gate billing validation", () => {
   assert.match(workflow, /VITE_REVENUECAT_ANDROID_API_KEY:/);
   assert.match(workflow, /android_billing_validation/);
