@@ -277,10 +277,10 @@ function mockApi(
 
       if (url.pathname === "/api/auth/config" && method === "GET") {
         response = {
-          clerkPublishableKey: "pk_test_Y2xlcmsuZXhhbXBsZS50ZXN0JA",
-          clerkProxyUrl: `${baseUrl}/api/__clerk`,
-          supabaseUrl: "https://safenet-test.supabase.test",
-          supabasePublishableKey: "safenet-test-public-key",
+          auth0Domain: "safenet-test.us.auth0.com",
+          auth0ClientId: "safenet-ui-test-client",
+          auth0Audience: "https://api.safenet.test",
+          googleEnabled: false,
         };
       } else if (url.pathname === "/api/settings" && method === "GET") {
         if (settingsDelayMs) {
@@ -1174,8 +1174,8 @@ test("editable Dashboard and security form values survive returning to the page"
   await page.getByRole("heading", { name: "Command Center" }).waitFor();
   assert.equal(
     await page.getByRole("switch", { name: /Soundtrack/ }).getAttribute("aria-checked"),
-    "false",
-    "Dashboard checkmark entries should survive a return",
+    "true",
+    "the soundtrack should start enabled on every app start",
   );
 
   await page.goto(`${baseUrl}/dns`);
