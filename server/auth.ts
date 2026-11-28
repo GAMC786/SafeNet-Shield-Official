@@ -54,14 +54,13 @@ export async function betterAuthSessionMiddleware(
       headers: fromNodeHeaders(req.headers),
     });
     if (!session) return next();
-    if (!session.user.emailVerified) {
-      return res.status(403).json({ message: "Verify your email before using this SafeNet account." });
-    }
     const authReq = req as Auth0Request;
     const email = session.user.email.trim().toLowerCase();
     authReq.betterAuthUserId = session.user.id;
     authReq.betterAuthEmail = email;
-    authReq.canonicalUserId = await resolveCanonicalUserId(session.user.id, email);
+    authReq.canonicalUserId = session.user.emailVerified
+      ? await resolveCanonicalUserId(session.user.id, email)
+      : session.user.id;
     return next();
   } catch {
     return next();

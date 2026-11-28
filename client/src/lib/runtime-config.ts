@@ -2,6 +2,7 @@ export type SafeNetRuntimeConfig = {
   auth0Domain: string;
   auth0ClientId: string;
   auth0Audience: string;
+  googleEnabled?: boolean;
 };
 
 export type RuntimeConfigEnvironment = {
@@ -85,6 +86,7 @@ export async function loadSafeNetRuntimeConfig(
     auth0Domain: staticConfig.auth0Domain || cleanAuth0Domain(remoteConfig.auth0Domain),
     auth0ClientId: staticConfig.auth0ClientId || clean(remoteConfig.auth0ClientId),
     auth0Audience: staticConfig.auth0Audience || clean(remoteConfig.auth0Audience),
+    googleEnabled: remoteConfig.googleEnabled === true,
   };
   if (!isComplete(config)) {
     throw new Error("SafeNet's public authentication settings are incomplete.");

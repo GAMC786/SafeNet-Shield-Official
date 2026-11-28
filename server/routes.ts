@@ -143,7 +143,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
   const getCustomDnsBlocklists = options.getCustomDnsBlocklists ?? getCustomDnsBlocklistsForFirewall;
-  app.get("/api/auth/session", requireAuth, (req, res) => {
+  app.get("/api/safenet/auth/session", requireAuth, (req, res) => {
     const userId = getRequestUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Sign in is required to continue." });

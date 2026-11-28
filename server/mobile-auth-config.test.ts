@@ -21,6 +21,7 @@ test("mobile auth config returns only public production settings for the API hos
     auth0Domain: "safenet.auth0.com",
     auth0ClientId: "public-client-id",
     auth0Audience: "https://api.safenet.test",
+    googleEnabled: false,
   });
 });
 
@@ -37,6 +38,17 @@ test("mobile auth config exposes shared Auth0 application settings", () => {
 
   assert.equal(config?.auth0Domain, "safenet.auth0.com");
   assert.equal(config?.auth0Audience, "https://api.safenet.test");
+});
+
+test("mobile auth config reports whether Better Auth Google sign-in is configured", () => {
+  const config = createPublicMobileAuthConfig({
+    AUTH0_DOMAIN: "safenet.auth0.com",
+    AUTH0_CLIENT_ID: "public-client-id",
+    AUTH0_AUDIENCE: "https://api.safenet.test",
+    GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+  }, "https://api.safenet.test");
+  assert.equal(config?.googleEnabled, true);
 });
 
 test("mobile auth config fails closed when required public settings are missing", () => {

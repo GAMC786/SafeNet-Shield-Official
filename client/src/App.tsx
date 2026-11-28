@@ -20,6 +20,7 @@ import { ArrowLeft } from "lucide-react";
 import { useCallback } from "react";
 import { apiFetch } from "./lib/api";
 import { Browser } from "@capacitor/browser";
+import { betterAuthClient } from "./lib/better-auth-client";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -149,6 +150,7 @@ function SignInPage() {
   const [, setLocation] = useLocation();
   const { loginWithRedirect } = useAuth0();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -164,18 +166,16 @@ function SignInPage() {
     : redirectUrl || `${basePath}/`;
 
   const signInWithGoogle = async () => {
+    if (isAndroidNative) {
+      setError("Android sign-in is being connected. Use web sign-in for now.");
+      return;
+    }
     setIsWorking(true);
     setError("");
     try {
-      await loginWithRedirect({
-        appState: { returnTo },
-        authorizationParams: {
-          audience: auth0Audience,
-          connection: "google-oauth2",
-          redirect_uri: auth0RedirectUri,
-        },
-        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
-      });
+      const result = await betterAuthClient.signIn.social({ provider: "google", callbackURL: returnTo });
+      if (result.error) throw new Error(result.error.message || "Google sign-in could not start.");
+      if (result.data?.url) window.location.assign(result.data.url);
     } catch (authError) {
       setIsWorking(false);
       setError(authError instanceof Error ? authError.message : "Google sign-in could not start.");
@@ -187,15 +187,24 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     try {
-      await loginWithRedirect({
-        appState: { returnTo },
-        authorizationParams: {
-          audience: auth0Audience,
-          login_hint: email.trim(),
-          redirect_uri: auth0RedirectUri,
-        },
-        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
+      if (isAndroidNative) {
+        await loginWithRedirect({
+          appState: { returnTo },
+          authorizationParams: {
+            audience: auth0Audience,
+            login_hint: email.trim(),
+            redirect_uri: auth0RedirectUri,
+          },
+          openUrl: async (url: string) => { await Browser.open({ url }); },
+        });
+        return;
+      }
+      const result = await betterAuthClient.signIn.email({
+        email: email.trim(),
+        password,
       });
+      if (result.error) throw new Error(result.error.message || "Email sign-in could not complete.");
+      setLocation(returnTo);
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Email sign-in could not complete.");
     } finally {
@@ -212,17 +221,12 @@ function SignInPage() {
     setError("");
     setResetMessage("");
     try {
-      const response = await fetch(`https://${auth0Domain}/dbconnections/change_password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: auth0ClientId,
-          email: email.trim(),
-          connection: "Username-Password-Authentication",
-        }),
+      const result = await betterAuthClient.requestPasswordReset({
+        email: email.trim(),
+        redirectTo: `${window.location.origin}${basePath}/reset-password`,
       });
-      if (!response.ok) throw new Error("Auth0 could not start password recovery.");
-      setResetMessage("If the account exists, Auth0 will email password recovery instructions.");
+      if (result.error) throw new Error(result.error.message || "Password recovery could not start.");
+      setResetMessage("If the account exists, recovery instructions will be sent.");
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : "Password reset could not start.");
     } finally {
@@ -239,14 +243,14 @@ function SignInPage() {
         />
         <h1 className="mb-2 text-2xl font-bold text-white">Welcome back</h1>
         <p className="mb-6 text-sm text-slate-300">Sign in to manage your SafeNet account.</p>
-        <button
+        {runtimeConfig?.googleEnabled ? <button
           type="button"
           onClick={() => void signInWithGoogle()}
           disabled={isWorking}
           className="mb-5 w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition-colors hover:border-primary/50 hover:bg-slate-700 disabled:opacity-60"
         >
           Continue with Google
-        </button>
+        </button> : null}
         <div className="mb-5 flex items-center gap-3 text-xs text-slate-500">
           <span className="h-px flex-1 bg-slate-700" />
           <span>OR USE EMAIL</span>
@@ -264,13 +268,24 @@ function SignInPage() {
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
             />
           </label>
+          {!isAndroidNative ? <label className="block text-sm text-slate-200">
+            Password
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+            />
+          </label> : null}
           {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <button
             type="submit"
             disabled={isWorking}
             className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-60"
           >
-          {isWorking ? "Opening secure sign-in…" : "Continue with email"}
+            {isWorking ? "Signing in…" : "Sign in with email"}
           </button>
         </form>
         <button
@@ -280,6 +295,17 @@ function SignInPage() {
           className="mt-4 w-full text-sm text-slate-300 hover:text-white disabled:opacity-60"
         >
           Forgot password?
+        </button>
+        <button
+          type="button"
+          onClick={() => void loginWithRedirect({
+            appState: { returnTo },
+            authorizationParams: { audience: auth0Audience, redirect_uri: auth0RedirectUri },
+            ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
+          })}
+          className="mt-3 w-full text-xs text-slate-500 underline"
+        >
+          Use existing Auth0 sign-in during the transition
         </button>
         {resetMessage ? <p role="status" className="mt-2 text-sm text-emerald-300">{resetMessage}</p> : null}
         <button
@@ -401,26 +427,27 @@ function SignInSsoCallbackPage() {
 
 function SignUpPage() {
   const [, setLocation] = useLocation();
-  const { loginWithRedirect } = useAuth0();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
-  const isAndroidNative = Capacitor.getPlatform() === "android";
 
   const submit = async () => {
     setIsWorking(true);
     setError("");
     try {
-      await loginWithRedirect({
-        appState: { returnTo: redirectUrl || `${basePath}/` },
-        authorizationParams: {
-          audience: auth0Audience,
-          screen_hint: "signup",
-          redirect_uri: auth0RedirectUri,
-        },
-        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
+      const result = await betterAuthClient.signUp.email({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        callbackURL: redirectUrl || `${basePath}/`,
       });
+      if (result.error) throw new Error(result.error.message || "Account creation could not complete.");
+      setMessage("Your SafeNet account was created.");
+      setLocation(redirectUrl || `${basePath}/`);
     } catch (signupError) {
       setError(signupError instanceof Error ? signupError.message : "Account creation could not complete.");
     } finally {
@@ -439,13 +466,25 @@ function SignUpPage() {
         <div className="space-y-4">
           {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
           {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
+          <label className="block text-sm text-slate-200">
+            Name
+            <input value={name} onChange={(event) => setName(event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white" />
+          </label>
+          <label className="block text-sm text-slate-200">
+            Email
+            <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white" />
+          </label>
+          <label className="block text-sm text-slate-200">
+            Password
+            <input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white" />
+          </label>
           <button
             type="button"
             onClick={() => void submit()}
             disabled={isWorking}
             className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {isWorking ? "Opening secure sign-up…" : "Continue to secure sign-up"}
+            {isWorking ? "Creating account…" : "Create account"}
           </button>
         </div>
       </div>

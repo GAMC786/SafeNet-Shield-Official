@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { apiFetch, setAuthTokenProvider } from "./api";
+import { apiFetch } from "./api";
+import { betterAuthClient } from "./better-auth-client";
+import { setAuthTokenProvider } from "./api";
 
 type SafeNetUser = {
   id: string;
@@ -19,21 +21,22 @@ type SafeNetAuthState = {
 };
 
 const SafeNetAuthContext = createContext<SafeNetAuthState | null>(null);
-const audience = window.__SAFENET_RUNTIME_CONFIG__?.auth0Audience ?? "";
-
 export function SafeNetAuthProvider({ children }: PropsWithChildren) {
-  const { isLoading, isAuthenticated, user: auth0User, getAccessTokenSilently, logout } = useAuth0();
+  const { data: session, isPending: isLoading } = betterAuthClient.useSession();
+  const legacyAuth = useAuth0();
+  const audience = window.__SAFENET_RUNTIME_CONFIG__?.auth0Audience ?? "";
   const [canonicalUserId, setCanonicalUserId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [identityLoaded, setIdentityLoaded] = useState(false);
+  const isAuthenticated = Boolean(session?.user) || legacyAuth.isAuthenticated;
 
   useEffect(() => {
     setAuthTokenProvider(async () => {
-      if (!isAuthenticated) return undefined;
-      return getAccessTokenSilently({ authorizationParams: { audience } });
+      if (!legacyAuth.isAuthenticated) return undefined;
+      return legacyAuth.getAccessTokenSilently({ authorizationParams: { audience } });
     });
     return () => setAuthTokenProvider(null);
-  }, [getAccessTokenSilently, isAuthenticated]);
+  }, [audience, legacyAuth.getAccessTokenSilently, legacyAuth.isAuthenticated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,10 +44,10 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
     setCanonicalUserId(null);
     setLinkError(null);
     if (!isAuthenticated) {
-      setIdentityLoaded(!isLoading);
+      setIdentityLoaded(!isLoading && !legacyAuth.isLoading);
       return () => { cancelled = true; };
     }
-    void apiFetch("/api/auth/session")
+    void apiFetch("/api/safenet/auth/session")
       .then(async (response) => {
         const result = await response.json().catch(() => ({}));
         if (!response.ok || typeof result.userId !== "string") {
@@ -59,28 +62,35 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
         if (!cancelled) setIdentityLoaded(true);
       });
     return () => { cancelled = true; };
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, legacyAuth.isLoading]);
 
   const value = useMemo<SafeNetAuthState>(() => {
-    const userId = isAuthenticated ? canonicalUserId ?? auth0User?.sub ?? null : null;
-    const fullName = auth0User?.name?.trim().split(/\s+/) ?? [];
+    const authUser = session?.user;
+    const legacyUser = legacyAuth.user;
+    const userId = isAuthenticated
+      ? canonicalUserId ?? authUser?.id ?? legacyUser?.sub ?? null
+      : null;
+    const fullName = (authUser?.name ?? legacyUser?.name)?.trim().split(/\s+/) ?? [];
     return {
-      isLoaded: !isLoading && identityLoaded,
+      isLoaded: !isLoading && !legacyAuth.isLoading && identityLoaded,
       isSignedIn: isAuthenticated && Boolean(userId) && !linkError,
       userId,
       user: userId ? {
         id: userId,
-        email: auth0User?.email ?? null,
-        firstName: auth0User?.given_name ?? fullName[0] ?? null,
-        lastName: auth0User?.family_name ?? (fullName.slice(1).join(" ") || null),
+        email: authUser?.email ?? legacyUser?.email ?? null,
+        firstName: legacyUser?.given_name ?? fullName[0] ?? null,
+        lastName: legacyUser?.family_name ?? (fullName.slice(1).join(" ") || null),
       } : null,
       error: linkError,
       signOut: async () => {
-        const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-        await logout({ logoutParams: { returnTo: `${window.location.origin}${basePath}/` } });
+        if (authUser) await betterAuthClient.signOut();
+        if (legacyAuth.isAuthenticated) {
+          const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+          await legacyAuth.logout({ logoutParams: { returnTo: `${window.location.origin}${basePath}/` } });
+        }
       },
     };
-  }, [auth0User, canonicalUserId, identityLoaded, isAuthenticated, isLoading, linkError, logout]);
+  }, [session, legacyAuth, canonicalUserId, identityLoaded, isAuthenticated, isLoading, linkError]);
 
   return <SafeNetAuthContext.Provider value={value}>{children}</SafeNetAuthContext.Provider>;
 }

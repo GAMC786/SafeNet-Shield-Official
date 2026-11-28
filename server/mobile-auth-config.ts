@@ -15,7 +15,12 @@ export function createPublicMobileAuthConfig(
     return null;
   }
 
-  return { auth0Domain, auth0ClientId, auth0Audience };
+  return {
+    auth0Domain,
+    auth0ClientId,
+    auth0Audience,
+    googleEnabled: Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim()),
+  };
 }
 
 export function registerMobileAuthConfigRoute(

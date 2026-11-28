@@ -663,11 +663,13 @@ test("Auth0-authenticated screens send bearer tokens on protected API requests",
   assert.match(privateDnsCardSource, /apiFetch\("\/api\/nextdns\/connection"\)/);
 });
 
-test("Auth0 is the unified identity provider for Preview and production", () => {
-  assert.match(safeNetAuthSource, /useAuth0\(\)/);
-  assert.match(safeNetAuthSource, /getAccessTokenSilently/);
+test("Better Auth powers browser sign-in while Auth0 remains a temporary API fallback", () => {
+  assert.match(safeNetAuthSource, /betterAuthClient\.useSession\(\)/);
+  assert.match(appSource, /betterAuthClient\.signIn\.email/);
+  assert.match(appSource, /betterAuthClient\.signUp\.email/);
+  assert.match(serverAuthSource, /betterAuthInstance\.api\.getSession/);
   assert.match(serverAuthSource, /auth0JwtAuth\(config\)/);
-  assert.match(serverAuthSource, /email_verified !== true/);
+  assert.match(serverIndexSource, /toNodeHandler\(betterAuthInstance\)/);
   assert.doesNotMatch(safeNetAuthSource, /supabase|clerk/i);
   assert.doesNotMatch(serverAuthSource, /supabase|clerk/i);
 });
