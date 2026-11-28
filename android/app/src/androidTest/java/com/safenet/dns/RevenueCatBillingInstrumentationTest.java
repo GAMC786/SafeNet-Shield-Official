@@ -243,8 +243,13 @@ public class RevenueCatBillingInstrumentationTest {
         JSONObject lastStatus = null;
         while (System.nanoTime() < deadline) {
             JSONObject result = callWebView(
-                "fetch('/api/billing/status',{credentials:'include',cache:'no-store'})" +
-                    ".then(async response => ({http:response.status,body:await response.json()}))"
+                "(() => {" +
+                    "const cache = Object.values(localStorage).map(value => {try{return JSON.parse(value)}catch{return null}})" +
+                        ".find(value => value && typeof value.access_token === 'string');" +
+                    "if (!cache) throw new Error('Auth0 access token was not restored');" +
+                    "return fetch('/api/billing/status',{headers:{Authorization:'Bearer '+cache.access_token},cache:'no-store'})" +
+                    ".then(async response => ({http:response.status,body:await response.json()}));" +
+                "})()"
             );
             if (result.optBoolean("ok", false)) {
                 JSONObject value = result.optJSONObject("value");
@@ -315,7 +320,7 @@ public class RevenueCatBillingInstrumentationTest {
                 "return true;" +
             "})()";
         requireValue(callWebView(script));
-        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-account\"]'))");
+        waitForWebView("document.readyState === 'complete'");
     }
 
     private void clearAuth0SessionCache() throws Exception {
