@@ -22,6 +22,7 @@ test("the Android app exchanges the configured Supabase callback for a session",
   assert.match(appSource, /CapacitorApp\.addListener\("appUrlOpen"/);
   assert.match(appSource, /CapacitorApp\.getLaunchUrl\(\)/);
   assert.match(appSource, /new URL\("com\.safenet\.dns:\/\/callback"\)/);
+  assert.match(appSource, /if \(!isAndroidNative \|\| returnTo !== `\$\{basePath\}\/`\)/);
   assert.match(appSource, /callback\.protocol !== "com\.safenet\.dns:"/);
   assert.match(appSource, /callback\.hostname !== "callback"/);
   assert.match(appSource, /callback\.searchParams\.get\("code"\)/);

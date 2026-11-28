@@ -94,7 +94,9 @@ function getSupabaseCallbackUrl(returnTo: string) {
   const callback = isAndroidNative
     ? new URL("com.safenet.dns://callback")
     : new URL(`${basePath}/auth/callback`, window.location.origin);
-  callback.searchParams.set("return_to", returnTo);
+  if (!isAndroidNative || returnTo !== `${basePath}/`) {
+    callback.searchParams.set("return_to", returnTo);
+  }
   return callback.toString();
 }
 
