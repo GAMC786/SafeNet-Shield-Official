@@ -642,6 +642,19 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
+test("button and toggle notifications stay visible for fifteen seconds", () => {
+  const toasterSource = readFileSync(
+    path.join(clientRoot, "src/components/ui/toaster.tsx"),
+    "utf8",
+  );
+  const toastHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-toast.ts"),
+    "utf8",
+  );
+  assert.match(toasterSource, /<ToastProvider duration=\{15_000\}>/);
+  assert.match(toastHookSource, /const TOAST_REMOVE_DELAY = 16_000/);
+});
+
 test("Billing recovers from Auth0 loading stalls without skipping signed-out access", () => {
   assert.match(billingSource, /import \{ apiFetch \} from "@\/lib\/api"/);
   assert.match(
