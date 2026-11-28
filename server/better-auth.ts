@@ -9,8 +9,26 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 
+const developmentDomain = process.env.NODE_ENV === "production"
+  ? ""
+  : process.env.REPLIT_DEV_DOMAIN?.trim() || "";
+const configuredBaseURL = process.env.BETTER_AUTH_URL?.trim();
+const baseURL = configuredBaseURL || (developmentDomain
+  ? {
+      allowedHosts: [developmentDomain],
+      fallback: `https://${developmentDomain}`,
+      protocol: "https" as const,
+    }
+  : undefined);
+const configuredOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean) ?? [];
+if (developmentDomain) configuredOrigins.push(`https://${developmentDomain}`);
+
 export const betterAuthInstance = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || process.env.PUBLIC_APP_URL,
+  appName: "SafeNet",
+  baseURL,
   secret: process.env.BETTER_AUTH_SECRET || process.env.SESSION_SECRET,
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -35,8 +53,5 @@ export const betterAuthInstance = betterAuth({
       }
     : {},
   plugins: [bearer()],
-  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS
-    ?.split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  trustedOrigins: configuredOrigins.length ? configuredOrigins : undefined,
 });

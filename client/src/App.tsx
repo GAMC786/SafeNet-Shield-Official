@@ -243,7 +243,7 @@ function SignInPage() {
         />
         <h1 className="mb-2 text-2xl font-bold text-white">Welcome back</h1>
         <p className="mb-6 text-sm text-slate-300">Sign in to manage your SafeNet account.</p>
-        {runtimeConfig?.googleEnabled ? <button
+        {!isAndroidNative && runtimeConfig?.googleEnabled ? <button
           type="button"
           onClick={() => void signInWithGoogle()}
           disabled={isWorking}
@@ -427,6 +427,7 @@ function SignInSsoCallbackPage() {
 
 function SignUpPage() {
   const [, setLocation] = useLocation();
+  const { loginWithRedirect } = useAuth0();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -434,11 +435,24 @@ function SignUpPage() {
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
+  const isAndroidNative = Capacitor.getPlatform() === "android";
 
   const submit = async () => {
     setIsWorking(true);
     setError("");
     try {
+      if (isAndroidNative) {
+        await loginWithRedirect({
+          appState: { returnTo: redirectUrl || "/" },
+          authorizationParams: {
+            audience: auth0Audience,
+            screen_hint: "signup",
+            redirect_uri: auth0RedirectUri,
+          },
+          openUrl: async (url: string) => { await Browser.open({ url }); },
+        });
+        return;
+      }
       const result = await betterAuthClient.signUp.email({
         name: name.trim(),
         email: email.trim(),
@@ -463,7 +477,21 @@ function SignUpPage() {
           onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-in`, redirectUrl))}
         />
         <h1 className="mb-5 text-2xl font-bold text-white">Create your SafeNet account</h1>
-        <div className="space-y-4">
+        {isAndroidNative ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-300">
+              Android account creation still uses SafeNet’s existing secure browser sign-in while the Better Auth handoff is being completed.
+            </p>
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={isWorking}
+              className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              Continue in secure browser
+            </button>
+          </div>
+        ) : <div className="space-y-4">
           {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
           {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <label className="block text-sm text-slate-200">
@@ -486,7 +514,7 @@ function SignUpPage() {
           >
             {isWorking ? "Creating account…" : "Create account"}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
