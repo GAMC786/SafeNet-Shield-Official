@@ -460,8 +460,7 @@ function SignUpPage() {
         callbackURL: redirectUrl || `${basePath}/`,
       });
       if (result.error) throw new Error(result.error.message || "Account creation could not complete.");
-      setMessage("Your SafeNet account was created.");
-      setLocation(redirectUrl || `${basePath}/`);
+      setMessage("Check your email to verify your SafeNet account before signing in.");
     } catch (signupError) {
       setError(signupError instanceof Error ? signupError.message : "Account creation could not complete.");
     } finally {
@@ -522,14 +521,44 @@ function SignUpPage() {
 
 function ResetPasswordPage() {
   const [, setLocation] = useLocation();
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const token = new URLSearchParams(window.location.search).get("token") || "";
+
+  const submit = async () => {
+    setIsWorking(true);
+    setError("");
+    setMessage("");
+    try {
+      if (!token) throw new Error("This password reset link is missing or expired.");
+      const result = await betterAuthClient.resetPassword({ newPassword: password, token });
+      if (result.error) throw new Error(result.error.message || "Password could not be reset.");
+      setMessage("Your password was updated. You can now sign in.");
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : "Password could not be reset.");
+    } finally {
+      setIsWorking(false);
+    }
+  };
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
       <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6">
         <h1 className="mb-3 text-2xl font-bold text-white">Password recovery</h1>
-        <p className="text-sm text-slate-300">Use the secure password recovery link sent by Auth0. Return here after updating your password.</p>
-        <button type="button" onClick={() => setLocation(`${basePath}/`)} className="mt-4 w-full text-sm text-slate-300">
-          Return to SafeNet
+        <p className="text-sm text-slate-300">Choose a new password for your SafeNet account.</p>
+        {message ? <p role="status" className="mt-3 text-sm text-emerald-300">{message}</p> : null}
+        {error ? <p role="alert" className="mt-3 text-sm text-red-300">{error}</p> : null}
+        <label className="mt-4 block text-sm text-slate-200">
+          New password
+          <input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white" />
+        </label>
+        <button type="button" onClick={() => void submit()} disabled={isWorking || !token} className="mt-4 w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+          {isWorking ? "Updating…" : "Update password"}
+        </button>
+        <button type="button" onClick={() => setLocation(`${basePath}/sign-in`)} className="mt-4 w-full text-sm text-slate-300">
+          Return to sign in
         </button>
       </div>
     </div>

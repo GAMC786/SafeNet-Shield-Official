@@ -8,6 +8,7 @@ import {
   betterAuthVerification,
 } from "@shared/schema";
 import { db } from "./db";
+import { sendAuthEmail } from "./auth-email";
 
 const developmentDomain = process.env.NODE_ENV === "production"
   ? ""
@@ -43,7 +44,31 @@ export const betterAuthInstance = betterAuth({
   session: { modelName: "better_auth_session" },
   account: { modelName: "better_auth_account" },
   verification: { modelName: "better_auth_verification" },
-  emailAndPassword: { enabled: true },
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    sendResetPassword: async ({ user, url }) => {
+      await sendAuthEmail({
+        to: user.email,
+        subject: "Reset your SafeNet password",
+        url,
+        action: "reset your password",
+      });
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendAuthEmail({
+        to: user.email,
+        subject: "Verify your SafeNet email",
+        url,
+        action: "verify your email",
+      });
+    },
+  },
   socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
     ? {
         google: {
