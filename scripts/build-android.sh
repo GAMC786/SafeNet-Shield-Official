@@ -16,13 +16,6 @@ fi
 auth_environment="production"
 case "${MOBILE_TEST_BUILD:-false}" in
     true|1)
-        if [ -z "${VITE_SUPABASE_DEVELOPMENT_URL:-}" ] || \
-           [ -z "${VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY:-}" ]; then
-            echo "ERROR: Test APK builds require the development Supabase URL and publishable key."
-            exit 1
-        fi
-        export VITE_SUPABASE_URL="$VITE_SUPABASE_DEVELOPMENT_URL"
-        export VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY"
         auth_environment="development"
         ;;
     false|0|"")
@@ -40,7 +33,6 @@ fi
 export VITE_API_URL
 
 echo "Mobile backend: $VITE_API_URL"
-export VITE_CLERK_PROXY_URL="${VITE_API_URL}/api/__clerk"
 
 # Step 1: Build web application
 echo ""

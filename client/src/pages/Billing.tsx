@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CreditCard, ExternalLink, Loader2, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useLocation } from "wouter";
-import { useSafeNetClerk as useClerk, useSafeNetUser as useUser } from "@/lib/safenet-auth";
+import { useSafeNetAuth, useSafeNetUser as useUser } from "@/lib/safenet-auth";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { Purchases } from "@revenuecat/purchases-capacitor";
@@ -22,11 +22,11 @@ type BillingStatus = {
 };
 
 const BILLING_REQUEST_TIMEOUT_MS = 12_000;
-const CLERK_LOAD_TIMEOUT_MS = 12_000;
-const CLERK_STALL_QUERY_PARAM = "billing_clerk_stall";
-const CLERK_RETURN_REFRESH_QUERY_PARAM = "clerk_return_refresh";
-const CLERK_RETURN_REFRESH_SESSION_KEY = "safenet:clerk-return-refresh";
-const CLERK_RETURN_CACHE_BUST_PARAM = "clerk_session_reload";
+const AUTH_LOAD_TIMEOUT_MS = 12_000;
+const AUTH_STALL_QUERY_PARAM = "billing_auth_stall";
+const AUTH_RETURN_REFRESH_QUERY_PARAM = "auth_return_refresh";
+const AUTH_RETURN_REFRESH_SESSION_KEY = "safenet:auth-return-refresh";
+const AUTH_RETURN_CACHE_BUST_PARAM = "auth_session_reload";
 const REVENUECAT_ANDROID_API_KEY = import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY as
   | string
   | undefined;
@@ -55,12 +55,12 @@ function isRevenueCatAnonymousId(appUserId: string) {
 
 export default function Billing() {
   const [, setLocation] = useLocation();
-  const { signOut } = useClerk();
+  const { signOut } = useSafeNetAuth();
   const { isLoaded, isSignedIn, user } = useUser();
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
   const [billingStatusError, setBillingStatusError] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
-  const [clerkLoadTimedOut, setClerkLoadTimedOut] = useState(false);
+  const [authLoadTimedOut, setAuthLoadTimedOut] = useState(false);
   const [statusAttempt, setStatusAttempt] = useState(0);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isOpeningPlaySubscriptions, setIsOpeningPlaySubscriptions] = useState(false);
@@ -74,31 +74,31 @@ export default function Billing() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const { toast } = useToast();
-  const clerkReturnRefreshTimeout = useRef<number | null>(null);
+  const authReturnRefreshTimeout = useRef<number | null>(null);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const isAndroid = Capacitor.getPlatform() === "android";
-  const clerkStartupStallRequested =
+  const authStartupStallRequested =
     isAndroid &&
-    new URLSearchParams(window.location.search).get(CLERK_STALL_QUERY_PARAM) === "1";
-  const clerkIsLoaded = isLoaded && !clerkStartupStallRequested;
+    new URLSearchParams(window.location.search).get(AUTH_STALL_QUERY_PARAM) === "1";
+  const authIsLoaded = isLoaded && !authStartupStallRequested;
 
   useEffect(() => {
-    if (clerkIsLoaded) {
-      setClerkLoadTimedOut(false);
+    if (authIsLoaded) {
+      setAuthLoadTimedOut(false);
       return;
     }
 
     const timeoutId = window.setTimeout(
-      () => setClerkLoadTimedOut(true),
-      CLERK_LOAD_TIMEOUT_MS,
+      () => setAuthLoadTimedOut(true),
+      AUTH_LOAD_TIMEOUT_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, [clerkIsLoaded]);
+  }, [authIsLoaded]);
 
   useEffect(() => {
     const returnUrl = new URL(window.location.href);
-    if (returnUrl.searchParams.has(CLERK_RETURN_CACHE_BUST_PARAM)) {
-      returnUrl.searchParams.delete(CLERK_RETURN_CACHE_BUST_PARAM);
+    if (returnUrl.searchParams.has(AUTH_RETURN_CACHE_BUST_PARAM)) {
+      returnUrl.searchParams.delete(AUTH_RETURN_CACHE_BUST_PARAM);
       window.history.replaceState(
         window.history.state,
         "",
@@ -110,25 +110,25 @@ export default function Billing() {
     let hasPendingAuthReturn = false;
     try {
       hasPendingAuthReturn =
-        window.sessionStorage.getItem(CLERK_RETURN_REFRESH_SESSION_KEY) === "1";
+        window.sessionStorage.getItem(AUTH_RETURN_REFRESH_SESSION_KEY) === "1";
     } catch {
       // The redirect query parameter below remains a fallback if storage is unavailable.
     }
     const hasAuthReturnMarker =
-      returnUrl.searchParams.get(CLERK_RETURN_REFRESH_QUERY_PARAM) === "1";
+      returnUrl.searchParams.get(AUTH_RETURN_REFRESH_QUERY_PARAM) === "1";
     if (!hasPendingAuthReturn && !hasAuthReturnMarker) return;
-    if (!clerkIsLoaded) return;
+    if (!authIsLoaded) return;
 
-    returnUrl.searchParams.delete(CLERK_RETURN_REFRESH_QUERY_PARAM);
+    returnUrl.searchParams.delete(AUTH_RETURN_REFRESH_QUERY_PARAM);
     const cleanUrl = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
 
     if (isSignedIn) {
-      if (clerkReturnRefreshTimeout.current !== null) {
-        window.clearTimeout(clerkReturnRefreshTimeout.current);
-        clerkReturnRefreshTimeout.current = null;
+      if (authReturnRefreshTimeout.current !== null) {
+        window.clearTimeout(authReturnRefreshTimeout.current);
+        authReturnRefreshTimeout.current = null;
       }
       try {
-        window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
+        window.sessionStorage.removeItem(AUTH_RETURN_REFRESH_SESSION_KEY);
       } catch {
         // The sign-in state is already available, so this cleanup is optional.
       }
@@ -136,28 +136,28 @@ export default function Billing() {
       return;
     }
 
-    if (clerkReturnRefreshTimeout.current !== null) return;
+    if (authReturnRefreshTimeout.current !== null) return;
 
-    // Give Clerk time to finish persisting the OAuth session before reloading.
-    clerkReturnRefreshTimeout.current = window.setTimeout(() => {
-      clerkReturnRefreshTimeout.current = null;
+    // Give Auth0 time to finish persisting the OAuth session before reloading.
+    authReturnRefreshTimeout.current = window.setTimeout(() => {
+      authReturnRefreshTimeout.current = null;
       try {
-        window.sessionStorage.removeItem(CLERK_RETURN_REFRESH_SESSION_KEY);
+        window.sessionStorage.removeItem(AUTH_RETURN_REFRESH_SESSION_KEY);
       } catch {
         // The URL fallback still guarantees this reload is only attempted once.
       }
       const reloadUrl = new URL(cleanUrl, window.location.origin);
-      reloadUrl.searchParams.set(CLERK_RETURN_CACHE_BUST_PARAM, String(Date.now()));
+      reloadUrl.searchParams.set(AUTH_RETURN_CACHE_BUST_PARAM, String(Date.now()));
       window.location.replace(`${reloadUrl.pathname}${reloadUrl.search}${reloadUrl.hash}`);
     }, 1500);
 
     return () => {
-      if (clerkReturnRefreshTimeout.current !== null) {
-        window.clearTimeout(clerkReturnRefreshTimeout.current);
-        clerkReturnRefreshTimeout.current = null;
+      if (authReturnRefreshTimeout.current !== null) {
+        window.clearTimeout(authReturnRefreshTimeout.current);
+        authReturnRefreshTimeout.current = null;
       }
     };
-  }, [clerkIsLoaded, isSignedIn]);
+  }, [authIsLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!isAndroid) {
@@ -185,7 +185,7 @@ export default function Billing() {
 
       const configured = await Purchases.isConfigured();
       if (!configured.isConfigured) {
-        // Anonymous RevenueCat identity lets Android purchases work without Clerk.
+        // Anonymous RevenueCat identity lets Android purchases work without sign-in.
         await Purchases.configure({ apiKey: REVENUECAT_ANDROID_API_KEY });
       }
 
@@ -232,7 +232,7 @@ export default function Billing() {
     if (!isAndroid || !nativePurchasesReady) return;
 
     let cancelled = false;
-    if (!clerkIsLoaded && !clerkLoadTimedOut) {
+    if (!authIsLoaded && !authLoadTimedOut) {
       void Purchases.getAppUserID().then(({ appUserID }) => {
         if (!cancelled) setNativeIdentityReady(isRevenueCatAnonymousId(appUserID));
       }).catch(() => {
@@ -244,13 +244,13 @@ export default function Billing() {
     }
 
     setNativeIdentityReady(false);
-    const currentClerkUserId = clerkIsLoaded && isSignedIn && user?.id ? user.id : null;
+    const currentAuthUserId = authIsLoaded && isSignedIn && user?.id ? user.id : null;
     void (async () => {
       const current = await Purchases.getAppUserID();
-      if (currentClerkUserId && current.appUserID !== currentClerkUserId) {
-        const result = await Purchases.logIn({ appUserID: currentClerkUserId });
+      if (currentAuthUserId && current.appUserID !== currentAuthUserId) {
+        const result = await Purchases.logIn({ appUserID: currentAuthUserId });
         if (!cancelled) setNativeCustomerInfo(result.customerInfo);
-      } else if (!currentClerkUserId && !isRevenueCatAnonymousId(current.appUserID)) {
+      } else if (!currentAuthUserId && !isRevenueCatAnonymousId(current.appUserID)) {
         const result = await Purchases.logOut();
         if (!cancelled) setNativeCustomerInfo(result.customerInfo);
       }
@@ -273,7 +273,7 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [clerkIsLoaded, clerkLoadTimedOut, isAndroid, isSignedIn, nativePurchasesReady, user?.id]);
+  }, [authIsLoaded, authLoadTimedOut, isAndroid, isSignedIn, nativePurchasesReady, user?.id]);
 
   useEffect(() => {
     if (!isAndroid || !nativePurchasesReady) return;
@@ -301,7 +301,7 @@ export default function Billing() {
       return;
     }
 
-    if (!clerkIsLoaded || !isSignedIn) {
+    if (!authIsLoaded || !isSignedIn) {
       setBillingStatus(null);
       setBillingStatusError(null);
       return;
@@ -342,7 +342,7 @@ export default function Billing() {
     return () => {
       cancelled = true;
     };
-  }, [clerkIsLoaded, isAndroid, isSignedIn, statusAttempt, toast]);
+  }, [authIsLoaded, isAndroid, isSignedIn, statusAttempt, toast]);
 
   const openManagementPortal = async () => {
     setIsOpeningPortal(true);
@@ -430,18 +430,18 @@ export default function Billing() {
   };
 
   const openSignIn = () => {
-    const billingReturnUrl = `${basePath}/billing?${CLERK_RETURN_REFRESH_QUERY_PARAM}=1`;
+    const billingReturnUrl = `${basePath}/billing?${AUTH_RETURN_REFRESH_QUERY_PARAM}=1`;
     try {
-      window.sessionStorage.setItem(CLERK_RETURN_REFRESH_SESSION_KEY, "1");
+      window.sessionStorage.setItem(AUTH_RETURN_REFRESH_SESSION_KEY, "1");
     } catch {
       // The redirect query parameter remains available as a fallback.
     }
     setLocation(`/sign-in?redirect_url=${encodeURIComponent(billingReturnUrl)}`);
   };
 
-  const retryClerkLoading = () => {
+  const retryAuthLoading = () => {
     const retryUrl = new URL(window.location.href);
-    retryUrl.searchParams.delete(CLERK_STALL_QUERY_PARAM);
+    retryUrl.searchParams.delete(AUTH_STALL_QUERY_PARAM);
     window.location.assign(`${retryUrl.pathname}${retryUrl.search}${retryUrl.hash}`);
   };
 
@@ -578,7 +578,7 @@ export default function Billing() {
             </p>
           </div>
           )}
-          {!isAndroid && !clerkIsLoaded && !clerkLoadTimedOut ? (
+          {!isAndroid && !authIsLoaded && !authLoadTimedOut ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">Loading your account…</p>
               <Button
@@ -590,9 +590,9 @@ export default function Billing() {
                 Sign in to continue
               </Button>
             </div>
-          ) : !isAndroid && !clerkIsLoaded ? (
+          ) : !isAndroid && !authIsLoaded ? (
             <div
-              data-testid="billing-clerk-recovery"
+              data-testid="billing-auth-recovery"
               className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <p className="text-sm text-red-200">
@@ -600,11 +600,11 @@ export default function Billing() {
               </p>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
-                  data-testid="billing-clerk-retry"
+                  data-testid="billing-auth-retry"
                   type="button"
                   variant="outline"
                   className="w-full shrink-0 sm:w-auto"
-                  onClick={retryClerkLoading}
+                  onClick={retryAuthLoading}
                 >
                   Retry
                 </Button>
@@ -656,7 +656,7 @@ export default function Billing() {
                     </p>
                     <p
                       data-testid="billing-account"
-                      data-clerk-user-id={user?.id}
+                      data-auth-user-id={user?.id}
                       className="truncate font-medium text-white"
                     >
                       {accountLabel}

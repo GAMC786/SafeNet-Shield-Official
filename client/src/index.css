@@ -10,7 +10,6 @@
   opacity: 1;
 }
 
-/* Keep Clerk's logo from expanding into the sign-in heading. */
 .cl-logoBox {
   width: 4rem !important;
   height: 4rem !important;

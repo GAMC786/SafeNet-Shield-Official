@@ -42,7 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * Shared implementation for packaged UI, startup, media, Clerk, and AI Shield
+ * Shared implementation for packaged UI, startup, media, Auth0, and AI Shield
  * instrumentation checks. The public runner is SafeNetUiInstrumentationTest.
  */
 abstract class SafeNetUiInstrumentationTestBase {
@@ -833,107 +833,28 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
-    public void clerkSignInStartsFreshAndRetainsClerkSession() throws Exception {
-        if (hasInstrumentationArgument("preserve-auth-session")) {
-            waitForWebView("document.body.innerText.includes('Command Center')");
-            JSONObject retainedState = callWebView(
-                "(() => {" +
-                    "const body = document.body.innerText;" +
-                    "return {" +
-                        "dashboard: body.includes('Command Center')," +
-                        "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
-                    "};" +
-                "})()"
-            );
-            assertTrue("The preserved Clerk session must reopen the dashboard",
-                retainedState.getBoolean("dashboard"));
-            assertFalse("The preserved Clerk session must not expose legacy access-code UI",
-                retainedState.getBoolean("legacyAccessCode"));
-            return;
-        }
-
+    public void auth0SignInSurfaceLoads() throws Exception {
+        requireWebViewValue(callWebView(
+            "window.location.assign(new URL('/sign-in', location.origin).toString()); true"
+        ));
         waitForWebView(
             "document.readyState === 'complete' && " +
-                "/sign in to access safenet dns/i.test(document.body.innerText)"
+                "document.body.innerText.includes('Welcome back')"
         );
-        JSONObject initialState = callWebView(
+        JSONObject signInState = callWebView(
             "(() => {" +
                 "const body = document.body.innerText;" +
                 "return {" +
-                    "signIn: /sign in to access safenet dns/i.test(body)," +
-                    "googleSignIn: /sign in with google/i.test(body)," +
-                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
-                    "path: window.location.pathname" +
+                    "google: body.includes('Continue with Google')," +
+                    "email: body.includes('Continue with email')," +
+                    "signup: body.includes('Create a SafeNet account')" +
                 "};" +
             "})()"
         );
-        assertTrue("A fresh Android WebView must start on Clerk sign-in",
-            initialState.getBoolean("signIn"));
-        assertFalse("Fresh Clerk sign-in must not expose legacy access-code UI",
-            initialState.getBoolean("legacyAccessCode"));
-
-        String clerkOrigin = instrumentationArguments().getString("clerk-origin");
-        String clerkCookiePayload = instrumentationArguments().getString("clerk-cookie-base64");
-        assertNotNull("Android Clerk smoke requires a public Clerk session origin", clerkOrigin);
-        assertNotNull("Android Clerk smoke requires a Clerk storage-state session",
-            clerkCookiePayload);
-        assertTrue("Android Clerk smoke received an empty Clerk session",
-            clerkCookiePayload.length() > 0);
-        String clerkCookie = new String(
-            Base64.decode(clerkCookiePayload, Base64.DEFAULT),
-            java.nio.charset.StandardCharsets.UTF_8
-        );
-
-        setClerkSessionCookies(clerkOrigin, clerkCookie);
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
-            ((MainActivity) activity).getBridge().getWebView().reload()
-        );
-        waitForWebView("document.body.innerText.includes('Command Center')");
-
-        JSONObject authenticatedState = callWebView(
-            "(async () => {" +
-                "const body = document.body.innerText;" +
-                "const response = await fetch(" +
-                    JSONObject.quote(clerkOrigin + "/api/auth/status") +
-                    ", {cache: 'no-store', credentials: 'include'});" +
-                "const auth = await response.json();" +
-                "return {" +
-                    "dashboard: body.includes('Command Center')," +
-                    "authenticated: response.ok && auth.authenticated === true," +
-                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)," +
-                    "cookiePresent: Boolean(document.cookie)" +
-                "};" +
-            "})()"
-        );
-        assertTrue("The Clerk session must open the protected dashboard",
-            authenticatedState.getBoolean("dashboard"));
-        assertTrue("The backend must recognize the injected Clerk session",
-            authenticatedState.getBoolean("authenticated"));
-        assertFalse("The protected dashboard must not expose legacy access-code UI",
-            authenticatedState.getBoolean("legacyAccessCode"));
-
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
-            ((MainActivity) activity).getBridge().getWebView().reload()
-        );
-        waitForWebView("document.body.innerText.includes('Command Center')");
-        JSONObject retainedState = callWebView(
-            "(() => {" +
-                "const body = document.body.innerText;" +
-                "return {" +
-                    "dashboard: body.includes('Command Center')," +
-                    "legacyAccessCode: /access code|pin protection|pin recovery/i.test(body)" +
-                "};" +
-            "})()"
-        );
-        assertTrue("The packaged WebView must retain the Clerk session after reload",
-            retainedState.getBoolean("dashboard"));
-        assertFalse("The retained Clerk session must not fall back to local access-code UI",
-            retainedState.getBoolean("legacyAccessCode"));
-        Log.i(
-            CLERK_AUTH_TAG,
-            "CLERK_AUTH_SMOKE result=PASS initial=SIGN_IN session=CLERK " +
-                "dashboard=PASS retained_after_reload=PASS legacy_access_code=ABSENT"
-        );
+        assertTrue("Auth0 sign-in must offer Google", signInState.getBoolean("google"));
+        assertTrue("Auth0 sign-in must offer email", signInState.getBoolean("email"));
+        assertTrue("Auth0 sign-in must offer account creation", signInState.getBoolean("signup"));
+        Log.i("SafeNetAuth0", "AUTH0_SIGNIN_SURFACE result=PASS google=PASS email=PASS signup=PASS");
     }
 
     /*

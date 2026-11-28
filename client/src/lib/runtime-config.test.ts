@@ -8,10 +8,9 @@ test("uses complete compile-time authentication settings without a network reque
   const config = await loadSafeNetRuntimeConfig(
     {
       DEV: true,
-      VITE_CLERK_PUBLISHABLE_KEY: "pk_test_public",
-      VITE_CLERK_PROXY_URL: "https://api.example.test/api/__clerk",
-      VITE_SUPABASE_DEVELOPMENT_URL: "https://dev.supabase.test",
-      VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY: "dev-public-key",
+      VITE_AUTH0_DOMAIN: "safenet-dev.us.auth0.com",
+      VITE_AUTH0_CLIENT_ID: "dev-client-id",
+      VITE_AUTH0_AUDIENCE: "https://api.safenet.test",
     },
     {
       origin: "http://localhost:5000",
@@ -23,7 +22,7 @@ test("uses complete compile-time authentication settings without a network reque
   );
 
   assert.equal(requests, 0);
-  assert.equal(config.supabaseUrl, "https://dev.supabase.test");
+  assert.equal(config.auth0Domain, "safenet-dev.us.auth0.com");
 });
 
 test("loads missing APK settings from the configured public API origin", async () => {
@@ -32,25 +31,23 @@ test("loads missing APK settings from the configured public API origin", async (
     {
       DEV: false,
       VITE_API_URL: "https://api.example.test/",
-      VITE_CLERK_PROXY_URL: "https://api.example.test/api/__clerk",
     },
     {
       origin: "https://localhost",
       fetcher: async (input) => {
         requestedUrl = input;
         return new Response(JSON.stringify({
-          clerkPublishableKey: "pk_live_public",
-          clerkProxyUrl: "https://api.example.test/api/__clerk",
-          supabaseUrl: "https://project.supabase.test",
-          supabasePublishableKey: "supabase-public-key",
+          auth0Domain: "safenet-prod.us.auth0.com",
+          auth0ClientId: "prod-client-id",
+          auth0Audience: "https://api.safenet.test",
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       },
     },
   );
 
   assert.equal(requestedUrl, "https://api.example.test/api/auth/config");
-  assert.equal(config.clerkPublishableKey, "pk_live_public");
-  assert.equal(config.supabaseUrl, "https://project.supabase.test");
+  assert.equal(config.auth0Domain, "safenet-prod.us.auth0.com");
+  assert.equal(config.auth0Audience, "https://api.safenet.test");
 });
 
 test("keeps startup retryable when public auth configuration is unavailable", async () => {

@@ -31,7 +31,7 @@ import {
   lookupCallReputation,
   reportCall,
 } from "./call-reputation";
-import { getRequestUserId, requireAuth } from "./auth";
+import { getRequestUserEmail, getRequestUserId, requireAuth } from "./auth";
 import {
   createAppLockRecoveryHandoff,
   exchangeAppLockRecoveryHandoff,
@@ -152,7 +152,7 @@ export async function registerRoutes(
     }
     return res.json({
       userId,
-      email: req.supabaseAuthEmail ?? null,
+      email: getRequestUserEmail(req),
     });
   });
   registerControlDRoutes(app, storage);

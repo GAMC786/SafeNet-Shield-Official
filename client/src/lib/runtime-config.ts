@@ -1,19 +1,15 @@
 export type SafeNetRuntimeConfig = {
-  clerkPublishableKey: string;
-  clerkProxyUrl?: string;
-  supabaseUrl: string;
-  supabasePublishableKey: string;
+  auth0Domain: string;
+  auth0ClientId: string;
+  auth0Audience: string;
 };
 
 export type RuntimeConfigEnvironment = {
   DEV: boolean;
   VITE_API_URL?: string;
-  VITE_CLERK_PUBLISHABLE_KEY?: string;
-  VITE_CLERK_PROXY_URL?: string;
-  VITE_SUPABASE_URL?: string;
-  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-  VITE_SUPABASE_DEVELOPMENT_URL?: string;
-  VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY?: string;
+  VITE_AUTH0_DOMAIN?: string;
+  VITE_AUTH0_CLIENT_ID?: string;
+  VITE_AUTH0_AUDIENCE?: string;
 };
 
 declare global {
@@ -29,11 +25,15 @@ function clean(value?: string) {
   return value?.trim() || "";
 }
 
+function cleanAuth0Domain(value?: string) {
+  return clean(value).replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+}
+
 function isComplete(config: RuntimeConfigResponse): config is SafeNetRuntimeConfig {
   return Boolean(
-    clean(config.clerkPublishableKey)
-      && clean(config.supabaseUrl)
-      && clean(config.supabasePublishableKey),
+    clean(config.auth0Domain)
+      && clean(config.auth0ClientId)
+      && clean(config.auth0Audience),
   );
 }
 
@@ -45,18 +45,9 @@ export async function loadSafeNetRuntimeConfig(
   },
 ): Promise<SafeNetRuntimeConfig> {
   const staticConfig: RuntimeConfigResponse = {
-    clerkPublishableKey: clean(environment.VITE_CLERK_PUBLISHABLE_KEY),
-    clerkProxyUrl: clean(environment.VITE_CLERK_PROXY_URL),
-    supabaseUrl: clean(
-      environment.DEV
-        ? environment.VITE_SUPABASE_DEVELOPMENT_URL
-        : environment.VITE_SUPABASE_URL,
-    ),
-    supabasePublishableKey: clean(
-      environment.DEV
-        ? environment.VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY
-        : environment.VITE_SUPABASE_PUBLISHABLE_KEY,
-    ),
+    auth0Domain: cleanAuth0Domain(environment.VITE_AUTH0_DOMAIN),
+    auth0ClientId: clean(environment.VITE_AUTH0_CLIENT_ID),
+    auth0Audience: clean(environment.VITE_AUTH0_AUDIENCE),
   };
   if (isComplete(staticConfig)) return staticConfig;
 
@@ -91,10 +82,9 @@ export async function loadSafeNetRuntimeConfig(
   }
 
   const config = {
-    clerkPublishableKey: staticConfig.clerkPublishableKey || clean(remoteConfig.clerkPublishableKey),
-    clerkProxyUrl: staticConfig.clerkProxyUrl || clean(remoteConfig.clerkProxyUrl),
-    supabaseUrl: staticConfig.supabaseUrl || clean(remoteConfig.supabaseUrl),
-    supabasePublishableKey: staticConfig.supabasePublishableKey || clean(remoteConfig.supabasePublishableKey),
+    auth0Domain: staticConfig.auth0Domain || cleanAuth0Domain(remoteConfig.auth0Domain),
+    auth0ClientId: staticConfig.auth0ClientId || clean(remoteConfig.auth0ClientId),
+    auth0Audience: staticConfig.auth0Audience || clean(remoteConfig.auth0Audience),
   };
   if (!isComplete(config)) {
     throw new Error("SafeNet's public authentication settings are incomplete.");

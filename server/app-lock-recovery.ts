@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { appLockRecoveryChallenges } from "@shared/schema";
 import { db } from "./db";
@@ -42,24 +41,15 @@ function signHandoffPayload(payload: string) {
     .digest("base64url");
 }
 
-function supabaseAuthClient() {
-  const isProduction = process.env.NODE_ENV === "production";
-  const url = (isProduction
-    ? process.env.VITE_SUPABASE_URL
-    : process.env.VITE_SUPABASE_DEVELOPMENT_URL)?.trim();
-  const key = (isProduction
-    ? process.env.VITE_SUPABASE_PUBLISHABLE_KEY
-    : process.env.VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY)?.trim();
-  if (!url || !key) {
-    throw new Error("Supabase Auth is not configured for this environment's App Lock recovery.");
+function auth0Settings() {
+  const domain = (process.env.AUTH0_DOMAIN ?? process.env.VITE_AUTH0_DOMAIN)?.trim()
+    .replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  const clientId = (process.env.AUTH0_CLIENT_ID ?? process.env.VITE_AUTH0_CLIENT_ID)?.trim();
+  const audience = (process.env.AUTH0_AUDIENCE ?? process.env.VITE_AUTH0_AUDIENCE)?.trim();
+  if (!domain || !clientId || !audience) {
+    throw new Error("Auth0 is not configured for App Lock recovery.");
   }
-  return createClient(url, key, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-  });
+  return { domain, clientId, audience };
 }
 
 export async function requestAppLockEmailRecovery(emailAddress: string) {
@@ -67,7 +57,7 @@ export async function requestAppLockEmailRecovery(emailAddress: string) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
     return { sent: false, message: "Enter a valid account email address." };
   }
-  const userId = `supabase-otp:${email}`;
+  const userId = `auth0-passwordless:${email}`;
   const now = new Date();
   const recentCutoff = new Date(now.getTime() - REQUEST_COOLDOWN_MS);
   const [recent] = await db
@@ -99,17 +89,22 @@ export async function requestAppLockEmailRecovery(emailAddress: string) {
     })
     .returning({ id: appLockRecoveryChallenges.id });
 
-  const { error } = await supabaseAuthClient().auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
+  const { domain, clientId } = auth0Settings();
+  const response = await fetch(`https://${domain}/passwordless/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      connection: "email",
+      email,
+      send: "code",
+    }),
   });
-  if (error) {
-    console.error("Supabase Auth rejected App Lock email OTP request.", {
-      name: error.name,
-      status: error.status,
-      code: error.code,
+  if (!response.ok) {
+    console.error("Auth0 rejected App Lock email OTP request.", {
+      status: response.status,
     });
-    if (/rate limit|too many/i.test(error.message)) {
+    if (response.status === 429) {
       return {
         sent: false,
         message: "A recovery request was made recently. Wait before trying again.",
@@ -130,7 +125,7 @@ export async function requestAppLockEmailRecovery(emailAddress: string) {
 
 export async function verifyAppLockEmailRecovery(emailAddress: string, code: string) {
   const email = emailAddress.trim().toLowerCase();
-  const userId = `supabase-otp:${email}`;
+  const userId = `auth0-passwordless:${email}`;
   const now = new Date();
   const [challenge] = await db
     .select()
@@ -151,12 +146,21 @@ export async function verifyAppLockEmailRecovery(emailAddress: string, code: str
   const nextAttempts = challenge.attempts + 1;
   let matches = false;
   try {
-    const { data, error } = await supabaseAuthClient().auth.verifyOtp({
-      email,
-      token: code,
-      type: "email",
+    const { domain, clientId, audience } = auth0Settings();
+    const response = await fetch(`https://${domain}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "http://auth0.com/oauth/grant-type/passwordless/otp",
+        client_id: clientId,
+        username: email,
+        otp: code,
+        realm: "email",
+        audience,
+        scope: "openid profile email",
+      }),
     });
-    matches = !error && Boolean(data.user?.id);
+    matches = response.ok;
   } catch {
     matches = false;
   }

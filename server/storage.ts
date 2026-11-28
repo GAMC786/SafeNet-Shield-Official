@@ -11,7 +11,7 @@ import { DDNS_MIN_INTERVAL_MS } from "@shared/schema";
 import { and, eq, desc, asc, count, isNull, lt, or } from "drizzle-orm";
 
 export interface IStorage {
-  // Control D credentials are keyed only by the authenticated Clerk user ID.
+  // Control D credentials are keyed only by the authenticated SafeNet user ID.
   getControlDCredential(userId: string): Promise<ControlDCredential | null>;
   saveControlDCredential(
     userId: string,

@@ -45,10 +45,6 @@ emulator_api_level="${ANDROID_EMULATOR_API_LEVEL:-$DEFAULT_EMULATOR_METADATA_VAL
 emulator_target="${ANDROID_EMULATOR_TARGET:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_arch="${ANDROID_EMULATOR_ARCH:-$DEFAULT_EMULATOR_METADATA_VALUE}"
 emulator_system_image="${ANDROID_EMULATOR_SYSTEM_IMAGE:-$DEFAULT_EMULATOR_METADATA_VALUE}"
-clerk_origin="${ANDROID_SMOKE_CLERK_ORIGIN:-${MOBILE_API_URL:-}}"
-clerk_origin="${clerk_origin%/}"
-clerk_storage_state="${AUTH_SMOKE_STORAGE_STATE:-}"
-clerk_cookie_payload=""
 fixture_tmp=""
 fixture_pid=""
 preflight_remote_ca=""
@@ -127,10 +123,8 @@ Options:
                        Exercise real DNS blocking on a permissioned target
   --help           Show this help
 
-The full smoke lane also requires AUTH_SMOKE_STORAGE_STATE and
-ANDROID_SMOKE_CLERK_ORIGIN (or MOBILE_API_URL). The storage-state fixture is
-used only to seed a real Clerk session into the fresh WebView after the
-unauthenticated sign-in screen has been recorded.
+The full smoke lane verifies the packaged Auth0 sign-in surface without
+injecting provider sessions or credentials into the Android WebView.
 
 Fixture mode starts a controlled plain DNS, DoH, DoT, and HTTPS fixture on the
 emulator host (10.0.2.2 by default). Public mode uses external resolvers and
@@ -254,8 +248,8 @@ command -v adb >/dev/null 2>&1 || {
 
 mkdir -p "$output_dir"
 rm -f "$output_dir"/instrumentation.log "$output_dir"/result.txt \
-    "$output_dir"/clerk-auth-instrumentation.log "$output_dir"/clerk-auth-logcat.txt \
-    "$output_dir"/clerk-auth-result.txt \
+    "$output_dir"/auth0-signin-instrumentation.log "$output_dir"/auth0-signin-logcat.txt \
+    "$output_dir"/auth0-signin-result.txt \
     "$output_dir"/failure-category.txt "$output_dir"/preflight.log \
     "$output_dir"/preflight-result.txt "$output_dir"/emulator-image.txt \
     "$output_dir"/startup-initial.png "$output_dir"/startup-transition.png \
@@ -296,43 +290,6 @@ capture() {
         echo "\$ $*"
         "$@" 2>&1 || echo "[command exited $?, evidence may be incomplete]"
     } > "$output_dir/$name"
-}
-
-prepare_clerk_session() {
-    if [[ -z "$clerk_origin" ]]; then
-        echo "ERROR: ANDROID_SMOKE_CLERK_ORIGIN or MOBILE_API_URL is required for Clerk smoke." >&2
-        return 1
-    fi
-    if [[ -z "$clerk_storage_state" ]]; then
-        echo "ERROR: AUTH_SMOKE_STORAGE_STATE is required for the Android Clerk smoke." >&2
-        return 1
-    fi
-    clerk_cookie_payload="$(
-        AUTH_SMOKE_STORAGE_STATE="$clerk_storage_state" node --input-type=module - <<'NODE'
-const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
-let state;
-try {
-  state = JSON.parse(raw);
-} catch {
-  console.error("AUTH_SMOKE_STORAGE_STATE is not valid JSON.");
-  process.exit(1);
-}
-
-const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
-const lines = cookies
-  .filter((cookie) => typeof cookie?.name === "string" && typeof cookie?.value === "string")
-  .map((cookie) => `${cookie.name}=${cookie.value}`);
-if (lines.length === 0) {
-  console.error("AUTH_SMOKE_STORAGE_STATE does not contain browser cookies.");
-  process.exit(1);
-}
-process.stdout.write(Buffer.from(lines.join("\n"), "utf8").toString("base64"));
-NODE
-    )" || return 1
-    if [[ -z "$clerk_cookie_payload" ]]; then
-        echo "ERROR: AUTH_SMOKE_STORAGE_STATE did not produce a Clerk session." >&2
-        return 1
-    fi
 }
 
 fixture_failure() {
@@ -946,36 +903,29 @@ if ! install_release_apk "$test_apk_path"; then
     android_install_failure "$test_apk_path" "release instrumentation APK" "$instrumentation_apk_attempted"
 fi
 
-prepare_clerk_session || {
-    echo "Android Clerk smoke could not prepare a real storage-state session." >&2
-    exit 2
-}
-
-echo "Running fresh Android Clerk sign-in smoke..."
+echo "Running packaged Auth0 sign-in surface smoke..."
 set +e
 adb_run shell am instrument -w -r \
-    -e clerk-origin "$clerk_origin" \
-    -e clerk-cookie-base64 "$clerk_cookie_payload" \
-    -e class com.safenet.dns.SafeNetUiInstrumentationTest#clerkSignInStartsFreshAndRetainsClerkSession \
-    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/clerk-auth-instrumentation.log"
-clerk_auth_status="${PIPESTATUS[0]}"
+    -e class com.safenet.dns.SafeNetUiInstrumentationTest#auth0SignInSurfaceLoads \
+    "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | tee "$output_dir/auth0-signin-instrumentation.log"
+auth0_signin_status="${PIPESTATUS[0]}"
 set -e
-capture clerk-auth-logcat adb "${adb_args[@]}" shell logcat -d -t 600
-if [[ "$clerk_auth_status" -ne 0 ]] ||
-    ! grep -Fq 'CLERK_AUTH_SMOKE result=PASS' "$output_dir/clerk-auth-logcat.txt"; then
+capture auth0-signin-logcat adb "${adb_args[@]}" shell logcat -d -t 600
+if [[ "$auth0_signin_status" -ne 0 ]] ||
+    ! grep -Fq 'AUTH0_SIGNIN_SURFACE result=PASS' "$output_dir/auth0-signin-logcat.txt"; then
     {
         printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
             "$serial" "$apk_path" "$validation_mode" "$device_kind"
-        printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=FAIL\nresult=FAIL\n'
-    } | tee "$output_dir/clerk-auth-result.txt" "$output_dir/result.txt" >&2
-    echo "Android Clerk sign-in smoke failed." >&2
-    exit "${clerk_auth_status:-1}"
+        printf 'auth0_signin_surface=FAIL\nresult=FAIL\n'
+    } | tee "$output_dir/auth0-signin-result.txt" "$output_dir/result.txt" >&2
+    echo "Android Auth0 sign-in surface smoke failed." >&2
+    exit "${auth0_signin_status:-1}"
 fi
 {
     printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\n' \
         "$serial" "$apk_path" "$validation_mode" "$device_kind"
-    printf 'initial_screen=SIGN_IN\nsession=CLERK\ndashboard=PASS\nretained_after_reload=PASS\nlegacy_access_code=ABSENT\nresult=PASS\n'
-} | tee "$output_dir/clerk-auth-result.txt"
+    printf 'auth0_signin_surface=PASS\nresult=PASS\n'
+} | tee "$output_dir/auth0-signin-result.txt"
 
 run_media_smoke
 
@@ -1230,7 +1180,6 @@ set +e
 adb_run shell am instrument -w -r \
     -e class "com.safenet.dns.SafeNetInternetShareInstrumentationTest,com.safenet.dns.SafeNetUiInstrumentationTest#packagedSpeedTestAndSoundtrackSurviveAndroidPolicies,com.safenet.dns.SafeNetUiInstrumentationTest#soundtrackToggleSurvivesAndroidPauseAndResume,com.safenet.dns.SafeNetUiInstrumentationTest#localVpnConsentBackCancellationLeavesToggleOffAndRetryable,com.safenet.dns.SafeNetUiInstrumentationTest#localVpnRetriesFromUiAfterSavedResolverRecoveryFailure,com.safenet.dns.SafeNetDnsDdnsInstrumentationTest,com.safenet.dns.PrivateDnsEulaInstrumentationTest" \
     -e preserve-auth-session true \
-    -e clerk-origin "$clerk_origin" \
     -e plain-primary "$plain_primary" \
     -e plain-secondary "$plain_secondary" \
     -e doh-secondary "$doh_secondary" \
@@ -1429,7 +1378,7 @@ if [[ "$test_failed" -ne 0 ]]; then
     fi
 fi
 printf '%s\n' "$failure_category" | tee "$output_dir/failure-category.txt"
-printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\ndns_filtering=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nclerk_auth=PASS\n' \
+printf 'target=%s\napk=%s\nvalidation_mode=%s\ndevice_kind=%s\nresolver_mode=%s\ncoverage=%s\ninstrumentation_status=%s\ncall_screening_status=%s\ndns_resolver_ui=%s\nddns_ui=%s\nvpn_package_surface=%s\ninternet_share_start=%s\ninternet_share_stop=%s\ndns_filtering=%s\nconnectivity_recovery=%s\nresolver_recovery_contract=%s\nresolver_recovery=%s\ndoh_recovery=%s\ndot_recovery=%s\ndoh_recovery_cycles=%s\ndot_recovery_cycles=%s\ndoh_recovery_failure_category=%s\ndoh_recovery_failure_phase=%s\ndoh_recovery_failure_elapsed_ms=%s\ndot_recovery_failure_category=%s\ndot_recovery_failure_phase=%s\ndot_recovery_failure_elapsed_ms=%s\nai_shield_status=%s\nfailure_category=%s\nauth0_signin=PASS\n' \
    "$serial" "$apk_path" "$validation_mode" "$device_kind" "$resolver_mode" "$coverage_label" "$instrumentation_status" "${call_screening_status:-NOT_RECORDED}" "$dns_resolver_ui_status" "$ddns_ui_status" "$vpn_package_surface_status" "$internet_share_start_status" "$internet_share_stop_status" "$dns_filtering_status" "$connectivity_recovery_status" "$resolver_recovery_contract_status" "$resolver_recovery_status" "$doh_recovery_status" "$dot_recovery_status" "$doh_recovery_cycles" "$dot_recovery_cycles" "$doh_recovery_failure_category" "$doh_recovery_failure_phase" "$doh_recovery_failure_elapsed_ms" "$dot_recovery_failure_category" "$dot_recovery_failure_phase" "$dot_recovery_failure_elapsed_ms" "$ai_shield_status" "$failure_category" | tee "$output_dir/result.txt"
 
 if [[ "$test_failed" -ne 0 ]]; then

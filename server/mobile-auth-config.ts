@@ -4,33 +4,18 @@ export type MobileAuthConfigEnvironment = NodeJS.ProcessEnv;
 
 export function createPublicMobileAuthConfig(
   env: MobileAuthConfigEnvironment,
-  apiOrigin: string,
+  _apiOrigin: string,
 ) {
-  const isProduction = env.NODE_ENV === "production";
-  const clerkPublishableKey = [
-    env.CLERK_PUBLISHABLE_KEY,
-    env.VITE_CLERK_PUBLISHABLE_KEY,
-  ].map((value) => value?.trim()).find(Boolean) ?? "";
-  const supabaseUrl = (
-    isProduction ? env.VITE_SUPABASE_URL : env.VITE_SUPABASE_DEVELOPMENT_URL
-  )?.trim() ?? "";
-  const supabasePublishableKey = (
-    isProduction
-      ? env.VITE_SUPABASE_PUBLISHABLE_KEY
-      : env.VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY
-  )?.trim() ?? "";
+  const auth0Domain = (env.AUTH0_DOMAIN ?? env.VITE_AUTH0_DOMAIN)?.trim()
+    .replace(/^https?:\/\//i, "").replace(/\/+$/, "") ?? "";
+  const auth0ClientId = (env.AUTH0_CLIENT_ID ?? env.VITE_AUTH0_CLIENT_ID)?.trim() ?? "";
+  const auth0Audience = (env.AUTH0_AUDIENCE ?? env.VITE_AUTH0_AUDIENCE)?.trim() ?? "";
 
-  if (!clerkPublishableKey || !supabaseUrl || !supabasePublishableKey) {
+  if (!auth0Domain || !auth0ClientId || !auth0Audience) {
     return null;
   }
 
-  const normalizedApiOrigin = apiOrigin.replace(/\/+$/, "");
-  return {
-    clerkPublishableKey,
-    clerkProxyUrl: `${normalizedApiOrigin}/api/__clerk`,
-    supabaseUrl,
-    supabasePublishableKey,
-  };
+  return { auth0Domain, auth0ClientId, auth0Audience };
 }
 
 export function registerMobileAuthConfigRoute(

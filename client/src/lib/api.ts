@@ -1,5 +1,3 @@
-import { supabase } from "./supabase";
-
 const configuredApiOrigin = (import.meta.env?.VITE_API_URL as string | undefined)
   ?.trim()
   .replace(/\/+$/, "");
@@ -41,6 +39,12 @@ export type ApiFetchOptions = RequestInit & {
   timeoutMs?: number;
 };
 
+let authTokenProvider: (() => Promise<string | undefined>) | null = null;
+
+export function setAuthTokenProvider(provider: (() => Promise<string | undefined>) | null) {
+  authTokenProvider = provider;
+}
+
 export async function apiFetch(
   path: string,
   { timeoutMs = 15000, signal, ...init }: ApiFetchOptions = {},
@@ -54,10 +58,10 @@ export async function apiFetch(
   signal?.addEventListener("abort", abortFromCaller, { once: true });
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
     const headers = new Headers(init.headers);
-    if (session?.access_token && !headers.has("Authorization")) {
-      headers.set("Authorization", `Bearer ${session.access_token}`);
+    const accessToken = authTokenProvider ? await authTokenProvider() : undefined;
+    if (accessToken && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
     }
     return await fetch(resolveApiUrl(path), {
       ...init,

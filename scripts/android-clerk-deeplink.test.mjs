@@ -10,7 +10,7 @@ const appSourcePath = new URL("../client/src/App.tsx", import.meta.url);
 const manifest = await readFile(manifestPath, "utf8");
 const appSource = await readFile(appSourcePath, "utf8");
 
-test("Android manifest routes the configured Supabase callback to MainActivity", () => {
+test("Android manifest routes the Auth0 callback to MainActivity", () => {
   assert.match(
     manifest,
     /<data\s+android:scheme="safenet"\s+android:host="auth"\s+android:path="\/callback"\s*\/>/,
@@ -18,16 +18,14 @@ test("Android manifest routes the configured Supabase callback to MainActivity",
   assert.match(manifest, /android:name="\.MainActivity"[\s\S]*?android:exported="true"/);
 });
 
-test("the Android app exchanges the configured Supabase callback for a session", () => {
+test("the Android app completes the Auth0 PKCE callback in the system-browser flow", () => {
   assert.match(appSource, /CapacitorApp\.addListener\("appUrlOpen"/);
   assert.match(appSource, /CapacitorApp\.getLaunchUrl\(\)/);
-  assert.match(appSource, /new URL\("safenet:\/\/auth\/callback"\)/);
-  assert.match(appSource, /if \(!isAndroidNative \|\| returnTo !== `\$\{basePath\}\/`\)/);
+  assert.match(appSource, /"safenet:\/\/auth\/callback"/);
   assert.match(appSource, /callback\.protocol !== "safenet:"/);
   assert.match(appSource, /callback\.hostname !== "auth"/);
   assert.match(appSource, /callback\.pathname !== "\/callback"/);
-  assert.match(appSource, /callback\.searchParams\.get\("code"\)/);
-  assert.match(appSource, /supabase\.auth\.exchangeCodeForSession\(code\)/);
-  assert.match(appSource, /getSupabaseCallbackUrl\(returnTo\)/);
+  assert.match(appSource, /handleRedirectCallback\(callbackUrl\)/);
+  assert.match(appSource, /openUrl: async \(url: string\) => \{ await Browser\.open\(\{ url \}\); \}/);
   assert.match(appSource, /Continue with Google/);
 });

@@ -19,13 +19,8 @@ const nativeBuildCheck = await readFile(
   "utf8",
 );
 
-test("test Android builds explicitly select development Supabase credentials", () => {
+test("test Android builds explicitly select the development Auth0 environment", () => {
   assert.match(buildScript, /MOBILE_TEST_BUILD/);
-  assert.match(buildScript, /VITE_SUPABASE_URL="\$VITE_SUPABASE_DEVELOPMENT_URL"/);
-  assert.match(
-    buildScript,
-    /VITE_SUPABASE_PUBLISHABLE_KEY="\$VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY"/,
-  );
   assert.match(buildScript, /"authEnvironment": "\$auth_environment"/);
   assert.match(gradle, /testInstall && authEnvironment != "development"/);
   assert.match(nativeBuildCheck, /assembleReleaseAndroidTest[\s\S]*?-PtestInstall=true/);

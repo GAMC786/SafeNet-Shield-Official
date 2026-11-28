@@ -416,9 +416,9 @@ test("email-assisted App Lock recovery resets locally without unlocking directly
   assert.match(manager, /Passcode must contain 4 to 12 digits/);
   assert.match(recoveryService, /CODE_TTL_MS = 10 \* 60 \* 1000/);
   assert.match(recoveryService, /MAX_ATTEMPTS = 5/);
-  assert.match(recoveryService, /auth\.signInWithOtp/);
-  assert.match(recoveryService, /auth\.verifyOtp/);
-  assert.match(recoveryService, /shouldCreateUser: false/);
+  assert.match(recoveryService, /\/passwordless\/start/);
+  assert.match(recoveryService, /passwordless\/otp/);
+  assert.match(recoveryService, /realm: "email"/);
   assert.doesNotMatch(recoveryService, /createClerkClient|CLERK_SECRET_KEY/);
 });
 

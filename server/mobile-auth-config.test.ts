@@ -10,47 +10,39 @@ test("mobile auth config returns only public production settings for the API hos
   const config = createPublicMobileAuthConfig(
     {
       NODE_ENV: "production",
-      CLERK_PUBLISHABLE_KEY: " pk_live_public ",
-      CLERK_SECRET_KEY: "must-not-be-returned",
-      VITE_SUPABASE_URL: " https://project.supabase.co ",
-      VITE_SUPABASE_PUBLISHABLE_KEY: " public-supabase-key ",
-      VITE_SUPABASE_DEVELOPMENT_URL: "https://development.supabase.co",
-      VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY: "development-key",
+      AUTH0_DOMAIN: " safenet.auth0.com ",
+      AUTH0_CLIENT_ID: " public-client-id ",
+      AUTH0_AUDIENCE: " https://api.safenet.test ",
     },
     "https://safe-net-shield-official.replit.app/",
   );
 
   assert.deepEqual(config, {
-    clerkPublishableKey: "pk_live_public",
-    clerkProxyUrl: "https://safe-net-shield-official.replit.app/api/__clerk",
-    supabaseUrl: "https://project.supabase.co",
-    supabasePublishableKey: "public-supabase-key",
+    auth0Domain: "safenet.auth0.com",
+    auth0ClientId: "public-client-id",
+    auth0Audience: "https://api.safenet.test",
   });
-  assert.doesNotMatch(JSON.stringify(config), /must-not-be-returned/);
 });
 
-test("mobile auth config selects development Supabase settings outside production", () => {
+test("mobile auth config exposes shared Auth0 application settings", () => {
   const config = createPublicMobileAuthConfig(
     {
       NODE_ENV: "development",
-      VITE_CLERK_PUBLISHABLE_KEY: "pk_test_public",
-      VITE_SUPABASE_URL: "https://production.supabase.co",
-      VITE_SUPABASE_PUBLISHABLE_KEY: "production-key",
-      VITE_SUPABASE_DEVELOPMENT_URL: "https://development.supabase.co",
-      VITE_SUPABASE_DEVELOPMENT_PUBLISHABLE_KEY: "development-key",
+      AUTH0_DOMAIN: "safenet.auth0.com",
+      AUTH0_CLIENT_ID: "public-client-id",
+      AUTH0_AUDIENCE: "https://api.safenet.test",
     },
     "http://localhost:5000",
   );
 
-  assert.equal(config?.supabaseUrl, "https://development.supabase.co");
-  assert.equal(config?.supabasePublishableKey, "development-key");
-  assert.equal(config?.clerkProxyUrl, "http://localhost:5000/api/__clerk");
+  assert.equal(config?.auth0Domain, "safenet.auth0.com");
+  assert.equal(config?.auth0Audience, "https://api.safenet.test");
 });
 
 test("mobile auth config fails closed when required public settings are missing", () => {
   assert.equal(
     createPublicMobileAuthConfig(
-      { NODE_ENV: "production", CLERK_PUBLISHABLE_KEY: "pk_live_public" },
+      { NODE_ENV: "production", AUTH0_CLIENT_ID: "public-client-id" },
       "https://api.example.test",
     ),
     null,
@@ -62,9 +54,9 @@ test("mobile auth config is public to the Capacitor origin and is not cached", a
   registerRequestOriginMiddleware(app);
   registerMobileAuthConfigRoute(app, {
     NODE_ENV: "production",
-    CLERK_PUBLISHABLE_KEY: "pk_live_public",
-    VITE_SUPABASE_URL: "https://project.supabase.co",
-    VITE_SUPABASE_PUBLISHABLE_KEY: "public-supabase-key",
+    AUTH0_DOMAIN: "safenet.auth0.com",
+    AUTH0_CLIENT_ID: "public-client-id",
+    AUTH0_AUDIENCE: "https://api.safenet.test",
   });
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -78,7 +70,7 @@ test("mobile auth config is public to the Capacitor origin and is not cached", a
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("access-control-allow-origin"), "https://localhost");
     assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.equal((await response.json()).clerkProxyUrl, `http://127.0.0.1:${address.port}/api/__clerk`);
+    assert.equal((await response.json()).auth0Audience, "https://api.safenet.test");
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve()),

@@ -2,11 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import {
-  ClerkProvider,
-} from "@clerk/react";
-import { publishableKeyFromHost } from "@clerk/react/internal";
-import { shadcn } from "@clerk/themes";
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import { queryClient } from "./lib/queryClient";
 import { SafeNetAuthProvider, useSafeNetAuth } from "./lib/safenet-auth";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +20,6 @@ import { ArrowLeft } from "lucide-react";
 import { useCallback } from "react";
 import { apiFetch } from "./lib/api";
 import { Browser } from "@capacitor/browser";
-import { supabase } from "./lib/supabase";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
@@ -43,20 +38,12 @@ import NotFound from "@/pages/not-found";
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const APP_LOCK_RETURN_URI = "safenet://app-lock/recovery";
 const runtimeConfig = window.__SAFENET_RUNTIME_CONFIG__;
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  runtimeConfig?.clerkPublishableKey || import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
-const configuredClerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL as
-  | string
-  | undefined;
-const nativeApiOrigin = import.meta.env.VITE_API_URL as string | undefined;
-const clerkProxyUrl =
-  runtimeConfig?.clerkProxyUrl?.trim() ||
-  configuredClerkProxyUrl?.trim() ||
-  (window.location.hostname === "localhost" && nativeApiOrigin?.trim()
-    ? `${nativeApiOrigin.trim().replace(/\/+$/, "")}/api/__clerk`
-    : undefined);
+const auth0Domain = runtimeConfig?.auth0Domain ?? "";
+const auth0ClientId = runtimeConfig?.auth0ClientId ?? "";
+const auth0Audience = runtimeConfig?.auth0Audience ?? "";
+const auth0RedirectUri = Capacitor.getPlatform() === "android"
+  ? "safenet://auth/callback"
+  : `${window.location.origin}${basePath}/auth/callback`;
 
 function stripBase(path: string) {
   return basePath && path.startsWith(basePath)
@@ -87,17 +74,6 @@ function authPathWithRedirect(path: string, redirectUrl?: string) {
   return redirectUrl
     ? `${path}?redirect_url=${encodeURIComponent(redirectUrl)}`
     : path;
-}
-
-function getSupabaseCallbackUrl(returnTo: string) {
-  const isAndroidNative = Capacitor.getPlatform() === "android";
-  const callback = isAndroidNative
-    ? new URL("safenet://auth/callback")
-    : new URL(`${basePath}/auth/callback`, window.location.origin);
-  if (!isAndroidNative || returnTo !== `${basePath}/`) {
-    callback.searchParams.set("return_to", returnTo);
-  }
-  return callback.toString();
 }
 
 function MainLayout() {
@@ -171,8 +147,8 @@ function AuthBackButton({
 
 function SignInPage() {
   const [, setLocation] = useLocation();
+  const { loginWithRedirect } = useAuth0();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -191,20 +167,15 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     try {
-      const { data, error: authError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: getSupabaseCallbackUrl(returnTo),
-          skipBrowserRedirect: true,
+      await loginWithRedirect({
+        appState: { returnTo },
+        authorizationParams: {
+          audience: auth0Audience,
+          connection: "google-oauth2",
+          redirect_uri: auth0RedirectUri,
         },
+        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
       });
-      if (authError) throw authError;
-      if (!data.url) throw new Error("Supabase did not return a Google sign-in URL.");
-      if (isAndroidNative) {
-        await Browser.open({ url: data.url });
-      } else {
-        window.location.assign(data.url);
-      }
     } catch (authError) {
       setIsWorking(false);
       setError(authError instanceof Error ? authError.message : "Google sign-in could not start.");
@@ -216,15 +187,15 @@ function SignInPage() {
     setIsWorking(true);
     setError("");
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      await loginWithRedirect({
+        appState: { returnTo },
+        authorizationParams: {
+          audience: auth0Audience,
+          login_hint: email.trim(),
+          redirect_uri: auth0RedirectUri,
+        },
+        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
       });
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
-      setLocation(returnTo);
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Email sign-in could not complete.");
     } finally {
@@ -241,12 +212,17 @@ function SignInPage() {
     setError("");
     setResetMessage("");
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        { redirectTo: getSupabaseCallbackUrl(`${basePath}/reset-password`) },
-      );
-      if (resetError) setError(resetError.message);
-      else setResetMessage("Check your email for a password reset link.");
+      const response = await fetch(`https://${auth0Domain}/dbconnections/change_password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: auth0ClientId,
+          email: email.trim(),
+          connection: "Username-Password-Authentication",
+        }),
+      });
+      if (!response.ok) throw new Error("Auth0 could not start password recovery.");
+      setResetMessage("If the account exists, Auth0 will email password recovery instructions.");
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : "Password reset could not start.");
     } finally {
@@ -288,24 +264,13 @@ function SignInPage() {
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
             />
           </label>
-          <label className="block text-sm text-slate-200">
-            Password
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-            />
-          </label>
           {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <button
             type="submit"
             disabled={isWorking}
             className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-60"
           >
-            {isWorking ? "Signing in…" : "Sign in"}
+          {isWorking ? "Opening secure sign-in…" : "Continue with email"}
           </button>
         </form>
         <button
@@ -329,40 +294,20 @@ function SignInPage() {
   );
 }
 
-function SupabaseAuthCallbackPage() {
+function Auth0CallbackPage() {
   const [, setLocation] = useLocation();
+  const { isLoading, isAuthenticated } = useAuth0();
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const returnTo = getSafeAuthRedirect(`?redirect_url=${encodeURIComponent(url.searchParams.get("return_to") || "/")}`) || "/";
-    void (async () => {
-      try {
-        const providerError = url.searchParams.get("error_description") || url.searchParams.get("error");
-        if (providerError) {
-          setError(providerError);
-          return;
-        }
-        const code = url.searchParams.get("code");
-        if (!code) {
-          setError("No sign-in code was returned. Start Google sign-in again from this browser.");
-          return;
-        }
-        const { error: authError } = await supabase.auth.exchangeCodeForSession(code);
-        if (authError) {
-          setError(
-            /flow state|code verifier/i.test(authError.message)
-              ? "The sign-in started in a different browser session. Open SafeNet in this browser and try again."
-              : authError.message,
-          );
-          return;
-        }
-        setLocation(returnTo);
-      } catch (authError) {
-        setError(authError instanceof Error ? authError.message : "Sign-in verification failed.");
-      }
-    })();
-  }, [setLocation]);
+    const params = new URLSearchParams(window.location.search);
+    const providerError = params.get("error_description") || params.get("error");
+    if (providerError) {
+      setError(providerError);
+      return;
+    }
+    if (!isLoading && isAuthenticated) setLocation(`${basePath}/`);
+  }, [isAuthenticated, isLoading, setLocation]);
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
@@ -451,39 +396,31 @@ function AppLockRecoveryCompletePage() {
 }
 
 function SignInSsoCallbackPage() {
-  return <SupabaseAuthCallbackPage />;
+  return <Auth0CallbackPage />;
 }
 
 function SignUpPage() {
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const { loginWithRedirect } = useAuth0();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const redirectUrl = getSafeAuthRedirect(window.location.search);
+  const isAndroidNative = Capacitor.getPlatform() === "android";
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submit = async () => {
     setIsWorking(true);
     setError("");
     try {
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          emailRedirectTo: getSupabaseCallbackUrl(`${basePath}/`),
+      await loginWithRedirect({
+        appState: { returnTo: redirectUrl || `${basePath}/` },
+        authorizationParams: {
+          audience: auth0Audience,
+          screen_hint: "signup",
+          redirect_uri: auth0RedirectUri,
         },
+        ...(isAndroidNative ? { openUrl: async (url: string) => { await Browser.open({ url }); } } : {}),
       });
-      if (signupError) {
-        setError(signupError.message);
-        return;
-      }
-      if (data.session) {
-        setLocation(redirectUrl || `${basePath}/`);
-      } else {
-        setMessage("Check your email for a confirmation link before signing in.");
-      }
     } catch (signupError) {
       setError(signupError instanceof Error ? signupError.message : "Account creation could not complete.");
     } finally {
@@ -499,40 +436,18 @@ function SignUpPage() {
           onClick={() => setLocation(authPathWithRedirect(`${basePath}/sign-in`, redirectUrl))}
         />
         <h1 className="mb-5 text-2xl font-bold text-white">Create your SafeNet account</h1>
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
-          <label className="block text-sm text-slate-200">
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-            />
-          </label>
-          <label className="block text-sm text-slate-200">
-            Password
-            <input
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-            />
-          </label>
+        <div className="space-y-4">
           {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
           {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <button
-            type="submit"
+            type="button"
+            onClick={() => void submit()}
             disabled={isWorking}
             className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {isWorking ? "Creating account…" : "Create account"}
+            {isWorking ? "Opening secure sign-up…" : "Continue to secure sign-up"}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -540,52 +455,12 @@ function SignUpPage() {
 
 function ResetPasswordPage() {
   const [, setLocation] = useLocation();
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isWorking, setIsWorking] = useState(false);
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsWorking(true);
-    setError("");
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        setError(updateError.message);
-        return;
-      }
-      setMessage("Password updated. You can continue using SafeNet.");
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Password could not be updated.");
-    } finally {
-      setIsWorking(false);
-    }
-  };
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
       <div className="w-full max-w-[440px] rounded-2xl border border-primary/20 bg-slate-900/90 p-6">
-        <h1 className="mb-5 text-2xl font-bold text-white">Choose a new password</h1>
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
-          <label className="block text-sm text-slate-200">
-            New password
-            <input
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-            />
-          </label>
-          {message ? <p role="status" className="text-sm text-emerald-300">{message}</p> : null}
-          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
-          <button type="submit" disabled={isWorking} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-            {isWorking ? "Saving…" : "Update password"}
-          </button>
-        </form>
+        <h1 className="mb-3 text-2xl font-bold text-white">Password recovery</h1>
+        <p className="text-sm text-slate-300">Use the secure password recovery link sent by Auth0. Return here after updating your password.</p>
         <button type="button" onClick={() => setLocation(`${basePath}/`)} className="mt-4 w-full text-sm text-slate-300">
           Return to SafeNet
         </button>
@@ -594,7 +469,7 @@ function ResetPasswordPage() {
   );
 }
 
-function ClerkQueryClientCacheInvalidator() {
+function AuthQueryClientCacheInvalidator() {
   const { userId } = useSafeNetAuth();
   const queryClient = useQueryClient();
   const previousUserId = useRef<string | null | undefined>(undefined);
@@ -609,58 +484,9 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-const clerkAppearance = {
-  theme: shadcn,
-  cssLayerName: "clerk",
-  options: {
-    logoPlacement: "inside" as const,
-    logoLinkUrl: basePath || "/",
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-  },
-  variables: {
-    colorPrimary: "#ef4444",
-    colorForeground: "#f8fafc",
-    colorMutedForeground: "#94a3b8",
-    colorDanger: "#f87171",
-    colorBackground: "#111827",
-    colorInput: "#1f2937",
-    colorInputForeground: "#f8fafc",
-    colorNeutral: "#475569",
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-    borderRadius: "0.75rem",
-  },
-  elements: {
-    rootBox: "w-full flex justify-center",
-    cardBox: "bg-slate-900 rounded-2xl w-[440px] max-w-full overflow-hidden",
-    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    headerTitle: "!mt-2 !leading-tight text-white",
-    headerSubtitle: "!mt-1 text-slate-300",
-    socialButtonsBlockButtonText: "text-white",
-    formFieldLabel: "text-slate-200",
-    footerActionLink: "text-red-400 hover:text-red-300",
-    footerActionText: "text-slate-300",
-    dividerText: "text-slate-400",
-    identityPreviewEditButton: "text-red-400",
-    formFieldSuccessText: "text-emerald-400",
-    alertText: "text-red-200",
-    header: "!pt-6 !pb-2",
-    logoBox: "rounded-lg !mx-auto !mb-4 !h-16 !w-16 !overflow-hidden",
-    logoImage: "rounded-lg !h-16 !w-16 !object-contain",
-    socialButtonsBlockButton: "border-slate-700 bg-slate-800 hover:bg-slate-700",
-    formButtonPrimary: "bg-red-600 hover:bg-red-500 text-white",
-    formFieldInput: "border-slate-700 bg-slate-800 text-white",
-    footerAction: "border-slate-700",
-    dividerLine: "bg-slate-700",
-    alert: "border-red-500/40 bg-red-950/50",
-    otpCodeFieldInput: "border-slate-700 bg-slate-800 text-white",
-    formFieldRow: "text-slate-200",
-    main: "bg-transparent",
-  },
-};
-
-function ClerkProviderWithRoutes() {
+function Auth0NativeCallbackListener() {
   const [, setLocation] = useLocation();
+  const { handleRedirectCallback } = useAuth0();
 
   useEffect(() => {
     if (Capacitor.getPlatform() !== "android") return;
@@ -669,7 +495,7 @@ function ClerkProviderWithRoutes() {
     let handledCallbackUrl: string | undefined;
     let listener: PluginListenerHandle | undefined;
 
-    const forwardCallback = (callbackUrl?: string) => {
+    const forwardCallback = async (callbackUrl?: string) => {
       if (!callbackUrl || callbackUrl === handledCallbackUrl) return;
       let callback: URL;
       try {
@@ -683,28 +509,19 @@ function ClerkProviderWithRoutes() {
         callback.pathname !== "/callback"
       ) return;
       handledCallbackUrl = callbackUrl;
-      const code = callback.searchParams.get("code");
-      if (!code) {
-        setLocation("/sign-in");
-        return;
-      }
-      void supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-        if (error) {
-          console.error("Unable to complete the Supabase Android sign-in callback.", error);
-          setLocation("/sign-in");
-          return;
-        }
-        const requestedReturn = callback.searchParams.get("return_to") || "/";
+      try {
+        const result = await handleRedirectCallback(callbackUrl);
+        const requestedReturn = result.appState?.returnTo || "/";
         const safeReturn = getSafeAuthRedirect(
           `?redirect_url=${encodeURIComponent(requestedReturn)}`,
         ) || "/";
         setLocation(safeReturn);
-      }).catch((error: unknown) => {
-        console.error("Unable to complete the Supabase Android sign-in callback.", error);
+      } catch (error) {
+        console.error("Unable to complete the Auth0 Android sign-in callback.", error);
         setLocation("/sign-in");
-      }).finally(() => {
+      } finally {
         void Browser.close().catch(() => undefined);
-      });
+      }
     };
 
     void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
@@ -716,7 +533,7 @@ function ClerkProviderWithRoutes() {
         listener = registeredListener;
       }
     }).catch((error: unknown) => {
-      console.error("Unable to register the Android Supabase callback listener.", error);
+      console.error("Unable to register the Android Auth0 callback listener.", error);
     });
 
     void CapacitorApp.getLaunchUrl()
@@ -727,7 +544,13 @@ function ClerkProviderWithRoutes() {
       disposed = true;
       void listener?.remove();
     };
-  }, []);
+  }, [handleRedirectCallback, setLocation]);
+
+  return null;
+}
+
+function Auth0ProviderWithRoutes() {
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     const tileWindow = window as Window & {
@@ -750,38 +573,28 @@ function ClerkProviderWithRoutes() {
   }, [setLocation]);
 
   return (
-    <ClerkProvider
-      publishableKey={clerkPubKey}
-      proxyUrl={clerkProxyUrl}
-      appearance={clerkAppearance}
-      signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
-      localization={{
-        signIn: {
-          start: {
-            title: "Welcome back",
-            subtitle: "Sign in to manage your SafeNet account",
-          },
-        },
-        signUp: {
-          start: {
-            title: "Create your SafeNet account",
-            subtitle: "Protect your subscription with account sign-in",
-          },
-        },
+    <Auth0Provider
+      domain={auth0Domain}
+      clientId={auth0ClientId}
+      cacheLocation="localstorage"
+      useRefreshTokens
+      authorizationParams={{
+        audience: auth0Audience,
+        redirect_uri: auth0RedirectUri,
+        scope: "openid profile email",
       }}
-      routerPush={(to) => setLocation(stripBase(to))}
-      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+      onRedirectCallback={(appState) => setLocation(stripBase(appState?.returnTo || "/"))}
     >
       <SafeNetAuthProvider>
         <QueryClientProvider client={queryClient}>
-          <ClerkQueryClientCacheInvalidator />
+          <Auth0NativeCallbackListener />
+          <AuthQueryClientCacheInvalidator />
           <Switch>
             <Route
               path="/sign-in/app-lock-recovery-complete"
               component={AppLockRecoveryCompletePage}
             />
-            <Route path="/auth/callback" component={SupabaseAuthCallbackPage} />
+            <Route path="/auth/callback" component={Auth0CallbackPage} />
             <Route path="/reset-password" component={ResetPasswordPage} />
             <Route path="/sign-in/sso-callback" component={SignInSsoCallbackPage} />
             <Route path="/sign-in/*?" component={SignInPage} />
@@ -791,7 +604,7 @@ function ClerkProviderWithRoutes() {
           <Toaster />
         </QueryClientProvider>
       </SafeNetAuthProvider>
-    </ClerkProvider>
+    </Auth0Provider>
   );
 }
 
@@ -831,7 +644,7 @@ function App() {
       >
         <NativeStatusBarThemeSync />
         <WouterRouter base={basePath}>
-          <ClerkProviderWithRoutes />
+          <Auth0ProviderWithRoutes />
         </WouterRouter>
       </ThemeProvider>
     </Sentry.ErrorBoundary>

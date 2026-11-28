@@ -615,32 +615,32 @@ test("Settings use the current package version and expose only current controls"
   assert.doesNotMatch(manifestSource, /v1\.0\.20/);
 });
 
-test("Billing recovers from Clerk loading stalls without skipping signed-out access", () => {
+test("Billing recovers from Auth0 loading stalls without skipping signed-out access", () => {
   assert.match(billingSource, /import \{ apiFetch \} from "@\/lib\/api"/);
   assert.match(
     billingSource,
     /return apiFetch\(input, \{ \.\.\.init, timeoutMs: BILLING_REQUEST_TIMEOUT_MS \}\)/,
   );
-  assert.match(billingSource, /const CLERK_LOAD_TIMEOUT_MS = 12_000/);
+  assert.match(billingSource, /const AUTH_LOAD_TIMEOUT_MS = 12_000/);
   assert.match(
     billingSource,
-    /const clerkIsLoaded = isLoaded && !clerkStartupStallRequested/,
+    /const authIsLoaded = isLoaded && !authStartupStallRequested/,
   );
   assert.match(
     billingSource,
-    /if \(clerkIsLoaded\) \{\s*setClerkLoadTimedOut\(false\);\s*return;\s*\}/,
+    /if \(authIsLoaded\) \{\s*setAuthLoadTimedOut\(false\);\s*return;\s*\}/,
   );
   assert.match(
     billingSource,
-    /window\.setTimeout\(\s*\(\) => setClerkLoadTimedOut\(true\),\s*CLERK_LOAD_TIMEOUT_MS,\s*\)/,
+    /window\.setTimeout\(\s*\(\) => setAuthLoadTimedOut\(true\),\s*AUTH_LOAD_TIMEOUT_MS,\s*\)/,
   );
   assert.match(
     billingSource,
-    /!clerkIsLoaded && !clerkLoadTimedOut[\s\S]*?Loading your account…/,
+    /!authIsLoaded && !authLoadTimedOut[\s\S]*?Loading your account…/,
   );
   assert.match(
     billingSource,
-    /!isAndroid && !clerkIsLoaded && !clerkLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !isAndroid && !clerkIsLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{retryClerkLoading\}[\s\S]*?>\s*Retry/,
+    /!isAndroid && !authIsLoaded && !authLoadTimedOut \? \([\s\S]*?Loading your account…[\s\S]*?\) : !isAndroid && !authIsLoaded \? \([\s\S]*?Your account could not be loaded\. Check your connection and try again\.[\s\S]*?onClick=\{retryAuthLoading\}[\s\S]*?>\s*Retry/,
   );
   assert.match(
     billingSource,
@@ -648,7 +648,7 @@ test("Billing recovers from Clerk loading stalls without skipping signed-out acc
   );
 });
 
-test("Supabase-authenticated screens send bearer tokens on protected API requests", () => {
+test("Auth0-authenticated screens send bearer tokens on protected API requests", () => {
   for (const source of [
     billingSource,
     adGuardDnsBlocklistsSource,
@@ -663,16 +663,13 @@ test("Supabase-authenticated screens send bearer tokens on protected API request
   assert.match(privateDnsCardSource, /apiFetch\("\/api\/nextdns\/connection"\)/);
 });
 
-test("development authentication uses Supabase while production retains Clerk fallback", () => {
-  assert.match(safeNetAuthSource, /const supabaseOnly = import\.meta\.env\.DEV/);
-  assert.match(
-    safeNetAuthSource,
-    /isSignedIn:[\s\S]*?!supabaseOnly && Boolean\(clerkAuth\.isSignedIn\)/,
-  );
-  assert.match(
-    serverAuthSource,
-    /if \(process\.env\.NODE_ENV === "development"\) return null;[\s\S]*?getAuth\(req\)\.userId/,
-  );
+test("Auth0 is the unified identity provider for Preview and production", () => {
+  assert.match(safeNetAuthSource, /useAuth0\(\)/);
+  assert.match(safeNetAuthSource, /getAccessTokenSilently/);
+  assert.match(serverAuthSource, /auth0JwtAuth\(config\)/);
+  assert.match(serverAuthSource, /email_verified !== true/);
+  assert.doesNotMatch(safeNetAuthSource, /supabase|clerk/i);
+  assert.doesNotMatch(serverAuthSource, /supabase|clerk/i);
 });
 
 test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in", () => {
@@ -683,7 +680,7 @@ test("Android Premium uses anonymous RevenueCat billing without SafeNet sign-in"
   assert.match(billingSource, /Purchases\.purchasePackage/);
   assert.match(billingSource, /Purchases\.restorePurchases/);
   assert.match(billingSource, /Browser\.open\(\{ url: GOOGLE_PLAY_SUBSCRIPTIONS_URL \}\)/);
-  assert.match(billingSource, /Purchases\.logIn\(\{ appUserID: currentClerkUserId \}\)/);
+  assert.match(billingSource, /Purchases\.logIn\(\{ appUserID: currentAuthUserId \}\)/);
   assert.doesNotMatch(billingSource, /fetchBilling\("\/api\/billing\/preflight"/);
 });
 

@@ -8,7 +8,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Base64;
 import android.util.Log;
-import android.webkit.CookieManager;
 import android.webkit.WebView;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -59,22 +58,25 @@ public class RevenueCatBillingInstrumentationTest {
 
     @Test
     public void purchaseRestoreAndStatusStayLinked() throws Exception {
-        String origin = requiredArgument("clerk-origin");
-        String encodedCookies = requiredArgument("clerk-cookie-base64");
+        String encodedAuth0Cache = requiredArgument("auth0-localstorage-base64");
         String action = argument("billing-action", "purchase");
         String confirmText = argument("billing-purchase-confirm-text", "Buy");
 
-        setClerkSessionCookies(origin, new String(
-            Base64.decode(encodedCookies, Base64.DEFAULT),
-            StandardCharsets.UTF_8
-        ));
-        callWebView("window.location.assign(" + JSONObject.quote(origin + "/billing") + "); true");
+        setAuth0LocalStorageCache(encodedAuth0Cache);
+        callWebView(
+            "window.location.assign(new URL('/billing',location.origin).toString()); true"
+        );
         waitForWebView("document.body.innerText.includes('SafeNet Premium')");
         waitForWebView("Boolean(document.querySelector('[data-testid=\"android-billing-panel\"]'))");
 
         JSONObject preflight = requireValue(callWebView(
-            "fetch('/api/billing/preflight',{credentials:'include',cache:'no-store'})" +
-                ".then(async response => ({http:response.status,...(await response.json())}))"
+            "(() => {" +
+                "const cache = Object.values(localStorage).map(value => {try{return JSON.parse(value)}catch{return null}})" +
+                    ".find(value => value && typeof value.access_token === 'string');" +
+                "if (!cache) throw new Error('Auth0 access token was not restored');" +
+                "return fetch('/api/billing/preflight',{headers:{Authorization:'Bearer '+cache.access_token},cache:'no-store'})" +
+                ".then(async response => ({http:response.status,...(await response.json())}));" +
+            "})()"
         ));
         assertTrue(
             "RevenueCat billing configuration must pass before opening Google Play",
@@ -105,17 +107,20 @@ public class RevenueCatBillingInstrumentationTest {
             offering.optBoolean("monthlyAvailable", false)
         );
 
+        waitForWebView(
+            "Boolean(document.querySelector('[data-testid=\"billing-account\"]')?.dataset.authUserId)"
+        );
         JSONObject identity = requireValue(callWebView(
             "Promise.all([" +
-                "document.querySelector('[data-testid=\"billing-account\"]')?.dataset.clerkUserId || null," +
+                "document.querySelector('[data-testid=\"billing-account\"]')?.dataset.authUserId || null," +
                 "window.Capacitor.Plugins.Purchases.getAppUserID()" +
-            "]).then(([clerkUserId, revenueCat]) => ({clerkUserId, revenueCatUserId:revenueCat.appUserID}))"
+            "]).then(([authUserId, revenueCat]) => ({authUserId, revenueCatUserId:revenueCat.appUserID}))"
         ));
-        assertTrue("Clerk must be available in the billing WebView",
-            identity.optString("clerkUserId", "").length() > 0);
+        assertTrue("Auth0 must be available in the billing WebView",
+            identity.optString("authUserId", "").length() > 0);
         assertTrue(
-            "RevenueCat must use the same Clerk user",
-            identity.optString("clerkUserId", "").equals(identity.optString("revenueCatUserId", ""))
+            "RevenueCat must use the same Auth0 user",
+            identity.optString("authUserId", "").equals(identity.optString("revenueCatUserId", ""))
         );
 
         if ("purchase".equals(action)) {
@@ -141,22 +146,20 @@ public class RevenueCatBillingInstrumentationTest {
         assertEquals("active", status.getString("status"));
         Log.i(
             PROOF_TAG,
-            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS clerk_identity=PASS " +
+            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS auth0_identity=PASS " +
                 "purchase_or_restore=PASS server_status=PASS"
         );
         System.out.println(
-            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS clerk_identity=PASS " +
+            "REVENUECAT_BILLING_PROOF result=PASS configuration_preflight=PASS auth0_identity=PASS " +
                 "purchase_or_restore=PASS server_status=PASS"
         );
     }
 
     @Test
-    public void signedOutBillingRecoversFromClerkStartupStall() throws Exception {
-        String origin = requiredArgument("clerk-origin");
-        clearClerkSessionCookies();
+    public void signedOutBillingRecoversFromAuth0StartupStall() throws Exception {
+        clearAuth0SessionCache();
 
-        String billingUrl = origin + "/billing";
-        callWebView("window.location.assign(" + JSONObject.quote(billingUrl) + "); true");
+        callWebView("window.location.assign(new URL('/billing',location.origin).toString()); true");
         waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-signed-out\"]'))");
         assertEquals(
             "Signed-out Billing must stay on the Billing route",
@@ -165,28 +168,29 @@ public class RevenueCatBillingInstrumentationTest {
                 .optString("pathname")
         );
 
-        String stalledUrl = billingUrl +
-            "?billing_clerk_stall=1&redirect_url=%2Fbilling";
-        callWebView("window.location.assign(" + JSONObject.quote(stalledUrl) + "); true");
+        callWebView(
+            "window.location.assign(new URL('/billing?billing_auth_stall=1&redirect_url=%2Fbilling'," +
+                "location.origin).toString()); true"
+        );
         waitForWebView(
             "Boolean(document.querySelector('[data-testid=\"billing-sign-in-loading\"]'))"
         );
-        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-clerk-recovery\"]'))");
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-auth-recovery\"]'))");
         assertTrue(
-            "Clerk recovery message must explain that the account could not be loaded",
+            "Auth0 recovery message must explain that the account could not be loaded",
             callWebView(
-                "document.querySelector('[data-testid=\"billing-clerk-recovery\"]').innerText" +
+                "document.querySelector('[data-testid=\"billing-auth-recovery\"]').innerText" +
                     ".includes('account could not be loaded')"
             ).optBoolean("value", false)
         );
 
         requireValue(callWebView(
-            "document.querySelector('[data-testid=\"billing-clerk-retry\"]').click(); true"
+            "document.querySelector('[data-testid=\"billing-auth-retry\"]').click(); true"
         ));
         waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-signed-out\"]'))");
         JSONObject retryLocation = requireValue(callWebView(
             "({pathname:location.pathname," +
-                "stall:new URLSearchParams(location.search).get('billing_clerk_stall')," +
+                "stall:new URLSearchParams(location.search).get('billing_auth_stall')," +
                 "redirect:new URLSearchParams(location.search).get('redirect_url')})"
         ));
         assertEquals("Retry must preserve the Billing route", "/billing",
@@ -298,37 +302,34 @@ public class RevenueCatBillingInstrumentationTest {
         throw new AssertionError("Android app did not regain focus after Google Play purchase");
     }
 
-    private void setClerkSessionCookies(String origin, String cookieLines) throws Exception {
-        String[] cookies = cookieLines.split("\\n");
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-            CookieManager cookieManager = CookieManager.getInstance();
-            cookieManager.setAcceptCookie(true);
-            for (String cookie : cookies) {
-                if (!cookie.trim().isEmpty()) {
-                    cookieManager.setCookie(origin, cookie.trim());
-                }
-            }
-            cookieManager.flush();
-        });
-        Thread.sleep(500);
-        callWebView("location.reload(); true");
-        waitForWebView(
-            "document.body.innerText.includes('Command Center') || " +
-                "document.body.innerText.includes('SafeNet Premium')"
+    private void setAuth0LocalStorageCache(String encodedCache) throws Exception {
+        String cacheJson = new String(
+            Base64.decode(encodedCache, Base64.DEFAULT),
+            StandardCharsets.UTF_8
         );
+        String script =
+            "(() => {" +
+                "const entries = JSON.parse(" + JSONObject.quote(cacheJson) + ");" +
+                "for (const entry of entries) localStorage.setItem(entry.name, entry.value);" +
+                "location.reload();" +
+                "return true;" +
+            "})()";
+        requireValue(callWebView(script));
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-account\"]'))");
     }
 
-    private void clearClerkSessionCookies() throws Exception {
-        CountDownLatch completed = new CountDownLatch(1);
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-            CookieManager cookieManager = CookieManager.getInstance();
-            cookieManager.removeAllCookies(value -> completed.countDown());
-            cookieManager.flush();
-        });
-        if (!completed.await(WEBVIEW_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out clearing Clerk session cookies");
-        }
-        Thread.sleep(500);
+    private void clearAuth0SessionCache() throws Exception {
+        callWebView(
+            "(() => {" +
+                "for(let i=localStorage.length-1;i>=0;i--){" +
+                    "const key=localStorage.key(i);" +
+                    "if(key && key.startsWith('@@auth0spajs@@')) localStorage.removeItem(key);" +
+                "}" +
+                "location.reload();" +
+                "return true;" +
+            "})()"
+        );
+        waitForWebView("Boolean(document.querySelector('[data-testid=\"billing-signed-out\"]'))");
     }
 
     private String requiredArgument(String name) {

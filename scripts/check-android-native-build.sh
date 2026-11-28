@@ -94,7 +94,7 @@ if [[ "$build_mode" == "debug" ]]; then
 else
     gradle_args+=(:app:assembleReleaseAndroidTest)
     # This task compiles test instrumentation rather than producing a release
-    # APK; allow the explicitly marked development Supabase test assets.
+    # APK; allow the explicitly marked development-auth test assets.
     gradle_args+=(-PtestInstall=true)
     if [[ "$skip_release_signing" == true ]]; then
         gradle_args+=(-x verifyReleaseSigning)

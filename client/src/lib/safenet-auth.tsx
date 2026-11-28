@@ -1,15 +1,6 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type PropsWithChildren,
-} from "react";
-import { useAuth as useClerkAuth, useClerk, useUser as useClerkUser } from "@clerk/react";
-import type { Session } from "@supabase/supabase-js";
-import { apiFetch } from "./api";
-import { supabase } from "./supabase";
+import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { apiFetch, setAuthTokenProvider } from "./api";
 
 type SafeNetUser = {
   id: string;
@@ -28,45 +19,30 @@ type SafeNetAuthState = {
 };
 
 const SafeNetAuthContext = createContext<SafeNetAuthState | null>(null);
+const audience = window.__SAFENET_RUNTIME_CONFIG__?.auth0Audience ?? "";
 
 export function SafeNetAuthProvider({ children }: PropsWithChildren) {
-  const clerkAuth = useClerkAuth();
-  const clerk = useClerk();
-  const { user: clerkUser } = useClerkUser();
-  const supabaseOnly = import.meta.env.DEV;
-  const [session, setSession] = useState<Session | null>(null);
-  const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
+  const { isLoading, isAuthenticated, user: auth0User, getAccessTokenSilently, logout } = useAuth0();
+  const [canonicalUserId, setCanonicalUserId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
-  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [identityLoaded, setIdentityLoaded] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session);
-        setSessionLoaded(true);
-      }
+    setAuthTokenProvider(async () => {
+      if (!isAuthenticated) return undefined;
+      return getAccessTokenSilently({ authorizationParams: { audience } });
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setSessionLoaded(true);
-      setSupabaseUserId(null);
-      setLinkError(null);
-    });
-    return () => {
-      mounted = false;
-      data.subscription.unsubscribe();
-    };
-  }, []);
+    return () => setAuthTokenProvider(null);
+  }, [getAccessTokenSilently, isAuthenticated]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!session) {
-      setSupabaseUserId(null);
-      setLinkError(null);
-      return () => {
-        cancelled = true;
-      };
+    setIdentityLoaded(false);
+    setCanonicalUserId(null);
+    setLinkError(null);
+    if (!isAuthenticated) {
+      setIdentityLoaded(!isLoading);
+      return () => { cancelled = true; };
     }
     void apiFetch("/api/auth/session")
       .then(async (response) => {
@@ -74,74 +50,37 @@ export function SafeNetAuthProvider({ children }: PropsWithChildren) {
         if (!response.ok || typeof result.userId !== "string") {
           throw new Error(result.message || "SafeNet could not link this account.");
         }
-        if (!cancelled) setSupabaseUserId(result.userId);
+        if (!cancelled) setCanonicalUserId(result.userId);
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          setLinkError(error instanceof Error ? error.message : "SafeNet could not link this account.");
-        }
+        if (!cancelled) setLinkError(error instanceof Error ? error.message : "SafeNet could not link this account.");
+      })
+      .finally(() => {
+        if (!cancelled) setIdentityLoaded(true);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [session]);
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isLoading]);
 
   const value = useMemo<SafeNetAuthState>(() => {
-    const hasSupabaseSession = Boolean(session);
-    const userId = hasSupabaseSession
-      ? supabaseUserId
-      : supabaseOnly
-        ? null
-        : clerkAuth.userId ?? null;
-    const email = session?.user.email
-      ?? (supabaseOnly ? null : clerkUser?.primaryEmailAddress?.emailAddress ?? null);
-    const metadataName = session?.user.user_metadata?.full_name;
-    const [firstName, ...lastParts] =
-      typeof metadataName === "string" ? metadataName.trim().split(/\s+/) : [];
-    const user = userId
-      ? {
-          id: userId,
-          email,
-          firstName: firstName ?? (supabaseOnly ? null : clerkUser?.firstName ?? null),
-          lastName: lastParts.join(" ") || (supabaseOnly ? null : clerkUser?.lastName ?? null),
-        }
-      : null;
-
+    const userId = isAuthenticated ? canonicalUserId ?? auth0User?.sub ?? null : null;
+    const fullName = auth0User?.name?.trim().split(/\s+/) ?? [];
     return {
-      isLoaded: session
-        ? sessionLoaded && (Boolean(supabaseUserId) || Boolean(linkError))
-        : supabaseOnly
-          ? sessionLoaded
-          : clerkAuth.isLoaded,
-      isSignedIn: session
-        ? Boolean(supabaseUserId)
-        : !supabaseOnly && Boolean(clerkAuth.isSignedIn),
+      isLoaded: !isLoading && identityLoaded,
+      isSignedIn: isAuthenticated && Boolean(userId) && !linkError,
       userId,
-      user,
+      user: userId ? {
+        id: userId,
+        email: auth0User?.email ?? null,
+        firstName: auth0User?.given_name ?? fullName[0] ?? null,
+        lastName: auth0User?.family_name ?? (fullName.slice(1).join(" ") || null),
+      } : null,
       error: linkError,
       signOut: async () => {
-        if (supabaseOnly) {
-          const { error } = await supabase.auth.signOut();
-          if (error) throw error;
-          return;
-        }
-        await Promise.allSettled([supabase.auth.signOut(), clerk.signOut()]);
+        const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+        await logout({ logoutParams: { returnTo: `${window.location.origin}${basePath}/` } });
       },
     };
-  }, [
-    clerk,
-    clerkAuth.isLoaded,
-    clerkAuth.isSignedIn,
-    clerkAuth.userId,
-    clerkUser?.firstName,
-    clerkUser?.lastName,
-    clerkUser?.primaryEmailAddress?.emailAddress,
-    supabaseOnly,
-    linkError,
-    session,
-    sessionLoaded,
-    supabaseUserId,
-  ]);
+  }, [auth0User, canonicalUserId, identityLoaded, isAuthenticated, isLoading, linkError, logout]);
 
   return <SafeNetAuthContext.Provider value={value}>{children}</SafeNetAuthContext.Provider>;
 }
@@ -157,7 +96,3 @@ export function useSafeNetUser() {
   return { isLoaded, isSignedIn, user };
 }
 
-export function useSafeNetClerk() {
-  const { signOut } = useSafeNetAuth();
-  return { signOut };
-}

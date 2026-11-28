@@ -672,12 +672,10 @@ jobs:
       ANDROID_SDK_SETUP_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-sdk-setup
       ANDROID_NATIVE_BUILD_OUTPUT_DIR: ${{ github.workspace }}/android/app/build/reports/android-native-build/debug
       DNS_ALERT_VALIDATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dns_alert_validation || 'none' }}
-      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_REVENUECAT_ANDROID_API_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_API_KEY }}
       # Native production APKs must always target the public production API.
       # AUTH_SMOKE_BASE_URL is reserved for smoke-test origins, never APK config.
       MOBILE_API_URL: https://safe-net-shield-official.replit.app
-      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -748,7 +746,6 @@ jobs:
           set -euo pipefail
           api_origin="$(node scripts/validate-mobile-api.mjs "$MOBILE_API_URL")"
           export VITE_API_URL="$api_origin"
-          export VITE_CLERK_PROXY_URL="${api_origin}/api/__clerk"
           npm run build
 
       - name: Setup Java
@@ -1092,7 +1089,6 @@ jobs:
           # checks intentionally use public resolvers and are non-blocking.
           script: ./scripts/android-smoke-test.sh --apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk" --test-apk "$GITHUB_WORKSPACE/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
         env:
-          AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
           ANDROID_EMULATOR_API_LEVEL: 34
           ANDROID_EMULATOR_TARGET: google_apis
           ANDROID_EMULATOR_ARCH: x86_64
@@ -1397,40 +1393,41 @@ jobs:
       actions: read
       contents: read
     env:
-      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+      AUTH0_SMOKE_STORAGE_STATE: ${{ secrets.AUTH0_SMOKE_STORAGE_STATE }}
     steps:
-      - name: Check Clerk billing session configuration
+      - name: Check Auth0 billing session configuration
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${AUTH_SMOKE_STORAGE_STATE}" ]]; then
-            echo "::error::AUTH_SMOKE_STORAGE_STATE repository secret is required before Android billing validation can run."
+          if [[ -z "${AUTH0_SMOKE_STORAGE_STATE}" ]]; then
+            echo "::error::AUTH0_SMOKE_STORAGE_STATE repository secret is required before Android billing validation can run."
             exit 1
           fi
-          AUTH_SMOKE_STORAGE_STATE="$AUTH_SMOKE_STORAGE_STATE" node --input-type=module - <<'NODE'
-          const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+          AUTH0_SMOKE_STORAGE_STATE="$AUTH0_SMOKE_STORAGE_STATE" node --input-type=module - <<'NODE'
+          const raw = process.env.AUTH0_SMOKE_STORAGE_STATE;
           let state;
           try {
             state = JSON.parse(raw);
           } catch {
-            console.error("AUTH_SMOKE_STORAGE_STATE must be valid JSON for the Clerk billing session.");
+            console.error("AUTH0_SMOKE_STORAGE_STATE must be valid browser storage state.");
             process.exit(1);
           }
-          const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
-          const hasCookie = cookies.some(
-            (cookie) =>
-              typeof cookie?.name === "string" &&
-              cookie.name.length > 0 &&
-              typeof cookie?.value === "string" &&
-              cookie.value.length > 0,
-          );
-          if (!hasCookie) {
+          const entries = (Array.isArray(state?.origins) ? state.origins : [])
+            .flatMap((origin) => Array.isArray(origin?.localStorage) ? origin.localStorage : [])
+            .filter((entry) => typeof entry?.name === "string" &&
+              entry.name.startsWith("@@auth0spajs@@") &&
+              typeof entry?.value === "string");
+          const hasAccessToken = entries.some((entry) => {
+            try { return typeof JSON.parse(entry.value)?.access_token === "string"; }
+            catch { return false; }
+          });
+          if (!hasAccessToken) {
             console.error(
-              "AUTH_SMOKE_STORAGE_STATE must contain a Clerk browser cookie for the billing session.",
+              "AUTH0_SMOKE_STORAGE_STATE must contain an Auth0 access-token cache.",
             );
             process.exit(1);
           }
-          console.log("Clerk billing session configuration: ready.");
+          console.log("Auth0 billing session configuration: ready.");
           NODE
 
       - name: Check dedicated Play billing runner
@@ -1474,8 +1471,8 @@ jobs:
     permissions:
       contents: read
     env:
-      ANDROID_BILLING_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
-      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
+      ANDROID_BILLING_AUTH0_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
+      AUTH0_SMOKE_STORAGE_STATE: ${{ secrets.AUTH0_SMOKE_STORAGE_STATE }}
       ANDROID_BILLING_OUTPUT_DIR: android/app/build/reports/android-billing/latest
       ANDROID_BILLING_PREFLIGHT_TIMEOUT_SECONDS: 20
     steps:
@@ -2970,8 +2967,6 @@ jobs:
       ANDROID_DNS_DDNS_OUTPUT_DIR: android/app/build/reports/android-dns-ddns-physical
       ANDROID_SMOKE_VALIDATION_MODE: real-device
       ANDROID_SMOKE_DEVICE_KIND: physical-device
-      ANDROID_SMOKE_CLERK_ORIGIN: ${{ secrets.AUTH_SMOKE_BASE_URL || 'https://safe-net-shield-official.replit.app' }}
-      AUTH_SMOKE_STORAGE_STATE: ${{ secrets.AUTH_SMOKE_STORAGE_STATE }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

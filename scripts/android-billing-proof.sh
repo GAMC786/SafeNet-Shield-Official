@@ -10,9 +10,9 @@ readonly DEFAULT_TEST_APK="artifacts/android-test/app-release-androidTest.apk"
 apk_path="${ANDROID_BILLING_APK:-$DEFAULT_APK}"
 test_apk_path="${ANDROID_BILLING_TEST_APK:-$DEFAULT_TEST_APK}"
 output_dir="${ANDROID_BILLING_OUTPUT_DIR:-android/app/build/reports/android-billing/latest}"
-clerk_origin="${ANDROID_BILLING_CLERK_ORIGIN:-${MOBILE_API_URL:-}}"
-clerk_origin="${clerk_origin%/}"
-storage_state="${AUTH_SMOKE_STORAGE_STATE:-}"
+auth0_origin="${ANDROID_BILLING_AUTH0_ORIGIN:-${MOBILE_API_URL:-}}"
+auth0_origin="${auth0_origin%/}"
+storage_state="${AUTH0_SMOKE_STORAGE_STATE:-}"
 purchase_confirm_text="${ANDROID_BILLING_PURCHASE_CONFIRM_TEXT:-Buy}"
 action="${ANDROID_BILLING_ACTION:-purchase}"
 preflight_timeout_seconds="${ANDROID_BILLING_PREFLIGHT_TIMEOUT_SECONDS:-20}"
@@ -22,10 +22,10 @@ fail() {
     exit 2
 }
 
-[[ -n "$clerk_origin" ]] ||
-    fail "ANDROID_BILLING_CLERK_ORIGIN or MOBILE_API_URL is required for the Clerk billing session."
+[[ -n "$auth0_origin" ]] ||
+    fail "ANDROID_BILLING_AUTH0_ORIGIN or MOBILE_API_URL is required for the Auth0 billing session."
 [[ -n "$storage_state" ]] ||
-    fail "AUTH_SMOKE_STORAGE_STATE repository secret is required for the Clerk billing session."
+    fail "AUTH0_SMOKE_STORAGE_STATE repository secret is required for the Auth0 billing session."
 [[ "$action" == "purchase" || "$action" == "restore" ]] ||
     fail "ANDROID_BILLING_ACTION must be purchase or restore."
 [[ "$(basename "$apk_path")" == "app-release.apk" ]] ||
@@ -51,43 +51,56 @@ if ! adb shell dumpsys account 2>/dev/null | grep -Eiq "com.google|Account"; the
     fail "No configured Google Play account was found on the billing runner."
 fi
 
-clerk_cookie_payload="$(
-    AUTH_SMOKE_STORAGE_STATE="$storage_state" node --input-type=module - <<'NODE'
-const raw = process.env.AUTH_SMOKE_STORAGE_STATE;
+auth0_localstorage_payload="$(
+    AUTH0_SMOKE_STORAGE_STATE="$storage_state" node --input-type=module - <<'NODE'
+const raw = process.env.AUTH0_SMOKE_STORAGE_STATE;
 let state;
 try {
   state = JSON.parse(raw);
 } catch {
-  console.error("AUTH_SMOKE_STORAGE_STATE is not valid JSON.");
+  console.error("AUTH0_SMOKE_STORAGE_STATE is not valid JSON.");
   process.exit(1);
 }
-const cookies = Array.isArray(state?.cookies) ? state.cookies : [];
-const lines = cookies
-  .filter((cookie) => typeof cookie?.name === "string" && typeof cookie?.value === "string")
-  .map((cookie) => `${cookie.name}=${cookie.value}`);
-if (lines.length === 0) {
-  console.error("AUTH_SMOKE_STORAGE_STATE does not contain browser cookies.");
+const entries = (Array.isArray(state?.origins) ? state.origins : [])
+  .flatMap((origin) => Array.isArray(origin?.localStorage) ? origin.localStorage : [])
+  .filter((entry) => typeof entry?.name === "string" &&
+    entry.name.startsWith("@@auth0spajs@@") &&
+    typeof entry?.value === "string");
+const hasAccessToken = entries.some((entry) => {
+  try { return typeof JSON.parse(entry.value)?.access_token === "string"; }
+  catch { return false; }
+});
+if (entries.length === 0 || !hasAccessToken) {
+  console.error("AUTH0_SMOKE_STORAGE_STATE must contain an Auth0 access-token cache.");
   process.exit(1);
 }
-process.stdout.write(Buffer.from(lines.join("\n"), "utf8").toString("base64"));
+process.stdout.write(Buffer.from(JSON.stringify(entries), "utf8").toString("base64"));
 NODE
-)" || fail "Could not prepare the Clerk session cookie payload."
+)" || fail "Could not prepare the Auth0 local-storage cache."
 
 run_configuration_preflight() {
-    PREFLIGHT_ORIGIN="$clerk_origin" \
-        PREFLIGHT_COOKIE_BASE64="$clerk_cookie_payload" \
+    PREFLIGHT_ORIGIN="$auth0_origin" \
+        AUTH0_CACHE_BASE64="$auth0_localstorage_payload" \
         PREFLIGHT_TIMEOUT_SECONDS="$preflight_timeout_seconds" \
         node --input-type=module - <<'NODE'
 const origin = process.env.PREFLIGHT_ORIGIN;
-const encodedCookies = process.env.PREFLIGHT_COOKIE_BASE64;
+const encodedCache = process.env.AUTH0_CACHE_BASE64;
 const timeoutSeconds = Number(process.env.PREFLIGHT_TIMEOUT_SECONDS);
-const cookies = Buffer.from(encodedCookies, "base64").toString("utf8");
+const entries = JSON.parse(Buffer.from(encodedCache, "base64").toString("utf8"));
+const accessToken = entries.map((entry) => {
+  try { return JSON.parse(entry.value)?.access_token; }
+  catch { return null; }
+}).find((value) => typeof value === "string");
+if (!accessToken) {
+  console.error("Auth0 storage state does not contain an access token.");
+  process.exit(1);
+}
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
 try {
   const response = await fetch(`${origin}/api/billing/preflight`, {
-    headers: { Cookie: cookies.split("\n").filter(Boolean).join("; ") },
+    headers: { Authorization: `Bearer ${accessToken}` },
     signal: controller.signal,
   });
   let payload = null;
@@ -134,16 +147,15 @@ adb install -r "$test_apk_path" > "$output_dir/install-test-app.log"
 
 redact_billing_output() {
     sed -E \
-        -e 's/("?([Cc]ustomer[_ -]?[Ii][Dd]|app[_ -]?[Uu]ser[_ -]?[Ii][Dd]|clerk[_ -]?[Uu]ser[_ -]?[Ii][Dd]|authorization|bearer|token|secret|api[_ -]?[Kk]ey)"?[[:space:]]*:[[:space:]]*)"[^"]*"/\1"[REDACTED]"/g' \
-        -e 's/(([Cc]ustomer[_ -]?[Ii][Dd]|app[_ -]?[Uu]ser[_ -]?[Ii][Dd]|clerk[_ -]?[Uu]ser[_ -]?[Ii][Dd]|authorization|bearer|token|secret|api[_ -]?[Kk]ey)[=:][[:space:]]*)[^[:space:],;)}]+/\1[REDACTED]/g' \
+        -e 's/("?([Cc]ustomer[_ -]?[Ii][Dd]|app[_ -]?[Uu]ser[_ -]?[Ii][Dd]|auth0[_ -]?[Uu]ser[_ -]?[Ii][Dd]|authorization|bearer|token|secret|api[_ -]?[Kk]ey)"?[[:space:]]*:[[:space:]]*)"[^"]*"/\1"[REDACTED]"/g' \
+        -e 's/(([Cc]ustomer[_ -]?[Ii][Dd]|app[_ -]?[Uu]ser[_ -]?[Ii][Dd]|auth0[_ -]?[Uu]ser[_ -]?[Ii][Dd]|authorization|bearer|token|secret|api[_ -]?[Kk]ey)[=:][[:space:]]*)[^[:space:],;)}]+/\1[REDACTED]/g' \
         -e 's/[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}/[REDACTED_EMAIL]/g'
 }
 
 set +e
 adb shell am instrument -w -r \
-    -e clerk-origin "$clerk_origin" \
     -e billing-output-dir "$output_dir" \
-    -e class com.safenet.dns.RevenueCatBillingInstrumentationTest#signedOutBillingRecoversFromClerkStartupStall \
+    -e class com.safenet.dns.RevenueCatBillingInstrumentationTest#signedOutBillingRecoversFromAuth0StartupStall \
     "$TEST_PACKAGE_NAME/$TEST_RUNNER" 2>&1 | redact_billing_output | tee "$output_dir/recovery-instrumentation.log"
 recovery_instrumentation_status="${PIPESTATUS[0]}"
 set -e
@@ -161,8 +173,7 @@ fi
 
 set +e
 adb shell am instrument -w -r \
-    -e clerk-origin "$clerk_origin" \
-    -e clerk-cookie-base64 "$clerk_cookie_payload" \
+    -e auth0-localstorage-base64 "$auth0_localstorage_payload" \
     -e billing-action "$action" \
     -e billing-purchase-confirm-text "$purchase_confirm_text" \
     -e billing-output-dir "$output_dir" \
@@ -187,6 +198,6 @@ fi
     printf 'apk=%s\nvalidation_mode=dedicated-play-runner\ndevice_kind=play-enabled-device\n' "$apk_path"
     printf 'configuration_preflight=%s\naccount_recovery=PASS\npurchase_action=%s\n' \
         "$configuration_preflight" "$action"
-    printf 'clerk_session=PASS\npurchase_or_restore=PASS\n'
+    printf 'auth0_session=PASS\npurchase_or_restore=PASS\n'
     printf 'server_status=PASS\nresult=PASS\n'
 } | tee "$output_dir/result.txt"

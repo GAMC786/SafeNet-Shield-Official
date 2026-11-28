@@ -9,14 +9,7 @@ import { startDdnsScheduler } from "./ddns-service";
 import { registerRequestOriginMiddleware } from "./request-origin";
 import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 import { registerRevenueCatRoutes } from "./revenuecat";
-import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
-import { supabaseAuthMiddleware } from "./auth";
-import {
-  CLERK_PROXY_PATH,
-  clerkProxyMiddleware,
-  getClerkProxyHost,
-} from "./middlewares/clerkProxyMiddleware";
+import { auth0AuthMiddleware } from "./auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,16 +22,7 @@ declare module "http" {
   }
 }
 
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
-app.use(supabaseAuthMiddleware);
+app.use(auth0AuthMiddleware);
 app.use(
   express.json({
     verify: (req, _res, buf) => {
