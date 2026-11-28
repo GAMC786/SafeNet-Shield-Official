@@ -13,7 +13,7 @@ const appSource = await readFile(appSourcePath, "utf8");
 test("Android manifest routes the configured Supabase callback to MainActivity", () => {
   assert.match(
     manifest,
-    /<data\s+android:scheme="com\.safenet\.dns"\s+android:host="callback"\s*\/>/,
+    /<data\s+android:scheme="safenet"\s+android:host="auth"\s+android:path="\/callback"\s*\/>/,
   );
   assert.match(manifest, /android:name="\.MainActivity"[\s\S]*?android:exported="true"/);
 });
@@ -21,10 +21,11 @@ test("Android manifest routes the configured Supabase callback to MainActivity",
 test("the Android app exchanges the configured Supabase callback for a session", () => {
   assert.match(appSource, /CapacitorApp\.addListener\("appUrlOpen"/);
   assert.match(appSource, /CapacitorApp\.getLaunchUrl\(\)/);
-  assert.match(appSource, /new URL\("com\.safenet\.dns:\/\/callback"\)/);
+  assert.match(appSource, /new URL\("safenet:\/\/auth\/callback"\)/);
   assert.match(appSource, /if \(!isAndroidNative \|\| returnTo !== `\$\{basePath\}\/`\)/);
-  assert.match(appSource, /callback\.protocol !== "com\.safenet\.dns:"/);
-  assert.match(appSource, /callback\.hostname !== "callback"/);
+  assert.match(appSource, /callback\.protocol !== "safenet:"/);
+  assert.match(appSource, /callback\.hostname !== "auth"/);
+  assert.match(appSource, /callback\.pathname !== "\/callback"/);
   assert.match(appSource, /callback\.searchParams\.get\("code"\)/);
   assert.match(appSource, /supabase\.auth\.exchangeCodeForSession\(code\)/);
   assert.match(appSource, /getSupabaseCallbackUrl\(returnTo\)/);
