@@ -14,3 +14,9 @@ Use Supabase Auth for Google and email/password sign-in after the planned migrat
 **Why:** Supabase rejects a callback that cannot retrieve the original PKCE verifier, even when the Google provider and redirect URL are configured correctly.
 
 **How to apply:** Test web OAuth by starting and completing the flow in one browser context; do not copy or reopen the callback URL elsewhere.
+
+**Native callback matching:** Add the app deep link to the active Supabase project's Auth URL Configuration, and make the `redirectTo` URL match the allowlisted URI. If the allowlist contains only a bare callback, avoid appending unused query parameters to the normal native sign-in callback.
+
+**Why:** Supabase redirects to its Site URL when the requested `redirectTo` does not match an allowed redirect URL; Google Cloud's OAuth redirect URI does not replace Supabase's app redirect allowlist.
+
+**How to apply:** For Android OAuth, verify the exact callback host and URI in the Supabase project used by the production API. Use a wildcard only when dynamic callback parameters are required.
