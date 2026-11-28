@@ -3,11 +3,15 @@ import { auth as auth0JwtAuth } from "express-oauth2-jwt-bearer";
 import { eq } from "drizzle-orm";
 import { authUserLinks } from "@shared/schema";
 import { db } from "./db";
+import { fromNodeHeaders } from "better-auth/node";
+import { betterAuthInstance } from "./better-auth";
 
 type Auth0Request = Request & {
   auth?: { payload?: Record<string, unknown> };
   canonicalUserId?: string;
   auth0Email?: string;
+  betterAuthUserId?: string;
+  betterAuthEmail?: string;
 };
 
 function auth0Config() {
@@ -38,6 +42,30 @@ async function resolveCanonicalUserId(subject: string, email: string) {
     });
   }
   return matches[0]?.canonicalUserId ?? subject;
+}
+
+export async function betterAuthSessionMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await betterAuthInstance.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) return next();
+    if (!session.user.emailVerified) {
+      return res.status(403).json({ message: "Verify your email before using this SafeNet account." });
+    }
+    const authReq = req as Auth0Request;
+    const email = session.user.email.trim().toLowerCase();
+    authReq.betterAuthUserId = session.user.id;
+    authReq.betterAuthEmail = email;
+    authReq.canonicalUserId = await resolveCanonicalUserId(session.user.id, email);
+    return next();
+  } catch {
+    return next();
+  }
 }
 
 export async function auth0AuthMiddleware(
@@ -94,11 +122,13 @@ export async function auth0AuthMiddleware(
 export function getRequestUserId(req: Request): string | null {
   const authReq = req as Auth0Request;
   return authReq.canonicalUserId ??
+    authReq.betterAuthUserId ??
     (typeof authReq.auth?.payload?.sub === "string" ? authReq.auth.payload.sub : null);
 }
 
 export function getRequestUserEmail(req: Request): string | null {
-  const email = (req as Auth0Request).auth0Email;
+  const authReq = req as Auth0Request;
+  const email = authReq.betterAuthEmail ?? authReq.auth0Email;
   return email ?? null;
 }
 

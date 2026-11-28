@@ -10,6 +10,9 @@ import { registerRequestOriginMiddleware } from "./request-origin";
 import { installGlitchTipExpressErrorHandler } from "./glitchtip";
 import { registerRevenueCatRoutes } from "./revenuecat";
 import { auth0AuthMiddleware } from "./auth";
+import { betterAuthSessionMiddleware } from "./auth";
+import { toNodeHandler } from "better-auth/node";
+import { betterAuthInstance } from "./better-auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -22,6 +25,8 @@ declare module "http" {
   }
 }
 
+app.all("/api/auth/*splat", toNodeHandler(betterAuthInstance));
+app.use(betterAuthSessionMiddleware);
 app.use(auth0AuthMiddleware);
 app.use(
   express.json({
