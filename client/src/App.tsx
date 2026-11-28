@@ -92,7 +92,7 @@ function authPathWithRedirect(path: string, redirectUrl?: string) {
 function getSupabaseCallbackUrl(returnTo: string) {
   const isAndroidNative = Capacitor.getPlatform() === "android";
   const callback = isAndroidNative
-    ? new URL("safenet://auth/callback")
+    ? new URL("com.safenet.dns://callback")
     : new URL(`${basePath}/auth/callback`, window.location.origin);
   callback.searchParams.set("return_to", returnTo);
   return callback.toString();
@@ -676,9 +676,9 @@ function ClerkProviderWithRoutes() {
         return;
       }
       if (
-        callback.protocol !== "safenet:" ||
-        callback.hostname !== "auth" ||
-        callback.pathname !== "/callback"
+        callback.protocol !== "com.safenet.dns:" ||
+        callback.hostname !== "callback" ||
+        callback.pathname !== ""
       ) return;
       handledCallbackUrl = callbackUrl;
       const code = callback.searchParams.get("code");
