@@ -211,7 +211,9 @@ test("startup shows a loader and retry screen while public settings are loading"
   assert.match(indexHtml, /id="safenet-soundtrack-audio"/);
   assert.match(mainSource, /id=\{retry \? undefined : "startup-loader"\}/);
   assert.match(mainSource, /document\.documentElement\.classList\.contains\("light"\)/);
-  assert.match(mainSource, /color: isWonderlandLightMode \? "#f8fafc" : undefined/);
+  assert.match(mainSource, /background: isWonderlandLightMode \? "#f1f3f6" : "#090b14"/);
+  assert.match(mainSource, /color: isWonderlandLightMode \? "#1b2432" : "#f8fafc"/);
+  assert.match(mainSource, /color: isWonderlandLightMode \? "#525964" : "#94a3b8"/);
   assert.match(mainSource, /SafeNet could not load the public authentication settings/);
   assert.match(mainSource, /Retry/);
   assert.doesNotMatch(indexHtml, /startup-soundtrack-toggle|static-soundtrack-toggle|Soundtrack: On|Soundtrack: Off/);

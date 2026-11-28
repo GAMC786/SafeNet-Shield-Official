@@ -59,8 +59,8 @@ function renderStartupMessage(message: string, retry = false) {
       role={retry ? "alert" : "status"}
       style={{
         alignItems: "center",
-        background: "#090b14",
-        color: "#f8fafc",
+        background: isWonderlandLightMode ? "#f1f3f6" : "#090b14",
+        color: isWonderlandLightMode ? "#1b2432" : "#f8fafc",
         display: "flex",
         flexDirection: "column",
         gap: "16px",
@@ -72,7 +72,7 @@ function renderStartupMessage(message: string, retry = false) {
     >
       <h1
         style={{
-          color: isWonderlandLightMode ? "#f8fafc" : undefined,
+          color: isWonderlandLightMode ? "#1b2432" : undefined,
           fontSize: "20px",
           fontWeight: 700,
           margin: 0,
@@ -80,7 +80,14 @@ function renderStartupMessage(message: string, retry = false) {
       >
         {retry ? "SafeNet needs a connection" : "Starting SafeNet"}
       </h1>
-      <p style={{ color: "#94a3b8", margin: 0 }}>{message}</p>
+      <p
+        style={{
+          color: isWonderlandLightMode ? "#525964" : "#94a3b8",
+          margin: 0,
+        }}
+      >
+        {message}
+      </p>
       {retry && (
         <button
           type="button"
