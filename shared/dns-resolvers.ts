@@ -76,6 +76,11 @@ export type DnsResolverPreset = {
   description: string;
 };
 
+export type DnsResolverIpVariant = {
+  primaryAddress: string;
+  secondaryAddress: string;
+};
+
 /**
  * Fixed family-safe resolver configurations that can be activated by SafeNet.
  * NextDNS is intentionally not included: its family policy is stored in a
@@ -123,6 +128,57 @@ export const DNS_FAMILY_RESOLVER_PRESETS: readonly DnsResolverPreset[] = [
     description: "FamilyShield protection over plain DNS; OpenDNS Home has no public DNS-over-TLS endpoint.",
   },
 ] as const;
+
+/**
+ * Plain-DNS address variants for popular family-safe providers.
+ * Keep these separate from the encrypted hostname presets so the UI can label
+ * the transport change clearly. NextDNS is omitted because its IP setup is
+ * profile-specific.
+ */
+export const DNS_FAMILY_RESOLVER_IP_VARIANTS: Readonly<
+  Record<string, Partial<Record<"ipv4" | "ipv6", DnsResolverIpVariant>>>
+> = {
+  "Cloudflare (Family)": {
+    ipv4: {
+      primaryAddress: "1.1.1.3",
+      secondaryAddress: "1.0.0.3",
+    },
+    ipv6: {
+      primaryAddress: "2606:4700:4700::1113",
+      secondaryAddress: "2606:4700:4700::1003",
+    },
+  },
+  "AdGuard DNS (Family · TLS)": {
+    ipv4: {
+      primaryAddress: "94.140.14.15",
+      secondaryAddress: "94.140.15.16",
+    },
+    ipv6: {
+      primaryAddress: "2a10:50c0::bad1:ff",
+      secondaryAddress: "2a10:50c0::bad2:ff",
+    },
+  },
+  "Control D (Family · TLS)": {
+    ipv4: {
+      primaryAddress: "76.76.2.4",
+      secondaryAddress: "76.76.10.4",
+    },
+    ipv6: {
+      primaryAddress: "2606:1a40::4",
+      secondaryAddress: "2606:1a40:1::4",
+    },
+  },
+  "CleanBrowsing (Family Filter)": {
+    ipv4: {
+      primaryAddress: "185.228.168.168",
+      secondaryAddress: "185.228.169.168",
+    },
+    ipv6: {
+      primaryAddress: "2a0d:2a00:1::",
+      secondaryAddress: "2a0d:2a00:2::",
+    },
+  },
+};
 
 /**
  * Family-safe upstreams that can be activated by the Android DNS-only VPN.

@@ -22,7 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import {
   DNS_FAMILY_RESOLVER_PRESETS,
+  DNS_FAMILY_RESOLVER_IP_VARIANTS,
   DNS_NEXTDNS_DOT_RESOLVER_PRESET,
+  type DnsResolverPreset,
 } from "@shared/dns-resolvers";
 
 type ResolverForm = {
@@ -55,6 +57,20 @@ function resolverAddressPlaceholder(type: DnsServer["type"], ipVersion: Resolver
   if (type === "dot") return "dns.google";
   if (type === "sdns") return "sdns://...";
   return ipVersion === "ipv6" ? "2001:4860:4860::8888" : "1.1.1.1";
+}
+
+function plainIpPresetFor(preset: DnsResolverPreset, ipVersion: ResolverForm["ipVersion"]): DnsResolverPreset | null {
+  const addresses = DNS_FAMILY_RESOLVER_IP_VARIANTS[preset.name]?.[ipVersion];
+  if (!addresses) return null;
+
+  return {
+    name: `${preset.name} (${ipVersion.toUpperCase()})`,
+    type: "plain",
+    ipVersion,
+    primaryAddress: addresses.primaryAddress,
+    secondaryAddress: addresses.secondaryAddress,
+    description: `Plain, unencrypted ${ipVersion.toUpperCase()} DNS. The provider applies its family filter.`,
+  };
 }
 
 function isValidResolverAddress(
@@ -220,7 +236,7 @@ export default function DnsSettings() {
     }
   };
 
-  const handleAddPreset = async (preset: (typeof resolverPresets)[number]) => {
+  const handleAddPreset = async (preset: DnsResolverPreset) => {
     if (servers?.some((server) => server.name === preset.name)) {
       toast({
         title: "Resolver already added",
@@ -298,31 +314,73 @@ export default function DnsSettings() {
         <div className="mt-5 border-t border-white/10 pt-5">
           <div className="mb-3">
             <h3 className="font-display text-sm font-bold uppercase tracking-wider text-white">Popular resolvers</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Add a trusted provider without entering its addresses manually.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Keep encrypted TLS, or add plain IPv4/IPv6 addresses where providers publish them.
+            </p>
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
             {resolverPresets.map((preset) => {
               const isAdded = servers?.some((server) => server.name === preset.name) ?? false;
+              const ipPresets = (["ipv4", "ipv6"] as const)
+                .map((ipVersion) => plainIpPresetFor(preset, ipVersion))
+                .filter((variant): variant is DnsResolverPreset => variant !== null);
+              const isPlainPreset = preset.type === "plain";
+              const primaryOptionLabel = isPlainPreset
+                ? preset.ipVersion.toUpperCase()
+                : preset.type === "dot"
+                  ? "TLS"
+                  : "DoH";
               return (
                 <div key={preset.name} className="flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="text-sm font-semibold text-white">{preset.name}</h4>
-                       <Badge variant="outline" className="shrink-0 text-[10px]">{resolverTypeLabel(preset.type)}</Badge>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">{resolverTypeLabel(preset.type)}</Badge>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{preset.description}</p>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isAdded ? "outline" : "default"}
-                    className="w-full"
-                    disabled={isAdded || isMutating}
-                    onClick={() => void handleAddPreset(preset)}
-                    data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`}
-                  >
-                    {isAdded ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</> : <><Plus className="mr-1 h-4 w-4" /> Add</>}
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isAdded ? "outline" : "default"}
+                      className="w-full"
+                      disabled={isAdded || isMutating}
+                      onClick={() => void handleAddPreset(preset)}
+                      data-testid={`button-add-${preset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`}
+                    >
+                      {isAdded
+                        ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</>
+                        : <><Plus className="mr-1 h-4 w-4" /> Add {primaryOptionLabel}</>}
+                    </Button>
+                    {ipPresets.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          {ipPresets.map((variant) => {
+                            const variantAdded = servers?.some((server) => server.name === variant.name) ?? false;
+                            return (
+                              <Button
+                                key={variant.name}
+                                type="button"
+                                size="sm"
+                                variant={variantAdded ? "outline" : "secondary"}
+                                disabled={variantAdded || isMutating}
+                                onClick={() => void handleAddPreset(variant)}
+                                data-testid={`button-add-${variant.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`}
+                              >
+                                {variantAdded
+                                  ? <><CheckCircle className="mr-1 h-4 w-4" /> Added</>
+                                  : <><Plus className="mr-1 h-4 w-4" /> Add {variant.ipVersion.toUpperCase()}</>}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] leading-4 text-muted-foreground">
+                          IP options use unencrypted plain DNS; IPv6 requires IPv6 connectivity.
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
