@@ -1003,7 +1003,7 @@ export default function Firewall() {
               type="button"
               variant="outline"
               onClick={() => void applyRulesOnPhone()}
-              disabled={!localVpn.supported || !activeDns || localVpn.busy || usePhonePending || updateSettings.isPending}
+              disabled={!activeDns || localVpn.busy || usePhonePending || updateSettings.isPending}
               title={!localVpn.supported ? "Available in the SafeNet Android app." : undefined}
               data-testid="button-use-firewall-rules-on-phone"
               className="border-cyan-300/40 text-cyan-200 hover:bg-cyan-300/10 hover:text-cyan-100"

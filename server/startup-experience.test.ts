@@ -617,6 +617,9 @@ test("Settings use the current package version and expose only current controls"
   assert.match(firewallSource, /const firewallHeaderStatus = firewallEnabled && localVpn\.connected \? "rules-enabled" : "inactive"/);
   assert.match(firewallSource, /subtitle="DNS & Network Packet-Filtering Rules"/);
   assert.match(firewallSource, /status=\{firewallHeaderStatus\}/);
+  assert.match(firewallSource, /onClick=\{\(\) => void applyRulesOnPhone\(\)\}/);
+  assert.match(firewallSource, /disabled=\{!activeDns \|\| localVpn\.busy \|\| usePhonePending \|\| updateSettings\.isPending\}/);
+  assert.match(firewallSource, /title: "Android app required"/);
   const headerSource = readFileSync(path.join(clientRoot, "src/components/Header.tsx"), "utf8");
   assert.match(headerSource, /status === "active" \|\| status === "sharing" \|\| status === "rules-enabled"/);
   assert.match(headerSource, /status === "rules-enabled" \? "Rules Enabled"/);
