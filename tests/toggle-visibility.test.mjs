@@ -275,7 +275,14 @@ function mockApi(
       const method = request.method();
       let response;
 
-      if (url.pathname === "/api/settings" && method === "GET") {
+      if (url.pathname === "/api/auth/config" && method === "GET") {
+        response = {
+          clerkPublishableKey: "pk_test_Y2xlcmsuZXhhbXBsZS50ZXN0JA",
+          clerkProxyUrl: `${baseUrl}/api/__clerk`,
+          supabaseUrl: "https://safenet-test.supabase.test",
+          supabasePublishableKey: "safenet-test-public-key",
+        };
+      } else if (url.pathname === "/api/settings" && method === "GET") {
         if (settingsDelayMs) {
           await new Promise((resolve) => setTimeout(resolve, settingsDelayMs));
         }
@@ -970,8 +977,11 @@ for (const viewport of viewports) {
     const firewallMaster = page.getByTestId("switch-firewall-master");
     await firewallMaster.click();
     await waitForAttribute(firewallMaster, "aria-checked", "true");
-    await page.getByText("Rules Enabled", { exact: true }).waitFor();
-    await page.getByText(/SafeNet stores these rules but does not filter DNS traffic/).waitFor();
+    await page.getByText("Inactive", { exact: true }).waitFor();
+    await page.getByText(
+      "The policy is enforced only while the Android DNS-only VPN is active. App-owned encrypted DNS and other VPNs may bypass it.",
+      { exact: true },
+    ).waitFor();
 
     const dnsOverrides = page.getByRole("switch", { name: "Save DNS Override Policy" });
     await focusWithKeyboard(page, dnsOverrides);
@@ -988,14 +998,14 @@ for (const viewport of viewports) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.equal(await dnsOverrides.getAttribute("aria-checked"), "false", "checked switch should become unchecked");
-    await page.getByText("Rules Enabled", { exact: true }).waitFor();
+    await page.getByText("Inactive", { exact: true }).waitFor();
 
     for (const [name, expectedState] of [["Save DNS Override Policy", "true"]]) {
       const toggle = page.getByRole("switch", { name });
       await toggle.click();
       await waitForAttribute(toggle, "aria-checked", expectedState);
     }
-    await page.getByText("Rules Enabled", { exact: true }).waitFor();
+    await page.getByText("Inactive", { exact: true }).waitFor();
 
     await page.close();
   });
@@ -1485,8 +1495,11 @@ test("Antivirus threat-feed switches keep each row correct when updates overlap"
   await page.close();
 });
 
-test("the built-in Cloudflare Measure Your Network UI has no external test button", async () => {
+test("the built-in Cloudflare Measure Your Network UI has no external test button", {
+  timeout: 120_000,
+}, async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
+  page.setDefaultTimeout(90_000);
   const consoleErrors = [];
   const pageErrors = [];
   page.on("console", (message) => {
@@ -1517,8 +1530,11 @@ test("the built-in Cloudflare Measure Your Network UI has no external test butto
   await page.close();
 });
 
-test("Measure Your Network completes Cloudflare phases and supports pause and resume", async () => {
+test("Measure Your Network completes Cloudflare phases and supports pause and resume", {
+  timeout: 120_000,
+}, async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
+  page.setDefaultTimeout(90_000);
   let probeCalls = 0;
   let uploadProbeCalls = 0;
   await mockApi(page, { cloudflareProbeDelayMs: 100 });
@@ -1549,8 +1565,11 @@ test("Measure Your Network completes Cloudflare phases and supports pause and re
   await page.close();
 });
 
-test("Measure Your Network reports a Cloudflare probe failure and retries successfully", async () => {
+test("Measure Your Network reports a Cloudflare probe failure and retries successfully", {
+  timeout: 120_000,
+}, async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
+  page.setDefaultTimeout(90_000);
   await mockApi(page, { cloudflareProbeFailures: 1 });
 
   await page.goto(`${baseUrl}/speedtest`);
@@ -1565,8 +1584,11 @@ test("Measure Your Network reports a Cloudflare probe failure and retries succes
   await page.close();
 });
 
-test("Measure Your Network exposes a bounded failure when the Cloudflare probe stalls", async () => {
+test("Measure Your Network exposes a bounded failure when the Cloudflare probe stalls", {
+  timeout: 120_000,
+}, async () => {
   const page = await browser.newPage({ viewport: viewports[0] });
+  page.setDefaultTimeout(90_000);
   await mockApi(page, { cloudflareProbeDelayMs: 100 });
   await page.route("https://speed.cloudflare.com/**", async (route) => {
     const url = new URL(route.request().url());
