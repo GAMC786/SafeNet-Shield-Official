@@ -565,6 +565,10 @@ test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () =>
     path.join(clientRoot, "src/components/LocalDnsVpnCard.tsx"),
     "utf8",
   );
+  const localVpnHookSource = readFileSync(
+    path.join(clientRoot, "src/hooks/use-local-vpn.ts"),
+    "utf8",
+  );
   const localVpnEulaSource = readFileSync(
     path.join(clientRoot, "src/components/LocalVpnEulaDialog.tsx"),
     "utf8",
@@ -573,6 +577,11 @@ test("Android Dashboard exposes DNS-only VPN coverage and consent limits", () =>
   assert.match(localDnsVpnSource, /DNS-only VPN/);
   assert.match(localDnsVpnSource, /UDP\/TCP DNS on port 53/);
   assert.match(localDnsVpnSource, /other active Android VPN/);
+  assert.match(localDnsVpnSource, /localVpn\.shouldRecover/);
+  assert.match(localDnsVpnSource, /Reconnecting phone DNS protection/);
+  assert.match(localVpnHookSource, /shouldRecover\?: boolean/);
+  assert.match(localVpnServiceSource, /fun shouldRecover\(context: Context\): Boolean/);
+  assert.match(localVpnServiceSource, /putBoolean\("enabled", true\)/);
   assert.match(localVpnEulaSource, /Android allows one active VPN at a time/);
   assert.match(localVpnEulaSource, /DNS-over-HTTPS, DNS-over-TLS, another VPN/);
 });

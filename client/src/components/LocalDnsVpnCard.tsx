@@ -19,6 +19,7 @@ export function LocalDnsVpnCard() {
   const activeDns = dnsServers?.find((server) => server.isActive);
   const localVpn = useLocalVpn();
   const appliedResolverKey = useRef<string | null>(null);
+  const recoveryAttemptedKey = useRef<string | null>(null);
   const [eulaOpen, setEulaOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -60,6 +61,34 @@ export function LocalDnsVpnCard() {
   };
 
   useEffect(() => {
+    if (!localVpn.shouldRecover || localVpn.connected) {
+      recoveryAttemptedKey.current = null;
+      return;
+    }
+    if (
+      localVpn.error ||
+      preparing ||
+      localVpn.busy ||
+      !activeDns ||
+      !resolverKey ||
+      recoveryAttemptedKey.current === resolverKey
+    ) {
+      return;
+    }
+    recoveryAttemptedKey.current = resolverKey;
+    appliedResolverKey.current = resolverKey;
+    void start();
+  }, [
+    activeDns,
+    localVpn.busy,
+    localVpn.connected,
+    localVpn.error,
+    localVpn.shouldRecover,
+    preparing,
+    resolverKey,
+  ]);
+
+  useEffect(() => {
     if (!localVpn.connected || !activeDns || !resolverKey || appliedResolverKey.current === resolverKey) return;
     appliedResolverKey.current = resolverKey;
     void start();
@@ -84,6 +113,8 @@ export function LocalDnsVpnCard() {
       ? "Updating DNS protection…"
       : localVpn.connected
         ? `Filtering direct DNS requests through ${activeDns?.name ?? "the selected resolver"}.`
+        : localVpn.shouldRecover
+          ? "Reconnecting phone DNS protection…"
         : activeDns
           ? "Off · turn on to filter direct DNS traffic on this phone."
           : "Select a DNS resolver before enabling phone protection.";

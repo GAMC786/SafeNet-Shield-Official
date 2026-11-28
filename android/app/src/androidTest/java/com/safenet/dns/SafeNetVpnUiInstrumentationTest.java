@@ -1759,6 +1759,44 @@ abstract class SafeNetUiInstrumentationTestBase {
     }
 
     @Test
+    public void localVpnReconnectsAfterUnexpectedServiceStopWhileDashboardIsOpen() throws Exception {
+        openDashboardWithResolverType("plain");
+        waitForWebView(
+            "document.querySelector('[data-testid=\"switch-local-dns-vpn\"]') !== null"
+        );
+
+        ConsentAction consentAction = VpnService.prepare(context) == null
+            ? null
+            : this::grantVpnPermissionDialog;
+        JSONObject started = requireWebViewValue(callWebViewWithConsent(
+            "window.Capacitor.Plugins.SafeNetLocalVpn.start({" +
+                "type:'plain',primaryAddress:'1.1.1.1',secondaryAddress:'8.8.8.8'" +
+            "})",
+            consentAction
+        ));
+        assertTrue("The initial native VPN start must be confirmed",
+            started.getBoolean("connected"));
+        assertTrue("Starting protection must persist the user's opt-in",
+            started.getBoolean("shouldRecover"));
+
+        assertTrue("The test must stop the active VPN service",
+            context.stopService(new Intent(context, SafeNetLocalVpnService.class)));
+        waitForWebView(
+            "document.body.innerText.includes('Reconnecting phone DNS protection…')"
+        );
+        JSONObject recovered = waitForLocalVpnState(true);
+        assertTrue("The dashboard must recover the opted-in VPN service",
+            recovered.getBoolean("connected"));
+        assertTrue("The user's recovery preference must remain enabled",
+            recovered.getBoolean("shouldRecover"));
+
+        clickControl("switch-local-dns-vpn");
+        JSONObject stopped = waitForLocalVpnState(false);
+        assertFalse("Turning protection off must cancel future recovery",
+            stopped.getBoolean("shouldRecover"));
+    }
+
+    @Test
     public void localVpnRetriesFromUiAfterSavedResolverRecoveryFailure() throws Exception {
         openDashboardWithResolverType("plain");
         waitForWebView(
@@ -1832,6 +1870,10 @@ abstract class SafeNetUiInstrumentationTestBase {
                 "?.getAttribute('aria-checked') === 'true'"
         );
 
+        context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("enabled", false)
+            .apply();
         context.stopService(new Intent(context, SafeNetLocalVpnService.class));
         waitForLocalVpnState(false);
         context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)

@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.net.ConnectivityManager
@@ -40,6 +41,9 @@ class SafeNetLocalVpnService : VpnService() {
         @Volatile private var lastError: String? = null
         @JvmStatic fun isRunningNow(): Boolean = running
         @JvmStatic fun getLastErrorMessage(): String? = lastError
+        @JvmStatic fun shouldRecover(context: Context): Boolean =
+            context.getSharedPreferences("safenet_local_vpn", Context.MODE_PRIVATE)
+                .getBoolean("enabled", false)
         private const val CHANNEL = "safenet-local-vpn"
     }
 
@@ -101,6 +105,7 @@ class SafeNetLocalVpnService : VpnService() {
 
     private fun saveResolver() {
         getSharedPreferences("safenet_local_vpn", MODE_PRIVATE).edit()
+            .putBoolean("enabled", true)
             .putString("type", resolverType)
             .putString("primary", resolverPrimary)
             .putString("secondary", resolverSecondary)

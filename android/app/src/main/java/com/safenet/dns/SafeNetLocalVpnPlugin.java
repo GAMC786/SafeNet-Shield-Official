@@ -27,6 +27,7 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
     public void getStatus(PluginCall call) {
         JSObject result = new JSObject();
         result.put("connected", SafeNetLocalVpnService.isRunningNow());
+        result.put("shouldRecover", SafeNetLocalVpnService.shouldRecover(getContext()));
         result.put("mode", "local");
         result.put("error", SafeNetLocalVpnService.getLastErrorMessage());
         call.resolve(result);
@@ -140,6 +141,7 @@ public final class SafeNetLocalVpnPlugin extends Plugin {
     private void resolveStatus(PluginCall call) {
         JSObject result = new JSObject();
         result.put("connected", SafeNetLocalVpnService.isRunningNow());
+        result.put("shouldRecover", SafeNetLocalVpnService.shouldRecover(getContext()));
         result.put("mode", "local");
         result.put("error", SafeNetLocalVpnService.getLastErrorMessage());
         call.resolve(result);

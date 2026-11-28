@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { enqueueNativeCommand } from "@/lib/native-command-queue";
 
-type LocalVpnStatus = { connected: boolean; mode: "local"; error?: string };
+type LocalVpnStatus = {
+  connected: boolean;
+  shouldRecover?: boolean;
+  mode: "local";
+  error?: string;
+};
 export type LocalVpnResolver = {
   type: "plain" | "doh" | "dot" | "sdns";
   primaryAddress: string;
@@ -82,6 +87,7 @@ export function useLocalVpn() {
   return {
     supported,
     connected: status?.connected === true,
+    shouldRecover: status?.shouldRecover === true,
     busy,
     error,
     refresh,
