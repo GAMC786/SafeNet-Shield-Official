@@ -4,18 +4,24 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { CyberCard } from "@/components/CyberCard";
 import { LocalVpnEulaDialog } from "@/components/LocalVpnEulaDialog";
+import { useFirewallConfig } from "@/hooks/use-firewall-config";
 import { useDnsServers } from "@/hooks/use-dns";
 import { useLocalVpn } from "@/hooks/use-local-vpn";
+import { SafeNetVpn } from "@/hooks/use-vpn";
+import { enqueueNativeCommand } from "@/lib/native-command-queue";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 
 const LOCAL_VPN_EULA_VERSION = "2026-11-25-access-rules";
 
 export function LocalDnsVpnCard() {
   const { data: dnsServers } = useDnsServers();
+  const firewallConfigQuery = useFirewallConfig();
   const activeDns = dnsServers?.find((server) => server.isActive);
   const localVpn = useLocalVpn();
   const appliedResolverKey = useRef<string | null>(null);
   const [eulaOpen, setEulaOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [acceptedEulaVersion, setAcceptedEulaVersion] = usePersistentState<string | null>(
     "safenet-local-vpn-eula-version",
     null,
@@ -27,12 +33,30 @@ export function LocalDnsVpnCard() {
 
   const start = async () => {
     if (!activeDns) return;
-    appliedResolverKey.current = resolverKey;
-    await localVpn.start({
-      type: activeDns.type,
-      primaryAddress: activeDns.primaryAddress,
-      secondaryAddress: activeDns.secondaryAddress,
-    });
+    setPreparing(true);
+    setStartError(null);
+    try {
+      const refreshedConfig = await firewallConfigQuery.refetch();
+      if (!refreshedConfig.data) {
+        throw refreshedConfig.error ?? new Error("Could not load the latest firewall rules.");
+      }
+      await enqueueNativeCommand(() =>
+        SafeNetVpn.syncFirewallConfig({ config: refreshedConfig.data! }),
+      );
+      const status = await localVpn.start({
+        type: activeDns.type,
+        primaryAddress: activeDns.primaryAddress,
+        secondaryAddress: activeDns.secondaryAddress,
+      });
+      if (!status?.connected) {
+        throw new Error(localVpn.error || "SafeNet could not start its local VPN.");
+      }
+      appliedResolverKey.current = resolverKey;
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : "Could not prepare phone DNS protection.");
+    } finally {
+      setPreparing(false);
+    }
   };
 
   useEffect(() => {
@@ -56,7 +80,7 @@ export function LocalDnsVpnCard() {
 
   const statusText = !localVpn.supported
     ? "Available in the SafeNet Android app."
-    : localVpn.busy
+    : preparing || localVpn.busy
       ? "Updating DNS protection…"
       : localVpn.connected
         ? `Filtering direct DNS requests through ${activeDns?.name ?? "the selected resolver"}.`
@@ -95,7 +119,7 @@ export function LocalDnsVpnCard() {
           </div>
           <Switch
             checked={localVpn.connected}
-            disabled={!localVpn.supported || localVpn.busy || (!activeDns && !localVpn.connected)}
+            disabled={!localVpn.supported || preparing || localVpn.busy || (!activeDns && !localVpn.connected)}
             onCheckedChange={toggle}
             aria-label="SafeNet DNS-only VPN"
             data-testid="switch-local-dns-vpn"
@@ -106,9 +130,9 @@ export function LocalDnsVpnCard() {
           Apps using their own encrypted DNS or another VPN may bypass this protection. Enabling it
           replaces any other active Android VPN; it is not a remote VPN service.
         </p>
-        {(localVpn.error || (localVpn.supported && !activeDns && !localVpn.connected)) && (
+        {(startError || localVpn.error || (localVpn.supported && !activeDns && !localVpn.connected)) && (
           <p role="status" data-testid="local-dns-vpn-error" className="text-xs text-amber-200">
-            {localVpn.error ?? "Choose a DNS provider on Firewall or DNS Servers first."}
+            {startError ?? localVpn.error ?? "Choose a DNS provider on Firewall or DNS Servers first."}
           </p>
         )}
       </div>

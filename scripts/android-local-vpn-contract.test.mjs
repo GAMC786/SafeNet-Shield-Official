@@ -10,6 +10,7 @@ const card = read("../client/src/components/PrivateDnsCard.tsx");
 const privateDnsEula = read("../client/src/components/PrivateDnsEulaDialog.tsx");
 const dnsSettings = read("../client/src/pages/DnsSettings.tsx");
 const service = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnService.kt");
+const localVpnCard = read("../client/src/components/LocalDnsVpnCard.tsx");
 const dnsFirewall = read("../android/app/src/main/java/com/safenet/dns/DnsFirewall.java");
 const plugin = read("../android/app/src/main/java/com/safenet/dns/SafeNetLocalVpnPlugin.java");
 const firewallPage = read("../client/src/pages/Firewall.tsx");
@@ -71,6 +72,17 @@ test("local packet forwarding captures direct DNS and protects upstream sockets"
   assert.match(plugin, /VpnService\.prepare/);
   assert.match(plugin, /primaryAddress/);
   assert.match(plugin, /startForegroundService/);
+});
+
+test("Dashboard VPN syncs the current firewall policy before starting device-wide routes", () => {
+  const policyRefresh = localVpnCard.indexOf("firewallConfigQuery.refetch()");
+  const policySync = localVpnCard.indexOf("SafeNetVpn.syncFirewallConfig");
+  const vpnStart = localVpnCard.indexOf("localVpn.start({");
+
+  assert.ok(policyRefresh >= 0);
+  assert.ok(policySync > policyRefresh);
+  assert.ok(vpnStart > policySync);
+  assert.match(localVpnCard, /Could not load the latest firewall rules/);
 });
 
 test("Android consent cancellation stays off and is retried in release smoke", () => {
