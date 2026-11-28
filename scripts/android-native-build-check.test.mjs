@@ -286,11 +286,19 @@ test("release summaries expose native compile outcomes", () => {
   assert.match(apkOnlyWorkflow, /Native Android compile:/);
 });
 
-test("APK-only signed builds publish and verify a version-matched formal release", () => {
+test("APK-only dispatch keeps the release unpublished unless explicitly enabled", () => {
   assert.match(apkOnlyWorkflow, /permissions:\n  contents: write/);
   assert.match(
     apkOnlyWorkflow,
-    /Create or update formal GitHub Release[\s\S]*uses: softprops\/action-gh-release@v2/,
+    /workflow_dispatch:\n\s+inputs:\n\s+publish_release:\n\s+description: Publish a formal GitHub Release after the device check\n\s+required: false\n\s+type: boolean\n\s+default: false/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Upload APK only[\s\S]*name: SafeNet-Android-APK-v\$\{\{ steps\.app_version\.outputs\.version \}\}[\s\S]*Create or update formal GitHub Release/,
+  );
+  assert.match(
+    apkOnlyWorkflow,
+    /Create or update formal GitHub Release[\s\S]*if: github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.publish_release\)[\s\S]*uses: softprops\/action-gh-release@v2/,
   );
   assert.match(
     apkOnlyWorkflow,
