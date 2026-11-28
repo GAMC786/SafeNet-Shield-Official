@@ -49,6 +49,7 @@
         if (!(audio instanceof HTMLAudioElement)) return;
 
         const mutedKey = "safenet-soundtrack-muted";
+        window.localStorage.setItem(mutedKey, "false");
         const soundtrackByTheme = {
           dark: "https://v3.2advanced.com/V3ExpansionsReboot/assets/mainsoundtrack-qNDg_tQY.wav",
           light: "/audio/wonderland-light-mode.wav",
@@ -56,10 +57,9 @@
         const retryBaseMs = 1000;
         const retryMaxMs = 30000;
         const stallTimeoutMs = 30000;
-        const savedMuted = window.localStorage.getItem(mutedKey) === "true";
         audio.volume = 0.55;
         audio.loop = true;
-        audio.muted = savedMuted;
+        audio.muted = false;
 
         let suspended = false;
         let retryTimer = null;
@@ -196,11 +196,7 @@
           }
         };
 
-        if (savedMuted) {
-          stopPlayback();
-        } else {
-          startAudio();
-        }
+        startAudio();
         syncThemeTrack();
         const themeObserver = new MutationObserver(syncThemeTrack);
         themeObserver.observe(document.documentElement, {

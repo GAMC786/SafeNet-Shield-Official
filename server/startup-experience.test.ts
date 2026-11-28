@@ -342,8 +342,9 @@ test("the soundtrack loops through startup and has no visible control", () => {
   assert.match(indexHtml, /autoplay/);
   assert.match(indexHtml, /addEventListener\("ended"/);
   assert.match(indexHtml, /playback && typeof playback\.catch === "function"/);
-  assert.match(indexHtml, /window\.localStorage\.getItem\(mutedKey\) === "true"/);
+  assert.match(indexHtml, /window\.localStorage\.setItem\(mutedKey,\s*"false"\)/);
   assert.match(indexHtml, /audio\.muted = false/);
+  assert.match(indexHtml, /const preferenceEnabled = \(\) =>\s*window\.localStorage\.getItem\(mutedKey\) !== "true"/);
   assert.match(indexHtml, /addEventListener\("pagehide", stopAudio\)/);
   assert.match(indexHtml, /addEventListener\("visibilitychange"/);
   assert.match(indexHtml, /safenet-soundtrack-change/);
