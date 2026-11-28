@@ -268,7 +268,7 @@ export async function registerRoutes(
         res.status(201).json(log);
       } catch (err) {
         if (err instanceof z.ZodError) {
-          return res.status(400).json({ message: err.errors[0].message });
+          return res.status(400).json({ message: err.issues[0].message });
         }
         throw err;
       }
@@ -319,7 +319,7 @@ export async function registerRoutes(
       res.status(201).json(server);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(400).json({ message: err instanceof Error ? err.message : "Failed to create DNS resolver" });
     }
@@ -341,7 +341,7 @@ export async function registerRoutes(
       res.json(server);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       if (err instanceof Error && (
         err.message.startsWith("A primary")
@@ -392,7 +392,7 @@ export async function registerRoutes(
       res.status(201).json(list);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       throw err;
     }
@@ -411,7 +411,7 @@ export async function registerRoutes(
       res.json(list);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(404).json({ message: "Blocklist entry not found" });
     }
@@ -737,7 +737,7 @@ export async function registerRoutes(
     try {
       const parsed = insertFirewallRuleSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid firewall rule" });
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid firewall rule" });
       }
       const rule = await storage.createFirewallRule({
         ...parsed.data,
@@ -756,7 +756,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const parsed = insertFirewallRuleSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid firewall rule" });
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid firewall rule" });
       }
       const rule = await storage.updateFirewallRule(id, {
         ...parsed.data,
@@ -884,7 +884,7 @@ export async function registerRoutes(
       res.json(settings);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(500).json({ message: "Failed to update antivirus settings" });
     }
