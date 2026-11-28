@@ -15,10 +15,10 @@ export const betterAuthInstance = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
-      user: betterAuthUser,
-      session: betterAuthSession,
-      account: betterAuthAccount,
-      verification: betterAuthVerification,
+      better_auth_user: betterAuthUser,
+      better_auth_session: betterAuthSession,
+      better_auth_account: betterAuthAccount,
+      better_auth_verification: betterAuthVerification,
     },
   }),
   user: { modelName: "better_auth_user" },

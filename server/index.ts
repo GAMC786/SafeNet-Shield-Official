@@ -13,6 +13,7 @@ import { auth0AuthMiddleware } from "./auth";
 import { betterAuthSessionMiddleware } from "./auth";
 import { toNodeHandler } from "better-auth/node";
 import { betterAuthInstance } from "./better-auth";
+import { registerMobileAuthConfigRoute } from "./mobile-auth-config";
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,6 +26,7 @@ declare module "http" {
   }
 }
 
+registerMobileAuthConfigRoute(app);
 app.all("/api/auth/*splat", toNodeHandler(betterAuthInstance));
 app.use(betterAuthSessionMiddleware);
 app.use(auth0AuthMiddleware);
