@@ -137,9 +137,13 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
   routeStorage?: IStorage,
-  options: { seed?: boolean } = {},
+  options: {
+    seed?: boolean;
+    getCustomDnsBlocklists?: typeof getCustomDnsBlocklistsForFirewall;
+  } = {},
 ): Promise<Server> {
   const storage = routeStorage ?? defaultStorage;
+  const getCustomDnsBlocklists = options.getCustomDnsBlocklists ?? getCustomDnsBlocklistsForFirewall;
   registerMobileAuthConfigRoute(app);
   app.get("/api/auth/session", requireAuth, (req, res) => {
     const userId = getRequestUserId(req);
@@ -423,7 +427,7 @@ export async function registerRoutes(
       storage.getSettings(),
       storage.getFirewallRules(),
       storage.getBlocklists(),
-      getCustomDnsBlocklistsForFirewall(),
+      getCustomDnsBlocklists(),
     ]);
     res.json(firewallConfigSchema.parse({
       settings: publicSettings(settings),

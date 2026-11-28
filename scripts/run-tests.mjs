@@ -4,6 +4,11 @@ import { spawnSync } from "node:child_process";
 
 const tests = [];
 const testDirectories = ["server", "scripts", "client/src/lib"];
+const testEnv = {
+  ...process.env,
+  // Never let the workspace's development database leak into isolated tests.
+  DATABASE_URL: "postgres://127.0.0.1:1/safenet_test",
+};
 
 function encodeAnnotation(value) {
   return value
@@ -45,7 +50,7 @@ for (const test of tests) {
   const result = spawnSync(
     process.execPath,
     ["--import", "tsx", "--test", test],
-    { encoding: "utf8", shell: false },
+    { encoding: "utf8", shell: false, env: testEnv },
   );
 
   if (result.error) {

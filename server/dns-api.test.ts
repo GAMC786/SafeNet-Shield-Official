@@ -154,7 +154,10 @@ test("DNS configuration supports resolver CRUD and activation from Android and E
 
   app.use(express.json());
   registerRequestOriginMiddleware(app);
-  await registerRoutes(httpServer, app, storage, { seed: false });
+  await registerRoutes(httpServer, app, storage, {
+    seed: false,
+    getCustomDnsBlocklists: async () => [],
+  });
 
   await new Promise<void>((resolve, reject) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
